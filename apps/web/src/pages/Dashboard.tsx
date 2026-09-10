@@ -9,6 +9,8 @@ import {
   Rocket,
   ShoppingCart,
   TrendingUp,
+  PackageSearch,
+  Tag,
 } from 'lucide-react';
 import type { DashboardResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -120,6 +122,12 @@ registerNamespace('dashboard', {
       'Ma’lumot hali yig‘ilmoqda yoki tanlangan davrda sotuv bo‘lmagan. Boshqa davrni tanlab ko‘ring yoki ulanishni tekshiring.',
     'empty.setup': 'Ulanishni tekshirish',
     'empty.periodHint': 'Yuqoridagi davr tanlagichidan kengroq oraliqni belgilang.',
+    'nosales.title': 'Bu davrda hali sotuv bo‘lmagan',
+    'nosales.hint':
+      'Kabinet ulangan va omborda {units} dona tovar ko‘rinyapti, lekin tanlangan davrda buyurtma qayd etilmagan. Birinchi sotuvdan keyin tushum, foyda va marja shu yerda avtomatik paydo bo‘ladi.',
+    'nosales.cost': 'Tannarx kiritish',
+    'nosales.stocks': 'Qoldiqlarni ko‘rish',
+    'nosales.costHint': 'Tannarx kiritilmasa, sotuv boshlanganda foyda noto‘g‘ri hisoblanadi.',
   },
   ru: {
     title: 'Дашборд',
@@ -203,6 +211,12 @@ registerNamespace('dashboard', {
       'Данные ещё собираются или за выбранный период продаж не было. Попробуйте другой период или проверьте подключение.',
     'empty.setup': 'Проверить подключение',
     'empty.periodHint': 'Выберите более широкий диапазон в переключателе периода выше.',
+    'nosales.title': 'За этот период продаж ещё не было',
+    'nosales.hint':
+      'Кабинет подключён, на складе видно {units} шт. товара, но за выбранный период заказов нет. После первой продажи выручка, прибыль и маржа появятся здесь автоматически.',
+    'nosales.cost': 'Ввести себестоимость',
+    'nosales.stocks': 'Посмотреть остатки',
+    'nosales.costHint': 'Без себестоимости прибыль будет посчитана неверно.',
   },
   en: {
     title: 'Dashboard',
@@ -286,6 +300,12 @@ registerNamespace('dashboard', {
       'Data is still syncing, or there were no sales in the selected period. Try another period or check the connection.',
     'empty.setup': 'Check connection',
     'empty.periodHint': 'Pick a wider range in the period switcher above.',
+    'nosales.title': 'No sales in this period yet',
+    'nosales.hint':
+      'Your cabinet is connected and {units} units are in stock, but no orders were recorded for the selected period. Revenue, profit and margin will appear here automatically after the first sale.',
+    'nosales.cost': 'Enter cost prices',
+    'nosales.stocks': 'View stock',
+    'nosales.costHint': 'Without cost prices, profit will be calculated incorrectly.',
   },
 });
 
@@ -389,9 +409,12 @@ export default function Dashboard() {
     );
   }
 
-  const isEmpty = data.revenue.value === 0 && data.ordersCount.value === 0;
+  const hasSales = data.revenue.value > 0 || data.ordersCount.value > 0;
+  const hasStock = data.stockValue.units > 0;
 
-  if (isEmpty) {
+  // To'liq bo'sh ekran faqat hech narsa sinxronlanmagan holatda ko'rsatiladi.
+  // Qoldiq bor, lekin sotuv yo'q bo'lsa — oddiy panel nollar bilan chiqadi.
+  if (!hasSales && !hasStock) {
     return (
       <>
         {header}
@@ -421,6 +444,36 @@ export default function Dashboard() {
       <FilterBar />
 
       <div className="space-y-5">
+        {/* Qoldiq bor, sotuv yo'q — nima qilish kerakligini aytamiz */}
+        {!hasSales ? (
+          <Card className="border-info/25 bg-info/[0.06] p-5">
+            <div className="flex flex-wrap gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/12 text-info">
+                <PackageSearch className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-base font-bold text-ink">{t('nosales.title')}</p>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
+                  {t('nosales.hint', { units: f.num(data.stockValue.units) })}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Link to="/cost-price">
+                    <Button size="sm" variant="soft" icon={<Tag className="h-3.5 w-3.5" />}>
+                      {t('nosales.cost')}
+                    </Button>
+                  </Link>
+                  <Link to="/stocks">
+                    <Button size="sm" variant="outline">
+                      {t('nosales.stocks')}
+                    </Button>
+                  </Link>
+                  <span className="text-xs text-muted">{t('nosales.costHint')}</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
         {/* 1. KPI qatori */}
         <StatGrid>
           <StatCard
