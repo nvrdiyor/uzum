@@ -233,10 +233,12 @@ function mapOrderStatus(raw: string): string {
   const s = raw.toUpperCase();
   if (s.includes('RETURN')) return 'returned';
   if (s.includes('CANCEL')) return 'canceled';
+  // TO_WITHDRAW — tovar mijozga topshirilgan, pul to'lovga tayyor (ya'ni yakunlangan sotuv)
+  if (s === 'TO_WITHDRAW' || s === 'WITHDRAWN' || s.includes('WITHDRAW')) return 'delivered';
   if (s === 'DELIVERED' || s === 'COMPLETED' || s.includes('COMPLETE')) return 'delivered';
   if (s === 'CREATED' || s === 'NEW') return 'new';
   if (s === '') return 'delivered';
-  // PACKING, PENDING_DELIVERY, DELIVERING, ACCEPTED_AT_DP va boshqalar
+  // PACKING, PENDING_DELIVERY, DELIVERING, ACCEPTED_AT_DP, PROCESSING va boshqalar
   return 'processing';
 }
 

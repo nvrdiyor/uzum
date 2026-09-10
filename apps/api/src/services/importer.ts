@@ -546,7 +546,9 @@ export async function upsertOrders(
 
       // 1-o'tish: umumiy tushum (proportsional taqsimlash uchun kerak)
       const lines = (order.items ?? []).map((it) => {
-        const qty = Math.max(1, int(it.qty, 1));
+        // Uzum bekor qilingan/qaytarilgan pozitsiyada `amount = 0` yuboradi — bu sotuv EMAS.
+        // Shuning uchun 0 ni saqlab qolamiz; miqdor umuman kelmasa 1 deb olamiz.
+        const qty = it.qty === undefined || it.qty === null ? 1 : Math.max(0, int(it.qty, 0));
         const sellPrice = round(num(it.sellPrice));
         return { it, qty, sellPrice, revenue: round(sellPrice * qty) };
       });
