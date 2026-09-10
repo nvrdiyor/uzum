@@ -857,12 +857,19 @@ export class LiveUzumClient implements UzumClient {
 
   // ─────────────── Ichki yordamchilar ───────────────
 
-  /** `/v1/finance/expenses` xom satrlari (bir necha metod uchun umumiy) */
+  /**
+   * `/v1/finance/expenses` xom satrlari (bir necha metod uchun umumiy).
+   * Sana — `/v1/finance/orders` dagi kabi Unix vaqti SEKUNDDA.
+   */
   private async rawExpenses(shopId: string, from: Date, to: Date): Promise<unknown[]> {
     try {
       return await this.http.fetchAllPages(
         uzumPath('financeExpenses'),
-        { shopIds: shopId, dateFrom: from.getTime(), dateTo: to.getTime() },
+        {
+          shopIds: shopId,
+          dateFrom: Math.floor(from.getTime() / 1000),
+          dateTo: Math.ceil(to.getTime() / 1000),
+        },
         (payload) => pickList(payload, ['expenses', 'payments', 'paymentInfoList']),
         { size: UZUM_PAGE_LIMITS.financeExpenses },
       );
