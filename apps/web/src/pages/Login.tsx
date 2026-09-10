@@ -10,7 +10,7 @@ import { useSession } from '@/store/session';
 import { BOT_LINK, BOT_USERNAME, EASE, TelegramIcon } from '@/components/landing/primitives';
 import { AuthShell, BenefitRow, OrDivider } from '@/components/auth/primitives';
 import { CodeInput } from '@/components/auth/CodeInput';
-import { TelegramLoginButton } from '@/components/auth/TelegramWidget';
+import { TelegramLoginButton, isTelegramWidgetSupported } from '@/components/auth/TelegramWidget';
 
 /** Sahifaga xos qo'shimcha kalitlar (asosiy 'auth' lug'ati components/auth/primitives.tsx da) */
 registerNamespace('auth', {
@@ -61,7 +61,8 @@ export default function Login() {
   const me = useSession((s) => s.me);
   const login = useSession((s) => s.login);
 
-  const [method, setMethod] = useState<Method>('telegram');
+  // Domen ulanmagan bo'lsa (IP/localhost) Telegram widget ishlamaydi — darhol bot kodini ochamiz
+  const [method, setMethod] = useState<Method>(() => (isTelegramWidgetSupported() ? 'telegram' : 'code'));
   const [code, setCode] = useState('');
   const [codeInvalid, setCodeInvalid] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);

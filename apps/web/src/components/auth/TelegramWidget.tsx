@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 import type { TelegramAuthPayload } from '@savdoiq/shared';
 import { Skeleton } from '@/components/ui';
 import { useT } from '@/i18n';
@@ -14,6 +14,22 @@ declare global {
 }
 
 const WIDGET_SRC = 'https://telegram.org/js/telegram-widget.js?22';
+
+/**
+ * Telegram Login Widget faqat HAQIQIY DOMEN bilan ishlaydi — u domen @BotFather'da
+ * /setdomain orqali botga biriktirilgan bo'lishi kerak. IP manzil yoki localhost'da
+ * Telegram "Bot domain invalid" xatosini ko'rsatadi, shuning uchun bunday holatda
+ * widget umuman yuklanmaydi va foydalanuvchiga bot kodi taklif qilinadi.
+ */
+export function isTelegramWidgetSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  if (!h) return false;
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false; // IPv4
+  if (h.includes(':')) return false; // IPv6
+  return h.includes('.');
+}
 
 /**
  * Telegram Login Widget — skript dinamik yuklanadi, callback `window.onTelegramAuth`
@@ -40,7 +56,7 @@ export function TelegramLoginButton({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !BOT_USERNAME) return;
+    if (!host || !BOT_USERNAME || !isTelegramWidgetSupported()) return;
 
     window.onTelegramAuth = (user: TelegramAuthPayload) => authRef.current(user);
 
@@ -62,6 +78,18 @@ export function TelegramLoginButton({
       delete window.onTelegramAuth;
     };
   }, []);
+
+  if (BOT_USERNAME && !isTelegramWidgetSupported()) {
+    return (
+      <div className={cn('flex gap-3 rounded-2xl border border-info/25 bg-info/10 p-4', className)}>
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{t('tg.noDomain')}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{t('tg.noDomainHint')}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!BOT_USERNAME) {
     return (

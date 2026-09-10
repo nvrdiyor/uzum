@@ -33,6 +33,9 @@ registerNamespace('auth', {
     'tg.hint': 'Tugmani bosing va Telegram’da tasdiqlang — hisobingiz avtomatik topiladi.',
     'tg.loading': 'Telegram tugmasi yuklanmoqda...',
     'tg.missing': 'Telegram tugmasi sozlanmagan',
+    'tg.noDomain': 'Telegram tugmasi domen ulangandan keyin ishlaydi',
+    'tg.noDomainHint':
+      'Telegram xavfsizlik uchun haqiqiy domen talab qiladi — IP manzil bilan ishlamaydi. Hozircha “Bot kodi” orqali kiring: botda 🔑 “Saytga kirish” tugmasini bosing va 6 xonali kodni kiriting.',
     'tg.missingHint': 'VITE_BOT_USERNAME o‘zgaruvchisi ko‘rsatilmagan. Hozircha bot kodi orqali kiring.',
     'tg.failed': 'Telegram tugmasini yuklab bo‘lmadi. Internetni tekshiring yoki bot kodi orqali kiring.',
     'tg.safe1': 'Parol so‘ralmaydi',
@@ -89,6 +92,9 @@ registerNamespace('auth', {
     'tg.hint': 'Нажмите кнопку и подтвердите в Telegram — аккаунт найдётся автоматически.',
     'tg.loading': 'Загружаем кнопку Telegram...',
     'tg.missing': 'Кнопка Telegram не настроена',
+    'tg.noDomain': 'Кнопка Telegram заработает после подключения домена',
+    'tg.noDomainHint':
+      'Telegram требует настоящий домен — с IP-адресом вход через виджет не работает. Пока войдите через «Код бота»: нажмите в боте 🔑 «Вход на сайт» и введите 6-значный код.',
     'tg.missingHint': 'Переменная VITE_BOT_USERNAME не задана. Пока войдите по коду из бота.',
     'tg.failed': 'Не удалось загрузить кнопку Telegram. Проверьте интернет или войдите по коду.',
     'tg.safe1': 'Пароль не спрашиваем',
@@ -143,6 +149,9 @@ registerNamespace('auth', {
     'tg.hint': 'Press the button and confirm in Telegram — your account is found automatically.',
     'tg.loading': 'Loading the Telegram button...',
     'tg.missing': 'Telegram button is not configured',
+    'tg.noDomain': 'The Telegram button works once a domain is connected',
+    'tg.noDomainHint':
+      'Telegram requires a real domain — the widget cannot run on a bare IP address. For now use “Bot code”: tap 🔑 “Log in to the site” in the bot and enter the 6-digit code.',
     'tg.missingHint': 'VITE_BOT_USERNAME is not set. Use the bot code for now.',
     'tg.failed': 'The Telegram button could not load. Check your connection or use the bot code.',
     'tg.safe1': 'No password is requested',
