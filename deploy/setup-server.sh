@@ -236,7 +236,7 @@ sleep 4
 printf '\n\033[32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m\n'
 printf '  SavdoIQ ishga tushdi\n\n'
 printf '  Sayt   : http://%s\n' "${SERVER_IP}"
-printf '  API    : http://%s/api/v1/health\n' "${SERVER_IP}"
+printf '  API    : http://%s/health\n' "${SERVER_IP}"
 printf '  Bot    : https://t.me/%s\n' "${TELEGRAM_BOT_USERNAME}"
 printf '\n  Holat  : pm2 status\n'
 printf '  Loglar : pm2 logs savdoiq-api --lines 50\n'
