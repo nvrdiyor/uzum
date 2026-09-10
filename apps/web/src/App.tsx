@@ -106,7 +106,12 @@ function Bootstrap() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/*
+        v7_startTransition — marshrut o'zgarishlari React.startTransition ichida bajariladi.
+        Busiz lazy sahifaga o'tishda React #426 ("component suspended while responding to
+        synchronous input") xatosi chiqib, ekran vaqtincha qorayib qolardi.
+      */}
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Bootstrap />
         <Suspense fallback={<FullPageLoader />}>
           <Routes>
