@@ -143,7 +143,23 @@ ok ".env yozildi (WEB_URL=http://${SERVER_IP})"
 
 # ── 6. Yig'ish ───────────────────────────────────────────────────────────────
 log "Paketlar o'rnatilmoqda (bir necha daqiqa)"
-npm install --no-audit --no-fund --silent 2>&1 | tail -2 || npm install --no-audit --no-fund 2>&1 | tail -5
+npm install --no-audit --no-fund 2>&1 | tail -3
+
+# npm'ning ma'lum muammosi: Windows'da yaratilgan package-lock.json ichida Linux uchun
+# ixtiyoriy ikkilik paketlar bo'lmaydi (rollup/esbuild) → yig'ish "Cannot find module
+# @rollup/rollup-linux-x64-gnu" xatosi bilan to'xtaydi.
+# https://github.com/npm/cli/issues/4828
+ARCH_PKG="@rollup/rollup-linux-x64-gnu"
+[ "$(uname -m)" = "aarch64" ] && ARCH_PKG="@rollup/rollup-linux-arm64-gnu"
+ESBUILD_PKG="@esbuild/linux-x64"
+[ "$(uname -m)" = "aarch64" ] && ESBUILD_PKG="@esbuild/linux-arm64"
+
+if [ ! -d "node_modules/${ARCH_PKG}" ] || [ ! -d "node_modules/${ESBUILD_PKG}" ]; then
+  warn "Platformaga mos ikkilik paketlar yetishmayapti — toza o'rnatish qilinmoqda"
+  rm -rf node_modules package-lock.json
+  npm install --no-audit --no-fund 2>&1 | tail -3
+fi
+ok "Paketlar o'rnatildi"
 
 log "PostgreSQL rejimiga o'tkazish"
 npm run db:use-postgres >/dev/null
