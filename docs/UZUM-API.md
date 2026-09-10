@@ -109,6 +109,72 @@ executionDate, assembledDate, completedDate, canceledDate, paidStorage, returnIt
 
 ---
 
+## 3.5 Amalda tekshirilgan tuzoqlar ⚠️
+
+Bular haqiqiy kabinetda sinab ko'rilgan va integratsiyani buzadigan nozik joylar.
+
+### `dateFrom` / `dateTo` — SEKUNDDA, millisekundda emas
+
+Spetsifikatsiyada `integer(int64)` deb yozilgan, lekin **Unix vaqti sekundda** kutiladi.
+Millisekund yuborilsa endpoint `200` qaytaradi, ammo natija **bo'sh** bo'ladi — xato ham chiqmaydi.
+
+```
+/v1/finance/orders?dateFrom=1785542400000   → totalElements: 0   ✗
+/v1/finance/orders?dateFrom=1785542400      → totalElements: 6   ✓
+```
+
+Javobdagi `date` va `dateIssued` esa **millisekundda** keladi. Ya'ni: so'rovda sekund, javobda millisekund.
+
+### FBO sotuvlari `/v2/fbs/orders` da YO'Q
+
+Nomidan ko'rinib turibdi, lekin oson o'tkazib yuboriladi: bu endpoint faqat **FBS va DBS**
+buyurtmalarini qaytaradi. Uzum omboridan sotiladigan (FBO) tovarlar u yerda umuman ko'rinmaydi.
+
+**Barcha sxemalar uchun yagona manba — `/v1/finance/orders`.** SavdoIQ shuni asosiy manba
+sifatida ishlatadi, `/v2/fbs/orders` esa faqat sxemani (FBS/DBS) aniqlash uchun kerak.
+
+### FBO qoldig'i `/v3/fbs/sku/stocks` da YO'Q
+
+Bu endpoint ham faqat FBS qoldiqlarini beradi. **FBO qoldig'i mahsulot katalogida:**
+`SkuForTable.quantityActive`. FBS esa `quantityFbs`.
+
+### Bekor qilingan pozitsiyada `amount = 0`
+
+Moliyaviy javobda bekor qilingan yoki qaytarilgan pozitsiya **o'chirilmaydi** — u `amount: 0`,
+`commission: 0`, `sellerProfit: 0` bilan qoladi va `amountReturns` da qaytarilgan dona ko'rsatiladi.
+Agar miqdorni "kamida 1" deb olsangiz, bekor qilingan buyurtmalar ham tushumga qo'shilib ketadi.
+
+### `skuTitle` — bu SKU nomi emas, sotuvchi kodi
+
+`/v1/finance/orders` javobida `skuTitle` maydonida sotuvchining SKU kodi keladi
+(masalan `LOOTBOX-LBTSK20-ЧЕРН`), katalogdagi `sellerItemCode` ga mos. Buyurtmalarni
+katalogga bog'lashda aynan shu kod ishlatiladi.
+
+### Haqiqiy moliyaviy maydonlar
+
+`SellerOrderItemDto` ning amalda kelgan maydonlari (spetsifikatsiyada qisman kesilgan):
+
+| Maydon | Ma'nosi | Uzum panelidagi ustun |
+| --- | --- | --- |
+| `sellPrice` | sotuv narxi | Narxi |
+| `amount` | yetkazilgan dona | Miq-ri |
+| `amountReturns` | qaytarilgan dona | — |
+| `commission` | komissiya | Komissiya |
+| `sellerProfit` | sotuvchiga to'lanadigan summa | Yechib olish uchun |
+| `purchasePrice` | tannarx (sotuvchi kiritgan) | Qiymati |
+| `logisticDeliveryFee` | yetkazish to'lovi | — |
+| `date` / `dateIssued` | yaratilgan / topshirilgan (ms) | Yaratish / Qabul sanasi |
+
+> `purchasePrice` mavjud bo'lgani uchun SavdoIQ tannarxi kiritilmagan SKU'larga uni
+> avtomatik yozadi (qo'lda kiritilgan qiymat ustidan yozilmaydi).
+
+### `statuses` filtri
+
+`statuses=TO_WITHDRAW` yuborilganda bo'sh natija qaytdi — filtr kutilgandek ishlamaydi.
+Barcha holatlarni olib, keyin o'zimizda filtrlash ishonchliroq.
+
+---
+
 ## 4. Spetsifikatsiyada YO'Q narsalar
 
 Bular Uzum Seller API'da mavjud emas — SavdoIQ ularni boshqa yo'l bilan hisoblaydi:
