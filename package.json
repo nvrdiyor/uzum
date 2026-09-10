@@ -1,0 +1,41 @@
+{
+  "name": "savdoiq",
+  "private": true,
+  "version": "1.0.0",
+  "description": "SavdoIQ — Uzum Market sotuvchilari uchun analitika platformasi (Telegram login + Uzum API)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:libs && concurrently -n api,bot,web -c cyan,magenta,green \"npm:dev:api\" \"npm:dev:bot\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace @savdoiq/api",
+    "dev:bot": "npm run dev --workspace @savdoiq/bot",
+    "dev:web": "npm run dev --workspace @savdoiq/web",
+    "build": "npm run build:libs && npm run build --workspace @savdoiq/api && npm run build --workspace @savdoiq/bot && npm run build --workspace @savdoiq/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "start": "npm run build:libs && npm run start --workspace @savdoiq/api",
+    "db:generate": "npm run generate --workspace @savdoiq/db",
+    "db:push": "npm run push --workspace @savdoiq/db",
+    "db:migrate": "npm run migrate --workspace @savdoiq/db",
+    "db:studio": "npm run studio --workspace @savdoiq/db",
+    "db:seed": "npm run seed --workspace @savdoiq/db",
+    "db:use-postgres": "node scripts/switch-db.mjs postgresql",
+    "db:use-sqlite": "node scripts/switch-db.mjs sqlite",
+    "setup": "node scripts/setup.mjs",
+    "build:libs": "npm run build --workspace @savdoiq/shared && npm run build --workspace @savdoiq/db"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "prisma": true,
+    "@prisma/client": true,
+    "@prisma/engines": true
+  }
+}

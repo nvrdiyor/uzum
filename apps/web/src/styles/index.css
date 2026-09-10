@@ -1,0 +1,222 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   SavdoIQ dizayn tizimi
+   Yorug' (light) — asosiy holat, qorong'i (dark) — .dark klassi
+   Ranglar RGB uchligi ko'rinishida (tailwind alpha bilan ishlashi uchun)
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --c-bg: 247 248 250;
+  --c-bg-soft: 241 243 246;
+  --c-surface: 255 255 255;
+  --c-surface-2: 246 248 250;
+  --c-surface-3: 238 241 245;
+  --c-border: 226 230 236;
+  --c-border-strong: 205 211 220;
+  --c-text: 16 21 30;
+  --c-text-soft: 55 65 81;
+  --c-muted: 108 118 132;
+
+  --c-brand: 0 168 118;
+  --c-brand-2: 20 199 158;
+  --c-brand-soft: 226 247 240;
+  --c-brand-ink: 0 106 76;
+
+  --c-warn: 214 138 0;
+  --c-danger: 226 68 74;
+  --c-info: 45 116 232;
+  --c-violet: 124 92 246;
+
+  --sq-radius: 16px;
+  --sq-sidebar: 264px;
+  --sq-rail: 76px;
+  --sq-topbar: 64px;
+  color-scheme: light;
+}
+
+.dark {
+  --c-bg: 15 17 21;
+  --c-bg-soft: 18 21 26;
+  --c-surface: 23 26 33;
+  --c-surface-2: 29 33 41;
+  --c-surface-3: 36 41 51;
+  --c-border: 42 47 58;
+  --c-border-strong: 59 66 80;
+  --c-text: 233 236 242;
+  --c-text-soft: 199 205 216;
+  --c-muted: 143 153 170;
+
+  --c-brand: 16 208 148;
+  --c-brand-2: 60 226 190;
+  --c-brand-soft: 14 45 38;
+  --c-brand-ink: 133 246 213;
+
+  --c-warn: 255 176 32;
+  --c-danger: 255 99 104;
+  --c-info: 90 150 255;
+  --c-violet: 155 128 255;
+  color-scheme: dark;
+}
+
+* {
+  border-color: rgb(var(--c-border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Raqamlar bir xil kenglikda turishi uchun */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+::selection {
+  background: rgb(var(--c-brand) / 0.28);
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-border-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-border-strong));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-muted) / 0.6);
+  background-clip: content-box;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 ease-spring hover:border-line-strong hover:shadow-pop;
+  }
+
+  .panel {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      transition-all duration-200 ease-spring focus-visible:outline-none focus-visible:ring-2
+      focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+      disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand text-white shadow-[0_6px_20px_-8px_rgb(var(--c-brand)/0.9)] hover:brightness-110 active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-soft hover:bg-surface-2;
+  }
+
+  .btn-outline {
+    @apply btn border border-line bg-surface text-ink hover:border-line-strong hover:bg-surface-2;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:brightness-110;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm text-ink
+      placeholder:text-muted focus:border-brand/60 focus:outline-none focus:ring-2 focus:ring-brand/20;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+
+  .table-head {
+    @apply sticky top-0 z-10 bg-surface-2/95 text-2xs font-semibold uppercase tracking-wider text-muted backdrop-blur;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-surface-2;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent;
+  }
+
+  .section-title {
+    @apply font-display text-lg font-bold tracking-tight text-ink;
+  }
+
+  .hairline {
+    @apply border-t border-line;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgb(var(--c-surface) / 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .grid-auto-fit {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Recharts moslashuvi */
+.recharts-cartesian-grid line {
+  stroke: rgb(var(--c-border));
+}
+.recharts-text {
+  fill: rgb(var(--c-muted));
+  font-size: 11px;
+}
+.recharts-tooltip-wrapper:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

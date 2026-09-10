@@ -1,0 +1,601 @@
+// SavdoIQ — ma'lumotlar bazasi sxemasi
+// Provider SQLite (dev) va PostgreSQL (prod) uchun mos: enum/Json/array ishlatilmaydi.
+// PostgreSQL'ga o'tish: `npm run db:use-postgres`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Foydalanuvchi & Auth ───────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  telegramId   String    @unique
+  username     String?
+  firstName    String?
+  lastName     String?
+  photoUrl     String?
+  phone        String?
+  languageCode String    @default("uz")
+  role         String    @default("user")
+  status       String    @default("active")
+  referralCode String    @unique
+  referredById String?
+  timezone     String    @default("Asia/Tashkent")
+  botChatId    String?
+  notifyDaily  Boolean   @default(true)
+  notifyOrders Boolean   @default(true)
+  notifyStock  Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  referredBy      User?           @relation("Referrals", fields: [referredById], references: [id])
+  referrals       User[]          @relation("Referrals")
+  memberships     Membership[]
+  sessions        Session[]
+  loginCodes      LoginCode[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  referralBonuses ReferralBonus[] @relation("BonusReferrer")
+
+  @@index([referredById])
+  @@index([botChatId])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Botdan olinadigan bir martalik kod / havola (saytga kirish uchun)
+model LoginCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  telegramId String?
+  userId     String?
+  purpose    String    @default("login")
+  status     String    @default("pending")
+  ip         String?
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([telegramId])
+}
+
+// ─────────────────────────── Kompaniya & a'zolik ───────────────────────────
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  taxRate     Float    @default(1)
+  currency    String   @default("UZS")
+  onboarded   Boolean  @default(false)
+  onboardStep String   @default("company")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships     Membership[]
+  stores          Store[]
+  uzumAccounts    UzumAccount[]
+  subscription    Subscription?
+  invoices        Invoice[]
+  syncJobs        SyncJob[]
+  expenses        Expense[]
+  shipments       Shipment[]
+  settings        CompanySetting[]
+  scenarios       UnitScenario[]
+  referralBonuses ReferralBonus[]
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String
+  role      String   @default("owner")
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+}
+
+model CompanySetting {
+  id        String   @id @default(cuid())
+  companyId String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+}
+
+// ─────────────────────────── Uzum kabinet & do'kon ───────────────────────────
+
+/// Uzum seller kabineti — API kalitlari shifrlangan holda saqlanadi
+model UzumAccount {
+  id            String    @id @default(cuid())
+  companyId     String
+  label         String    @default("Uzum kabinet")
+  apiKeyEnc     String
+  apiSecretEnc  String?
+  keyHint       String?
+  status        String    @default("pending")
+  lastError     String?
+  lastSyncAt    DateTime?
+  nextSyncAt    DateTime?
+  syncIntervalM Int       @default(30)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stores   Store[]
+  syncJobs SyncJob[]
+
+  @@index([companyId])
+}
+
+model Store {
+  id            String   @id @default(cuid())
+  companyId     String
+  uzumAccountId String?
+  uzumShopId    String?
+  title         String
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uzumAccount UzumAccount?    @relation(fields: [uzumAccountId], references: [id], onDelete: SetNull)
+  products    Product[]
+  skus        Sku[]
+  orders      Order[]
+  stocks      StockSnapshot[]
+  reviews     Review[]
+  losses      LossRecord[]
+  returns     ReturnRecord[]
+  storageFees StorageFee[]
+  expenses    Expense[]
+  shipments   Shipment[]
+
+  @@unique([companyId, uzumShopId])
+  @@index([companyId])
+}
+
+// ─────────────────────────── Tarif & to'lov ───────────────────────────
+
+model Subscription {
+  id         String    @id @default(cuid())
+  companyId  String    @unique
+  plan       String    @default("trial")
+  status     String    @default("active")
+  startedAt  DateTime  @default(now())
+  expiresAt  DateTime
+  autoRenew  Boolean   @default(false)
+  trialUsed  Boolean   @default(true)
+  canceledAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id         String    @id @default(cuid())
+  companyId  String
+  plan       String
+  months     Int       @default(1)
+  amount     Float
+  currency   String    @default("UZS")
+  provider   String    @default("manual")
+  status     String    @default("pending")
+  externalId String?
+  payUrl     String?
+  paidAt     DateTime?
+  bonusUsed  Float     @default(0)
+  comment    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  referralBonus ReferralBonus[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model ReferralBonus {
+  id         String   @id @default(cuid())
+  referrerId String
+  companyId  String
+  invoiceId  String?
+  amount     Float
+  percent    Float    @default(20)
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+
+  referrer User     @relation("BonusReferrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+}
+
+// ─────────────────────────── Sinxronizatsiya ───────────────────────────
+
+model SyncJob {
+  id            String    @id @default(cuid())
+  companyId     String
+  uzumAccountId String?
+  type          String    @default("full")
+  status        String    @default("queued")
+  progress      Int       @default(0)
+  step          String    @default("queued")
+  stepIndex     Int       @default(0)
+  totalSteps    Int       @default(8)
+  message       String?
+  error         String?
+  attempts      Int       @default(0)
+  scheduledAt   DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  etaSeconds    Int       @default(1800)
+  payload       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uzumAccount UzumAccount? @relation(fields: [uzumAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([companyId])
+}
+
+// ─────────────────────────── Katalog ───────────────────────────
+
+model Product {
+  id            String   @id @default(cuid())
+  storeId       String
+  uzumProductId String?
+  title         String
+  category      String?
+  brand         String?
+  imageUrl      String?
+  status        String   @default("active")
+  rating        Float    @default(0)
+  reviewsCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  skus    Sku[]
+  reviews Review[]
+
+  @@unique([storeId, uzumProductId])
+  @@index([storeId])
+}
+
+model Sku {
+  id            String   @id @default(cuid())
+  productId     String
+  storeId       String
+  uzumSkuId     String?
+  sku           String
+  barcode       String?
+  title         String
+  imageUrl      String?
+  price         Float    @default(0)
+  oldPrice      Float    @default(0)
+  purchasePrice Float    @default(0)
+  extraCost     Float    @default(0)
+  weightGr      Float    @default(0)
+  volumeL       Float    @default(0)
+  archived      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store         Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+  stocks        StockSnapshot[]
+  costHistory   CostPrice[]
+  losses        LossRecord[]
+  returns       ReturnRecord[]
+  storageFees   StorageFee[]
+  shipmentItems ShipmentItem[]
+  reviews       Review[]
+
+  @@unique([storeId, sku])
+  @@index([productId])
+  @@index([storeId])
+}
+
+model CostPrice {
+  id        String   @id @default(cuid())
+  skuId     String
+  value     Float
+  extraCost Float    @default(0)
+  fromDate  DateTime @default(now())
+  note      String?
+  createdAt DateTime @default(now())
+
+  sku Sku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@index([skuId, fromDate])
+}
+
+// ─────────────────────────── Buyurtmalar ───────────────────────────
+
+model Order {
+  id           String    @id @default(cuid())
+  storeId      String
+  uzumOrderId  String?
+  status       String    @default("new")
+  deliveryType String    @default("FBO")
+  orderedAt    DateTime
+  paidAt       DateTime?
+  deliveredAt  DateTime?
+  buyerCity    String?
+  totalAmount  Float     @default(0)
+  commission   Float     @default(0)
+  logistics    Float     @default(0)
+  discount     Float     @default(0)
+  itemsCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  store Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items OrderItem[]
+
+  @@unique([storeId, uzumOrderId])
+  @@index([storeId, orderedAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id            String    @id @default(cuid())
+  orderId       String
+  skuId         String?
+  skuCode       String?
+  title         String?
+  qty           Int       @default(1)
+  sellPrice     Float     @default(0)
+  purchasePrice Float     @default(0)
+  commission    Float     @default(0)
+  logistics     Float     @default(0)
+  otherCost     Float     @default(0)
+  revenue       Float     @default(0)
+  payout        Float     @default(0)
+  netProfit     Float     @default(0)
+  status        String    @default("delivered")
+  returnedAt    DateTime?
+  orderedAt     DateTime
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sku   Sku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([skuId, orderedAt])
+}
+
+// ─────────────────────────── Qoldiq & ombor ───────────────────────────
+
+model StockSnapshot {
+  id        String   @id @default(cuid())
+  skuId     String
+  storeId   String
+  date      DateTime
+  fbo       Int      @default(0)
+  fbs       Int      @default(0)
+  own       Int      @default(0)
+  reserved  Int      @default(0)
+  inTransit Int      @default(0)
+  createdAt DateTime @default(now())
+
+  sku   Sku   @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([skuId, date])
+  @@index([storeId, date])
+}
+
+model Shipment {
+  id          String    @id @default(cuid())
+  companyId   String
+  storeId     String?
+  code        String
+  destination String?
+  status      String    @default("draft")
+  plannedAt   DateTime?
+  acceptedAt  DateTime?
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store   Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  items   ShipmentItem[]
+
+  @@index([companyId])
+}
+
+model ShipmentItem {
+  id         String @id @default(cuid())
+  shipmentId String
+  skuId      String
+  qty        Int    @default(0)
+  accepted   Int    @default(0)
+  boxes      Int    @default(0)
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  sku      Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+}
+
+model LossRecord {
+  id          String    @id @default(cuid())
+  storeId     String
+  skuId       String?
+  type        String    @default("lost")
+  scheme      String    @default("FBO")
+  qty         Int       @default(0)
+  amount      Float     @default(0)
+  compensated Float     @default(0)
+  status      String    @default("open")
+  happenedAt  DateTime
+  claimSentAt DateTime?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sku   Sku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, happenedAt])
+}
+
+model ReturnRecord {
+  id         String   @id @default(cuid())
+  storeId    String
+  skuId      String?
+  orderCode  String?
+  qty        Int      @default(1)
+  amount     Float    @default(0)
+  reason     String?
+  status     String   @default("returned")
+  returnedAt DateTime
+  createdAt  DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sku   Sku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, returnedAt])
+}
+
+/// Pullik saqlash (platnoye xranenie)
+model StorageFee {
+  id        String   @id @default(cuid())
+  storeId   String
+  skuId     String?
+  date      DateTime
+  qty       Int      @default(0)
+  volumeL   Float    @default(0)
+  amount    Float    @default(0)
+  createdAt DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sku   Sku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, date])
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  companyId String
+  storeId   String?
+  date      DateTime
+  category  String
+  amount    Float    @default(0)
+  note      String?
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store   Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, date])
+}
+
+// ─────────────────────────── Sharhlar & bildirishnomalar ───────────────────────────
+
+model Review {
+  id           String    @id @default(cuid())
+  storeId      String
+  productId    String?
+  skuId        String?
+  uzumReviewId String?
+  rating       Int       @default(5)
+  text         String?
+  author       String?
+  publishedAt  DateTime
+  answered     Boolean   @default(false)
+  answerText   String?
+  answeredAt   DateTime?
+  autoAnswered Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  sku     Sku?     @relation(fields: [skuId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, uzumReviewId])
+  @@index([storeId, publishedAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String    @default("info")
+  channel   String    @default("app")
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model UnitScenario {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  data      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  userId   String?
+  action   String
+  entity   String?
+  entityId String?
+  meta     String?
+  ip       String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}

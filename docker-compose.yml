@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: savdoiq-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-savdoiq}
+      POSTGRES_DB: ${POSTGRES_DB:-savdoiq}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - sq-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-sp}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Prisma Studio — bazani brauzerda ko'rish (ixtiyoriy)
+  # docker compose --profile tools up studio
+  studio:
+    image: node:20-alpine
+    profiles: ['tools']
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sp}:${POSTGRES_PASSWORD:-savdoiq}@db:5432/${POSTGRES_DB:-savdoiq}?schema=public
+    volumes:
+      - .:/app
+    command: sh -c "npx prisma studio --schema packages/db/prisma/schema.prisma --port 5555 --hostname 0.0.0.0"
+    ports:
+      - '5555:5555'
+
+volumes:
+  sq-db:
