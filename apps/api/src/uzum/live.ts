@@ -169,7 +169,9 @@ const KEYS = {
   skuList: ['skuList', 'skus', 'skuDtoList', 'variants', 'items', 'skuInfoList'],
 
   skuId: ['skuId', 'id', 'skuID', 'sku_id'],
-  skuCode: ['skuTitle', 'sku', 'skuCode', 'article', 'vendorCode', 'barcode'],
+  // Moliyaviy javobda buyurtma pozitsiyasi "skuTitle" maydonida sotuvchi kodini
+  // (masalan LOOTBOX-LBTSK20-ЧЕРН) yuboradi — katalogda ham shu kodni asosiy qilamiz
+  skuCode: ['sellerItemCode', 'article', 'sku', 'skuCode', 'vendorCode', 'skuTitle', 'barcode'],
   skuTitle: ['skuTitle', 'title', 'name', 'productTitle'],
   barcode: ['barcode', 'barCode', 'ean'],
   price: ['price', 'sellPrice', 'sellerPrice', 'currentPrice'],
@@ -509,178 +511,155 @@ export class LiveUzumClient implements UzumClient {
     return [...bySku.values()];
   }
 
+  /**
+   * Buyurtmalar.
+   *
+   * Asosiy manba — `/v1/finance/orders`: u FBO, FBS va DBS sxemalarining HAMMASINI
+   * qamrab oladi va pul ko'rsatkichlarini beradi (`/v2/fbs/orders` faqat FBS/DBS).
+   *
+   * DIQQAT: bu endpointda `dateFrom`/`dateTo` — Unix vaqti SEKUNDDA
+   * (millisekundda yuborilsa bo'sh natija qaytaradi), javobdagi `date` esa millisekundda.
+   */
   async getOrders(shopId: string, from: Date, to: Date): Promise<UzumOrder[]> {
-    const orders = new Map<string, UzumOrder>();
-    const dateFrom = from.getTime();
-    const dateTo = to.getTime();
+    const dateFrom = Math.floor(from.getTime() / 1000);
+    const dateTo = Math.ceil(to.getTime() / 1000);
 
-    for (const status of UZUM_ORDER_STATUSES) {
-      try {
-        const rows = await this.http.fetchAllPages(
-          uzumPath('orders'),
-          { shopIds: shopId, status, dateFrom, dateTo },
-          (payload) => pickList(payload, ['orders', 'orderList']),
-          { size: UZUM_PAGE_LIMITS.orders },
-        );
-        for (const raw of rows) {
-          const order = this.toOrder(asRecord(raw), shopId);
-          if (order) orders.set(order.id, order);
-        }
-      } catch (err) {
-        this.warn(`buyurtmalar (${status}, shop ${shopId})`, err);
+    const orders = new Map<string, UzumOrder>();
+
+    // 1) Moliyaviy pozitsiyalar — buyurtma raqami bo'yicha guruhlanadi
+    let rows: unknown[] = [];
+    try {
+      rows = await this.http.fetchAllPages(
+        uzumPath('financeOrders'),
+        { shopIds: shopId, dateFrom, dateTo, group: false },
+        (payload) => pickList(payload, ['orderItems', 'orders', 'financeOrders']),
+        { size: UZUM_PAGE_LIMITS.financeOrders },
+      );
+    } catch (err) {
+      this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err);
+    }
+
+    for (const raw of rows) {
+      const r = asRecord(raw);
+      const orderId = asString(r.orderId) || asString(r.id);
+      if (!orderId) continue;
+
+      const code = asString(r.skuTitle);
+      const productId = asString(r.productId);
+      const qty = Math.round(asNumber(r.amount));
+      const returnedQty = Math.round(asNumber(r.amountReturns));
+      const sellPrice = asMoney(r.sellPrice);
+      const commission = asMoney(r.commission);
+      const logistics = asMoney(r.logisticDeliveryFee);
+      const payout = asMoney(r.sellerProfit);
+      const purchasePrice = asMoney(r.purchasePrice);
+      const status = mapOrderStatus(asString(r.status));
+      const orderedAt = asIso(r.date, new Date().toISOString());
+      const deliveredAt = asNumber(r.dateIssued) > 0 ? asIso(r.dateIssued, '') : undefined;
+
+      const item: UzumOrderItem = {
+        skuId: code || productId || orderId,
+        skuCode: code || undefined,
+        title: asString(r.productTitle) || undefined,
+        qty: Math.max(qty, 0),
+        sellPrice,
+        commission,
+        logistics,
+        status: returnedQty > 0 && qty === 0 ? 'returned' : status,
+        returnedQty,
+        payout,
+        purchasePrice: purchasePrice || undefined,
+        productId: productId || undefined,
+      };
+
+      const existing = orders.get(orderId);
+      if (existing) {
+        existing.items.push(item);
+        existing.totalAmount += sellPrice * Math.max(qty, 0);
+        existing.commission = (existing.commission ?? 0) + commission;
+        existing.logistics = (existing.logistics ?? 0) + logistics;
+      } else {
+        orders.set(orderId, {
+          id: orderId,
+          shopId,
+          status,
+          // Sxema keyingi bosqichda aniqlanadi; moliyada bor-u FBS ro'yxatida yo'q — demak FBO
+          deliveryType: 'FBO',
+          orderedAt,
+          deliveredAt: deliveredAt || undefined,
+          totalAmount: sellPrice * Math.max(qty, 0),
+          commission,
+          logistics,
+          discount: 0,
+          items: [item],
+        });
       }
     }
 
+    // 2) FBS/DBS ro'yxati — sxemani va shahar ma'lumotini aniqlashtirish uchun
     try {
-      await this.mergeFinanceOrders(orders, shopId, dateFrom, dateTo);
+      const fbsRows = await this.http.fetchAllPages(
+        uzumPath('orders'),
+        { shopIds: shopId, dateFrom, dateTo },
+        (payload) => pickList(payload, ['orders', 'orderList']),
+        { size: UZUM_PAGE_LIMITS.orders },
+      );
+
+      for (const raw of fbsRows) {
+        const r = asRecord(raw);
+        const id = asString(firstOf(r, KEYS.orderId));
+        if (!id) continue;
+
+        const scheme = mapDeliveryType(asString(firstOf(r, KEYS.scheme)));
+        const city = asString(firstOf(r, KEYS.city)) || undefined;
+
+        const existing = orders.get(id);
+        if (existing) {
+          // Bu ro'yxatda faqat FBS va DBS bo'ladi — sxemani aniqlashtiramiz
+          existing.deliveryType = scheme === 'FBO' ? 'FBS' : scheme;
+          if (city) existing.buyerCity = city;
+          continue;
+        }
+
+        // Moliyada hali ko'rinmagan (yangi) FBS buyurtmasi
+        const itemRows = asArray(firstOf(r, KEYS.orderItems));
+        const items: UzumOrderItem[] = itemRows.map((rawItem) => {
+          const i = asRecord(rawItem);
+          return {
+            skuId:
+              asString(firstOf(i, KEYS.skuCode)) ||
+              asString(firstOf(i, KEYS.skuId)) ||
+              id,
+            skuCode: asString(firstOf(i, KEYS.skuCode)) || undefined,
+            title: asString(firstOf(i, KEYS.skuTitle)) || undefined,
+            qty: Math.max(1, Math.round(asNumber(firstOf(i, KEYS.qty), 1))),
+            sellPrice: asMoney(firstOf(i, KEYS.price)),
+            commission: asMoney(firstOf(i, KEYS.commission)),
+            logistics: asMoney(firstOf(i, KEYS.logistics)),
+          };
+        });
+
+        orders.set(id, {
+          id,
+          shopId,
+          status: mapOrderStatus(asString(firstOf(r, KEYS.status))),
+          deliveryType: scheme === 'FBO' ? 'FBS' : scheme,
+          orderedAt: asIso(firstOf(r, KEYS.orderedAt), new Date().toISOString()),
+          buyerCity: city,
+          totalAmount: asMoney(firstOf(r, KEYS.total)),
+          commission: 0,
+          logistics: 0,
+          discount: asMoney(firstOf(r, KEYS.discount)),
+          items,
+        });
+      }
     } catch (err) {
-      this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err);
+      this.warn(`FBS buyurtmalari (shop ${shopId})`, err);
     }
 
     return [...orders.values()].filter((o) => inRange(o.orderedAt, from, to));
   }
 
-  private toOrder(r: Record<string, unknown>, shopId: string): UzumOrder | null {
-    const id = asString(firstOf(r, KEYS.orderId)) || asString(firstOf(r, KEYS.orderCode));
-    if (!id) return null;
-
-    const fallbackIso = new Date().toISOString();
-    const items: UzumOrderItem[] = [];
-    for (const raw of asArray(firstOf(r, KEYS.orderItems))) {
-      const item = this.toOrderItem(asRecord(raw));
-      if (item) items.push(item);
-    }
-
-    const itemsTotal = items.reduce((sum, it) => sum + it.sellPrice * it.qty, 0);
-    const total = asMoney(firstOf(r, KEYS.total)) || itemsTotal;
-
-    return {
-      id,
-      shopId: asString(firstOf(r, ['shopId', 'shopID']), shopId) || shopId,
-      status: mapOrderStatus(asString(firstOf(r, KEYS.status))),
-      deliveryType: mapDeliveryType(asString(firstOf(r, KEYS.scheme))),
-      orderedAt: asIso(firstOf(r, KEYS.orderedAt), fallbackIso),
-      paidAt: optionalIso(firstOf(r, KEYS.paidAt)),
-      deliveredAt: optionalIso(firstOf(r, KEYS.deliveredAt)),
-      buyerCity: asString(firstOf(r, KEYS.city)) || undefined,
-      totalAmount: total,
-      commission: asMoney(firstOf(r, KEYS.commission)),
-      logistics: asMoney(firstOf(r, KEYS.logistics)),
-      discount: asMoney(firstOf(r, KEYS.discount)),
-      items,
-    };
-  }
-
-  private toOrderItem(r: Record<string, unknown>): UzumOrderItem | null {
-    const skuId = asString(firstOf(r, KEYS.skuId));
-    if (!skuId) return null;
-    const qty = Math.max(1, Math.round(asNumber(firstOf(r, KEYS.qty), 1)));
-
-    return {
-      skuId,
-      skuCode: asString(firstOf(r, KEYS.skuCode)) || undefined,
-      title: asString(firstOf(r, KEYS.skuTitle)) || undefined,
-      qty,
-      sellPrice: asMoney(firstOf(r, KEYS.price)),
-      commission: asMoney(firstOf(r, KEYS.commission)) || undefined,
-      logistics: asMoney(firstOf(r, KEYS.logistics)) || undefined,
-      status: asString(firstOf(r, KEYS.status)) || undefined,
-    };
-  }
-
-  /**
-   * `/v1/finance/orders` satrlari bilan buyurtmalarni boyitadi.
-   * Mos buyurtma topilmasa — bu FBO sotuvi, alohida buyurtma sifatida qo'shiladi.
-   */
-  private async mergeFinanceOrders(
-    orders: Map<string, UzumOrder>,
-    shopId: string,
-    dateFrom: number,
-    dateTo: number,
-  ): Promise<void> {
-    const rows = await this.http.fetchAllPages(
-      uzumPath('financeOrders'),
-      { shopIds: shopId, dateFrom, dateTo, group: false },
-      (payload) => pickList(payload, ['orders', 'financeOrders', 'orderItems']),
-      { size: UZUM_PAGE_LIMITS.financeOrders },
-    );
-
-    const fallbackIso = new Date().toISOString();
-
-    for (const raw of rows) {
-      const r = asRecord(raw);
-      const orderId = asString(firstOf(r, KEYS.orderId));
-      if (!orderId) continue;
-
-      const skuId = asString(firstOf(r, KEYS.skuId));
-      const qty = Math.max(1, Math.round(asNumber(firstOf(r, KEYS.qty), 1)));
-      const sellPrice = asMoney(firstOf(r, KEYS.price));
-      const commission = asMoney(firstOf(r, KEYS.commission));
-      const logistics = asMoney(firstOf(r, KEYS.logistics));
-
-      const existing = orders.get(orderId);
-
-      if (!existing) {
-        // Moliyada bor, buyurtmalar ro'yxatida yo'q → FBO sotuvi
-        orders.set(orderId, {
-          id: orderId,
-          shopId,
-          status: mapOrderStatus(asString(firstOf(r, KEYS.status))),
-          deliveryType: mapDeliveryType(asString(firstOf(r, KEYS.scheme))),
-          orderedAt: asIso(firstOf(r, KEYS.orderedAt), fallbackIso),
-          buyerCity: asString(firstOf(r, KEYS.city)) || undefined,
-          totalAmount: sellPrice * qty,
-          commission,
-          logistics,
-          discount: asMoney(firstOf(r, KEYS.discount)),
-          items: skuId
-            ? [
-                {
-                  skuId,
-                  skuCode: asString(firstOf(r, KEYS.skuCode)) || undefined,
-                  title: asString(firstOf(r, KEYS.skuTitle)) || undefined,
-                  qty,
-                  sellPrice,
-                  commission,
-                  logistics,
-                },
-              ]
-            : [],
-        });
-        continue;
-      }
-
-      // Mavjud buyurtmani moliyaviy raqamlar bilan to'ldiramiz
-      existing.commission = (existing.commission ?? 0) + commission;
-      existing.logistics = (existing.logistics ?? 0) + logistics;
-      if (existing.totalAmount === 0) existing.totalAmount = sellPrice * qty;
-
-      if (!skuId) continue;
-      const item = existing.items.find((it) => it.skuId === skuId);
-      if (item) {
-        if (item.sellPrice === 0) item.sellPrice = sellPrice;
-        item.commission = (item.commission ?? 0) + commission;
-        item.logistics = (item.logistics ?? 0) + logistics;
-      } else {
-        existing.items.push({
-          skuId,
-          skuCode: asString(firstOf(r, KEYS.skuCode)) || undefined,
-          title: asString(firstOf(r, KEYS.skuTitle)) || undefined,
-          qty,
-          sellPrice,
-          commission,
-          logistics,
-        });
-      }
-    }
-  }
-
-  // ─────────────── Qaytarishlar ───────────────
-
-  /**
-   * Avval do'kon bo'yicha (`/v1/shop/{shopId}/return`), u ishlamasa umumiy
-   * (`/v1/return`) endpoint sinaladi. Hujjat ichida tovarlar ro'yxati bo'lsa — yoyiladi.
-   */
   async getReturns(shopId: string, from: Date, to: Date): Promise<UzumReturn[]> {
     const rows = await this.tryPages(
       [

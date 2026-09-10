@@ -95,6 +95,7 @@ export interface UzumStock {
 
 /** Buyurtma tarkibidagi pozitsiya */
 export interface UzumOrderItem {
+  /** Bog'lash kaliti — Uzum sku id yoki sotuvchi SKU kodi */
   skuId: string;
   skuCode?: string;
   title?: string;
@@ -103,6 +104,14 @@ export interface UzumOrderItem {
   commission?: number;
   logistics?: number;
   status?: string;
+  /** Qaytarilgan dona (amountReturns) */
+  returnedQty?: number;
+  /** Uzum to'laydigan summa (sellerProfit — "yechib olish uchun") */
+  payout?: number;
+  /** Uzum kabinetida ko'rsatilgan tannarx (purchasePrice) */
+  purchasePrice?: number;
+  /** Uzum tomonidagi mahsulot id */
+  productId?: string;
 }
 
 /** Buyurtma */

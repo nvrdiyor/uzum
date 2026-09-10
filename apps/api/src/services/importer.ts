@@ -502,6 +502,13 @@ export async function upsertOrders(
   orders: UzumOrder[],
   options: OrderImportOptions = {},
 ): Promise<ImportResult> {
+  /**
+   * Uzum moliyaviy javobida har bir pozitsiya uchun tannarx (`purchasePrice`) keladi.
+   * Bizda tannarx kiritilmagan SKU'larga uni avtomatik ko'chiramiz — shunda foyda va
+   * marja birinchi sinxrondanoq to'g'ri hisoblanadi. Qo'lda kiritilgan qiymat ustidan yozilmaydi.
+   */
+  const costFromUzum = new Map<string, number>();
+
   const res = emptyResult();
   if (orders.length === 0) return res;
 
@@ -565,10 +572,20 @@ export async function upsertOrders(
             ? round(num(it.logistics))
             : (shareOf(order.logistics, revenue, orderRevenue) ?? round(DEFAULTS.logisticsPerUnit * qty));
 
-        const purchasePrice = round(ref?.purchasePrice ?? 0);
+        // Tannarx: avval bizdagi (qo'lda kiritilgan) qiymat, bo'lmasa Uzum bergani
+        const purchasePrice = round(ref?.purchasePrice || num(it.purchasePrice) || 0);
+        if (ref && !(ref.purchasePrice > 0) && num(it.purchasePrice) > 0) {
+          costFromUzum.set(ref.id, round(num(it.purchasePrice)));
+        }
+
         const otherCost = round((ref?.extraCost ?? 0) * qty);
         const cogs = round(purchasePrice * qty);
-        const payout = round(revenue - commission - logistics);
+        // Uzum "yechib olish uchun" summasini bersa — o'shani ishlatamiz (aniqroq),
+        // aks holda tushumdan komissiya va logistikani ayiramiz
+        const payout =
+          it.payout !== undefined && num(it.payout) > 0
+            ? round(num(it.payout))
+            : round(revenue - commission - logistics);
         const tax = round((revenue * taxRate) / 100);
         const netProfit = round(payout - cogs - otherCost - tax);
 
@@ -633,6 +650,14 @@ export async function upsertOrders(
     if (itemCreates.length) {
       await createManyChunked(itemCreates, (data) => prisma.orderItem.createMany({ data }));
     }
+  }
+
+  // Uzum bergan tannarxni bo'sh SKU'larga yozamiz
+  for (const [skuId, value] of costFromUzum) {
+    await prisma.sku.updateMany({
+      where: { id: skuId, purchasePrice: 0 },
+      data: { purchasePrice: value },
+    });
   }
 
   return res;
