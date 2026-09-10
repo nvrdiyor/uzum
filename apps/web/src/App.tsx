@@ -8,10 +8,14 @@ import { useUi } from '@/store/ui';
 import { useLangStore } from '@/i18n';
 import '@/i18n/common';
 
-// Sahifalar — kodni bo'lib yuklash
-const Landing = lazy(() => import('@/pages/Landing'));
-const Login = lazy(() => import('@/pages/Login'));
-const AuthCallback = lazy(() => import('@/pages/AuthCallback'));
+// Ochiq sahifalar — darhol yuklanadi (birinchi ochilishda kutish bo'lmasin;
+// lazy bo'lsa dastlabki render 'suspend' bo'lib React #426 xatosini berardi)
+import Landing from '@/pages/Landing';
+import Login from '@/pages/Login';
+import AuthCallback from '@/pages/AuthCallback';
+import NotFound from '@/pages/NotFound';
+
+// Ichki sahifalar — kodni bo'lib yuklash
 const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Sales = lazy(() => import('@/pages/Sales'));
@@ -39,7 +43,6 @@ const Referral = lazy(() => import('@/pages/Referral'));
 const Pricing = lazy(() => import('@/pages/Pricing'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Admin = lazy(() => import('@/pages/Admin'));
-const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
