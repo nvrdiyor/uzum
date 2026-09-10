@@ -1,11 +1,28 @@
 import dotenv from 'dotenv';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-// monorepo ildizidagi .env
-dotenv.config({ path: path.resolve(here, '../../../.env') });
-dotenv.config();
+/**
+ * `.env` ni yuqoriga qarab qidiradi — manba (`src`) va yig'ilgan (`dist`) holatda
+ * bir xil ishlashi uchun (apps/bot/src/lib/env.ts bilan bir xil mantiq).
+ */
+function loadEnv(): void {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 7; i += 1) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  dotenv.config();
+}
+
+loadEnv();
 
 const bool = (v: string | undefined, def = false): boolean => {
   if (v === undefined) return def;

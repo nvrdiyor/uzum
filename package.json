@@ -23,7 +23,9 @@
     "db:use-postgres": "node scripts/switch-db.mjs postgresql",
     "db:use-sqlite": "node scripts/switch-db.mjs sqlite",
     "setup": "node scripts/setup.mjs",
-    "build:libs": "npm run build --workspace @savdoiq/shared && npm run build --workspace @savdoiq/db"
+    "build:libs": "npm run build --workspace @savdoiq/shared && npm run build --workspace @savdoiq/db",
+    "start:api": "node apps/api/dist/index.js",
+    "start:bot": "node apps/bot/dist/index.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

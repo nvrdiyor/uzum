@@ -4,13 +4,32 @@
  * (ayniqsa SESSION_SECRET va ENCRYPTION_KEY: shifrlash natijasi bir xil bo'lishi shart).
  */
 import dotenv from 'dotenv';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-// monorepo ildizidagi .env (apps/bot/src/lib → ../../../../.env)
-dotenv.config({ path: path.resolve(here, '../../../../.env') });
-dotenv.config();
+/**
+ * `.env` ni yuqoriga qarab qidiradi.
+ * Manba (`src/lib`) va yig'ilgan (`dist`) holatda fayl chuqurligi har xil bo'lgani uchun
+ * qat'iy yo'l o'rniga qidiruv ishlatiladi — prodda ham, devda ham bir xil ishlaydi.
+ */
+function loadEnv(): void {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 7; i += 1) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Joriy papkadagi .env (PM2 cwd) va tizim muhiti
+  dotenv.config();
+}
+
+loadEnv();
 
 const num = (v: string | undefined, def: number): number => {
   const n = Number(v);
