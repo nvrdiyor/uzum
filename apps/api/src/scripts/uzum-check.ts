@@ -64,7 +64,12 @@ async function main(): Promise<void> {
   ok(`${products.length} ta mahsulot · ${skuCount} ta SKU`);
   products.slice(0, 3).forEach((p) => {
     line(`   • ${p.title} [${p.id}] · ${p.skus.length} SKU · ${p.category ?? '—'}`);
-    p.skus.slice(0, 2).forEach((s) => line(`       ${s.sku} — ${s.title} · ${s.price} so'm`));
+    p.skus.slice(0, 3).forEach((s) =>
+      line(
+        `       ${s.sku} · narx ${s.price} · tannarx ${s.purchasePrice ?? '—'} · ` +
+          `FBO ${s.quantityFbo ?? '—'} · FBS ${s.quantityFbs ?? '—'} · komissiya ${s.commissionPct ?? '—'}%`,
+      ),
+    );
   });
 
   head(`4. getStocks(${shopId}) — qoldiqlar`);

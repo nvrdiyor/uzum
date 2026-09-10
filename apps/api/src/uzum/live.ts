@@ -178,8 +178,12 @@ const KEYS = {
   volume: ['volume', 'volumeL', 'volumeLiters'],
 
   amount: ['amount', 'quantity', 'qty', 'count', 'activeSkuAmount'],
-  fbo: ['fbo', 'fboAmount', 'fboQuantity'],
-  fbs: ['fbs', 'fbsAmount', 'fbsQuantity'],
+  // Uzum katalogida (SkuForTable): quantityActive — FBO, quantityFbs — FBS
+  fbo: ['quantityActive', 'fbo', 'fboAmount', 'fboQuantity'],
+  fbs: ['quantityFbs', 'fbs', 'fbsAmount', 'fbsQuantity'],
+  pending: ['quantityPending', 'pending'],
+  purchasePrice: ['purchasePrice', 'costPrice', 'purchase_price'],
+  commissionPct: ['commission', 'commissionPercent', 'commissionRate'],
   reserved: ['reserved', 'reservedAmount', 'reservedQuantity'],
   inTransit: ['inTransit', 'inWay', 'transitAmount', 'onTheWay'],
 
@@ -422,6 +426,12 @@ export class LiveUzumClient implements UzumClient {
       oldPrice: asMoney(firstOf(r, KEYS.oldPrice)) || undefined,
       weightGr: asNumber(firstOf(r, KEYS.weight)) || undefined,
       volumeL: asNumber(firstOf(r, KEYS.volume)) || undefined,
+      // Uzum katalogi qoldiqni ham qaytaradi — FBO uchun asosiy manba shu
+      quantityFbo: Math.round(asNumber(firstOf(r, KEYS.fbo))),
+      quantityFbs: Math.round(asNumber(firstOf(r, KEYS.fbs))),
+      reserved: Math.round(asNumber(firstOf(r, KEYS.pending))),
+      purchasePrice: asMoney(firstOf(r, KEYS.purchasePrice)) || undefined,
+      commissionPct: asNumber(firstOf(r, KEYS.commissionPct)) || undefined,
     };
   }
 
@@ -432,53 +442,73 @@ export class LiveUzumClient implements UzumClient {
    * TODO(uzum): tekshirish — endpoint butun kabinet bo'yicha qaytaradi, do'kon filtri yo'q.
    * FBO/FBS ajratmasi topilmasa, butun miqdor FBS deb yoziladi.
    */
+  /**
+   * Qoldiqlar.
+   *
+   * MUHIM: `/v3/fbs/sku/stocks` faqat FBS (o'z ombori) qoldiqlarini qaytaradi.
+   * FBO — ya'ni Uzum omboridagi asosiy qoldiq — mahsulot katalogidagi
+   * `quantityActive` maydonida keladi. Shuning uchun asosiy manba katalog,
+   * FBS raqamlari esa maxsus endpoint bilan aniqlashtiriladi.
+   */
   async getStocks(shopId: string): Promise<UzumStock[]> {
     const today = new Date().toISOString().slice(0, 10);
+    const bySku = new Map<string, UzumStock>();
 
+    // 1) Katalogdan — FBO va FBS
+    try {
+      const products = await this.getProducts(shopId);
+      for (const p of products) {
+        for (const s of p.skus) {
+          bySku.set(s.id, {
+            skuId: s.id,
+            fbo: Math.max(0, s.quantityFbo ?? 0),
+            fbs: Math.max(0, s.quantityFbs ?? 0),
+            reserved: Math.max(0, s.reserved ?? 0),
+            inTransit: 0,
+            date: today,
+          });
+        }
+      }
+    } catch (err) {
+      this.warn(`katalogdan qoldiqlar (shop ${shopId})`, err);
+    }
+
+    // 2) FBS endpointi — mavjud bo'lsa FBS raqamini aniqlashtiramiz
     try {
       const rows = await this.http.fetchAllPages(
         uzumPath('stocks'),
         {},
-        (payload) => pickList(payload, ['stocks', 'skuStocks', 'skuList']),
+        (payload) => pickList(payload, ['stocks', 'skuStocks', 'skuList', 'skuAmountList']),
         { size: UZUM_PAGE_LIMITS.stocks },
       );
 
-      const out: UzumStock[] = [];
       for (const raw of rows) {
         const r = asRecord(raw);
         const skuId = asString(firstOf(r, KEYS.skuId));
         if (!skuId) continue;
 
-        const fbo = Math.round(asNumber(firstOf(r, KEYS.fbo)));
-        const fbs = Math.round(asNumber(firstOf(r, KEYS.fbs)));
+        const fbsRaw = Math.round(asNumber(firstOf(r, KEYS.fbs)));
         const total = Math.round(asNumber(firstOf(r, KEYS.amount)));
+        const fbs = fbsRaw > 0 ? fbsRaw : Math.max(0, total);
+        const reserved = Math.round(asNumber(firstOf(r, KEYS.reserved)));
+        const inTransit = Math.round(asNumber(firstOf(r, KEYS.inTransit)));
 
-        out.push({
-          skuId,
-          fbo,
-          // Ajratma bo'lmasa — umumiy miqdorni FBS deb olamiz (ombor bizniki emas)
-          fbs: fbs > 0 ? fbs : Math.max(0, total - fbo),
-          reserved: Math.round(asNumber(firstOf(r, KEYS.reserved))),
-          inTransit: Math.round(asNumber(firstOf(r, KEYS.inTransit))),
-          date: today,
-        });
+        const cur = bySku.get(skuId);
+        if (cur) {
+          if (fbs > 0) cur.fbs = fbs;
+          if (reserved > 0) cur.reserved = reserved;
+          if (inTransit > 0) cur.inTransit = inTransit;
+        } else {
+          bySku.set(skuId, { skuId, fbo: 0, fbs, reserved, inTransit, date: today });
+        }
       }
-      return out;
     } catch (err) {
-      this.warn(`qoldiqlar (shop ${shopId})`, err);
-      return [];
+      this.warn(`FBS qoldiqlari (shop ${shopId})`, err);
     }
+
+    return [...bySku.values()];
   }
 
-  // ─────────────── Buyurtmalar ───────────────
-
-  /**
-   * Buyurtmalar ikki manbadan yig'iladi:
-   *  1. `/v2/fbs/orders` — FBS/DBS buyurtmalari (`status` bo'yicha aylanamiz, chunki
-   *     standart qiymat faqat `CREATED` ni beradi);
-   *  2. `/v1/finance/orders` — moliyaviy ma'lumot (komissiya, to'lov) va FBO sotuvlari.
-   * Natija `id` bo'yicha birlashtiriladi.
-   */
   async getOrders(shopId: string, from: Date, to: Date): Promise<UzumOrder[]> {
     const orders = new Map<string, UzumOrder>();
     const dateFrom = from.getTime();

@@ -53,6 +53,16 @@ export interface UzumSku {
   oldPrice?: number;
   weightGr?: number;
   volumeL?: number;
+  /** Uzum omborida faol qoldiq (FBO) — katalog javobidagi quantityActive */
+  quantityFbo?: number;
+  /** O'z omborida (FBS) — quantityFbs */
+  quantityFbs?: number;
+  /** Band qilingan (kutilayotgan) miqdor */
+  reserved?: number;
+  /** Uzum kabinetida kiritilgan tannarx (bo'lsa) */
+  purchasePrice?: number;
+  /** Kategoriya bo'yicha komissiya, % */
+  commissionPct?: number;
 }
 
 /** Mahsulot kartochkasi (bir nechta SKU bilan) */
