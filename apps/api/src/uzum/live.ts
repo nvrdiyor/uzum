@@ -827,6 +827,22 @@ export class LiveUzumClient implements UzumClient {
 
   // ─────────────── Xarajatlar ───────────────
 
+  /**
+   * Uzum "Xizmatlarga to'lov" bo'limi (`/v1/finance/expenses`).
+   *
+   * Haqiqiy javob maydonlari:
+   *   name, source ("Logistika" | "Marketing" | ...), code, paymentPrice,
+   *   dateService / dateCreated (ms), type ("OUTCOME" — xarajat, "INCOME" — qaytarish)
+   *
+   * `code` xarajat turini aniq ko'rsatadi:
+   *   logistics-volume         — buyurtmani mijozga yetkazish (har bir buyurtma uchun)
+   *   return-logistics-volume  — qaytarilganda o'sha to'lovning qaytarilishi (INCOME)
+   *   У000101                  — omborga yetkazib berish (sotuvchining yuk jo'natmasi)
+   *   У000120                  — reklama / "Buyurtmalarni ko'paytirish"
+   *
+   * INCOME satrlari MANFIY summa bilan yoziladi — shunda yig'indi Uzumning
+   * "Oylik xizmatlar to'lovi" raqami bilan aynan mos tushadi.
+   */
   async getExpenses(shopId: string, from: Date, to: Date): Promise<UzumExpense[]> {
     const rows = await this.rawExpenses(shopId, from, to);
     const out: UzumExpense[] = [];
@@ -834,28 +850,36 @@ export class LiveUzumClient implements UzumClient {
 
     for (const raw of rows) {
       const r = asRecord(raw);
-      const note = asString(firstOf(r, KEYS.expenseNote));
-      const source = asString(firstOf(r, KEYS.expenseSource));
-      const category = mapExpenseCategory(`${source} ${note}`);
+
+      const name = asString(r.name) || asString(firstOf(r, KEYS.expenseNote));
+      const source = asString(r.source) || asString(firstOf(r, KEYS.expenseSource));
+      const code = asString(r.code);
+      const kind = asString(r.type).toUpperCase();
+
+      const category = mapExpenseCategory(`${source} ${code} ${name}`);
       // Saqlash to'lovlari alohida (`getStorageFees`) yig'iladi — ikki marta hisoblamaymiz
       if (category === 'storage') continue;
 
-      const date = asIso(firstOf(r, KEYS.expenseDate), fallbackIso);
+      const date = asIso(r.dateService ?? r.dateCreated ?? firstOf(r, KEYS.expenseDate), fallbackIso);
       if (!inRange(date, from, to)) continue;
 
-      const amount = Math.abs(asMoney(firstOf(r, KEYS.expenseAmount)));
-      if (amount === 0) continue;
+      const raw$ = asMoney(r.paymentPrice ?? firstOf(r, KEYS.expenseAmount));
+      if (raw$ === 0) continue;
+
+      // Qaytarilgan to'lov — xarajatni kamaytiradi
+      const amount = kind === 'INCOME' ? -Math.abs(raw$) : Math.abs(raw$);
 
       out.push({
         date: date.slice(0, 10),
         category,
         amount,
-        note: note || source || undefined,
+        note: name || source || undefined,
       });
     }
 
     return out;
   }
+
 
   // ─────────────── Ichki yordamchilar ───────────────
 

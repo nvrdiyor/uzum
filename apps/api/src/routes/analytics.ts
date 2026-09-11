@@ -495,8 +495,10 @@ router.get(
     // Xarajatlar: komissiya/logistika buyurtmalardan, qolganlari Expense jadvalidan
     const taxAmount = exp.tax > 0 ? round(exp.tax) : round((cur.revenue * taxRate) / 100);
     const expenses = {
-      commission: round(cur.commission),
-      logistics: round(cur.logistics),
+      // Uzum "Xizmatlarga to'lov" bo'limidagi summalar ham qo'shiladi
+      // (omborga yetkazish, mijozga yetkazish, qaytarishlar) — Expense jadvalidan
+      commission: round(cur.commission + exp.commission),
+      logistics: round(cur.logistics + exp.logistics),
       marketing: round(exp.marketing),
       storage: round(exp.storage),
       tax: taxAmount,
