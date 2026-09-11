@@ -969,7 +969,18 @@ export async function upsertReviews(storeId: string, reviews: UzumReview[]): Pro
  * Ularni `Expense` sifatida ham yozish **ikki marta hisoblashga** olib keladi,
  * shuning uchun faqat boshqa manbadan kelmaydigan kategoriyalar import qilinadi.
  */
-export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'other'];
+/**
+ * Uzumdan import qilinadigan xarajat kategoriyalari.
+ *
+ * `logistics` shu ro'yxatda: Uzum "Xizmatlarga to'lov" bo'limida logistikani ALOHIDA
+ * to'lov sifatida yuritadi (omborga yetkazib berish va har bir buyurtmani mijozga
+ * yetkazish), buyurtma pozitsiyasida esa `logisticDeliveryFee` odatda 0 bo'ladi.
+ * Shuning uchun ular ikki marta hisoblanmaydi.
+ *
+ * `commission` kiritilmagan — u har bir buyurtma pozitsiyasidan olinadi.
+ * `storage` kiritilmagan — u `StorageFee` jadvalida alohida yuritiladi.
+ */
+export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'logistics', 'other'];
 
 /**
  * Kunlik xarajatlar. Tabiiy kalit: kompaniya + do'kon + kun + kategoriya.
