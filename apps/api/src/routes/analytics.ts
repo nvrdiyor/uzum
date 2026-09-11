@@ -505,6 +505,8 @@ router.get(
       // Ish haqi va boshqa xarajatlar bitta ustunda
       other: round(exp.other + exp.salary),
       total: 0,
+      // Sof foydaga kirmagan davr xarajatlari (Expense jadvalidan)
+      periodOnly: round(exp.logistics + exp.marketing + exp.storage + exp.other + exp.salary),
     };
     expenses.total =
       expenses.commission + expenses.logistics + expenses.marketing + expenses.storage + expenses.tax + expenses.other;

@@ -552,8 +552,18 @@ export class LiveUzumClient implements UzumClient {
       const returnedQty = Math.round(asNumber(r.amountReturns));
       const sellPrice = asMoney(r.sellPrice);
       const commission = asMoney(r.commission);
-      const logistics = asMoney(r.logisticDeliveryFee);
-      const payout = asMoney(r.sellerProfit);
+      const payoutRaw = asMoney(r.sellerProfit);
+      // Uzum `logisticDeliveryFee` ni ko'pincha 0 yuboradi, lekin yetkazish to'lovi
+      // `sellerProfit` dan ayrilgan bo'ladi. Pul ayniyati aniq qiymatni beradi:
+      //   tushum − komissiya − yetkazish = sellerProfit
+      const logisticsRaw = asMoney(r.logisticDeliveryFee);
+      const qtyForCalc = Math.round(asNumber(r.amount));
+      const derivedLogistics =
+        payoutRaw > 0 && qtyForCalc > 0
+          ? Math.max(0, asMoney(r.sellPrice) * qtyForCalc - asMoney(r.commission) - payoutRaw)
+          : 0;
+      const logistics = logisticsRaw > 0 ? logisticsRaw : derivedLogistics;
+      const payout = payoutRaw;
       const purchasePrice = asMoney(r.purchasePrice);
       const status = mapOrderStatus(asString(r.status));
       const orderedAt = asIso(r.date, new Date().toISOString());
@@ -855,6 +865,11 @@ export class LiveUzumClient implements UzumClient {
       const source = asString(r.source) || asString(firstOf(r, KEYS.expenseSource));
       const code = asString(r.code);
       const kind = asString(r.type).toUpperCase();
+
+      // Har bir buyurtma uchun mijozga yetkazish to'lovi (va uning qaytarilishi)
+      // Uzumning `sellerProfit` ("yechib olish uchun") summasida ALLAQACHON ayrilgan —
+      // uni yana xarajat sifatida yozsak, ikki marta hisoblangan bo'lardi.
+      if (/^(return-)?logistics-volume$/i.test(code)) continue;
 
       const category = mapExpenseCategory(`${source} ${code} ${name}`);
       // Saqlash to'lovlari alohida (`getStorageFees`) yig'iladi — ikki marta hisoblamaymiz

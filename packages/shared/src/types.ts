@@ -207,6 +207,12 @@ export interface DashboardResponse {
     tax: number;
     other: number;
     total: number;
+    /**
+     * Sof foydaga KIRMAGAN davr xarajatlari (omborga logistika, reklama, saqlash, boshqa).
+     * Komissiya va mijozga yetkazish Uzumning "yechib olish uchun" summasida
+     * allaqachon ayrilgani uchun bu yerga kirmaydi.
+     */
+    periodOnly: number;
   };
   series: TimeSeriesPoint[];
   storesBreakdown: { storeId: string; title: string; revenue: number; orders: number }[];

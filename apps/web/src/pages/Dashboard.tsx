@@ -49,6 +49,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'To‘lovga: {v}',
     'kpi.profit': 'Sof foyda',
     'kpi.profitHint': 'Marja {v}',
+    'kpi.operating': 'Davr xarajatlaridan keyin: {v}',
+    'kpi.operatingHint':
+      'Sof foyda — sotilgan tovarlar bo‘yicha (komissiya va mijozga yetkazish ayrilgan). Omborga logistika, reklama va saqlash esa davr xarajati sifatida alohida hisoblanadi.',
     'kpi.orders': 'Buyurtmalar',
     'kpi.ordersHint': '{v} dona sotildi',
     'kpi.avgCheck': 'O‘rtacha chek',
@@ -138,6 +141,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'К выплате: {v}',
     'kpi.profit': 'Чистая прибыль',
     'kpi.profitHint': 'Маржа {v}',
+    'kpi.operating': 'После расходов периода: {v}',
+    'kpi.operatingHint':
+      'Чистая прибыль — по проданным товарам (комиссия и доставка вычтены). Логистика на склад, реклама и хранение считаются расходами периода.',
     'kpi.orders': 'Заказы',
     'kpi.ordersHint': 'Продано {v} шт.',
     'kpi.avgCheck': 'Средний чек',
@@ -227,6 +233,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'Payout: {v}',
     'kpi.profit': 'Net profit',
     'kpi.profitHint': 'Margin {v}',
+    'kpi.operating': 'After period expenses: {v}',
+    'kpi.operatingHint':
+      'Net profit is per sold item (commission and delivery already deducted). Inbound logistics, ads and storage are counted as period expenses.',
     'kpi.orders': 'Orders',
     'kpi.ordersHint': '{v} units sold',
     'kpi.avgCheck': 'Average check',
@@ -493,6 +502,15 @@ export default function Dashboard() {
             icon={<PiggyBank className="h-5 w-5" />}
             spark={sparks.profit}
             tone="violet"
+            footer={
+              (data.expenses.periodOnly ?? 0) > 0 ? (
+                <span title={t('kpi.operatingHint')}>
+                  {t('kpi.operating', {
+                    v: f.money(data.netProfit.value - (data.expenses.periodOnly ?? 0), data.currency),
+                  })}
+                </span>
+              ) : undefined
+            }
           />
           <StatCard
             label={t('kpi.orders')}
