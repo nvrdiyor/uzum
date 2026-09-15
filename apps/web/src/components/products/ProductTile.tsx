@@ -81,7 +81,17 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         {/* Narx / konversiya */}
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
+            {/* Aksiya bo'lsa: joriy narx + ustidan chizilgan chegirmasiz narx —
+                sotuvchi kabinetdagi bilan bir xil ko'radi */}
             <p className="tnum truncate font-display text-lg font-extrabold text-ink">{f.money(product.minPrice)}</p>
+            {product.listPrice > product.minPrice ? (
+              <p className="tnum truncate text-2xs text-muted">
+                <span className="line-through">{f.money(product.listPrice)}</span>
+                <span className="ml-1.5 font-semibold text-brand">
+                  −{f.pct(((product.listPrice - product.minPrice) / product.listPrice) * 100, 0)}
+                </span>
+              </p>
+            ) : null}
             <p className="truncate text-2xs text-muted">
               {cost > 0 ? `${t('card.cost')}: ${f.money(cost)}` : t('card.noCost')}
             </p>

@@ -420,7 +420,10 @@ export interface ProductCard {
   rating: number;
   reviewsCount: number;
   skuCount: number;
+  /** Xaridor to'laydigan eng past narx (aksiya bo'lsa — aksiya narxi) */
   minPrice: number;
+  /** Chegirmasiz ro'yxat narxi — aksiya faol bo'lsagina `minPrice` dan katta */
+  listPrice: number;
   sold: number;
   returns: number;
   revenue: number;

@@ -426,16 +426,24 @@ export class LiveUzumClient implements UzumClient {
     const imageUrl = pickImage(firstOf(r, KEYS.image)) || product.imageUrl;
 
     /**
-     * NARX. Katalogdagi `price` — chegirmasiz RO'YXAT narxi (masalan 299 000).
-     * Aksiya faol bo'lsa, xaridor to'laydigan narx `specialOffer.mechanicPrice`
-     * da bo'ladi (masalan 247 500) — sotuvchi kabinetida aynan shu ko'rsatiladi.
-     * Ilgari ro'yxat narxi olingani uchun saytdagi narx kabinetdagidan katta
-     * chiqardi va marja, ROI, qoldiq qiymati — hammasi noto'g'ri edi.
+     * NARX.
+     *
+     * Katalogdagi `price` — sotuvchi qo'ygan ro'yxat narxi (masalan 299 000).
+     * `specialOffer.mechanicPrice` esa Uzumning AKSIYAGA TAKLIFI: agar
+     * `inOffer: false` va `hasRecommendation: true` bo'lsa, sotuvchi hali
+     * qo'shilmagan va bu narx amalda emas. Shuning uchun u faqat `inOffer`
+     * rost bo'lgandagina olinadi.
+     *
+     * Xaridor to'lagan HAQIQIY narxni katalog umuman bermaydi — u faqat
+     * `/v1/finance/orders` dagi `sellPrice` da bo'ladi. Shu sababli sayt
+     * sotuv bo'lgan tovarlarda katalog narxini emas, haqiqiy sotuv narxini
+     * ko'rsatadi (qarang: routes/products.ts).
      */
     const listPrice = asMoney(firstOf(r, KEYS.price));
     const offer = asRecord(r.specialOffer);
     const promo = asMoney(firstOf(offer, KEYS.promoPrice));
-    const hasDiscount = asBool(r.hasActiveDiscount) && promo > 0 && promo < listPrice;
+    const joined = asBool(offer.inOffer);
+    const hasDiscount = joined && promo > 0 && promo < listPrice;
     const price = hasDiscount ? promo : listPrice;
     const oldPrice = hasDiscount ? listPrice : asMoney(firstOf(r, KEYS.oldPrice)) || undefined;
 
