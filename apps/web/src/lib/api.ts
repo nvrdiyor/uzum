@@ -124,7 +124,13 @@ async function request<T>(
     if (res.status === 401) {
       setToken(null);
       if (!location.pathname.startsWith('/login') && !location.pathname.startsWith('/auth')) {
-        location.href = '/login';
+        /*
+         * Bu yo'l React render'idan tashqarida ishlaydi, shuning uchun
+         * <Navigate state={{ from }}> ishlamaydi — manzilni `next` orqali
+         * uzatamiz (AuthCallback ham aynan shu nomdan foydalanadi).
+         */
+        const next = encodeURIComponent(location.pathname + location.search);
+        location.href = `/login?next=${next}`;
       }
     }
     throw new ApiError(res.status, err);

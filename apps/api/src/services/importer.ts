@@ -534,7 +534,53 @@ function shareOf(total: number | undefined, part: number, whole: number): number
 export interface OrderImportOptions {
   /** Kompaniya soliq stavkasi, % (berilmasa `DEFAULTS.taxPct`) */
   taxRate?: number;
+  /**
+   * Yangi sotuvlar ro'yxati yig'ilsinmi (Telegram xabari uchun).
+   *
+   * Birinchi TO'LIQ sinxronda 365 kunlik tarix import qilinadi — o'n minglab
+   * buyurtma. Ularni xotirada to'plash ham, xabar yuborish ham keraksiz,
+   * shuning uchun bu bayroq faqat inkremental sinxronda yoqiladi.
+   */
+  collectNew?: boolean;
+  /**
+   * Faqat shu paytdan keyin berilgan buyurtmalar yig'iladi.
+   *
+   * Yosh chegarasi AYNAN shu yerda — `NEW_SALES_CAP` dan oldin — tekshirilishi
+   * shart. Buyurtmalar eskidan yangiga tartibda keladi, shuning uchun filtrsiz
+   * 50 ta joyni oynadagi eng eski buyurtmalar egallab olardi va bugungi
+   * haqiqiy sotuvlar ro'yxatga umuman tushmasdi.
+   */
+  collectNewSince?: Date;
 }
+
+/** Telegramga "sotildi" xabarini yuborish uchun zarur minimal ma'lumot */
+export interface NewSaleNotice {
+  uzumOrderId: string;
+  orderedAt: Date;
+  /** Mahsulot nomi (nom bo'lmasa SKU kodi) */
+  title: string;
+  /** Buyurtmadagi pozitsiyalar soni — 1 dan ko'p bo'lsa xabarda ko'rsatiladi */
+  positions: number;
+  qty: number;
+  amount: number;
+}
+
+export interface OrdersImportResult extends ImportResult {
+  /** Shu importda BIRINCHI marta ko'ringan sotuvlar (`collectNew` yoqilganda) */
+  newSales: NewSaleNotice[];
+  /** Cheklovdan oldingi haqiqiy son — xabarda "yana N ta" deb yozish uchun */
+  newSalesTotal: number;
+}
+
+/**
+ * Faqat shu statuslar sotuv hisoblanadi. Bekor qilingan va qaytarilgan
+ * buyurtma ham `orderCreates` ga tushadi (importer bu yerda filtrlamaydi),
+ * lekin ular haqida "tovaringiz sotildi" deb yozish xato bo'lardi.
+ */
+const SALE_STATUSES = new Set<OrderStatus>(['new', 'processing', 'delivered']);
+
+/** Bitta importda ko'pi bilan shuncha sotuv eslab qolinadi */
+const NEW_SALES_CAP = 50;
 
 /**
  * Buyurtmalar va ularning pozitsiyalari.
@@ -550,7 +596,7 @@ export async function upsertOrders(
   storeId: string,
   orders: UzumOrder[],
   options: OrderImportOptions = {},
-): Promise<ImportResult> {
+): Promise<OrdersImportResult> {
   /**
    * Uzum moliyaviy javobida har bir pozitsiya uchun tannarx (`purchasePrice`) keladi.
    * Bizda tannarx kiritilmagan SKU'larga uni avtomatik ko'chiramiz — shunda foyda va
@@ -558,7 +604,7 @@ export async function upsertOrders(
    */
   const costFromUzum = new Map<string, number>();
 
-  const res = emptyResult();
+  const res: OrdersImportResult = { ...emptyResult(), newSales: [], newSalesTotal: 0 };
   if (orders.length === 0) return res;
 
   const taxRate = Number.isFinite(options.taxRate ?? NaN) ? (options.taxRate as number) : DEFAULTS.taxPct;
@@ -687,6 +733,31 @@ export async function upsertOrders(
         res.updated += 1;
       } else {
         orderCreates.push({ id: orderId, storeId, uzumOrderId, ...data });
+
+        // Yangi SOTUV — Telegram xabari uchun eslab qolamiz
+        if (
+          options.collectNew &&
+          SALE_STATUSES.has(status) &&
+          data.totalAmount > 0 &&
+          (!options.collectNewSince || orderedAt.getTime() >= options.collectNewSince.getTime())
+        ) {
+          res.newSalesTotal += 1;
+          if (res.newSales.length < NEW_SALES_CAP) {
+            const first = lines[0];
+            res.newSales.push({
+              uzumOrderId,
+              orderedAt,
+              // Nom bo'lmasa SKU kodi, u ham bo'lmasa Uzum SKU id'i ko'rsatiladi
+              title:
+                text(first?.it.title) ??
+                text(first?.it.skuCode) ??
+                (first?.it.skuId ? String(first.it.skuId) : 'Mahsulot'),
+              positions: lines.length,
+              qty: sumQty,
+              amount: data.totalAmount,
+            });
+          }
+        }
       }
     }
 

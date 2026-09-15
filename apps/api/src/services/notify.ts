@@ -26,6 +26,16 @@ export interface NotifyInput {
   link?: string;
   /** false bo'lsa faqat ilova ichida ko'rinadi, Telegramga yuborilmaydi */
   telegram?: boolean;
+  /**
+   * Telegram xabari ostidagi tugma yozuvi. Berilsa `link` matn havolasi
+   * o'rniga inline tugma bo'lib chiqadi ("Buyurtmani ko'rish" kabi).
+   */
+  buttonText?: string;
+  /**
+   * Foydalanuvchining shu sozlamasi o'chirilgan bo'lsa — xabar umuman
+   * yaratilmaydi. Sozlamalar sahifasidagi tugmachalar shu maydonlar.
+   */
+  requireFlag?: 'notifyDaily' | 'notifyOrders' | 'notifyStock';
 }
 
 function normalizeType(type?: string): NotifyType {
@@ -50,8 +60,16 @@ function buildMessage(n: NotifyInput): string {
   const parts: string[] = [`<b>${escapeHtml(n.title)}</b>`];
   if (n.body) parts.push(escapeHtml(n.body));
   const url = absoluteLink(n.link);
-  if (url) parts.push(`<a href="${escapeHtml(url)}">Ochish →</a>`);
+  // Tugma bo'lsa matn havolasi takrorlanmaydi
+  if (url && !n.buttonText) parts.push(`<a href="${escapeHtml(url)}">Ochish →</a>`);
   return parts.join('\n\n');
+}
+
+/** Havola va tugma yozuvi bo'lsa — xabar ostidagi bitta inline tugma */
+function buildMarkup(n: NotifyInput): unknown | undefined {
+  const url = absoluteLink(n.link);
+  if (!url || !n.buttonText) return undefined;
+  return { inline_keyboard: [[{ text: n.buttonText, url }]] };
 }
 
 /**
@@ -108,9 +126,23 @@ export async function notifyUser(userId: string, n: NotifyInput): Promise<void> 
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, botChatId: true, telegramId: true },
+      select: {
+        id: true,
+        botChatId: true,
+        telegramId: true,
+        notifyDaily: true,
+        notifyOrders: true,
+        notifyStock: true,
+      },
     });
     if (!user) return;
+
+    /**
+     * Foydalanuvchi bu turdagi xabarni o'chirgan bo'lsa — hech narsa
+     * yaratilmaydi. Yozuv qoldirilsa, bot kuzatuvchisi (watcher) uni
+     * baribir Telegramga jo'natardi: u sozlamani tekshirmaydi.
+     */
+    if (n.requireFlag && user[n.requireFlag] === false) return;
 
     const wantsTelegram = n.telegram !== false;
 
@@ -131,7 +163,7 @@ export async function notifyUser(userId: string, n: NotifyInput): Promise<void> 
     const chatId = user.botChatId ?? user.telegramId;
     if (!chatId) return;
 
-    const sent = await sendTelegramMessage(chatId, buildMessage(n));
+    const sent = await sendTelegramMessage(chatId, buildMessage(n), { markup: buildMarkup(n) });
     if (sent) {
       await prisma.notification.update({ where: { id: created.id }, data: { sentAt: new Date() } });
     }
@@ -143,10 +175,7 @@ export async function notifyUser(userId: string, n: NotifyInput): Promise<void> 
 }
 
 /** Kompaniyaning barcha egalariga (owner) bildirishnoma yuboradi */
-export async function notifyCompanyOwners(
-  companyId: string,
-  n: { title: string; body?: string; link?: string; type?: string },
-): Promise<void> {
+export async function notifyCompanyOwners(companyId: string, n: NotifyInput): Promise<void> {
   try {
     const owners = await prisma.membership.findMany({
       where: { companyId, role: 'owner' },

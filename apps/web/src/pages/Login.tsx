@@ -69,7 +69,7 @@ export default function Login() {
   const [demoAvailable, setDemoAvailable] = useState(true);
   const [refCode] = useState(() => resolveRef(params.get('ref')));
 
-  const target = safePath((location.state as { from?: string } | null)?.from);
+  const target = safePath(params.get('next') ?? (location.state as { from?: string } | null)?.from);
   const botStartLink = BOT_USERNAME ? `${BOT_LINK}?start=login` : BOT_LINK;
 
   /** Token olindi → sessiyani yuklaymiz va ichkariga o'tamiz */

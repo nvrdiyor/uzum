@@ -82,7 +82,8 @@ function Protected() {
 
   if (!ready) return <FullPageLoader />;
 
-  if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // So'rov qismi ham saqlanadi: `/sales?order=123` kabi havolalar yo'qolmasin
+  if (!me) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   if (needsOnboarding && location.pathname !== '/onboarding') return <Navigate to="/onboarding" replace />;
 
   return <Outlet />;

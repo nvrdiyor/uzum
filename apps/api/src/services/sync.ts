@@ -22,6 +22,7 @@ import {
   INCREMENTAL_SPEEDUP,
   SYNC_STEPS,
   addDays,
+  formatMoney,
   getPlan,
   round,
   type PlanId,
@@ -44,6 +45,7 @@ import {
   upsertStocks,
   upsertStorageFees,
   type ImportResult,
+  type OrdersImportResult,
 } from './importer.js';
 
 // ─────────────────────────── Sozlamalar ───────────────────────────
@@ -64,6 +66,16 @@ const RETRY_BACKOFF_MS = 20_000;
 const STALE_RUNNING_MS = 5 * 60_000;
 /** Inkremental sinxronda nechta kunlik oyna qayta o'qiladi (status o'zgarishlarini ushlash uchun) */
 const INCREMENTAL_DAYS = 14;
+/**
+ * "Tovaringiz sotildi" xabari faqat shu vaqt ichida berilgan buyurtmalar uchun.
+ *
+ * Inkremental sinxron 14 kunlik oynani tortadi. Kompaniyaga YANGI do'kon
+ * qo'shilsa, o'sha do'konning 14 kunlik butun tarixi birinchi marta import
+ * qilinadi va "yangi" bo'lib ko'rinadi — bu chegara o'shanda spamni to'xtatadi.
+ */
+const SALE_NOTIFY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/** Bitta sinxronda ko'pi bilan shuncha alohida sotuv xabari; qolgani — bitta yig'ma */
+const SALE_NOTIFY_LIMIT = 8;
 /** To'liq sinxronda tarix chuqurligining yuqori chegarasi (kun) */
 const MAX_HISTORY_DAYS = 365;
 /** Bir sikldа nechta job parallel bajariladi */
@@ -542,14 +554,90 @@ async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise
   }
 }
 
+/**
+ * Yangi sotuv haqida kompaniya egalariga xabar.
+ *
+ * Spamdan himoya to'rt qatlamli:
+ *  1) faqat inkremental sinxron — birinchi to'liq sinxron 365 kunlik tarixni tortadi;
+ *  2) faqat oxirgi `SALE_NOTIFY_MAX_AGE_MS` ichida berilgan buyurtmalar;
+ *  3) bitta sinxronda `SALE_NOTIFY_LIMIT` ta xabar — chegara DO'KON bo'yicha emas,
+ *     butun yugurish bo'yicha (5 do'konli kompaniyada 5 barobar bo'lib ketmasin);
+ *  4) sotuvchi sozlamada o'chirgan bo'lsa — `requireFlag` xabarni yaratmaydi.
+ *
+ * `budget` — qolgan xabarlar soni; funksiya yangilangan qiymatni qaytaradi.
+ */
+async function notifyNewSales(
+  run: SyncRun,
+  storeTitle: string,
+  res: OrdersImportResult,
+  budget: number,
+): Promise<number> {
+  // Yosh bo'yicha saralash importerda bajarilgan — bu yerdagilar allaqachon yangi
+  const fresh = res.newSales;
+  if (fresh.length === 0) return budget;
+
+  const single = fresh.slice(0, Math.max(0, budget));
+  for (const sale of single) {
+    const more = sale.positions > 1 ? ` va yana ${sale.positions - 1} ta mahsulot` : '';
+    await notifyCompanyOwners(run.companyId, {
+      type: 'success',
+      requireFlag: 'notifyOrders',
+      title: `Sotildi: ${sale.title}`,
+      body: `${sale.qty} dona · ${formatMoney(sale.amount, 'uz')}${more}
+${storeTitle} · №${sale.uzumOrderId}`,
+      link: `/sales?order=${encodeURIComponent(sale.uzumOrderId)}`,
+      buttonText: 'Buyurtmani ko‘rish',
+    });
+  }
+
+  /*
+   * Qolganlari bitta yig'ma xabarda. Son `newSalesTotal` dan olinadi —
+   * importer 50 tadan ortig'ini eslab qolmaydi, lekin sanab boradi.
+   * Summani esa faqat to'liq ro'yxat bo'lgandagina ko'rsatamiz, aks holda
+   * u haqiqiydan kam chiqib, sotuvchini chalg'itardi.
+   */
+  const restCount = res.newSalesTotal - single.length;
+  if (restCount > 0) {
+    const complete = res.newSalesTotal === fresh.length;
+    const sum = fresh.slice(single.length).reduce((acc, sale) => acc + sale.amount, 0);
+    await notifyCompanyOwners(run.companyId, {
+      type: 'success',
+      requireFlag: 'notifyOrders',
+      title: `Yana ${restCount} ta sotuv`,
+      body: complete ? `${storeTitle} · jami ${formatMoney(sum, 'uz')}` : storeTitle,
+      link: '/sales',
+      buttonText: 'Sotuvlarni ko‘rish',
+    });
+  }
+
+  return budget - single.length;
+}
+
 /** 5. Buyurtmalar (eng uzun bosqich) */
 async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
+  // To'liq sinxronda yangi sotuvlar yig'ilmaydi — o'n minglab buyurtma keladi
+  const collectNew = run.type === 'incremental';
+  const collectNewSince = new Date(Date.now() - SALE_NOTIFY_MAX_AGE_MS);
+  let budget = SALE_NOTIFY_LIMIT;
+
   for (const store of run.stores) {
     const orders = await client.getOrders(store.uzumShopId, run.from, run.to);
-    const res = await upsertOrders(store.id, orders, { taxRate: run.taxRate });
+    const res = await upsertOrders(store.id, orders, { taxRate: run.taxRate, collectNew, collectNewSince });
     run.totals.orders += countOf(res);
     setDetail(`${run.totals.orders} ta buyurtma yuklandi`);
+
+    if (!collectNew || res.newSales.length === 0) continue;
+    /*
+     * Xabar sinxron natijasiga ta'sir qilmaydi: xato bo'lsa bosqich baribir
+     * muvaffaqiyatli hisoblanadi, aks holda bitta yiqilgan xabar butun
+     * sinxronni qayta urinishga majbur qilardi.
+     */
+    try {
+      budget = await notifyNewSales(run, store.title, res, budget);
+    } catch (err) {
+      log(`job ${run.jobId}: sotuv xabari yuborilmadi — ${errorMessage(err)}`);
+    }
   }
 }
 

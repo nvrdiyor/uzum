@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CalendarRange, Clock, Download, Inbox, MapPin, TrendingUp, Truck } from 'lucide-react';
 import type { DeliveryType, OrderRow, OrderStatus, SalesAnalyticsResponse } from '@savdoiq/shared';
@@ -29,7 +30,7 @@ import { DELIVERY_TYPES, DeliveryBadge, ORDER_STATUSES, OrderStatusBadge } from 
 import { OrderDrawer } from '@/components/sales/OrderDrawer';
 import { useDebounced } from '@/components/sales/useDebounced';
 import { registerNamespace, useFormat, useT } from '@/i18n';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { CHART_COLORS } from '@/lib/theme';
 import { cn, downloadBlob } from '@/lib/utils';
 import { usePeriodQuery } from '@/store/ui';
@@ -208,6 +209,12 @@ registerNamespace('sales', {
   },
 });
 
+/**
+ * `/sales/orders/:id` to'liq tafsilot qaytaradi, lekin chekmaga faqat
+ * buyurtmaning o'zi kerak — qolgan maydonlarni tiplashtirmaymiz.
+ */
+type OrderDetailPayload = { order: OrderRow };
+
 const PAGE_SIZE = 25;
 /** Dushanbadan boshlab ko'rsatamiz (JS getDay: 0 = yakshanba) */
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -233,6 +240,53 @@ export default function Sales() {
   const [metric, setMetric] = useState<'orders' | 'revenue'>('orders');
   const [selected, setSelected] = useState<OrderRow | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  /**
+   * Telegramdagi "Buyurtmani ko'rish" tugmasi `/sales?order=<raqam>` ga olib
+   * keladi. Buyurtma joriy davrga yoki joriy sahifaga tushmasligi mumkin,
+   * shuning uchun uni alohida so'rov bilan olamiz — davrdan mustaqil.
+   */
+  const [params, setParams] = useSearchParams();
+  const deepOrderId = params.get('order');
+
+  const clearDeepLink = useCallback(() => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('order');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setParams]);
+
+  const deepOrder = useQuery({
+    queryKey: ['sales-order', deepOrderId],
+    queryFn: () => api.get<OrderDetailPayload>(`/sales/orders/${encodeURIComponent(deepOrderId ?? '')}`),
+    enabled: Boolean(deepOrderId),
+  });
+
+  useEffect(() => {
+    if (!deepOrderId || !deepOrder.data) return;
+    setSelected(deepOrder.data.order);
+    clearDeepLink();
+  }, [deepOrderId, deepOrder.data, clearDeepLink]);
+
+  useEffect(() => {
+    const err = deepOrder.error;
+    if (!err) return;
+    /*
+     * Faqat serverning aniq javobida havolani tozalaymiz. Tarmoq uzilishida
+     * (mobil internetda odatiy hol) `?order=` saqlanib qoladi — sahifani
+     * yangilash yetarli bo'ladi.
+     */
+    if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+      toast.error(err.message);
+      clearDeepLink();
+    } else {
+      toast.error(tc('common.error'));
+    }
+  }, [deepOrder.error, clearDeepLink, tc]);
 
   const query = {
     ...q,
