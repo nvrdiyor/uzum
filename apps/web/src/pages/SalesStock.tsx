@@ -170,7 +170,7 @@ const STATUS_COLOR: Record<StatusTone, string> = {
 function daysTone(days: number | null): string {
   if (days === null) return 'text-muted';
   if (days <= 7) return 'text-danger';
-  if (days <= 14) return 'text-warn';
+  if (days <= 14) return 'text-warn-ink';
   return 'text-brand';
 }
 

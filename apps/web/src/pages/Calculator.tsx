@@ -860,7 +860,7 @@ export default function Calculator() {
                           {s.step === 0 ? <Badge tone="brand">{t('sens.current')}</Badge> : null}
                         </span>
                       </td>
-                      <td className="tnum px-4 py-2 text-right text-ink">{f.money(s.price)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-2 text-right text-ink">{f.money(s.price)}</td>
                       <td
                         className={cn(
                           'tnum px-4 py-2 text-right font-semibold',

@@ -57,6 +57,7 @@ registerNamespace('unitEconomics', {
     'alert.title': '{n} ta mahsulot zarar keltirmoqda',
     'alert.body': 'Ularning sotuv narxi barcha xarajatlarni qoplamayapti — narx yoki tannarxni qayta ko‘rib chiqing.',
     'alert.action': 'Faqat zararlilarni ko‘rsatish',
+    'filter.pageScope': 'Sanoqlar shu sahifadagi qatorlar bo‘yicha',
     'filter.all': 'Barchasi',
     'filter.loss': 'Zararli',
     'filter.profit': 'Foydali',
@@ -115,6 +116,7 @@ registerNamespace('unitEconomics', {
     'alert.title': '{n} товаров приносят убыток',
     'alert.body': 'Цена продажи не покрывает все расходы — пересмотрите цену или себестоимость.',
     'alert.action': 'Показать только убыточные',
+    'filter.pageScope': 'Счётчики по строкам текущей страницы',
     'filter.all': 'Все',
     'filter.loss': 'Убыточные',
     'filter.profit': 'Прибыльные',
@@ -173,6 +175,7 @@ registerNamespace('unitEconomics', {
     'alert.title': '{n} products are losing money',
     'alert.body': 'Their selling price does not cover all costs — review the price or the cost price.',
     'alert.action': 'Show loss-making only',
+    'filter.pageScope': 'Counts are for the current page',
     'filter.all': 'All',
     'filter.loss': 'Loss-making',
     'filter.profit': 'Profitable',
@@ -543,7 +546,12 @@ export default function UnitEconomics() {
                 subtitle={t('rows.count', { n: f.num(unit.data?.rows.total ?? 0) })}
                 actions={
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="max-w-full overflow-x-auto no-scrollbar">
+                    {/*
+                      Sanoqlar JORIY SAHIFA bo'yicha — server butun davr uchun
+                      kesimni bermaydi. Sarlavhadagi umumiy SKU soni bilan
+                      chalkashmasligi uchun izoh qo'shilgan.
+                    */}
+                    <div className="max-w-full overflow-x-auto no-scrollbar" title={t('filter.pageScope')}>
                       <Segmented<RowFilter>
                         size="sm"
                         value={filter}
@@ -556,7 +564,7 @@ export default function UnitEconomics() {
                       />
                     </div>
                     <SearchInput
-                      className="w-52 sm:w-64"
+                      className="w-full sm:w-64"
                       value={search}
                       onChange={setSearch}
                       placeholder={t('search.placeholder')}

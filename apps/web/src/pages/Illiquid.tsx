@@ -269,15 +269,25 @@ export default function Illiquid() {
     });
   }, [allRows, days, search]);
 
+  /**
+   * Muzlagan kapital va dona serverdan (butun ro'yxat), saqlash va sotuv
+   * qiymati esa joriy sahifadan hisoblanardi — bir kartochkada ikki xil
+   * qamrov chalkashlik tug'dirardi. Endi ikkalasi ham bir xil ro'yxatdan:
+   * agar server jamisi bo'lsa, ulushga qarab butun ro'yxatga keltiriladi.
+   */
   const totals = useMemo(() => {
-    const storagePerMonth = rows.reduce((s, r) => s + r.storageCostPerMonth, 0);
+    const pageUnits = rows.reduce((s, r) => s + r.stock, 0);
+    const allUnits = data?.totalUnits ?? pageUnits;
+    // Sahifadagi donaga to'g'ri keladigan ulush bo'yicha kengaytiramiz
+    const scale = pageUnits > 0 && allUnits > 0 ? allUnits / pageUnits : 1;
+    const storagePerMonth = rows.reduce((s, r) => s + r.storageCostPerMonth, 0) * scale;
     return {
       frozen: data?.totalFrozen ?? rows.reduce((s, r) => s + r.frozenCapital, 0),
       units: data?.totalUnits ?? rows.reduce((s, r) => s + r.stock, 0),
       skus: data?.rows.total ?? rows.length,
       storagePerMonth,
       storagePerDay: storagePerMonth / 30,
-      stockValue: rows.reduce((s, r) => s + r.stockValue, 0),
+      stockValue: rows.reduce((s, r) => s + r.stockValue, 0) * scale,
     };
   }, [data, rows]);
 

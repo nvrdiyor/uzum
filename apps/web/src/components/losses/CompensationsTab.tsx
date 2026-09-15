@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { Clock3, ShieldCheck, Wallet } from 'lucide-react';
-import type { LossRow } from '@savdoiq/shared';
+import type { LossesResponse, LossRow } from '@savdoiq/shared';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import {
@@ -26,7 +26,16 @@ const STATUS_TONE = {
  * — olingan kompensatsiyalar tarixi
  * — kutilayotgan (da'vo yuborilgan yoki hali ochiq) summalar
  */
-export function CompensationsTab({ rows, loading }: { rows: LossRow[]; loading: boolean }) {
+export function CompensationsTab({
+  rows,
+  loading,
+  claims,
+}: {
+  rows: LossRow[];
+  loading: boolean;
+  /** Butun davr bo'yicha da'vo jamilari (serverdan) */
+  claims?: LossesResponse['claims'];
+}) {
   const t = useT('losses');
   const f = useFormat();
 
@@ -37,9 +46,15 @@ export function CompensationsTab({ rows, loading }: { rows: LossRow[]; loading: 
   );
   const rejected = useMemo(() => rows.filter((r) => r.status === 'rejected'), [rows]);
 
-  const receivedAmount = received.reduce((s, r) => s + r.compensated, 0);
-  const pendingAmount = pending.reduce((s, r) => s + r.amount, 0);
-  const rejectedAmount = rejected.reduce((s, r) => s + r.amount, 0);
+  /**
+   * Summalar serverdan — BUTUN davr bo'yicha. Jadval esa joriy sahifani
+   * ko'rsatadi, shuning uchun ularni qatorlardan hisoblash noto'g'ri edi:
+   * raqamlar sahifa almashganda o'zgarib ketardi va tepadagi KPI bilan
+   * mos kelmasdi.
+   */
+  const receivedAmount = claims?.receivedAmount ?? received.reduce((s, r) => s + r.compensated, 0);
+  const pendingAmount = claims?.pendingAmount ?? pending.reduce((s, r) => s + r.amount, 0);
+  const rejectedAmount = claims?.rejectedAmount ?? rejected.reduce((s, r) => s + r.amount, 0);
   const claimable = receivedAmount + pendingAmount;
   const coverPct = claimable > 0 ? (receivedAmount / claimable) * 100 : 0;
 

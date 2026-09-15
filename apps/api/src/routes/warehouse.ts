@@ -568,6 +568,14 @@ router.get(
     if (storeIds.length === 0) {
       const empty: LossesResponse = {
         totals: { skuCount: 0, qty: 0, amount: 0, compensated: 0 },
+        claims: {
+          receivedAmount: 0,
+          pendingAmount: 0,
+          rejectedAmount: 0,
+          receivedCount: 0,
+          pendingCount: 0,
+          rejectedCount: 0,
+        },
         rows: paginate<LossRow>([], range.page, range.pageSize),
       };
       res.json(empty);
@@ -601,6 +609,35 @@ router.get(
 
     const payload: LossesResponse = {
       totals: { skuCount: skuIds.size, qty, amount: round(amount), compensated: round(compensated) },
+      claims: (() => {
+        // Da'vo jamilari butun davr bo'yicha — jadval sahifasiga bog'liq emas
+        let receivedAmount = 0;
+        let pendingAmount = 0;
+        let rejectedAmount = 0;
+        let receivedCount = 0;
+        let pendingCount = 0;
+        let rejectedCount = 0;
+        for (const r of rows) {
+          if (r.compensated > 0) {
+            receivedAmount += r.compensated;
+            receivedCount += 1;
+          } else if (r.status === 'open' || r.status === 'claimed') {
+            pendingAmount += r.amount;
+            pendingCount += 1;
+          } else if (r.status === 'rejected') {
+            rejectedAmount += r.amount;
+            rejectedCount += 1;
+          }
+        }
+        return {
+          receivedAmount: round(receivedAmount),
+          pendingAmount: round(pendingAmount),
+          rejectedAmount: round(rejectedAmount),
+          receivedCount,
+          pendingCount,
+          rejectedCount,
+        };
+      })(),
       rows: paginate(rows, range.page, range.pageSize),
     };
 

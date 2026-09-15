@@ -408,11 +408,14 @@ export default function Storage() {
                             {t('table.pageTotal')}
                           </td>
                           <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
-                          <td className="tnum px-4 py-3 text-right">
+                          {/* Yashiringan ustunlar bilan bir xil klass — aks holda mobilda
+                              qiymatlar boshqa ustun ostiga siljib ketardi */}
+                          <td className="tnum hidden px-4 py-3 text-right md:table-cell">
                             {f.num(pageVolume, 1)} {t('unit.liter')}
                           </td>
                           <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                          <td className="px-4 py-3" colSpan={3} />
+                          <td className="hidden px-4 py-3 md:table-cell" colSpan={2} />
+                          <td className="px-4 py-3" />
                         </>
                       ) : undefined
                     }

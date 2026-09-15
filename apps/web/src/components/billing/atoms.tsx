@@ -27,7 +27,7 @@ export function AccessMark({ access, previewLabel }: { access: FeatureAccess; pr
     return (
       <span
         title={previewLabel}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-warn/[0.14] text-warn"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-warn/[0.14] text-warn-ink"
       >
         <Eye className="h-3.5 w-3.5" />
       </span>
@@ -59,7 +59,7 @@ export function FeatureLine({
         className={cn(
           'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
           access === 'full' && 'bg-brand/15 text-brand',
-          access === 'preview' && 'bg-warn/15 text-warn',
+          access === 'preview' && 'bg-warn/15 text-warn-ink',
           access === 'off' && 'bg-surface-3 text-muted',
         )}
       >
@@ -74,7 +74,7 @@ export function FeatureLine({
       <span className={cn('min-w-0', access === 'off' ? 'text-muted line-through decoration-1' : 'text-ink-soft')}>
         {children}
         {access === 'preview' ? (
-          <span className="ml-1.5 whitespace-nowrap text-2xs font-semibold text-warn">· {previewLabel}</span>
+          <span className="ml-1.5 whitespace-nowrap text-2xs font-semibold text-warn-ink">· {previewLabel}</span>
         ) : null}
       </span>
     </li>

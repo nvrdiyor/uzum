@@ -615,7 +615,7 @@ export default function Landing() {
         {/* ───────────── Ishonch qatori ───────────── */}
         <Section>
           <FadeUp>
-            <div className="card grid grid-cols-2 divide-line bg-surface/70 sm:divide-x lg:grid-cols-4">
+            <div className="card grid grid-cols-2 divide-line bg-surface/70 lg:divide-x lg:grid-cols-4">
               {TRUST.map((k) => (
                 <div key={k} className="px-5 py-6 text-center sm:px-6">
                   <p className="tnum font-display text-2xl font-extrabold tracking-tight text-brand sm:text-[28px]">

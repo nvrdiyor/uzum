@@ -75,8 +75,14 @@ export function StatCard({
             </p>
           )}
           {/* min-h: bir va ikki qatorli izohlar qatordagi kartochkalarni siljitmasin */}
+          {/* Yuklanayotganda izoh ham skeleton — aks holda eski davr izohi
+              yangi qiymat bilan birga ko'rinib, chalkashtirardi */}
           {hint ? (
-            <p className="mt-1 line-clamp-2 min-h-[2.75em] text-xs leading-snug text-muted">{hint}</p>
+            loading ? (
+              <Skeleton className="mt-2 h-3 w-28" />
+            ) : (
+              <p className="mt-1 line-clamp-2 min-h-[2.75em] text-xs leading-snug text-muted">{hint}</p>
+            )
           ) : null}
         </div>
         {icon ? (

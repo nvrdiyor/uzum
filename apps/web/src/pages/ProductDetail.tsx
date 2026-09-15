@@ -644,18 +644,9 @@ export default function ProductDetail() {
                     tone={avgCost(skus) > 0 ? undefined : 'warn'}
                   />
                   <Metric label={t('info.sold')} value={t('info.units', { n: f.num(product.sold) })} />
-                  <Metric label={t('info.revenue')} value={f.money(product.revenue)} />
-                  <Metric
-                    label={t('info.profit')}
-                    value={f.money(product.profit)}
-                    tone={product.profit >= 0 ? 'brand' : 'danger'}
-                  />
-                  <Metric
-                    label={t('info.roi')}
-                    value={f.pct(product.roi)}
-                    tone={product.roi >= 0 ? 'brand' : 'danger'}
-                  />
-                  <Metric label={t('info.margin')} value={f.pct(product.margin)} />
+                  {/* Tushum, foyda, ROI va marja yuqoridagi KPI qatorida bor —
+                      bu yerda takrorlanmaydi (ustiga-ustak ROI u yerda "—",
+                      bu yerda "0,0%" bo'lib, bir-biriga zid ko'rinardi) */}
                   <Metric label={t('info.conversion')} value={f.pct(product.conversion)} />
                   <Metric
                     label={t('info.rating')}

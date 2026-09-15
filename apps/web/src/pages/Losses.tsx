@@ -524,7 +524,7 @@ export default function Losses() {
               <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
             </Card>
           ) : tab === 'comp' ? (
-            <CompensationsTab rows={rows} loading={isLoading} />
+            <CompensationsTab rows={rows} loading={isLoading} claims={data?.claims} />
           ) : (
             <Card>
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">

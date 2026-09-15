@@ -52,6 +52,8 @@ registerNamespace('funnel', {
     'chart.sold': 'Sotildi',
     'chart.canceled': 'Bekor',
     'chart.returned': 'Qaytarish',
+    'table.empty': 'Mos tovar topilmadi',
+    'table.emptyHint': 'Tanlangan filtr bo‘yicha tovar yo‘q — “Barchasi” ni tanlab ko‘ring',
     'table.title': 'Mahsulotlar kesimi',
     'table.subtitle': 'Oldingi davr bilan solishtirib',
     'col.product': 'Mahsulot',
@@ -97,6 +99,8 @@ registerNamespace('funnel', {
     'chart.sold': 'Продано',
     'chart.canceled': 'Отмены',
     'chart.returned': 'Возвраты',
+    'table.empty': 'Подходящих товаров нет',
+    'table.emptyHint': 'По выбранному фильтру ничего не найдено — попробуйте «Все»',
     'table.title': 'По товарам',
     'table.subtitle': 'В сравнении с прошлым периодом',
     'col.product': 'Товар',
@@ -142,6 +146,8 @@ registerNamespace('funnel', {
     'chart.sold': 'Sold',
     'chart.canceled': 'Cancelled',
     'chart.returned': 'Returned',
+    'table.empty': 'No matching products',
+    'table.emptyHint': 'Nothing matches this filter — try “All”',
     'table.title': 'By product',
     'table.subtitle': 'Compared with the previous period',
     'col.product': 'Product',
@@ -293,7 +299,7 @@ export default function Funnel() {
           <span
             className={cn(
               'font-semibold',
-              r.buyoutRate >= 70 ? 'text-brand' : r.buyoutRate >= 40 ? 'text-warn' : 'text-danger',
+              r.buyoutRate >= 70 ? 'text-brand' : r.buyoutRate >= 40 ? 'text-warn-ink' : 'text-danger',
             )}
           >
             {f.pct(r.buyoutRate)}
@@ -483,7 +489,14 @@ export default function Funnel() {
               />
             </div>
             <div className="mt-4">
-              <DataTable columns={columns} rows={rows} rowKey={(r) => r.skuId} />
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(r) => r.skuId}
+                /* Zaxira matn o'rniga tushunarli izoh — "Muammoli" filtri hech
+                   narsa topmaganda foydalanuvchi sababni biladi */
+                empty={<EmptyState icon={<Filter className="h-6 w-6" />} title={t('table.empty')} hint={t('table.emptyHint')} />}
+              />
             </div>
           </Card>
 

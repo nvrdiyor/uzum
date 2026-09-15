@@ -130,11 +130,21 @@ export function StockValueCard({ data }: { data: DashboardResponse }) {
         </p>
         <p className="mt-1 text-xs text-muted">{t('stock.units', { n: f.num(units) })}</p>
 
+        {/* Qoldiq 0 bo'lganda rangli bo'lak umuman chizilmaydi — ilgari bo'sh
+            ombor to'laligicha binafsha ko'rinib, to'la deb tushunilardi */}
         <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-surface-3">
-          <div className="flex h-full w-full">
-            <div className="h-full bg-brand transition-[width] duration-700 ease-spring" style={{ width: `${fboPct}%` }} />
-            <div className="h-full bg-violet transition-[width] duration-700 ease-spring" style={{ width: `${100 - fboPct}%` }} />
-          </div>
+          {total > 0 ? (
+            <div className="flex h-full w-full">
+              <div
+                className="h-full bg-brand transition-[width] duration-700 ease-spring"
+                style={{ width: `${fboPct}%` }}
+              />
+              <div
+                className="h-full bg-violet transition-[width] duration-700 ease-spring"
+                style={{ width: `${100 - fboPct}%` }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-3 space-y-2.5">

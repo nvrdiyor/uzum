@@ -75,7 +75,7 @@ export function PreviewBadge({ feature }: { feature: FeatureId }) {
   const t = useT('common');
   if (access === 'full') return null;
   return (
-    <span className="chip bg-warn/[0.12] text-warn">
+    <span className="chip bg-warn/[0.12] text-warn-ink">
       <Lock className="h-3 w-3" />
       {t('plan.preview')}
     </span>

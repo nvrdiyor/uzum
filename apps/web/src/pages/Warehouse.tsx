@@ -513,7 +513,10 @@ export default function Warehouse() {
                             <span className="text-base font-bold text-muted">{t('capacity.volumeUnit')}</span>
                           </p>
                           <div className="mt-3">
-                            <ProgressBar value={Math.min(100, (kpi.volumeL / 1000) * 100)} tone="violet" showLabel />
+                            {/* Sig'im chegarasi Uzumda yo'q — foiz o'rniga haqiqiy hajm ko'rsatiladi */}
+                    <p className="tnum font-display text-lg font-extrabold text-violet">
+                      {f.num(kpi.volumeL, 1)} {t('unit.liter')}
+                    </p>
                           </div>
                         </div>
 

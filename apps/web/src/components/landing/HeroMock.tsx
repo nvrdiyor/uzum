@@ -117,7 +117,7 @@ export function HeroMock() {
             <p className="text-xs font-semibold text-ink">{t('mock.top')}</p>
             <span className="text-2xs uppercase tracking-wider text-muted">{t('mock.profit')}</span>
           </div>
-          <ul className="min-w-[300px] space-y-2">
+          <ul className="space-y-2">
             {TOP_ROWS.map((r) => (
               <li key={r.sku} className="flex items-center gap-3">
                 <span

@@ -773,6 +773,19 @@ export interface LossRow {
 
 export interface LossesResponse {
   totals: { skuCount: number; qty: number; amount: number; compensated: number };
+  /**
+   * Da'vo holati bo'yicha jamilar — BUTUN davr bo'yicha.
+   * Ilgari sayt buni jadvalning joriy 25 qatoridan hisoblardi va
+   * "Qoplanish darajasi" sahifa almashganda o'zgarib ketardi.
+   */
+  claims: {
+    receivedAmount: number;
+    pendingAmount: number;
+    rejectedAmount: number;
+    receivedCount: number;
+    pendingCount: number;
+    rejectedCount: number;
+  };
   rows: Paginated<LossRow>;
 }
 

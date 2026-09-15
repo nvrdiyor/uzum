@@ -698,9 +698,7 @@ function Pager({
         <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
-        <Badge tone="muted">
-          <span className="tnum">{total}</span>
-        </Badge>
+
         <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => onPage(page + 1)}>
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
