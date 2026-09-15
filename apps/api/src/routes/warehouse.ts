@@ -758,6 +758,8 @@ router.get(
       const empty: ReturnsResponse = {
         totals: { qty: 0, amount: 0, rate: 0 },
         byReason: [],
+        daily: [],
+        topRisky: [],
         rows: paginate<ReturnRow>([], range.page, range.pageSize),
       };
       res.json(empty);
@@ -816,6 +818,30 @@ router.get(
       rows.push(row);
     }
 
+    /**
+     * Kunlik seriya va "eng ko'p qaytariladigan" ro'yxati BUTUN davr bo'yicha
+     * hisoblanadi. Ilgari sayt buni faqat jadvalning joriy 25 qatoridan
+     * yasardi — 2-sahifaga o'tilganda grafik butunlay o'zgarib ketardi.
+     */
+    const dailyMap = new Map<string, { qty: number; amount: number }>();
+    const riskyMap = new Map<
+      string,
+      { key: string; sku: string | null; title: string | null; imageUrl: string | null; qty: number; amount: number }
+    >();
+    for (const r of rows) {
+      const day = String(r.returnedAt).slice(0, 10);
+      const d = dailyMap.get(day) ?? { qty: 0, amount: 0 };
+      d.qty += r.qty;
+      d.amount += r.amount;
+      dailyMap.set(day, d);
+
+      const key = r.sku ?? r.title ?? r.id;
+      const k = riskyMap.get(key) ?? { key, sku: r.sku, title: r.title, imageUrl: r.imageUrl, qty: 0, amount: 0 };
+      k.qty += r.qty;
+      k.amount += r.amount;
+      riskyMap.set(key, k);
+    }
+
     const payload: ReturnsResponse = {
       totals: {
         qty,
@@ -823,6 +849,13 @@ router.get(
         // Qaytarish ulushi: qaytgan dona / (sotilgan + qaytgan)
         rate: pct(qty, soldUnits + qty),
       },
+      daily: [...dailyMap.entries()]
+        .map(([date, v]) => ({ date, qty: v.qty, amount: round(v.amount) }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      topRisky: [...riskyMap.values()]
+        .map((v) => ({ ...v, amount: round(v.amount), share: pct(v.qty, qty) }))
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 8),
       byReason: [...byReason.entries()]
         .map(([reason, reasonQty]) => ({ reason, qty: reasonQty, share: pct(reasonQty, qty) }))
         .sort((a, b) => b.qty - a.qty),

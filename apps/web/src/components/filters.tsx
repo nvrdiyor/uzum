@@ -98,7 +98,7 @@ export function PeriodPicker({ className }: { className?: string }) {
                     locked
                       ? 'cursor-not-allowed text-muted opacity-60'
                       : preset === p
-                        ? 'bg-brand/12 text-brand'
+                        ? 'bg-brand/[0.12] text-brand'
                         : 'text-ink-soft hover:bg-surface-2',
                   )}
                 >
@@ -190,7 +190,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
             }}
             className={cn(
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
-              storeId === 'all' ? 'bg-brand/12 text-brand' : 'text-ink-soft hover:bg-surface-2',
+              storeId === 'all' ? 'bg-brand/[0.12] text-brand' : 'text-ink-soft hover:bg-surface-2',
             )}
           >
             {t('common.allStores')}
@@ -205,7 +205,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
               }}
               className={cn(
                 'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors',
-                storeId === s.id ? 'bg-brand/12 text-brand' : 'text-ink-soft hover:bg-surface-2',
+                storeId === s.id ? 'bg-brand/[0.12] text-brand' : 'text-ink-soft hover:bg-surface-2',
               )}
             >
               <span className="truncate">{s.title}</span>

@@ -204,7 +204,7 @@ export default function Login() {
             <p className="mt-1.5 text-sm text-muted">{t('card.subtitle')}</p>
 
             {refCode ? (
-              <span className="chip mt-4 bg-violet/12 text-violet">
+              <span className="chip mt-4 bg-violet/[0.12] text-violet">
                 <Gift className="h-3.5 w-3.5" />
                 {t('ref.badge', { code: refCode })}
               </span>

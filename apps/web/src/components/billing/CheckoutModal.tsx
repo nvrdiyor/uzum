@@ -202,7 +202,7 @@ export function CheckoutModal({
                     <span
                       className={cn(
                         'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                        active ? 'bg-brand/12 text-brand' : 'bg-surface-3 text-muted',
+                        active ? 'bg-brand/[0.12] text-brand' : 'bg-surface-3 text-muted',
                       )}
                     >
                       <Icon className="h-4 w-4" />

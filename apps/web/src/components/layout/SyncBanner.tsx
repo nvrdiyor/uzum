@@ -55,7 +55,7 @@ export function SyncBanner() {
           <span className={cn('hidden text-xs text-muted md:inline')}>
             ~{formatDuration(data.etaSeconds, lang)} {text.left}
           </span>
-          <Link to="/onboarding" className="chip bg-brand/12 text-brand">
+          <Link to="/onboarding" className="chip bg-brand/[0.12] text-brand">
             <RefreshCw className="h-3 w-3" />
             {text.view}
           </Link>

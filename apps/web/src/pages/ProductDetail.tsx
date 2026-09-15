@@ -355,6 +355,8 @@ export default function ProductDetail() {
   const product = data?.product;
   const skus = data?.skus ?? [];
   const missing = skusWithoutCost(skus);
+  /** Kamida bitta SKU da tannarx kiritilganmi */
+  const hasCost = skus.some((sku) => (sku.purchasePrice ?? 0) > 0);
 
   /** Bitta SKU tannarxi — optimistik yangilanish bilan */
   const patchCost = useMutation({
@@ -600,10 +602,11 @@ export default function ProductDetail() {
             <StatCard
               label={t('kpi.roi')}
               /* Tannarx kiritilmagan bo'lsa ROI hisoblanmaydi — "0,0%" chalg'itadi */
-              value={product.roi > 0 ? f.pct(product.roi) : '—'}
-              hint={product.roi > 0 ? undefined : t('kpi.roiNoCost')}
+              /* Manfiy ROI ham haqiqiy natija — uni "tannarx yo'q" deb ko'rsatmaymiz */
+              value={hasCost ? f.pct(product.roi) : '—'}
+              hint={hasCost ? undefined : t('kpi.roiNoCost')}
               icon={<Layers className="h-5 w-5" />}
-              tone="info"
+              tone={product.roi >= 0 ? 'info' : 'danger'}
             />
             <StatCard
               label={t('kpi.margin')}

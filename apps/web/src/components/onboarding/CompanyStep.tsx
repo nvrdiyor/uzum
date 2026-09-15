@@ -59,7 +59,7 @@ export function CompanyStep({
     >
       <div className="border-b border-line bg-aurora px-6 py-6">
         <div className="flex items-start gap-3.5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/12 text-brand">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand">
             <Building2 className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -120,7 +120,7 @@ export function CompanyStep({
                   className={cn(
                     'tnum rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors',
                     Number(taxRate) === p
-                      ? 'border-brand/50 bg-brand/12 text-brand'
+                      ? 'border-brand/50 bg-brand/[0.12] text-brand'
                       : 'border-line bg-surface-2 text-muted hover:text-ink',
                   )}
                 >
@@ -133,7 +133,7 @@ export function CompanyStep({
         </div>
 
         {save.isError ? (
-          <p className="rounded-xl border border-danger/30 bg-danger/8 px-3.5 py-2.5 text-xs text-danger">
+          <p className="rounded-xl border border-danger/30 bg-danger/[0.08] px-3.5 py-2.5 text-xs text-danger">
             {save.error instanceof ApiError ? save.error.message : t('company.errSave')}
           </p>
         ) : null}

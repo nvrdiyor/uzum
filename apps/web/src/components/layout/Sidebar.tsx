@@ -36,7 +36,7 @@ function PlanCard() {
   return (
     <div className="mx-3 mb-3 rounded-2xl border border-line bg-surface-2 p-3.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="chip bg-brand/12 text-brand">
+        <span className="chip bg-brand/[0.12] text-brand">
           <ShieldCheck className="h-3 w-3" />
           {plan.name}
         </span>

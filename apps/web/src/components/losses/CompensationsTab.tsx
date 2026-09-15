@@ -206,7 +206,7 @@ function SummaryTile({
 }) {
   const toneClass = {
     brand: 'bg-brand/10 text-brand',
-    warn: 'bg-warn/12 text-warn',
+    warn: 'bg-warn/[0.12] text-warn',
     danger: 'bg-danger/10 text-danger',
   }[tone];
   return (

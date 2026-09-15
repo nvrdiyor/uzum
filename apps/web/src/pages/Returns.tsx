@@ -51,6 +51,13 @@ registerNamespace('returns', {
     'col.qty': 'Dona',
     'col.amount': 'Summa',
     'col.reason': 'Sabab',
+    'status.new': 'Yangi',
+    'status.processing': 'Jarayonda',
+    'status.accepted': 'Qabul qilingan',
+    'status.completed': 'Yakunlangan',
+    'status.returned': 'Qaytarilgan',
+    'status.canceled': 'Bekor qilingan',
+    'status.rejected': 'Rad etilgan',
     'col.status': 'Holat',
     'col.date': 'Sana',
     'table.title': 'Qaytarishlar ro‘yxati',
@@ -87,6 +94,13 @@ registerNamespace('returns', {
     'col.qty': 'Шт.',
     'col.amount': 'Сумма',
     'col.reason': 'Причина',
+    'status.new': 'Новый',
+    'status.processing': 'В обработке',
+    'status.accepted': 'Принят',
+    'status.completed': 'Завершён',
+    'status.returned': 'Возвращён',
+    'status.canceled': 'Отменён',
+    'status.rejected': 'Отклонён',
     'col.status': 'Статус',
     'col.date': 'Дата',
     'table.title': 'Список возвратов',
@@ -123,6 +137,13 @@ registerNamespace('returns', {
     'col.qty': 'Units',
     'col.amount': 'Amount',
     'col.reason': 'Reason',
+    'status.new': 'New',
+    'status.processing': 'Processing',
+    'status.accepted': 'Accepted',
+    'status.completed': 'Completed',
+    'status.returned': 'Returned',
+    'status.canceled': 'Canceled',
+    'status.rejected': 'Rejected',
     'col.status': 'Status',
     'col.date': 'Date',
     'table.title': 'Return records',
@@ -138,6 +159,17 @@ registerNamespace('returns', {
     'export.failed': 'Could not download the Excel file',
   },
 });
+
+/** Serverdan kelgan holat kodlari uchun tarjima kalitlari */
+const STATUS_KEY: Record<string, string> = {
+  new: 'status.new',
+  processing: 'status.processing',
+  accepted: 'status.accepted',
+  completed: 'status.completed',
+  returned: 'status.returned',
+  canceled: 'status.canceled',
+  rejected: 'status.rejected',
+};
 
 const STATUS_TONE: Record<string, Tone> = {
   new: 'info',
@@ -185,49 +217,15 @@ export default function Returns() {
   );
 
   /** Kunlik dinamika — javobda tayyor seriya yo'q, shuning uchun qatorlardan yig'amiz */
-  const daily = useMemo(() => {
-    const map = new Map<string, { date: string; qty: number; amount: number }>();
-    eachDay({ from: q.from, to: q.to }).forEach((d) => map.set(d, { date: d, qty: 0, amount: 0 }));
-    rows.forEach((r) => {
-      const day = String(r.returnedAt).slice(0, 10);
-      const cur = map.get(day);
-      if (cur) {
-        cur.qty += r.qty;
-        cur.amount += r.amount;
-      } else {
-        map.set(day, { date: day, qty: r.qty, amount: r.amount });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [rows, q.from, q.to]);
+  /** Kunlik seriya serverdan — butun davr bo'yicha (jadval sahifasiga bog'liq emas) */
+  const daily = useMemo(
+    () => (data?.daily ?? []).map((d) => ({ date: d.date, qty: d.qty, amount: d.amount })),
+    [data],
+  );
 
   /** Eng ko'p qaytariladigan 5 mahsulot (barcha qaytarishlardagi ulushi bo'yicha) */
-  const topRisky = useMemo(() => {
-    const map = new Map<string, { key: string; title: string; sku: string | null; imageUrl: string | null; qty: number; amount: number }>();
-    rows.forEach((r) => {
-      const key = r.sku ?? r.title ?? r.id;
-      const cur = map.get(key);
-      if (cur) {
-        cur.qty += r.qty;
-        cur.amount += r.amount;
-      } else {
-        map.set(key, {
-          key,
-          title: r.title ?? r.sku ?? '—',
-          sku: r.sku,
-          imageUrl: r.imageUrl,
-          qty: r.qty,
-          amount: r.amount,
-        });
-      }
-    });
-    const all = Array.from(map.values());
-    const sum = all.reduce((s, x) => s + x.qty, 0) || 1;
-    return all
-      .sort((a, b) => b.qty - a.qty)
-      .slice(0, 5)
-      .map((x) => ({ ...x, share: (x.qty / sum) * 100 }));
-  }, [rows]);
+  /** Eng ko'p qaytariladigan tovarlar — serverdan, butun davr bo'yicha */
+  const topRisky = useMemo(() => data?.topRisky ?? [], [data]);
 
   const onExport = async () => {
     setExporting(true);
@@ -289,7 +287,7 @@ export default function Returns() {
         header: t('col.status'),
         render: (r) => (
           <Badge tone={STATUS_TONE[r.status] ?? 'muted'} dot>
-            {r.status}
+            {STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
           </Badge>
         ),
         sortValue: (r) => r.status,
@@ -436,7 +434,7 @@ export default function Returns() {
               {topRisky.length ? (
                 <Card className="border-warn/30 bg-warn/5 p-5">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/12 text-warn">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/[0.12] text-warn">
                       <AlertTriangle className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">

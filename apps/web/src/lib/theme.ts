@@ -36,31 +36,31 @@ export const STATUS_TONE: Record<
   { bg: string; text: string; dot: string; label: { uz: string; ru: string; en: string } }
 > = {
   critical: {
-    bg: 'bg-danger/12',
+    bg: 'bg-danger/[0.12]',
     text: 'text-danger',
     dot: 'bg-danger',
     label: { uz: 'Kritik', ru: 'Критично', en: 'Critical' },
   },
   low: {
-    bg: 'bg-warn/12',
+    bg: 'bg-warn/[0.12]',
     text: 'text-warn',
     dot: 'bg-warn',
     label: { uz: 'Tugayapti', ru: 'Заканчивается', en: 'Low' },
   },
   ok: {
-    bg: 'bg-brand/12',
+    bg: 'bg-brand/[0.12]',
     text: 'text-brand',
     dot: 'bg-brand',
     label: { uz: 'Yetarli', ru: 'Достаточно', en: 'Healthy' },
   },
   excess: {
-    bg: 'bg-info/12',
+    bg: 'bg-info/[0.12]',
     text: 'text-info',
     dot: 'bg-info',
     label: { uz: 'Ortiqcha', ru: 'Избыток', en: 'Excess' },
   },
   dead: {
-    bg: 'bg-muted/12',
+    bg: 'bg-muted/[0.12]',
     text: 'text-muted',
     dot: 'bg-muted',
     label: { uz: 'Harakatsiz', ru: 'Неликвид', en: 'Dead stock' },

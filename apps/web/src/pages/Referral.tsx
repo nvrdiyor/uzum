@@ -302,7 +302,7 @@ export default function Referral() {
       header: t('table.company'),
       render: (r) => (
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/12 font-display text-xs font-bold text-brand">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-bold text-brand">
             {(r.company || '?').slice(0, 2).toUpperCase()}
           </span>
           <span className="truncate text-sm font-medium text-ink">{r.company}</span>

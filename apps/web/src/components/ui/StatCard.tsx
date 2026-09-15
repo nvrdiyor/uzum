@@ -22,7 +22,7 @@ export interface StatCardProps {
 const TONE_BG = {
   brand: 'bg-brand/10 text-brand',
   info: 'bg-info/10 text-info',
-  warn: 'bg-warn/12 text-warn',
+  warn: 'bg-warn/[0.12] text-warn',
   danger: 'bg-danger/10 text-danger',
   violet: 'bg-violet/10 text-violet',
 } as const;
@@ -97,7 +97,7 @@ export function StatCard({
 
       {footer ? (
         <div className="relative mt-auto border-t border-line pt-3 text-xs text-muted">
-          <span className="mt-4 block">{footer}</span>
+          <span className="block">{footer}</span>
         </div>
       ) : null}
     </div>

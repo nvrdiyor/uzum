@@ -44,10 +44,10 @@ const LEVEL_ICON = {
 } as const;
 
 const LEVEL_STYLE = {
-  info: 'bg-info/12 text-info',
-  success: 'bg-brand/12 text-brand',
-  warning: 'bg-warn/14 text-warn',
-  danger: 'bg-danger/12 text-danger',
+  info: 'bg-info/[0.12] text-info',
+  success: 'bg-brand/[0.12] text-brand',
+  warning: 'bg-warn/[0.14] text-warn',
+  danger: 'bg-danger/[0.12] text-danger',
 } as const;
 
 type ToggleKey = 'notifyDaily' | 'notifyOrders' | 'notifyStock';

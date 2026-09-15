@@ -123,7 +123,7 @@ export function SchemeShareCard({
               tone === 'brand' && 'bg-brand/10 text-brand',
               tone === 'info' && 'bg-info/10 text-info',
               tone === 'violet' && 'bg-violet/10 text-violet',
-              tone === 'warn' && 'bg-warn/12 text-warn',
+              tone === 'warn' && 'bg-warn/[0.12] text-warn',
               tone === 'danger' && 'bg-danger/10 text-danger',
               tone === 'muted' && 'bg-surface-3 text-muted',
             )}

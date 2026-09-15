@@ -792,6 +792,19 @@ export interface ReturnRow {
 export interface ReturnsResponse {
   totals: { qty: number; amount: number; rate: number };
   byReason: { reason: string; qty: number; share: number }[];
+  /** Kunlik qaytarishlar — BUTUN davr bo'yicha (jadval sahifasiga bog'liq emas) */
+  daily: { date: string; qty: number; amount: number }[];
+  /** Eng ko'p qaytariladigan tovarlar — butun davr bo'yicha */
+  topRisky: {
+    key: string;
+    sku: string | null;
+    title: string | null;
+    imageUrl: string | null;
+    qty: number;
+    amount: number;
+    /** Shu tovar jami qaytarishlarning necha foizi */
+    share: number;
+  }[];
   rows: Paginated<ReturnRow>;
 }
 

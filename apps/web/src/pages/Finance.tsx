@@ -639,7 +639,7 @@ function BalanceRow({
     tone === 'brand'
       ? 'bg-brand/10 text-brand'
       : tone === 'warn'
-        ? 'bg-warn/12 text-warn'
+        ? 'bg-warn/[0.12] text-warn'
         : 'bg-info/10 text-info';
 
   return (

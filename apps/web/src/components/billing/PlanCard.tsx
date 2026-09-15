@@ -86,7 +86,7 @@ export function PlanCard({
           <span
             className={cn(
               'flex h-9 w-9 items-center justify-center rounded-xl',
-              featured || best || isCurrent ? 'bg-brand/12 text-brand' : 'bg-surface-2 text-muted',
+              featured || best || isCurrent ? 'bg-brand/[0.12] text-brand' : 'bg-surface-2 text-muted',
             )}
           >
             <Icon className="h-4 w-4" />
@@ -116,7 +116,7 @@ export function PlanCard({
               {discounted ? (
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <span className="tnum text-xs text-muted line-through">{f.num(plan.price)}</span>
-                  <span className="chip bg-brand/12 py-0.5 text-2xs font-bold text-brand">
+                  <span className="chip bg-brand/[0.12] py-0.5 text-2xs font-bold text-brand">
                     −{plan.yearlyDiscount}%
                   </span>
                   <span className="tnum text-2xs text-muted">

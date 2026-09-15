@@ -75,10 +75,8 @@ export function LandingFooter() {
                 </button>
               </li>
               <li>
-                <span className="text-sm text-muted">{t('footer.offer')}</span>
               </li>
               <li>
-                <span className="text-sm text-muted">{t('footer.privacy')}</span>
               </li>
             </ul>
           </div>

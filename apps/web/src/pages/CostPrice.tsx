@@ -936,7 +936,7 @@ export default function CostPrice() {
             {dirtyCount > 0 ? (
               <div className="sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand/35 bg-surface/95 p-3.5 shadow-pop backdrop-blur">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/12 text-brand">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/[0.12] text-brand">
                     <Save className="h-4 w-4" />
                   </span>
                   <p className="truncate text-sm font-semibold text-ink">{t('bar.dirty', { n: dirtyCount })}</p>

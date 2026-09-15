@@ -1084,7 +1084,7 @@ function CreateShipmentModal({
                     className="input tnum w-20 px-2 py-1.5 text-right text-sm"
                   />
                 </label>
-                <span className="tnum w-28 text-right text-sm font-semibold text-ink">
+                <span className="tnum min-w-[7rem] whitespace-nowrap text-right text-sm font-semibold text-ink">
                   {f.money(item.qty * item.purchasePrice)}
                 </span>
                 <IconButton label={t('btn.delete')} className="h-8 w-8" onClick={() => removeItem(item.skuId)}>

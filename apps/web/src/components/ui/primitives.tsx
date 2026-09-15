@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { useT } from '@/i18n';
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -57,7 +58,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   outline: 'btn-outline',
   ghost: 'btn-ghost',
   danger: 'btn-danger',
-  soft: 'btn bg-brand/12 text-brand hover:bg-brand/20',
+  soft: 'btn bg-brand/[0.12] text-brand hover:bg-brand/20',
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -119,12 +120,12 @@ export function IconButton({
 export type Tone = 'brand' | 'info' | 'warn' | 'danger' | 'muted' | 'violet';
 
 const TONE_CLASS: Record<Tone, string> = {
-  brand: 'bg-brand/12 text-brand',
-  info: 'bg-info/12 text-info',
-  warn: 'bg-warn/14 text-warn',
-  danger: 'bg-danger/12 text-danger',
+  brand: 'bg-brand/[0.12] text-brand-ink',
+  info: 'bg-info/[0.12] text-info-ink',
+  warn: 'bg-warn/[0.14] text-warn-ink',
+  danger: 'bg-danger/[0.12] text-danger-ink',
   muted: 'bg-surface-3 text-muted',
-  violet: 'bg-violet/12 text-violet',
+  violet: 'bg-violet/[0.12] text-violet-ink',
 };
 
 export function Badge({
@@ -179,7 +180,7 @@ export function Delta({
     <span
       className={cn(
         'chip tnum',
-        neutral ? 'bg-surface-3 text-muted' : good ? 'bg-brand/12 text-brand' : 'bg-danger/12 text-danger',
+        neutral ? 'bg-surface-3 text-muted' : good ? 'bg-brand/[0.12] text-brand' : 'bg-danger/[0.12] text-danger',
         className,
       )}
     >
@@ -320,7 +321,7 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <div className={cn('inline-flex items-center gap-1 rounded-xl border border-line bg-surface-2 p-1', className)}>
+    <div className={cn('inline-flex w-max items-center gap-1 rounded-xl border border-line bg-surface-2 p-1', className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -329,7 +330,8 @@ export function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(o.value)}
             className={cn(
-              'rounded-lg font-semibold transition-all duration-200',
+              // shrink-0 + nowrap: tor ekranda tugmalar sinmaydi, qator suriladi
+              'shrink-0 whitespace-nowrap rounded-lg font-semibold transition-all duration-200',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
               active ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink',
             )}
@@ -459,13 +461,31 @@ export function EmptyState({
   );
 }
 
-export function ErrorState({ message, onRetry, retryLabel = 'Qayta urinish' }: { message?: string; onRetry?: () => void; retryLabel?: string }) {
+export function ErrorState({
+  message,
+  onRetry,
+  retryLabel,
+  title,
+}: {
+  message?: string;
+  onRetry?: () => void;
+  retryLabel?: string;
+  title?: string;
+}) {
+  // Matnlar qotirilgan emas — rus va ingliz tilida ham to'g'ri chiqadi
+  const t = useT('common');
   return (
     <EmptyState
       icon={<X className="h-6 w-6" />}
-      title="Xatolik yuz berdi"
+      title={title ?? t('common.errorTitle')}
       hint={message}
-      action={onRetry ? <Button variant="outline" onClick={onRetry}>{retryLabel}</Button> : undefined}
+      action={
+        onRetry ? (
+          <Button variant="outline" onClick={onRetry}>
+            {retryLabel ?? t('btn.retry')}
+          </Button>
+        ) : undefined
+      }
     />
   );
 }

@@ -89,7 +89,7 @@ export function Aurora({ className }: { className?: string }) {
   return (
     <div aria-hidden className={cn('pointer-events-none absolute inset-0 overflow-hidden', className)}>
       <div className="absolute -top-56 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full bg-brand/15 blur-[140px]" />
-      <div className="absolute -right-40 top-10 h-[420px] w-[520px] rounded-full bg-violet/12 blur-[130px]" />
+      <div className="absolute -right-40 top-10 h-[420px] w-[520px] rounded-full bg-violet/[0.12] blur-[130px]" />
       <div className="absolute -left-40 top-[380px] h-[380px] w-[480px] rounded-full bg-info/10 blur-[130px]" />
       <div
         className="absolute inset-x-0 top-0 h-px"

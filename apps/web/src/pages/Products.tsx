@@ -469,6 +469,19 @@ export default function Products() {
       <FilterBar />
 
       <PlanGate feature="products_assortment">
+        {/*
+          Xato bo'lganda KPI kartochkalari "0" va "0 so'm" ko'rsatib turmasin —
+          foydalanuvchi buni haqiqiy raqam deb o'ylashi mumkin.
+        */}
+        {isError ? (
+          <Card>
+            <ErrorState
+              message={error instanceof Error ? error.message : undefined}
+              onRetry={() => void refetch()}
+              retryLabel={t('btn.retry')}
+            />
+          </Card>
+        ) : (
         <div className="space-y-5">
           {/* KPI */}
           <StatGrid className="xl:grid-cols-5">
@@ -583,16 +596,8 @@ export default function Products() {
             </div>
           </Card>
 
-          {/* Ro'yxat */}
-          {isError ? (
-            <Card>
-              <ErrorState
-                message={error instanceof Error ? error.message : undefined}
-                onRetry={() => void refetch()}
-                retryLabel={t('btn.retry')}
-              />
-            </Card>
-          ) : view === 'cards' ? (
+          {/* Ro'yxat — xato holati yuqorida hal qilingan */}
+          {view === 'cards' ? (
             isLoading ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -661,6 +666,7 @@ export default function Products() {
             </Card>
           )}
         </div>
+        )}
       </PlanGate>
     </>
   );

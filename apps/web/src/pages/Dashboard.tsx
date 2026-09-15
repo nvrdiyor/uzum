@@ -463,7 +463,7 @@ export default function Dashboard() {
         {!hasSales ? (
           <Card className="border-info/25 bg-info/[0.06] p-5">
             <div className="flex flex-wrap gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/12 text-info">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/[0.12] text-info">
                 <PackageSearch className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">

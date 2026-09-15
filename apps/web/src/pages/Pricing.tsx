@@ -644,9 +644,9 @@ export default function Pricing() {
             onChange={setCycle}
           />
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <span className="chip bg-brand/12 text-brand">{t('cycle.save', { pct: MAX_DISCOUNT })}</span>
+            <span className="chip bg-brand/[0.12] text-brand">{t('cycle.save', { pct: MAX_DISCOUNT })}</span>
             {cycle === 'yearly' ? (
-              <span className="chip bg-violet/12 text-violet">
+              <span className="chip bg-violet/[0.12] text-violet">
                 <Sparkles className="h-3 w-3" />
                 {t('cycle.twoFree')}
               </span>

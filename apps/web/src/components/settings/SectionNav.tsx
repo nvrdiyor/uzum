@@ -43,7 +43,7 @@ export function SectionNav({
                 className={cn(
                   'flex shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors',
                   on
-                    ? 'border-brand/40 bg-brand/12 text-brand'
+                    ? 'border-brand/40 bg-brand/[0.12] text-brand'
                     : 'border-line bg-surface text-muted hover:text-ink',
                 )}
               >

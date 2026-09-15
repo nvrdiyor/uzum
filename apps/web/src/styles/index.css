@@ -24,10 +24,20 @@
   --c-brand-soft: 226 247 240;
   --c-brand-ink: 0 106 76;
 
-  --c-warn: 214 138 0;
-  --c-danger: 226 68 74;
-  --c-info: 45 116 232;
-  --c-violet: 124 92 246;
+  /* Yorug' fonda o'qilishi uchun to'q qilingan — 214 138 0 oq fonda faqat 2.8:1 edi */
+  --c-warn: 166 98 0;
+  --c-danger: 205 38 45;
+  --c-info: 29 99 214;
+  --c-violet: 109 74 240;
+
+  /*
+   * Rangli plastinka (chip, nishon) USTIDAGI matn uchun to'qroq variantlar.
+   * Oddiy rang mint yoki sariq fonda 2,4:1 gacha tushib ketardi.
+   */
+  --c-warn-ink: 124 72 0;
+  --c-danger-ink: 158 26 32;
+  --c-info-ink: 21 74 165;
+  --c-violet-ink: 79 50 190;
 
   --sq-radius: 16px;
   --sq-sidebar: 264px;
@@ -59,6 +69,12 @@
   --c-danger: 255 99 104;
   --c-info: 122 170 255;
   --c-violet: 155 128 255;
+
+  /* Qorong'ida plastinka foni to'q — matn ochroq bo'lishi kerak */
+  --c-warn-ink: 255 200 110;
+  --c-danger-ink: 255 150 154;
+  --c-info-ink: 172 202 255;
+  --c-violet-ink: 196 178 255;
   color-scheme: dark;
 }
 

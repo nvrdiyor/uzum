@@ -19,5 +19,5 @@ export function ZeroAware({
   className?: string;
 }) {
   const empty = !value;
-  return <span className={cn(empty ? 'text-muted/70' : tone, className)}>{text}</span>;
+  return <span className={cn(empty ? 'text-muted' : tone, className)}>{text}</span>;
 }

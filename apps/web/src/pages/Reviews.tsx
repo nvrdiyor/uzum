@@ -618,7 +618,7 @@ function ReviewCard({ review, onReply }: { review: ReviewRow; onReply: () => voi
       </p>
 
       {review.answered && review.answerText ? (
-        <div className="mt-4 rounded-xl border border-brand/20 bg-brand/8 p-3.5">
+        <div className="mt-4 rounded-xl border border-brand/20 bg-brand/[0.08] p-3.5">
           <div className="mb-1.5 flex items-center gap-2">
             <MessageSquareReply className="h-3.5 w-3.5 text-brand" />
             <span className="text-xs font-semibold text-brand">{t('card.answer')}</span>

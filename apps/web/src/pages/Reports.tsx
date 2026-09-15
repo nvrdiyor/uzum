@@ -479,6 +479,7 @@ export default function Reports() {
             <ErrorState
               message={report.error instanceof Error ? report.error.message : undefined}
               onRetry={() => void report.refetch()}
+              retryLabel={t('btn.retry')}
             />
           </Card>
         ) : report.isLoading ? (
@@ -630,6 +631,7 @@ export default function Reports() {
                 <ErrorState
                   message={compare.error instanceof Error ? compare.error.message : undefined}
                   onRetry={() => void compare.refetch()}
+                  retryLabel={t('btn.retry')}
                 />
               ) : compareData.length ? (
                 <BarsChart

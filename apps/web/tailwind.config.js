@@ -26,6 +26,11 @@ export default {
         danger: withAlpha('--c-danger'),
         info: withAlpha('--c-info'),
         violet: withAlpha('--c-violet'),
+        // Rangli plastinka ustidagi matn uchun to'q variantlar
+        'warn-ink': withAlpha('--c-warn-ink'),
+        'danger-ink': withAlpha('--c-danger-ink'),
+        'info-ink': withAlpha('--c-info-ink'),
+        'violet-ink': withAlpha('--c-violet-ink'),
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],

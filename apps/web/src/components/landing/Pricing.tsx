@@ -79,7 +79,7 @@ export function LandingPricing() {
                   <span
                     className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-xl',
-                      featured ? 'bg-brand/12 text-brand' : 'bg-surface-2 text-muted',
+                      featured ? 'bg-brand/[0.12] text-brand' : 'bg-surface-2 text-muted',
                     )}
                   >
                     <Icon className="h-4 w-4" />

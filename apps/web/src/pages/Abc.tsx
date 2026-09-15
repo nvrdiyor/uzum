@@ -554,7 +554,7 @@ export default function Abc() {
                       <button
                         type="button"
                         onClick={clearFilter}
-                        className="chip bg-brand/12 text-brand transition-colors hover:bg-brand/20"
+                        className="chip bg-brand/[0.12] text-brand transition-colors hover:bg-brand/20"
                         title={t('filter.clear')}
                       >
                         {t('filter.active', { value: filterLabel })}

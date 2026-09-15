@@ -34,7 +34,7 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
           </div>
         </div>
         {!loading && items.length > 0 ? (
-          <span className="chip bg-brand/12 text-brand tnum">{t('insights.count', { n: items.length })}</span>
+          <span className="chip bg-brand/[0.12] text-brand tnum">{t('insights.count', { n: items.length })}</span>
         ) : null}
       </div>
 

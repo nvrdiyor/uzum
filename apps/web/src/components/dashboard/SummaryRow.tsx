@@ -42,7 +42,7 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
           Sotuvchi pulini shu qator bo'yicha solishtiradi — foyda
           ko'rsatkichlari bilan emas (ular tannarxni ham ayiradi).
         */}
-        <div className="rounded-2xl border border-brand/25 bg-brand/8 p-3.5">
+        <div className="rounded-2xl border border-brand/25 bg-brand/[0.08] p-3.5">
           <div className="flex items-end justify-between gap-3">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted">
               {t('payouts.balance')}

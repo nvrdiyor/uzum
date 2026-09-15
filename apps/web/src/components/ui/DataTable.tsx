@@ -178,7 +178,7 @@ export function DataTable<T>({
                 key={rowKey(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cn(
-                  'border-b border-line/60 transition-colors last:border-0',
+                  'group border-b border-line/60 transition-colors last:border-0',
                   onRowClick && 'cursor-pointer',
                   'hover:bg-surface-2/70',
                 )}
@@ -194,7 +194,8 @@ export function DataTable<T>({
                       c.align === 'right' && 'tnum whitespace-nowrap text-right',
                       c.align === 'center' && 'whitespace-nowrap text-center',
                       c.hideOnMobile && 'hidden md:table-cell',
-                      stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface',
+                      // group-hover: mahkamlangan ustun ham qator bilan birga yoritiladi
+                      stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface group-hover:bg-surface-2',
                       c.className,
                     )}
                   >
@@ -206,7 +207,16 @@ export function DataTable<T>({
           </tbody>
           {footer ? (
             <tfoot>
-              <tr className="border-t border-line bg-surface-2/60 font-semibold text-ink">{footer}</tr>
+              {/* [&>td:first-child]: jami qatorining birinchi katagi ham mahkamlanadi,
+                  aks holda jadval surilganda u boshqa ustun ostiga kirib ketardi */}
+              <tr
+                className={cn(
+                  'border-t border-line bg-surface-2/60 font-semibold text-ink',
+                  stickyFirstColumn && '[&>td:first-child]:sticky [&>td:first-child]:left-0 [&>td:first-child]:z-10 [&>td:first-child]:bg-surface-2',
+                )}
+              >
+                {footer}
+              </tr>
             </tfoot>
           ) : null}
         </table>
