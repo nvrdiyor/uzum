@@ -883,15 +883,14 @@ export class LiveUzumClient implements UzumClient {
        *  • javobda buyurtma identifikatori maydoni bor.
        *
        * Omborga yetkazish ("Logistika xizmatlari uchun to'lov") buyurtmaga
-       * bog'lanmagani uchun saqlanadi — u haqiqiy davr xarajati.
+       * bog'lanmagan — u oddiy davr xarajati bo'lib qoladi.
        */
       const orderRef =
         asString(r.orderId) || asString(r.orderNumber) || asString(r.orderCode) || asString(r.orderIds);
       const mentionsOrder = /(buyurtma|заказ|order)\s*(?:№|#|no\.?)?\s*\d{3,}/i.test(`${name} ${source}`);
-      const perOrderLogistics =
+      const inPayout =
         /^(return-)?logistics-volume$/i.test(code) ||
         (category === 'logistics' && (Boolean(orderRef) || mentionsOrder));
-      if (perOrderLogistics) continue;
       // Saqlash to'lovlari alohida (`getStorageFees`) yig'iladi — ikki marta hisoblamaymiz
       if (category === 'storage') continue;
 
@@ -909,6 +908,7 @@ export class LiveUzumClient implements UzumClient {
         category,
         amount,
         note: name || source || undefined,
+        inPayout,
       });
     }
 

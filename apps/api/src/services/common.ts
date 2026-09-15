@@ -298,7 +298,13 @@ export async function getExpenses(
   storeId?: string,
 ): Promise<Record<ExpenseCategory, number>> {
   const rows = await prisma.expense.findMany({
-    where: { companyId, date: { gte: from, lt: toExclusive }, ...(storeId ? { storeId } : {}) },
+    where: {
+      companyId,
+      date: { gte: from, lt: toExclusive },
+      // `uzum-payout` — buyurtma satrlarida allaqachon ayrilgan to'lovlar
+      source: { not: 'uzum-payout' },
+      ...(storeId ? { storeId } : {}),
+    },
     select: { category: true, amount: true },
   });
   const out: Record<ExpenseCategory, number> = {

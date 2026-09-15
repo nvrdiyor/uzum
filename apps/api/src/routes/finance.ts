@@ -250,7 +250,7 @@ router.get(
 
     // Kunlik seriya: buyurtmalardan kelgan foydadan qo'lda kiritilgan xarajat,
     // ombor to'lovi va soliq ayriladi — shunda profit = revenue - expenses bo'ladi.
-    const [series, manualRows, feeRows, paidAgg, pendingAgg, allPayoutAgg, uzumFeeAgg, storageAllAgg] =
+    const [series, manualRows, feeRows, paidAgg, pendingAgg, allSalesAgg, uzumFeeAgg, storageAllAgg] =
       await Promise.all([
       getDailySeries(storeIds, range.period),
       prisma.expense.findMany({
@@ -282,18 +282,30 @@ router.get(
         },
       }),
       /**
-       * Uzumdagi "Umumiy balans" — davr emas, hisobning boshidan beri yig'ilgan
-       * summa: barcha buyurtmalar bo'yicha "yechib olish uchun" minus Uzum
-       * ushlab qolgan xizmat to'lovlari (omborga logistika, reklama, saqlash).
-       * Komissiya va mijozga yetkazish `payout` ichida allaqachon ayrilgan.
+       * Uzum kabinetidagi "Umumiy balans" — davr emas, hisob boshidan beri
+       * yig'ilgan va hali yechib olinmagan pul. Uzumning o'zi shunday hisoblaydi:
+       *
+       *     sotuv summasi − komissiya − barcha xizmat to'lovlari
+       *
+       * Diqqat: `payout` ("yechib olish uchun") har bir dona uchun mijozga
+       * yetkazishni OLDINDAN ayiradi, Uzum esa uni faqat haqiqatda ushlaganda
+       * hisobdan yechadi. Shu sababli balans `payout` dan emas, tushum va
+       * komissiyadan quriladi — aks holda hali ushlanmagan yetkazish puliga
+       * kamayib ko'rinardi.
        */
       prisma.orderItem.aggregate({
-        _sum: { payout: true },
+        _sum: { revenue: true, commission: true },
         where: { status: { notIn: ['canceled', 'returned'] }, order: { storeId: { in: storeIds } } },
       }),
       prisma.expense.aggregate({
         _sum: { amount: true },
-        where: { companyId: company.id, source: 'uzum', ...(range.storeId ? { storeId: range.storeId } : {}) },
+        where: {
+          companyId: company.id,
+          // Uzum ushlagan barcha to'lovlar: omborga logistika, reklama va
+          // buyurtma yetkazish to'lovlari (`uzum-payout`) — qaytarilganlari manfiy
+          source: { in: ['uzum', 'uzum-payout'] },
+          ...(range.storeId ? { storeId: range.storeId } : {}),
+        },
       }),
       prisma.storageFee.aggregate({
         _sum: { amount: true },
@@ -343,7 +355,8 @@ router.get(
         paidOut: round(paidAgg._sum.payout ?? 0),
         pending: round(pendingAgg._sum.payout ?? 0),
         total: round(
-          (allPayoutAgg._sum.payout ?? 0) -
+          (allSalesAgg._sum.revenue ?? 0) -
+            (allSalesAgg._sum.commission ?? 0) -
             (uzumFeeAgg._sum.amount ?? 0) -
             (storageAllAgg._sum.amount ?? 0),
         ),

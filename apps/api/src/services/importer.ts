@@ -1058,7 +1058,13 @@ export async function upsertExpenses(
     const category = e.category;
 
     const date = dayStart(toDate(e.date, today) ?? today);
-    const id = stableId('ex', companyId, storeId ?? '', toISODate(date), category);
+    /**
+     * To'lov summasida allaqachon ayrilgan xarajatlar alohida manbada
+     * saqlanadi: foyda hisobiga kirmaydi, ammo hisobdagi balansni
+     * Uzumdagi kabi hisoblash uchun kerak.
+     */
+    const source = e.inPayout ? 'uzum-payout' : 'uzum';
+    const id = stableId('ex', companyId, storeId ?? '', toISODate(date), category, source);
     const amount = round(num(e.amount));
     const cur = merged.get(id);
     if (cur) {
@@ -1073,7 +1079,7 @@ export async function upsertExpenses(
         category,
         amount,
         note: text(e.note),
-        source: 'uzum',
+        source,
       });
     }
   }

@@ -187,6 +187,13 @@ export interface UzumExpense {
   category: UzumExpenseCategory;
   amount: number;
   note?: string;
+  /**
+   * Bu to'lov Uzumning "yechib olish uchun" (`sellerProfit`) summasida
+   * ALLAQACHON ayrilgan — masalan, har bir buyurtma uchun mijozga yetkazish.
+   * Foyda hisobida ikkinchi marta ayrilmaydi, ammo hisobdagi haqiqiy
+   * balansni topish uchun kerak (Uzum uni balansdan ushlab qoladi).
+   */
+  inPayout?: boolean;
 }
 
 // ─────────────────────────── Klient shartnomasi ───────────────────────────
