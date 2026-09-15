@@ -114,11 +114,17 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       {/*
-        v7_startTransition — marshrut o'zgarishlari React.startTransition ichida bajariladi.
-        Busiz lazy sahifaga o'tishda React #426 ("component suspended while responding to
-        synchronous input") xatosi chiqib, ekran vaqtincha qorayib qolardi.
+        v7_startTransition ATAYLAB YOQILMAGAN.
+
+        U bilan marshrut almashuvi React "transition" iga aylanadi va ba'zan
+        umuman yakunlanmaydi: manzil o'zgaradi, ekran esa eskiligicha qoladi —
+        lazy sahifa fayli hatto so'ralmaydi ham. (Oddiy yangilanishlar, masalan
+        mavzu almashtirish, bu paytda ishlayveradi — shu bilan aniqlandi.)
+
+        Oddiy yangilanishda Suspense chegarasi skeletni ko'rsatadi va sahifa
+        doim ochiladi.
       */}
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter future={{ v7_relativeSplatPath: true }}>
         <Bootstrap />
         {/* Sahifa yuklanmasa oq ekran emas, tushunarli xabar chiqadi */}
         <RouteError>
