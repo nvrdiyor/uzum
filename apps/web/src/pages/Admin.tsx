@@ -82,6 +82,8 @@ registerNamespace('admin', {
     'users.role.user': 'Foydalanuvchi',
     'users.role.admin': 'Administrator',
     'users.status.active': 'Aktiv',
+    'users.action.block': 'Bloklash',
+    'users.action.unblock': 'Blokdan chiqarish',
     'users.status.blocked': 'Bloklangan',
     'users.updated': 'Foydalanuvchi yangilandi',
     'users.updateErr': 'Yangilab bo‘lmadi',
@@ -196,6 +198,8 @@ registerNamespace('admin', {
     'users.role.user': 'Пользователь',
     'users.role.admin': 'Администратор',
     'users.status.active': 'Активен',
+    'users.action.block': 'Заблокировать',
+    'users.action.unblock': 'Разблокировать',
     'users.status.blocked': 'Заблокирован',
     'users.updated': 'Пользователь обновлён',
     'users.updateErr': 'Не удалось обновить',
@@ -310,6 +314,8 @@ registerNamespace('admin', {
     'users.role.user': 'User',
     'users.role.admin': 'Administrator',
     'users.status.active': 'Active',
+    'users.action.block': 'Block',
+    'users.action.unblock': 'Unblock',
     'users.status.blocked': 'Blocked',
     'users.updated': 'User updated',
     'users.updateErr': 'Could not update',
@@ -791,18 +797,28 @@ function UsersTab() {
       key: 'status',
       header: t('users.col.status'),
       align: 'center',
-      width: 140,
+      width: 220,
       render: (u) => {
         const blocked = u.status === 'blocked';
+        /*
+          Tugmada AMAL yoziladi, holat emas. Ilgari faol foydalanuvchida
+          "Faol" deb turardi va uni bosgan odam nima bo'lishini bilmasdi.
+          Joriy holat yonidagi nishonda ko'rinadi.
+        */
         return (
-          <Button
-            size="sm"
-            variant={blocked ? 'danger' : 'outline'}
-            loading={patch.isPending && patch.variables?.id === u.id && patch.variables?.body.status !== undefined}
-            onClick={() => patch.mutate({ id: u.id, body: { status: blocked ? 'active' : 'blocked' } })}
-          >
-            {blocked ? t('users.status.blocked') : t('users.status.active')}
-          </Button>
+          <div className="flex items-center justify-center gap-2">
+            <Badge tone={blocked ? 'danger' : 'brand'} dot>
+              {blocked ? t('users.status.blocked') : t('users.status.active')}
+            </Badge>
+            <Button
+              size="sm"
+              variant={blocked ? 'outline' : 'danger'}
+              loading={patch.isPending && patch.variables?.id === u.id && patch.variables?.body.status !== undefined}
+              onClick={() => patch.mutate({ id: u.id, body: { status: blocked ? 'active' : 'blocked' } })}
+            >
+              {blocked ? t('users.action.unblock') : t('users.action.block')}
+            </Button>
+          </div>
         );
       },
     },

@@ -100,7 +100,7 @@ export function PnlTable({
 
                     <td
                       className={cn(
-                        'tnum px-4 py-3 text-right',
+                        'tnum whitespace-nowrap px-4 py-3 text-right',
                         isCost || negative ? 'text-danger' : 'text-ink',
                         isTotal && 'font-display text-base font-extrabold',
                         isSubtotal && 'font-display font-bold',
@@ -109,7 +109,7 @@ export function PnlTable({
                       {isCost ? cost(line.current) : money(line.current)}
                     </td>
 
-                    <td className={cn('tnum px-4 py-3 text-right text-muted')}>
+                    <td className={cn('tnum whitespace-nowrap px-4 py-3 text-right text-muted')}>
                       {isCost ? cost(line.previous) : money(line.previous)}
                     </td>
 

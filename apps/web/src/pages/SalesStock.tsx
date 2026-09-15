@@ -186,11 +186,23 @@ export default function SalesStock() {
   const search = useDebounced(searchInput);
   const [exporting, setExporting] = useState(false);
 
-  const query = { ...q, page, pageSize: PAGE_SIZE, search: search || undefined };
+  /**
+   * Holat filtri SERVERGA yuboriladi. Ilgari u faqat joriy 50 qatorga
+   * qo'llanardi: "Kritik" tanlangan sahifada kritik SKU bo'lmasa jadval
+   * bo'shab qolardi VA sahifalash tugmalari ham yo'qolardi — foydalanuvchi
+   * keyingi sahifadagi kritik tovarlarga umuman o'ta olmasdi.
+   */
+  const query = {
+    ...q,
+    page,
+    pageSize: PAGE_SIZE,
+    search: search || undefined,
+    status: segment === 'all' ? undefined : segment,
+  };
 
   useEffect(() => {
     setPage(1);
-  }, [search, q.from, q.to, q.storeId]);
+  }, [search, segment, q.from, q.to, q.storeId]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sales-stock', query],
@@ -212,7 +224,8 @@ export default function SalesStock() {
   }, [rows]);
 
   const filtered = useMemo(
-    () => (segment === 'all' ? rows : rows.filter((row) => row.status === segment)),
+    // Filtr server tomonida qo'llangan — bu yerda qayta filtrlash shart emas
+    () => rows,
     [rows, segment],
   );
 

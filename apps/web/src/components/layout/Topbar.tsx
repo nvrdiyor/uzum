@@ -167,7 +167,10 @@ export function Topbar() {
         <div className="flex flex-1 items-center justify-end gap-2 md:flex-none">
           <StoreSwitcher className="hidden sm:block" />
           <PeriodPicker />
-          <LangMenu />
+          {/* Til tanlash telefonda yashiriladi — Sozlamalarda ham bor */}
+          <span className="hidden sm:block">
+            <LangMenu />
+          </span>
 
           <button
             onClick={toggleTheme}
