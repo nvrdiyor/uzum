@@ -506,11 +506,11 @@ const FEATURES = [
 ] as const;
 
 const TONE_CLASS: Record<string, string> = {
-  brand: 'bg-brand/10 text-brand',
-  info: 'bg-info/10 text-info',
-  violet: 'bg-violet/10 text-violet',
-  warn: 'bg-warn/[0.12] text-warn',
-  danger: 'bg-danger/10 text-danger',
+  brand: 'bg-brand/10 text-brand-ink',
+  info: 'bg-info/10 text-info-ink',
+  violet: 'bg-violet/10 text-violet-ink',
+  warn: 'bg-warn/[0.12] text-warn-ink',
+  danger: 'bg-danger/10 text-danger-ink',
 };
 
 const TRUST = ['a', 'b', 'c', 'd'] as const;
@@ -536,7 +536,7 @@ export default function Landing() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, ease: EASE }}
-                  className="chip bg-brand/10 text-brand ring-1 ring-inset ring-brand/25"
+                  className="chip bg-brand/10 text-brand-ink ring-1 ring-inset ring-brand/25"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   {t('hero.badge')}

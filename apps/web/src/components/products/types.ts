@@ -36,9 +36,9 @@ export function productState(p: ProductCard): ProductState {
 
 /** Holat uchun token ranglari (faqat dizayn tokenlari) */
 export const STATE_STYLE: Record<ProductState, { chip: string; dot: string; text: string }> = {
-  active: { chip: 'bg-brand/[0.12] text-brand', dot: 'bg-brand', text: 'text-brand' },
-  need_order: { chip: 'bg-warn/[0.14] text-warn', dot: 'bg-warn', text: 'text-warn' },
-  out: { chip: 'bg-danger/[0.12] text-danger', dot: 'bg-danger', text: 'text-danger' },
+  active: { chip: 'bg-brand/[0.12] text-brand-ink', dot: 'bg-brand', text: 'text-brand' },
+  need_order: { chip: 'bg-warn/[0.14] text-warn-ink', dot: 'bg-warn', text: 'text-warn' },
+  out: { chip: 'bg-danger/[0.12] text-danger-ink', dot: 'bg-danger', text: 'text-danger' },
   archived: { chip: 'bg-surface-3 text-muted', dot: 'bg-muted', text: 'text-muted' },
 };
 

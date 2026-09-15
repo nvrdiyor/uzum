@@ -43,7 +43,7 @@ export function SectionNav({
                 className={cn(
                   'flex shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors',
                   on
-                    ? 'border-brand/40 bg-brand/[0.12] text-brand'
+                    ? 'border-brand/40 bg-brand/[0.12] text-brand-ink'
                     : 'border-line bg-surface text-muted hover:text-ink',
                 )}
               >
@@ -69,13 +69,13 @@ export function SectionNav({
                 onClick={() => onSelect(id)}
                 className={cn(
                   'group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
-                  on ? 'bg-brand/10 text-brand' : 'text-ink-soft hover:bg-surface-2',
+                  on ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
                 )}
               >
                 <span
                   className={cn(
                     'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors',
-                    on ? 'bg-brand/15 text-brand' : 'bg-surface-2 text-muted group-hover:text-ink',
+                    on ? 'bg-brand/15 text-brand-ink' : 'bg-surface-2 text-muted group-hover:text-ink',
                   )}
                 >
                   {ICONS[id]}

@@ -65,7 +65,7 @@ export function HeroMock() {
             <span className="h-2.5 w-2.5 rounded-full bg-brand/60" />
             <span className="ml-2 truncate font-display text-sm font-bold text-ink">{t('mock.title')}</span>
           </div>
-          <span className="chip shrink-0 bg-brand/10 text-brand">
+          <span className="chip shrink-0 bg-brand/10 text-brand-ink">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-brand" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand" />
@@ -123,10 +123,10 @@ export function HeroMock() {
                 <span
                   className={
                     r.tone === 'brand'
-                      ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] text-brand'
+                      ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] text-brand-ink'
                       : r.tone === 'info'
-                        ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/[0.12] text-info'
-                        : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warn/[0.12] text-warn'
+                        ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/[0.12] text-info-ink'
+                        : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warn/[0.12] text-warn-ink'
                   }
                 >
                   <Package className="h-3.5 w-3.5" />
@@ -151,7 +151,7 @@ export function HeroMock() {
         transition={{ duration: 0.6, delay: 0.55, ease: EASE }}
         className="absolute -bottom-5 -left-3 hidden items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 py-2.5 shadow-pop sm:flex"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/[0.12] text-brand">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/[0.12] text-brand-ink">
           <Percent className="h-4 w-4" />
         </span>
         <span>

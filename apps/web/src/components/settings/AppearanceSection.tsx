@@ -115,7 +115,7 @@ export function AppearanceSection() {
                     <span
                       className={cn(
                         'flex h-7 w-7 items-center justify-center rounded-lg',
-                        on ? 'bg-brand/15 text-brand' : 'bg-surface-2 text-muted',
+                        on ? 'bg-brand/15 text-brand-ink' : 'bg-surface-2 text-muted',
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -136,7 +136,7 @@ export function AppearanceSection() {
 
         {/* ── Ixcham menyu ── */}
         <div className="flex items-center gap-3 rounded-xl px-1 py-1">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
             <PanelLeftClose className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">

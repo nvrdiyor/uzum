@@ -211,7 +211,7 @@ export function UzumSection() {
                       <div
                         className={cn(
                           'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                          a.status === 'invalid' ? 'bg-danger/[0.12] text-danger' : 'bg-brand/[0.12] text-brand',
+                          a.status === 'invalid' ? 'bg-danger/[0.12] text-danger-ink' : 'bg-brand/[0.12] text-brand-ink',
                         )}
                       >
                         <KeyRound className="h-4 w-4" />
@@ -278,7 +278,7 @@ export function UzumSection() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-danger hover:bg-danger/10"
+                      className="text-danger-ink hover:bg-danger/10"
                       icon={<Trash2 className="h-3.5 w-3.5" />}
                       onClick={() => setRemoveTarget(a)}
                     >
@@ -308,7 +308,7 @@ export function UzumSection() {
                 const Icon = s.icon;
                 return (
                   <li key={s.key} className="flex gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-extrabold text-brand">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-extrabold text-brand-ink">
                       {i + 1}
                     </span>
                     <div className="min-w-0">

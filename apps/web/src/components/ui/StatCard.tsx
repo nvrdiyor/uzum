@@ -20,11 +20,11 @@ export interface StatCardProps {
 }
 
 const TONE_BG = {
-  brand: 'bg-brand/10 text-brand',
-  info: 'bg-info/10 text-info',
-  warn: 'bg-warn/[0.12] text-warn',
-  danger: 'bg-danger/10 text-danger',
-  violet: 'bg-violet/10 text-violet',
+  brand: 'bg-brand/10 text-brand-ink',
+  info: 'bg-info/10 text-info-ink',
+  warn: 'bg-warn/[0.12] text-warn-ink',
+  danger: 'bg-danger/10 text-danger-ink',
+  violet: 'bg-violet/10 text-violet-ink',
 } as const;
 
 export function StatCard({

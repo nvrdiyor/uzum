@@ -1441,7 +1441,7 @@ function BroadcastTab() {
         <CardBody>
           <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/15 text-brand">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/15 text-brand-ink">
                 <Send className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">

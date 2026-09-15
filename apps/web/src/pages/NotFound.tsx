@@ -63,7 +63,7 @@ export default function NotFound() {
           </p>
         </div>
 
-        <span className="chip mt-2 bg-brand/10 text-brand ring-1 ring-inset ring-brand/20">
+        <span className="chip mt-2 bg-brand/10 text-brand-ink ring-1 ring-inset ring-brand/20">
           <Compass className="h-3.5 w-3.5" />
           {t('badge')}
         </span>

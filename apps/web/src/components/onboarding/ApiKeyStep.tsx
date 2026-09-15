@@ -80,7 +80,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
       <div className="card overflow-hidden">
         <div className="border-b border-line bg-aurora px-6 py-6">
           <div className="flex items-start gap-3.5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand-ink">
               <KeyRound className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -192,7 +192,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
             </div>
 
             {connect.isError ? (
-              <p className="rounded-xl border border-danger/30 bg-danger/[0.08] px-3.5 py-2.5 text-xs text-danger">
+              <p className="rounded-xl border border-danger/30 bg-danger/[0.08] px-3.5 py-2.5 text-xs text-danger-ink">
                 {connect.error instanceof ApiError ? connect.error.message : t('api.errSave')}
               </p>
             ) : null}

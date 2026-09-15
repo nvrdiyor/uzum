@@ -5,9 +5,9 @@ import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 const BLOCKS = [
-  { key: 'c', icon: Building2, tone: 'bg-brand/10 text-brand' },
-  { key: 'k', icon: KeyRound, tone: 'bg-info/10 text-info' },
-  { key: 's', icon: RefreshCw, tone: 'bg-violet/10 text-violet' },
+  { key: 'c', icon: Building2, tone: 'bg-brand/10 text-brand-ink' },
+  { key: 'k', icon: KeyRound, tone: 'bg-info/10 text-info-ink' },
+  { key: 's', icon: RefreshCw, tone: 'bg-violet/10 text-violet-ink' },
 ] as const;
 
 /** 1-qadam: tanishtiruv ekrani — nima bo'lishini oldindan aytadi. */
@@ -22,7 +22,7 @@ export function WelcomeStep({ name, onStart }: { name: string; onStart: () => vo
       className="card overflow-hidden bg-aurora"
     >
       <div className="px-6 py-8 text-center sm:px-10 sm:py-10">
-        <span className="chip mx-auto bg-brand/[0.12] text-brand">
+        <span className="chip mx-auto bg-brand/[0.12] text-brand-ink">
           <Sparkles className="h-3.5 w-3.5" />
           {t('welcome.badge')}
         </span>

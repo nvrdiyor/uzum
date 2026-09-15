@@ -161,7 +161,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
           </span>
           <Link
             to={`/products/${product.id}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-brand transition-colors hover:bg-brand/10"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-brand-ink transition-colors hover:bg-brand/10"
           >
             {t('card.details')}
             <ArrowRight className="h-3.5 w-3.5" />

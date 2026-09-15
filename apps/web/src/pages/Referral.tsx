@@ -302,7 +302,7 @@ export default function Referral() {
       header: t('table.company'),
       render: (r) => (
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-bold text-brand">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-bold text-brand-ink">
             {(r.company || '?').slice(0, 2).toUpperCase()}
           </span>
           <span className="truncate text-sm font-medium text-ink">{r.company}</span>
@@ -382,7 +382,7 @@ export default function Referral() {
                   <Skeleton className="mt-3 h-14 w-64" />
                 ) : (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <span className="tnum rounded-2xl border border-brand/30 bg-brand/10 px-4 py-2.5 font-mono text-2xl font-extrabold tracking-[0.18em] text-brand sm:text-3xl">
+                    <span className="tnum rounded-2xl border border-brand/30 bg-brand/10 px-4 py-2.5 font-mono text-2xl font-extrabold tracking-[0.18em] text-brand-ink sm:text-3xl">
                       {data?.code ?? '—'}
                     </span>
                     <Button

@@ -43,7 +43,7 @@ export function LandingPricing() {
           value={billing}
           onChange={setBilling}
         />
-        <span className="chip bg-brand/10 text-brand">{t('pricing.save', { pct: MAX_DISCOUNT })}</span>
+        <span className="chip bg-brand/10 text-brand-ink">{t('pricing.save', { pct: MAX_DISCOUNT })}</span>
       </FadeUp>
 
       <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -68,7 +68,7 @@ export function LandingPricing() {
                   <span
                     className={cn(
                       'chip absolute -top-3 left-6 font-bold',
-                      featured ? 'bg-brand-grad text-bg' : 'bg-violet/15 text-violet ring-1 ring-inset ring-violet/30',
+                      featured ? 'bg-brand-grad text-bg' : 'bg-violet/15 text-violet-ink ring-1 ring-inset ring-violet/30',
                     )}
                   >
                     {featured ? t('pricing.popular') : t('pricing.best')}
@@ -79,7 +79,7 @@ export function LandingPricing() {
                   <span
                     className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-xl',
-                      featured ? 'bg-brand/[0.12] text-brand' : 'bg-surface-2 text-muted',
+                      featured ? 'bg-brand/[0.12] text-brand-ink' : 'bg-surface-2 text-muted',
                     )}
                   >
                     <Icon className="h-4 w-4" />

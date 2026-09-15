@@ -220,9 +220,9 @@ function SummaryTile({
   tone: 'brand' | 'warn' | 'danger';
 }) {
   const toneClass = {
-    brand: 'bg-brand/10 text-brand',
-    warn: 'bg-warn/[0.12] text-warn',
-    danger: 'bg-danger/10 text-danger',
+    brand: 'bg-brand/10 text-brand-ink',
+    warn: 'bg-warn/[0.12] text-warn-ink',
+    danger: 'bg-danger/10 text-danger-ink',
   }[tone];
   return (
     <div className="card p-5">

@@ -43,7 +43,7 @@ export class RouteError extends Component<Props, State> {
 
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-danger/[0.12] text-danger">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-danger/[0.12] text-danger-ink">
           <RefreshCw className="h-5 w-5" />
         </div>
         <div>

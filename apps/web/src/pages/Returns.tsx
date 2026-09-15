@@ -434,7 +434,7 @@ export default function Returns() {
               {topRisky.length ? (
                 <Card className="border-warn/30 bg-warn/5 p-5">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/[0.12] text-warn">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/[0.12] text-warn-ink">
                       <AlertTriangle className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">

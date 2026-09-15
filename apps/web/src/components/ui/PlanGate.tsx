@@ -55,7 +55,7 @@ export function PlanGate({
             compact && 'max-w-xs p-5',
           )}
         >
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand-ink">
             <Lock className="h-5 w-5" />
           </div>
           <p className="font-display text-base font-bold text-ink">{title ?? t('plan.locked')}</p>

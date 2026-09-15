@@ -212,7 +212,7 @@ export function TeamSection() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-danger hover:bg-danger/10"
+                        className="text-danger-ink hover:bg-danger/10"
                         icon={<Trash2 className="h-3.5 w-3.5" />}
                         onClick={() => setRemoveTarget(m)}
                       >

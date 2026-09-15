@@ -44,10 +44,10 @@ const LEVEL_ICON = {
 } as const;
 
 const LEVEL_STYLE = {
-  info: 'bg-info/[0.12] text-info',
-  success: 'bg-brand/[0.12] text-brand',
-  warning: 'bg-warn/[0.14] text-warn',
-  danger: 'bg-danger/[0.12] text-danger',
+  info: 'bg-info/[0.12] text-info-ink',
+  success: 'bg-brand/[0.12] text-brand-ink',
+  warning: 'bg-warn/[0.14] text-warn-ink',
+  danger: 'bg-danger/[0.12] text-danger-ink',
 } as const;
 
 type ToggleKey = 'notifyDaily' | 'notifyOrders' | 'notifyStock';
@@ -141,7 +141,7 @@ export function NotificationsSection() {
                     key={row.key}
                     className="flex items-center gap-3 rounded-xl px-1 py-3 transition-colors hover:bg-surface-2/60"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
                       <Icon className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
@@ -175,7 +175,7 @@ export function NotificationsSection() {
               <span
                 className={cn(
                   'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                  botOn ? 'bg-brand/15 text-brand' : 'bg-warn/15 text-warn',
+                  botOn ? 'bg-brand/15 text-brand-ink' : 'bg-warn/15 text-warn-ink',
                 )}
               >
                 <Send className="h-4 w-4" />

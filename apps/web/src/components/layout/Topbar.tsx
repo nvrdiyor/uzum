@@ -54,7 +54,7 @@ function LangMenu() {
               }}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                l.id === lang ? 'bg-brand/[0.12] text-brand' : 'text-ink-soft hover:bg-surface-2',
+                l.id === lang ? 'bg-brand/[0.12] text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
               )}
             >
               <span className="text-base">{l.flag}</span>
@@ -129,7 +129,7 @@ function ProfileMenu() {
                 await logout();
                 navigate('/login');
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-danger transition-colors hover:bg-danger/10"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-danger-ink transition-colors hover:bg-danger/10"
             >
               <LogOut className="h-4 w-4" /> Chiqish
             </button>

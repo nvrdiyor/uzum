@@ -637,10 +637,10 @@ function BalanceRow({
 }) {
   const box =
     tone === 'brand'
-      ? 'bg-brand/10 text-brand'
+      ? 'bg-brand/10 text-brand-ink'
       : tone === 'warn'
-        ? 'bg-warn/[0.12] text-warn'
-        : 'bg-info/10 text-info';
+        ? 'bg-warn/[0.12] text-warn-ink'
+        : 'bg-info/10 text-info-ink';
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5">

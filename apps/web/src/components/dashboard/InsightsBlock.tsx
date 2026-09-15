@@ -25,7 +25,7 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/10 text-brand">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
             <Sparkles className="h-4 w-4" />
           </span>
           <div>
@@ -34,7 +34,7 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
           </div>
         </div>
         {!loading && items.length > 0 ? (
-          <span className="chip bg-brand/[0.12] text-brand tnum">{t('insights.count', { n: items.length })}</span>
+          <span className="chip bg-brand/[0.12] text-brand-ink tnum">{t('insights.count', { n: items.length })}</span>
         ) : null}
       </div>
 

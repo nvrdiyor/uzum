@@ -74,7 +74,7 @@ export function SectionHead({
   return (
     <div className={cn('mx-auto max-w-2xl text-center', className)}>
       {eyebrow ? (
-        <span className="chip bg-brand/10 text-brand ring-1 ring-inset ring-brand/20">{eyebrow}</span>
+        <span className="chip bg-brand/10 text-brand-ink ring-1 ring-inset ring-brand/20">{eyebrow}</span>
       ) : null}
       <h2 className="text-balance mt-4 font-display text-[28px] font-extrabold leading-[1.15] tracking-tight text-ink sm:text-[38px]">
         {title}

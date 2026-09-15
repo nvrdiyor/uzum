@@ -429,7 +429,7 @@ export default function Planner() {
       sortValue: (r) => r.recommendedQty,
       render: (r) =>
         r.recommendedQty > 0 ? (
-          <span className="tnum inline-flex items-center rounded-xl bg-brand/[0.12] px-3 py-1.5 font-display text-base font-extrabold text-brand">
+          <span className="tnum inline-flex items-center rounded-xl bg-brand/[0.12] px-3 py-1.5 font-display text-base font-extrabold text-brand-ink">
             {f.num(r.recommendedQty)}
           </span>
         ) : (

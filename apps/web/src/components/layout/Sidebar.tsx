@@ -36,7 +36,7 @@ function PlanCard() {
   return (
     <div className="mx-3 mb-3 rounded-2xl border border-line bg-surface-2 p-3.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="chip bg-brand/[0.12] text-brand">
+        <span className="chip bg-brand/[0.12] text-brand-ink">
           <ShieldCheck className="h-3 w-3" />
           {plan.name}
         </span>
@@ -102,7 +102,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                           'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                           rail && 'justify-center px-0',
                           isActive
-                            ? 'bg-brand/10 text-brand'
+                            ? 'bg-brand/10 text-brand-ink'
                             : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
                         )
                       }
@@ -128,7 +128,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                             <>
                               <span className="flex-1 truncate">{t(item.labelKey)}</span>
                               {item.badge ? (
-                                <span className="rounded-md bg-brand/15 px-1.5 py-0.5 text-2xs font-bold uppercase text-brand">
+                                <span className="rounded-md bg-brand/15 px-1.5 py-0.5 text-2xs font-bold uppercase text-brand-ink">
                                   {item.badge}
                                 </span>
                               ) : null}

@@ -259,7 +259,7 @@ export function OrDivider({ label }: { label: string }) {
 export function BenefitRow({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
   return (
     <li className="flex gap-3.5">
-      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand-ink">
         {icon}
       </span>
       <span className="min-w-0">

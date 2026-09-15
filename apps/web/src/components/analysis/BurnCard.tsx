@@ -42,7 +42,7 @@ export function BurnCard({
       <div className="relative flex flex-wrap items-start justify-between gap-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-danger/15 text-danger">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-danger/15 text-danger-ink">
               <Flame className="h-4 w-4" />
             </span>
             <p className="font-display text-sm font-extrabold uppercase tracking-wide text-danger">{title}</p>

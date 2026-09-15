@@ -572,7 +572,7 @@ export default function Reviews() {
       >
         <p className="text-sm text-ink-soft">{t('auto.body', { n: unanswered })}</p>
         {templateList.every((x) => !x.text.trim()) ? (
-          <p className="mt-3 rounded-xl border border-warn/25 bg-warn/10 p-3 text-xs text-warn">{t('auto.warn')}</p>
+          <p className="mt-3 rounded-xl border border-warn/25 bg-warn/10 p-3 text-xs text-warn-ink">{t('auto.warn')}</p>
         ) : null}
       </Modal>
     </>
@@ -740,7 +740,7 @@ function ReplyModal({
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors',
                       tpl.rating === review.rating
-                        ? 'border-brand/50 bg-brand/10 text-brand'
+                        ? 'border-brand/50 bg-brand/10 text-brand-ink'
                         : 'border-line bg-surface-2 text-muted hover:text-ink',
                     )}
                   >

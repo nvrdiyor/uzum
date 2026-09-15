@@ -33,7 +33,7 @@ export function LandingFaq() {
                 <span
                   className={cn(
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ease-spring',
-                    isOpen ? 'rotate-45 bg-brand/[0.12] text-brand' : 'bg-surface-2 text-muted',
+                    isOpen ? 'rotate-45 bg-brand/[0.12] text-brand-ink' : 'bg-surface-2 text-muted',
                   )}
                 >
                   <Plus className="h-4 w-4" />

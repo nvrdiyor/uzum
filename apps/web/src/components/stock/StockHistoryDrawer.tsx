@@ -206,7 +206,7 @@ export function StockHistoryDrawer({
           {advice ? (
             <div className="card border-brand/30 bg-brand/5 p-5">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/[0.12] text-brand">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/[0.12] text-brand-ink">
                   <Lightbulb className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">

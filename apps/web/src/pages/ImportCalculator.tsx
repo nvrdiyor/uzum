@@ -549,7 +549,7 @@ export default function ImportCalculator() {
                 </p>
 
                 {result.netProfit <= 0 ? (
-                  <p className="mt-3 inline-flex rounded-xl bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger">
+                  <p className="mt-3 inline-flex rounded-xl bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger-ink">
                     {t('loss.title')}
                   </p>
                 ) : null}
@@ -655,7 +655,7 @@ export default function ImportCalculator() {
                     {t('rule.pdd', { yuan: f.num(reverse.yuan, 2), weight: f.num(draft.weightGr) })}
                   </p>
                 ) : (
-                  <p className="mt-3 rounded-xl bg-warn/10 p-3 text-xs leading-relaxed text-warn">
+                  <p className="mt-3 rounded-xl bg-warn/10 p-3 text-xs leading-relaxed text-warn-ink">
                     {t('reverse.impossible', { cargo: f.num(reverse.cargo), max: f.num(reverse.maxCost) })}
                   </p>
                 )}

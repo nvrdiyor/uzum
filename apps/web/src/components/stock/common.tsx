@@ -120,11 +120,11 @@ export function SchemeShareCard({
           <div
             className={cn(
               'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-              tone === 'brand' && 'bg-brand/10 text-brand',
-              tone === 'info' && 'bg-info/10 text-info',
-              tone === 'violet' && 'bg-violet/10 text-violet',
-              tone === 'warn' && 'bg-warn/[0.12] text-warn',
-              tone === 'danger' && 'bg-danger/10 text-danger',
+              tone === 'brand' && 'bg-brand/10 text-brand-ink',
+              tone === 'info' && 'bg-info/10 text-info-ink',
+              tone === 'violet' && 'bg-violet/10 text-violet-ink',
+              tone === 'warn' && 'bg-warn/[0.12] text-warn-ink',
+              tone === 'danger' && 'bg-danger/10 text-danger-ink',
               tone === 'muted' && 'bg-surface-3 text-muted',
             )}
           >
