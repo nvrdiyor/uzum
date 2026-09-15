@@ -81,7 +81,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {NAV.map((group) => (
           <div key={group.titleKey} className="mb-5">
             {!rail ? (
-              <p className="mb-2 px-3 text-2xs font-bold uppercase tracking-[0.12em] text-muted/70">
+              <p className="mb-2 px-3 text-2xs font-bold uppercase tracking-[0.12em] text-muted">
                 {t(group.titleKey)}
               </p>
             ) : (

@@ -87,7 +87,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
             {product.listPrice > product.minPrice ? (
               <p className="tnum truncate text-2xs text-muted">
                 <span className="line-through">{f.money(product.listPrice)}</span>
-                <span className="ml-1.5 font-semibold text-brand">
+                <span className="ml-1.5 font-semibold text-brand-ink">
                   −{f.pct(((product.listPrice - product.minPrice) / product.listPrice) * 100, 0)}
                 </span>
               </p>
@@ -106,7 +106,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
             <p className="text-2xs uppercase tracking-wide text-muted">{t('card.roi')}</p>
-            <p className={cn('tnum text-sm font-bold', product.roi >= 0 ? 'text-brand' : 'text-danger')}>
+            <p className={cn('tnum text-sm font-bold', product.roi >= 0 ? 'text-brand-ink' : 'text-danger')}>
               {f.pct(product.roi)}
             </p>
           </div>
