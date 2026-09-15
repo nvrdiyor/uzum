@@ -501,9 +501,17 @@ export default function Pricing() {
     queryFn: () => api.get<SubscriptionSummary>('/billing/subscription'),
   });
 
+  /**
+   * Server `{ items, total, page, ... }` qaytaradi, massiv emas.
+   * Ilgari massiv deb o'qilgani uchun to'lovlar tarixi jadvali HECH QACHON
+   * to'ldirilmasdi — foydalanuvchi o'z to'lovlarini ko'ra olmasdi.
+   */
   const invoicesQ = useQuery({
     queryKey: ['billing', 'invoices'],
-    queryFn: () => api.get<InvoiceRow[]>('/billing/invoices'),
+    queryFn: async () => {
+      const raw = await api.get<InvoiceRow[] | { items?: InvoiceRow[] }>('/billing/invoices');
+      return Array.isArray(raw) ? raw : (raw?.items ?? []);
+    },
   });
 
   const referralQ = useQuery({
@@ -514,7 +522,15 @@ export default function Pricing() {
 
   const plans = useMemo(() => plansQ.data ?? [], [plansQ.data]);
   const subscription = subQ.data ?? sessionSub;
-  const currentPlanId = subscription?.plan ?? null;
+  /**
+   * Muddati tugagan obunada tarif "joriy" deb belgilanmaydi — aks holda uning
+   * tugmasi o'chirilgan bo'lib qolardi va sotuvchi obunani uzaytira olmasdi.
+   */
+  const subscriptionActive =
+    Boolean(subscription) &&
+    subscription?.status === 'active' &&
+    (!subscription?.expiresAt || new Date(subscription.expiresAt).getTime() > Date.now());
+  const currentPlanId = subscriptionActive ? (subscription?.plan ?? null) : null;
   const bonus = Math.max(0, referralQ.data?.pending ?? 0);
 
   const currentPlanName =

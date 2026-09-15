@@ -438,7 +438,7 @@ export default function Reports() {
   const onExport = async () => {
     setExporting(true);
     try {
-      const blob = await api.blob('/export/reports', q);
+      const blob = await api.blob('/export/monthly', q);
       downloadBlob(blob, `savdoiq-report-${q.from}_${q.to}.xlsx`);
       toast.success(t('exportOk'));
     } catch {

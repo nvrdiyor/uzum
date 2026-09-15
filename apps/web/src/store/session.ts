@@ -76,8 +76,21 @@ export function useFeature(feature: FeatureId): FeatureAccess {
   return useSession((s) => s.me?.features?.[feature] ?? 'off');
 }
 
+/** Obuna hozir amal qiladimi (holati faol va muddati o'tmagan) */
+function isSubActive(sub: { status?: string; expiresAt?: string | null } | null | undefined): boolean {
+  if (!sub) return false;
+  if (sub.status && sub.status !== 'active') return false;
+  if (sub.expiresAt && new Date(sub.expiresAt).getTime() <= Date.now()) return false;
+  return true;
+}
+
+/**
+ * Joriy tarif. Muddati tugagan bo'lsa `trial` qaytariladi — server ham shunday
+ * ishlaydi. Ilgari sayt eski tarifni amaldagi deb hisoblab, davr tanlagichi
+ * va bo'limlarni serverdan kengroq ochib berardi.
+ */
 export function usePlan(): PlanId {
-  return useSession((s) => (s.me?.subscription?.plan as PlanId) ?? 'trial');
+  return useSession((s) => (isSubActive(s.me?.subscription) ? (s.me!.subscription!.plan as PlanId) : 'trial'));
 }
 
 export function useIsAdmin(): boolean {

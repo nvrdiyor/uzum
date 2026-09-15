@@ -48,6 +48,7 @@ import {
   getLatestStocks,
   getSkuCatalog,
   getStoreIds,
+  getStoreTitles,
   stockState,
   type SkuInfo,
 } from '../services/common.js';
@@ -320,6 +321,7 @@ const skuTitle = (info: SkuInfo | undefined, fallback?: string | null): string =
 
 router.get(
   '/sales',
+  requireFeature('sales_analytics'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -441,6 +443,7 @@ router.get(
 
 router.get(
   '/sales-stock',
+  requireFeature('stocks_fbo_fbs'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -531,6 +534,7 @@ router.get(
 
 router.get(
   '/products',
+  requireFeature('products_assortment'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -689,6 +693,7 @@ router.get(
 
 router.get(
   '/stocks',
+  requireFeature('stocks_fbo_fbs'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -774,6 +779,7 @@ router.get(
 
 router.get(
   '/abc',
+  requireFeature('abc_analysis'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -845,6 +851,7 @@ router.get(
 
 router.get(
   '/unit-economics',
+  requireFeature('unit_economics'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -959,6 +966,7 @@ router.get(
 
 router.get(
   '/monthly',
+  requireFeature('monthly_reports'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -1061,6 +1069,7 @@ router.get(
 
 router.get(
   '/losses',
+  requireFeature('losses_report'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -1123,6 +1132,7 @@ router.get(
 
 router.get(
   '/returns',
+  requireFeature('returns_report'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
@@ -1196,6 +1206,236 @@ router.get(
     addSheet(wb, { name: 'Xulosa', columns: summaryColumns, rows: summaryRows });
 
     await sendWorkbook(res, wb, 'returns', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /expenses ───────────────────────────
+
+router.get(
+  '/expenses',
+  requireFeature('expenses'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+
+    const [rows, storeTitles] = await Promise.all([
+      prisma.expense.findMany({
+        where: {
+          companyId: company.id,
+          date: { gte: range.from, lt: range.toExclusive },
+          ...(range.storeId ? { storeId: range.storeId } : {}),
+        },
+        orderBy: { date: 'desc' },
+        take: MAX_ROWS,
+      }),
+      getStoreTitles(company.id),
+    ]);
+
+    const columns: ColumnDef[] = [
+      { header: 'Sana', width: 12 },
+      { header: 'Kategoriya', width: 20 },
+      { header: 'Do‘kon', width: 22 },
+      { header: 'Manba', width: 14 },
+      { header: 'Izoh', width: 44 },
+      { header: 'Summa', width: 16, fmt: 'money', sum: true },
+    ];
+
+    const SOURCE_LABEL: Record<string, string> = {
+      manual: 'Qo‘lda',
+      uzum: 'Uzum',
+      'uzum-payout': 'Uzum (to‘lovda)',
+    };
+
+    const data: Cell[][] = rows.map((r: (typeof rows)[number]) => [
+      toISODate(r.date),
+      CATEGORY_LABEL[r.category as ExpenseCategory] ?? r.category,
+      r.storeId ? (storeTitles.get(r.storeId) ?? '—') : '—',
+      SOURCE_LABEL[r.source] ?? r.source,
+      r.note ?? '—',
+      round(r.amount),
+    ]);
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Xarajatlar',
+      columns,
+      rows: data,
+      totals: totalsRow(columns, data),
+      note: limitNote(rows.length),
+    });
+    await sendWorkbook(res, wb, 'expenses', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /illiquid ───────────────────────────
+
+router.get(
+  '/illiquid',
+  requireFeature('illiquid'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+      getSkuCatalog(storeIds, true),
+      getLatestStocks(storeIds),
+      getAvgDaily(storeIds, 30),
+      getLastSaleDates(storeIds),
+    ]);
+
+    const columns: ColumnDef[] = [
+      { header: 'SKU', width: 18 },
+      { header: 'Mahsulot', width: 40 },
+      { header: 'Qoldiq', width: 10, fmt: 'int', sum: true },
+      { header: 'Sotilmagan kun', width: 16, fmt: 'int' },
+      { header: 'Oxirgi sotuv', width: 14 },
+      { header: 'Muzlagan kapital', width: 18, fmt: 'money', sum: true },
+      { header: 'Sotuv qiymati', width: 18, fmt: 'money', sum: true },
+    ];
+
+    const data: Cell[][] = [];
+    for (const [skuId, st] of stocks) {
+      const info = catalog.get(skuId);
+      if (!info || st.total <= 0) continue;
+      const last = lastSale.get(skuId) ?? null;
+      const idle = last ? daysSince(last) : daysSince(info.createdAt);
+      const avg = avgDaily.get(skuId) ?? 0;
+      const daysLeft = avg > 0 ? Math.round(st.total / avg) : null;
+      if (idle < 30 && !(daysLeft !== null && daysLeft > 90)) continue;
+      data.push([
+        info.sku,
+        info.title,
+        st.total,
+        idle,
+        last ? toISODate(last) : '—',
+        round(st.total * (info.purchasePrice + info.extraCost)),
+        round(st.total * info.price),
+      ]);
+    }
+    data.sort((a, b) => Number(b[5]) - Number(a[5]));
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Nolikvid',
+      columns,
+      rows: data.slice(0, MAX_ROWS),
+      totals: totalsRow(columns, data.slice(0, MAX_ROWS)),
+      note: limitNote(data.length),
+    });
+    await sendWorkbook(res, wb, 'illiquid', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /storage ───────────────────────────
+
+router.get(
+  '/storage',
+  requireFeature('paid_storage'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    const [fees, catalog] = await Promise.all([
+      prisma.storageFee.findMany({
+        where: { storeId: { in: storeIds }, date: { gte: range.from, lt: range.toExclusive } },
+        orderBy: { date: 'desc' },
+        take: MAX_ROWS,
+      }),
+      getSkuCatalog(storeIds, true),
+    ]);
+
+    const columns: ColumnDef[] = [
+      { header: 'Sana', width: 12 },
+      { header: 'SKU', width: 18 },
+      { header: 'Mahsulot', width: 40 },
+      { header: 'Dona', width: 10, fmt: 'int', sum: true },
+      { header: 'Hajm, L', width: 12, fmt: 'decimal', sum: true },
+      { header: 'To‘lov', width: 16, fmt: 'money', sum: true },
+    ];
+
+    const data: Cell[][] = fees.map((f) => {
+      const info = f.skuId ? catalog.get(f.skuId) : undefined;
+      return [
+        toISODate(f.date),
+        dash(info?.sku ?? null),
+        info ? info.title : '—',
+        f.qty,
+        round(f.volumeL, 2),
+        round(f.amount),
+      ];
+    });
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Pullik saqlash',
+      columns,
+      rows: data,
+      totals: totalsRow(columns, data),
+      note: limitNote(fees.length),
+    });
+    await sendWorkbook(res, wb, 'storage', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /warehouse ───────────────────────────
+
+router.get(
+  '/warehouse',
+  requireFeature('warehouse'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+      getSkuCatalog(storeIds, true),
+      getLatestStocks(storeIds),
+      getAvgDaily(storeIds, 30),
+      getLastSaleDates(storeIds),
+    ]);
+
+    const columns: ColumnDef[] = [
+      { header: 'SKU', width: 18 },
+      { header: 'Mahsulot', width: 40 },
+      { header: 'O‘z ombori', width: 12, fmt: 'int', sum: true },
+      { header: 'Band', width: 10, fmt: 'int', sum: true },
+      { header: 'Yo‘lda', width: 10, fmt: 'int', sum: true },
+      { header: 'Hajm, L', width: 12, fmt: 'decimal', sum: true },
+      { header: 'Tannarx qiymati', width: 18, fmt: 'money', sum: true },
+      { header: 'Holat', width: 14 },
+    ];
+
+    const data: Cell[][] = [];
+    for (const [skuId, st] of stocks) {
+      const info = catalog.get(skuId);
+      if (!info) continue;
+      if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
+      const avg = avgDaily.get(skuId) ?? 0;
+      const state = stockState(st.own, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      data.push([
+        info.sku,
+        info.title,
+        st.own,
+        st.reserved,
+        st.inTransit,
+        round(st.own * info.volumeL, 2),
+        round(st.own * (info.purchasePrice + info.extraCost)),
+        state.status,
+      ]);
+    }
+    data.sort((a, b) => Number(b[6]) - Number(a[6]));
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Ombor',
+      columns,
+      rows: data.slice(0, MAX_ROWS),
+      totals: totalsRow(columns, data.slice(0, MAX_ROWS)),
+      note: limitNote(data.length),
+    });
+    await sendWorkbook(res, wb, 'warehouse', range.period);
   }),
 );
 

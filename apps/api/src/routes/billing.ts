@@ -200,14 +200,38 @@ export async function activatePlan(
 
   const existing = await prisma.subscription.findUnique({ where: { companyId } });
   const stillActive = Boolean(existing && existing.expiresAt.getTime() > now.getTime() && existing.status === 'active');
-  const samePlan = existing?.plan === target.id;
 
-  // Aynan shu tarif hali amal qilsa — uzaytiramiz, aks holda bugundan boshlaymiz
+  /**
+   * Qolgan to'langan kunlar YO'QOLMAYDI — tariflar sahifasidagi savol-javobda
+   * aynan shunday va'da qilingan.
+   *
+   *  • Aynan shu tarif uzaytirilsa — mavjud muddat oxiridan davom etadi.
+   *  • Boshqa tarifga o'tilsa — qolgan kunlarning PUL QIYMATI yangi tarifning
+   *    kunlik narxiga o'tkaziladi. Masalan standartda (200 000/oy) 30 kuni
+   *    qolgan sotuvchi biznesga (400 000/oy) o'tsa, o'sha 30 kun 15 kunga
+   *    aylanadi — puli kuymaydi, lekin qimmatroq tarifda kamroq kunga yetadi.
+   *
+   * Ilgari tarif o'zgarganda hisob bugundan boshlanardi va to'langan kunlar
+   * butunlay kuyib ketardi.
+   */
+  const samePlan = existing?.plan === target.id;
+  let carriedDays = 0;
+  if (stillActive && !samePlan && existing) {
+    const remainingMs = existing.expiresAt.getTime() - now.getTime();
+    const remainingDays = Math.max(0, remainingMs / 86_400_000);
+    const oldDaily = getPlan(existing.plan).price / 30;
+    const newDaily = target.price / 30;
+    // Bepul tarifdan (narxi 0) o'tishda hisoblash ma'nosiz — kunlar shunchaki qo'shiladi
+    carriedDays = newDaily > 0 ? (remainingDays * oldDaily) / newDaily : remainingDays;
+  }
+
   const base = stillActive && samePlan ? existing!.expiresAt : now;
   const expiresAt =
     days !== undefined
       ? new Date(base.getTime() + days * 86_400_000)
       : addMonthsExact(base, months ?? 1);
+  // Oldingi tarifdan ko'chgan kunlar qo'shiladi (yaxlitlash sotuvchi foydasiga)
+  if (carriedDays > 0) expiresAt.setTime(expiresAt.getTime() + Math.ceil(carriedDays) * 86_400_000);
 
   await prisma.subscription.upsert({
     where: { companyId },
@@ -266,6 +290,15 @@ export async function markInvoicePaid(
 
   if (invoice.status === 'paid') {
     return { invoice: toInvoiceRow(invoice), alreadyPaid: true };
+  }
+
+  /**
+   * Bekor qilingan hisob-fakturani "to'langan" qilib bo'lmaydi.
+   * Ilgari mumkin edi: bekor qilingan hisob qayta tasdiqlansa, obuna yana bir
+   * marta uzayardi va referal bonusi ikkinchi marta hisoblanardi.
+   */
+  if (invoice.status === 'canceled' || invoice.status === 'expired') {
+    throw AppError.badRequest('Bekor qilingan hisob-fakturani to‘langan deb belgilab bo‘lmaydi');
   }
 
   const updated = await prisma.invoice.update({
@@ -435,6 +468,32 @@ function extractInvoiceId(body: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * Payme chaqiruvining haqiqiyligini tekshiradi.
+ *
+ * Payme har so'rovda `Authorization: Basic base64("Paycom:" + PAYME_KEY)`
+ * yuboradi. Ilgari bu UMUMAN tekshirilmasdi: hisob-faktura id'sini bilgan
+ * (yoki o'zi yaratgan) istalgan odam webhook'ga so'rov yuborib, bir tiyin
+ * to'lamasdan VIP tarifni ochib olishi mumkin edi.
+ *
+ * Kalit sozlanmagan bo'lsa webhook ishlamaydi — "kalitsiz ham o'tkazib
+ * yuborish" ishlab chiqarishda xavfli.
+ */
+function verifyPaymeAuth(header: string | undefined): boolean {
+  const key = env.billing.paymeKey.trim();
+  if (!key) return false;
+
+  const raw = (header ?? '').trim();
+  if (!raw.toLowerCase().startsWith('basic ')) return false;
+
+  const expected = Buffer.from(`Paycom:${key}`, 'utf8').toString('base64');
+  const got = raw.slice(6).trim();
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(got, 'utf8');
+  // Uzunlik farq qilsa timingSafeEqual xato tashlaydi — oldindan tekshiramiz
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 /** To'lov tasdiqlanganini bildiruvchi hodisami? */
 function isPaidEvent(body: Record<string, unknown>): boolean {
   const method = asText(body.method)?.toLowerCase() ?? '';
@@ -469,12 +528,20 @@ async function requireInvoice(invoiceId: string | null) {
 router.post(
   '/webhook/payme',
   ah(async (req, res) => {
+    if (!verifyPaymeAuth(req.header('authorization') ?? undefined)) {
+      throw AppError.forbidden('Payme imzosi tekshiruvidan o‘tmadi');
+    }
+
     const body = asRecord(req.body);
     const invoice = await requireInvoice(extractInvoiceId(body));
 
-    // Summa berilgan bo'lsa tekshiramiz (Payme tiyinda yuboradi)
+    // Summa MAJBURIY tekshiriladi (Payme tiyinda yuboradi).
+    // Ilgari summa yuborilmasa tekshiruv butunlay o'tkazib yuborilardi.
     const params = asRecord(body.params);
     const rawAmount = asNumber(body.amount) ?? asNumber(params.amount);
+    if (isPaidEvent(body) && rawAmount === null) {
+      throw AppError.badRequest('To‘lov summasi ko‘rsatilmagan');
+    }
     if (rawAmount !== null && Math.round(invoice.amount * 100) !== Math.round(rawAmount)) {
       throw AppError.badRequest('To‘lov summasi hisob-fakturaga mos kelmadi', {
         expected: Math.round(invoice.amount * 100),
@@ -521,7 +588,8 @@ router.post(
 /** Click imzosini tekshirish (CLICK_SECRET bo'lmasa tekshiruv o'tkazib yuboriladi) */
 function verifyClickSign(body: Record<string, unknown>): boolean {
   const secret = env.billing.clickSecret.trim();
-  if (!secret) return true;
+  // Kalit sozlanmagan bo'lsa webhook ishlamaydi — ilgari hamma so'rov o'tib ketardi
+  if (!secret) return false;
   const sign = asText(body.sign_string);
   if (!sign) return false;
   // Click formulasi: click_trans_id + service_id + SECRET + merchant_trans_id
@@ -553,6 +621,16 @@ router.post(
     const invoice = await requireInvoice(extractInvoiceId(body));
 
     if (!verifyClickSign(body)) throw AppError.forbidden('Imzo tekshiruvidan o‘tmadi');
+
+    // To'langan summa hisob-fakturaga mos kelishi shart
+    const clickAmount = asNumber(body.amount);
+    const clickInvoice = await requireInvoice(extractInvoiceId(body));
+    if (clickAmount !== null && Math.round(clickInvoice.amount) !== Math.round(clickAmount)) {
+      throw AppError.badRequest('To‘lov summasi hisob-fakturaga mos kelmadi', {
+        expected: Math.round(clickInvoice.amount),
+        received: Math.round(clickAmount),
+      });
+    }
 
     const action = asNumber(body.action);
     const externalId = asText(body.click_trans_id);

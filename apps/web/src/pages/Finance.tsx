@@ -362,7 +362,7 @@ export default function Finance() {
   const onExport = async () => {
     setExporting(true);
     try {
-      const blob = await api.blob('/export/finance', q);
+      const blob = await api.blob('/export/expenses', q);
       downloadBlob(blob, `finance-${q.from}_${q.to}.xlsx`);
       toast.success(t('export.done'));
     } catch (err) {

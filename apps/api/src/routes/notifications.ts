@@ -87,7 +87,7 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload): Pr
   let sent = 0;
 
   for (const u of users) {
-    await prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         userId: u.id,
         type: payload.type ?? 'info',
@@ -96,10 +96,18 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload): Pr
         body: payload.body ? payload.body.slice(0, 2000) : null,
         link: payload.link ?? null,
       },
+      select: { id: true },
     });
     if (payload.telegram !== false) {
       const ok = await sendTelegram(u.botChatId, text);
-      if (ok) sent += 1;
+      if (ok) {
+        sent += 1;
+        /**
+         * `sentAt` yozilmasa, navbatchi ishchi bu xabarni "hali yuborilmagan"
+         * deb topib, Telegramga IKKINCHI marta jo'natadi.
+         */
+        await prisma.notification.update({ where: { id: created.id }, data: { sentAt: new Date() } });
+      }
     }
   }
   return sent;
