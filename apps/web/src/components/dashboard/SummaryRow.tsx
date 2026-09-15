@@ -15,7 +15,7 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
       label: t('payouts.yesterday'),
       amount: data.paidYesterday,
       orders: data.paidOrdersYesterday,
-      accent: 'text-brand',
+      accent: 'text-brand-ink',
       bar: 'brand' as const,
     },
     {
@@ -23,7 +23,7 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
       label: t('payouts.today'),
       amount: data.expectedToday,
       orders: data.expectedOrdersToday,
-      accent: 'text-info',
+      accent: 'text-info-ink',
       bar: 'info' as const,
     },
   ];
@@ -48,7 +48,7 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
               {t('payouts.balance')}
             </span>
           </div>
-          <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-brand">
+          <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-brand-ink">
             {f.money(data.uzumBalance, data.currency)}
           </p>
           <p className="mt-1 text-xs text-muted">{t('payouts.balanceHint')}</p>

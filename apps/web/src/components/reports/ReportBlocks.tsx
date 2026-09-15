@@ -243,9 +243,9 @@ export function CategoriesCard({ rows }: { rows: MonthlyReportResponse['categori
 // ─────────────────────────── Yetkazib berish turlari ───────────────────────────
 
 const DELIVERY_TONE: Record<DeliveryType, { text: string; bg: string; bar: 'brand' | 'info' | 'violet' }> = {
-  FBO: { text: 'text-brand', bg: 'bg-brand/10', bar: 'brand' },
-  FBS: { text: 'text-info', bg: 'bg-info/10', bar: 'info' },
-  DBS: { text: 'text-violet', bg: 'bg-violet/10', bar: 'violet' },
+  FBO: { text: 'text-brand-ink', bg: 'bg-brand/10', bar: 'brand' },
+  FBS: { text: 'text-info-ink', bg: 'bg-info/10', bar: 'info' },
+  DBS: { text: 'text-violet-ink', bg: 'bg-violet/10', bar: 'violet' },
 };
 
 export function DeliveryTypesCard({ rows }: { rows: MonthlyReportResponse['deliveryTypes'] }) {
