@@ -110,6 +110,12 @@ function Bootstrap() {
   return null;
 }
 
+/** Marshrut o'zgarganda xato holatini tozalaydigan o'ram */
+function RoutedErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <RouteError resetKey={location.pathname}>{children}</RouteError>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -127,7 +133,7 @@ export default function App() {
       <BrowserRouter future={{ v7_relativeSplatPath: true }}>
         <Bootstrap />
         {/* Sahifa yuklanmasa oq ekran emas, tushunarli xabar chiqadi */}
-        <RouteError>
+        <RoutedErrorBoundary>
           <Suspense fallback={<FullPageLoader />}>
           <Routes>
           <Route path="/" element={<Landing />} />
@@ -171,7 +177,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
-        </RouteError>
+        </RoutedErrorBoundary>
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

@@ -558,9 +558,16 @@ router.post(
 
 // ─────────────────────────── POST /companies/:id/grant ───────────────────────────
 
+/**
+ * Muddat ikki xil berilishi mumkin:
+ *   months — kalendar oy (16-sentabrda berilsa 16-oktabrda tugaydi),
+ *   days   — ANIQ kun soni (365 berilsa aniq 365 kun, kabisa yiliga bog'liq emas).
+ * Ikkalasi berilsa kunlar ustun turadi.
+ */
 const grantSchema = z.object({
   plan: z.enum(PLAN_IDS),
   months: z.coerce.number().int().min(1).max(36).default(1),
+  days: z.coerce.number().int().min(1).max(3650).optional(),
   comment: z.string().trim().max(200).optional(),
 });
 
@@ -589,7 +596,7 @@ router.post(
       },
     });
 
-    await activatePlan(company.id, input.plan, input.months);
+    await activatePlan(company.id, input.plan, { months: input.months, days: input.days });
 
     await prisma.auditLog.create({
       data: {
@@ -597,7 +604,7 @@ router.post(
         action: 'admin.plan_grant',
         entity: 'company',
         entityId: company.id,
-        meta: JSON.stringify({ plan: input.plan, months: input.months }),
+        meta: JSON.stringify({ plan: input.plan, months: input.months, days: input.days }),
       },
     });
 
@@ -609,7 +616,7 @@ router.post(
       plan: input.plan,
       months: input.months,
       expiresAt: iso(sub?.expiresAt),
-      message: `${company.name}: “${PLANS[input.plan].name}” tarifi ${input.months} oyga berildi`,
+      message: `${company.name}: “${PLANS[input.plan].name}” tarifi ${input.days ? `${input.days} kunga` : `${input.months} oyga`} berildi`,
     });
   }),
 );

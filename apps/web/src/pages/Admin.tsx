@@ -30,6 +30,7 @@ import {
   ErrorState,
   Modal,
   PageHeader,
+  Input,
   SearchInput,
   Segmented,
   Select,
@@ -101,6 +102,9 @@ registerNamespace('admin', {
     'comp.plan': 'Tarif',
     'comp.months': 'Muddat',
     'comp.month': '{n} oy',
+    'comp.days': 'Yoki aniq kun soni',
+    'comp.daysPlaceholder': 'masalan 365',
+    'comp.daysHint': 'To‘ldirilsa oylar o‘rniga shu ishlatiladi — muddat aynan shuncha kun bo‘ladi',
     'comp.granted': 'Tarif berildi',
     'comp.grantErr': 'Tarif berib bo‘lmadi',
     'comp.empty': 'Kompaniya topilmadi',
@@ -212,6 +216,9 @@ registerNamespace('admin', {
     'comp.plan': 'Тариф',
     'comp.months': 'Срок',
     'comp.month': '{n} мес.',
+    'comp.days': 'Или точное число дней',
+    'comp.daysPlaceholder': 'например 365',
+    'comp.daysHint': 'Если заполнено — используется вместо месяцев, срок будет ровно столько дней',
     'comp.granted': 'Тариф выдан',
     'comp.grantErr': 'Не удалось выдать тариф',
     'comp.empty': 'Компании не найдены',
@@ -323,6 +330,9 @@ registerNamespace('admin', {
     'comp.plan': 'Plan',
     'comp.months': 'Duration',
     'comp.month': '{n} months',
+    'comp.days': 'Or exact number of days',
+    'comp.daysPlaceholder': 'e.g. 365',
+    'comp.daysHint': 'When filled, used instead of months — the term is exactly this many days',
     'comp.granted': 'Plan granted',
     'comp.grantErr': 'Could not grant the plan',
     'comp.empty': 'No companies found',
@@ -844,6 +854,8 @@ function CompaniesTab() {
   const [target, setTarget] = useState<AdminCompanyRow | null>(null);
   const [plan, setPlan] = useState<PlanId>('standard');
   const [months, setMonths] = useState(1);
+  /** Aniq kun soni — bo'sh bo'lsa oylar ishlatiladi */
+  const [days, setDays] = useState('');
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -868,11 +880,16 @@ function CompaniesTab() {
   });
 
   const grant = useMutation({
-    mutationFn: (vars: { id: string; plan: PlanId; months: number }) =>
-      api.post<unknown>(`/admin/companies/${vars.id}/grant`, { plan: vars.plan, months: vars.months }),
+    mutationFn: (vars: { id: string; plan: PlanId; months: number; days?: number }) =>
+      api.post<unknown>(`/admin/companies/${vars.id}/grant`, {
+        plan: vars.plan,
+        months: vars.months,
+        ...(vars.days ? { days: vars.days } : {}),
+      }),
     onSuccess: () => {
       toast.success(t('comp.granted'));
       setTarget(null);
+      setDays('');
       void qc.invalidateQueries({ queryKey: ['admin-companies'] });
       void qc.invalidateQueries({ queryKey: ['admin-stats'] });
     },
@@ -1012,7 +1029,11 @@ function CompaniesTab() {
           </div>
           <div>
             <span className="label">{t('comp.months')}</span>
-            <Select value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+            <Select
+              value={months}
+              disabled={days.trim() !== ''}
+              onChange={(e) => setMonths(Number(e.target.value))}
+            >
               {[1, 3, 6, 12].map((m) => (
                 <option key={m} value={m}>
                   {t('comp.month', { n: m })}
@@ -1021,6 +1042,22 @@ function CompaniesTab() {
             </Select>
           </div>
         </div>
+
+        {/* Aniq kun — to'ldirilsa oylar o'rniga shu ishlatiladi.
+            365 yozilsa muddat aynan 365 kun bo'ladi. */}
+        <div className="mt-4">
+          <span className="label">{t('comp.days')}</span>
+          <Input
+            type="number"
+            min={1}
+            max={3650}
+            inputMode="numeric"
+            placeholder={t('comp.daysPlaceholder')}
+            value={days}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDays(e.target.value)}
+          />
+          <p className="mt-1.5 text-xs text-muted">{t('comp.daysHint')}</p>
+        </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={() => setTarget(null)}>
             {t('btn.cancel')}
@@ -1028,7 +1065,7 @@ function CompaniesTab() {
           <Button
             icon={<Gift className="h-4 w-4" />}
             loading={grant.isPending}
-            onClick={() => target && grant.mutate({ id: target.id, plan, months })}
+            onClick={() => target && grant.mutate({ id: target.id, plan, months, days: Number(days) || undefined })}
           >
             {t('comp.grant')}
           </Button>

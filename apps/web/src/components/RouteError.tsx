@@ -10,6 +10,11 @@ import { RefreshCw } from 'lucide-react';
  */
 interface Props {
   children: ReactNode;
+  /**
+   * Marshrut kaliti. O'zgarganda xato holati tozalanadi — aks holda bitta
+   * sahifadagi xatodan keyin butun sayt shu xabarda qotib qolardi.
+   */
+  resetKey?: string;
 }
 
 interface State {
@@ -21,6 +26,10 @@ export class RouteError extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(prev: Props): void {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {

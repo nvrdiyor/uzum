@@ -58,7 +58,16 @@ export function AppLayout() {
           <Topbar />
           <SyncBanner />
           <main className="mx-auto w-full max-w-[1600px] px-4 pb-16 pt-5 sm:px-6">
+            {/*
+              key AYNAN Suspense'da turishi shart.
+              Ilgari u ichkaridagi motion.div da edi: chegara qayta yaratilmasdi,
+              shuning uchun React "bu chegara allaqachon mazmun ko'rsatyapti" deb
+              hisoblab, yangi sahifa yuklanguncha commit'ni kechiktirardi —
+              skeleton chiqmasdi, ekran esa eskiligicha qolardi.
+              Yangi key = yangi chegara = skeleton darhol ko'rinadi.
+            */}
             <Suspense
+              key={location.pathname}
               fallback={
                 <div className="space-y-4">
                   <div className="skeleton h-24 w-full" />
@@ -67,7 +76,6 @@ export function AppLayout() {
               }
             >
               <motion.div
-                key={location.pathname}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}

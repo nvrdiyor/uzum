@@ -110,11 +110,18 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                       {({ isActive }) => (
                         <>
                           {isActive ? (
-                            <motion.span
-                              layoutId="nav-active"
-                              className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-brand"
-                              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                            />
+                            /*
+                              layoutId ATAYLAB ishlatilmaydi.
+
+                              U framer-motion'ning "layout" mexanizmini yoqadi va
+                              element o'zini AnimatePresence oldida "hali tugamadim"
+                              deb ro'yxatga oladi. Mobil menyu yopilganda esa u
+                              hech qachon "tugadim" demaydi — natijada butun ekranni
+                              qoplaydigan ko'rinmas qatlam (fixed inset-0 z-50)
+                              o'chmay qoladi va saytdagi HECH BIR tugma bosilmaydi.
+                              Oddiy span bir xil ko'rinishni beradi, muammosiz.
+                            */
+                            <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-brand" />
                           ) : null}
                           <item.icon className={cn('h-[18px] w-[18px] shrink-0', isActive && 'text-brand')} />
                           {!rail ? (

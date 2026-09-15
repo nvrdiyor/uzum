@@ -156,9 +156,46 @@ function toPlanPublic(id: PlanId, current: PlanId | null): PlanPublic {
  * Agar joriy obuna aktiv va aynan shu tarif bo'lsa — muddat tugash sanasidan uzaytiriladi,
  * aks holda bugundan boshlanadi.
  */
-export async function activatePlan(companyId: string, plan: string, months: number): Promise<void> {
+/**
+ * Kalendar oy qo'shish — oy oxiri "toshib ketmaydi".
+ *
+ * `setUTCMonth(+1)` 31-yanvarga qo'llanilsa 31-fevral bo'lmagani uchun 3-martga
+ * o'tib ketadi va sotuvchi 28 kun o'rniga 31 kun oladi (yoki aksincha, sana
+ * kutilmaganda siljiydi). Bu yerda kun oy oxiriga QISQARTIRILADI:
+ * 31-yanvar + 1 oy = 28-fevral (kabisa yilida 29-fevral).
+ */
+function addMonthsExact(base: Date, months: number): Date {
+  const day = base.getUTCDate();
+  const d = new Date(base.getTime());
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  // Yangi oydagi oxirgi kun
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d;
+}
+
+/**
+ * Obunani faollashtirish yoki uzaytirish.
+ *
+ * Muddat ikki xil berilishi mumkin:
+ *   • `{ months: N }` — kalendar oy (tarif sotuvi shunday: 16-sentabrda olingan
+ *     bir oylik obuna 16-oktabrda tugaydi);
+ *   • `{ days: N }`   — ANIQ kun soni. 365 berilsa aniq 365 kun bo'ladi,
+ *     kabisa yiliga ham, oy uzunligiga ham bog'liq emas.
+ *
+ * Aynan shu tarif hali amal qilsa — muddat tugash sanasidan uzaytiriladi,
+ * aks holda bugundan boshlanadi (sotuvchi qolgan kunlarini yo'qotmaydi).
+ */
+export async function activatePlan(
+  companyId: string,
+  plan: string,
+  period: number | { months?: number; days?: number },
+): Promise<void> {
   const target = getPlan(plan);
-  const period = Math.min(36, Math.max(1, Math.round(months) || 1));
+  const raw = typeof period === 'number' ? { months: period } : period;
+  const months = raw.months === undefined ? undefined : Math.min(36, Math.max(1, Math.round(raw.months) || 1));
+  const days = raw.days === undefined ? undefined : Math.min(3650, Math.max(1, Math.round(raw.days) || 1));
   const now = new Date();
 
   const existing = await prisma.subscription.findUnique({ where: { companyId } });
@@ -167,8 +204,10 @@ export async function activatePlan(companyId: string, plan: string, months: numb
 
   // Aynan shu tarif hali amal qilsa — uzaytiramiz, aks holda bugundan boshlaymiz
   const base = stillActive && samePlan ? existing!.expiresAt : now;
-  const expiresAt = new Date(base.getTime());
-  expiresAt.setUTCMonth(expiresAt.getUTCMonth() + period);
+  const expiresAt =
+    days !== undefined
+      ? new Date(base.getTime() + days * 86_400_000)
+      : addMonthsExact(base, months ?? 1);
 
   await prisma.subscription.upsert({
     where: { companyId },
@@ -201,14 +240,14 @@ export async function activatePlan(companyId: string, plan: string, months: numb
       action: 'subscription.activate',
       entity: 'subscription',
       entityId: companyId,
-      meta: JSON.stringify({ plan: target.id, months: period, expiresAt: expiresAt.toISOString() }),
+      meta: JSON.stringify({ plan: target.id, months, days, expiresAt: expiresAt.toISOString() }),
     },
   });
 
   await notifyCompanyOwners(companyId, {
     type: 'success',
     title: `“${target.name}” tarifi faollashtirildi`,
-    body: `Obuna ${period} oyga uzaytirildi. Amal qilish muddati: ${expiresAt.toISOString().slice(0, 10)}.`,
+    body: `Obuna ${days !== undefined ? `${days} kunga` : `${months ?? 1} oyga`} uzaytirildi. Amal qilish muddati: ${expiresAt.toISOString().slice(0, 10)}.`,
     link: '/settings/billing',
   });
 }
