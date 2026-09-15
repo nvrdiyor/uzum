@@ -197,6 +197,13 @@ export interface DashboardResponse {
   returnsRate: MetricValue;
   paidYesterday: number;
   expectedToday: number;
+  /**
+   * Uzum kabinetidagi "Umumiy balans" — hisobda to'plangan va hali yechib
+   * olinmagan pul: sotuv − komissiya − Uzum ushlagan xizmat to'lovlari.
+   * Foyda ko'rsatkichlari bilan solishtirilmaydi: foyda tannarxni ham
+   * ayiradi, balans esa yo'q.
+   */
+  uzumBalance: number;
   paidOrdersYesterday: number;
   expectedOrdersToday: number;
   expenses: {

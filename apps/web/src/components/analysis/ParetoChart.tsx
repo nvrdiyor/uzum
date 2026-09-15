@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { chartAxisProps, tooltipStyle } from '@/lib/theme';
+import { chartAxisProps, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from '@/lib/theme';
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { ABC_CHART_COLOR, type AbcGroupKey } from './shared';
@@ -77,6 +77,8 @@ export function ParetoChart({
           />
           <Tooltip
             contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()}
             formatter={fmt as never}
             labelFormatter={(l) => nameByRank.get(Number(l)) ?? `#${l}`}
             cursor={{ fill: 'rgb(var(--c-surface-2))' }}

@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CHART_COLORS, SERIES_PALETTE, chartAxisProps, tooltipStyle } from '@/lib/theme';
+import { CHART_COLORS, SERIES_PALETTE, chartAxisProps, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from '@/lib/theme';
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -93,6 +93,8 @@ export function TrendChart({
           <YAxis {...axis} tickFormatter={(v: number) => f.compact(Number(v))} width={58} />
           <Tooltip
             contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()}
             formatter={fmt as never}
             labelFormatter={(l) => (xIsDate ? f.date(String(l)) : String(l))}
             cursor={{ stroke: 'rgb(var(--c-border-strong))', strokeWidth: 1 }}
@@ -132,7 +134,9 @@ export function LinesChart({ data, xKey = 'date', series, height = 280, classNam
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey={xKey} {...axis} tickFormatter={(v: string) => (xIsDate ? String(v).slice(5) : String(v))} minTickGap={24} />
           <YAxis {...axis} tickFormatter={(v: number) => f.compact(Number(v))} width={58} />
-          <Tooltip contentStyle={tooltipStyle()} formatter={fmt as never} />
+          <Tooltip contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()} formatter={fmt as never} />
           {showLegend ? <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} /> : null}
           {series.map((s, i) => (
             <Line
@@ -197,7 +201,9 @@ export function BarsChart({
               <YAxis {...axis} tickFormatter={(v: number) => f.compact(Number(v))} width={58} />
             </>
           )}
-          <Tooltip contentStyle={tooltipStyle()} formatter={fmt as never} cursor={{ fill: 'rgb(var(--c-surface-2))' }} />
+          <Tooltip contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()} formatter={fmt as never} cursor={{ fill: 'rgb(var(--c-surface-2))' }} />
           {showLegend ? <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} /> : null}
           {series.map((s, i) => (
             <Bar
@@ -261,6 +267,8 @@ export function DonutChart({
           </Pie>
           <Tooltip
             contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()}
             formatter={(v: number, n: string) => [
               `${money ? f.money(Number(v)) : f.num(Number(v))} · ${total ? ((Number(v) / total) * 100).toFixed(1) : 0}%`,
               n,

@@ -37,6 +37,23 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
         subtitle={t('payouts.subtitle')}
       />
       <CardBody className="flex-1 space-y-4 pt-4">
+        {/*
+          Uzum kabinetidagi "Umumiy balans" bilan AYNAN bir xil raqam.
+          Sotuvchi pulini shu qator bo'yicha solishtiradi — foyda
+          ko'rsatkichlari bilan emas (ular tannarxni ham ayiradi).
+        */}
+        <div className="rounded-2xl border border-brand/25 bg-brand/8 p-3.5">
+          <div className="flex items-end justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {t('payouts.balance')}
+            </span>
+          </div>
+          <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-brand">
+            {f.money(data.uzumBalance, data.currency)}
+          </p>
+          <p className="mt-1 text-xs text-muted">{t('payouts.balanceHint')}</p>
+        </div>
+
         {rows.map((r) => (
           <div key={r.key}>
             <div className="flex items-end justify-between gap-3">

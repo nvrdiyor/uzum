@@ -57,6 +57,8 @@ registerNamespace('dashboard', {
     'kpi.avgCheck': 'O‘rtacha chek',
     'kpi.avgCheckHint': 'Bitta buyurtmaga o‘rtacha summa',
 
+    'payouts.balance': 'Umumiy balans',
+    'payouts.balanceHint': 'Uzum kabinetidagi raqam bilan bir xil: sotuv − komissiya − xizmat to‘lovlari',
     'payouts.title': 'To‘lovlar',
     'payouts.subtitle': 'Uzum tomonidan o‘tkazmalar',
     'payouts.yesterday': 'Kecha to‘landi',
@@ -149,6 +151,8 @@ registerNamespace('dashboard', {
     'kpi.avgCheck': 'Средний чек',
     'kpi.avgCheckHint': 'Средняя сумма одного заказа',
 
+    'payouts.balance': 'Общий баланс',
+    'payouts.balanceHint': 'Совпадает с кабинетом Uzum: продажи − комиссия − оплата услуг',
     'payouts.title': 'Выплаты',
     'payouts.subtitle': 'Переводы от Uzum',
     'payouts.yesterday': 'Выплачено вчера',
@@ -241,6 +245,8 @@ registerNamespace('dashboard', {
     'kpi.avgCheck': 'Average check',
     'kpi.avgCheckHint': 'Average amount per order',
 
+    'payouts.balance': 'Total balance',
+    'payouts.balanceHint': 'Matches your Uzum cabinet: sales − commission − service fees',
     'payouts.title': 'Payouts',
     'payouts.subtitle': 'Transfers from Uzum',
     'payouts.yesterday': 'Paid yesterday',

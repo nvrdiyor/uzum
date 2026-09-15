@@ -466,6 +466,30 @@ router.get(
     const yesterdayStart = addDays(todayStart, -1);
     const tomorrowStart = addDays(todayStart, 1);
 
+    /**
+     * Uzum kabinetidagi "Umumiy balans" — hisob boshidan beri yig'ilgan pul.
+     * Formula Uzumning o'zinikidek: sotuv − komissiya − ushlangan xizmatlar.
+     * Foyda ko'rsatkichidan farq qiladi (foyda tannarxni ham ayiradi), lekin
+     * sotuvchi kabinetdagi raqam bilan aynan shu qatorni solishtiradi.
+     */
+    const [allSales, uzumFees, storageAll] = await Promise.all([
+      prisma.orderItem.aggregate({
+        _sum: { revenue: true, commission: true },
+        where: { status: { notIn: ['canceled', 'returned'] }, order: { storeId: { in: storeIds } } },
+      }),
+      prisma.expense.aggregate({
+        _sum: { amount: true },
+        where: { companyId: company.id, source: { in: ['uzum', 'uzum-payout'] } },
+      }),
+      prisma.storageFee.aggregate({ _sum: { amount: true }, where: { storeId: { in: storeIds } } }),
+    ]);
+    const uzumBalance = round(
+      (allSales._sum.revenue ?? 0) -
+        (allSales._sum.commission ?? 0) -
+        (uzumFees._sum.amount ?? 0) -
+        (storageAll._sum.amount ?? 0),
+    );
+
     const [paid, expected] = await Promise.all([
       // Kecha yetkazilgan buyurtmalar bo'yicha to'lov
       payoutWindow(storeIds, { deliveredAt: { gte: yesterdayStart, lt: todayStart } }),
@@ -595,6 +619,7 @@ router.get(
       returnsRate: metric(curReturns, prevReturns, 2),
       paidYesterday: paid.amount,
       expectedToday: expected.amount,
+      uzumBalance,
       paidOrdersYesterday: paid.orders,
       expectedOrdersToday: expected.orders,
       expenses,
