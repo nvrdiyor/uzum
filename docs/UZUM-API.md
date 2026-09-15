@@ -225,3 +225,78 @@ Xatolar `UzumAccount.lastError` da saqlanadi va **Sozlamalar** sahifasida ko'rin
 | `apps/api/src/services/importer.ts` | Normalizatsiyalangan ma'lumotni bazaga yozish |
 
 Uzum API o'zgarsa — deyarli har doim faqat `endpoints.ts` va `live.ts` tegiladi.
+
+---
+
+## 7. Haqiqiy javoblardan tasdiqlangan nozikliklar
+
+Quyidagilar **jonli kabinet** (do'kon 130436) javoblari bilan tekshirilgan —
+taxmin emas. Har biri saytdagi raqamni buzgan xato sabab bo'lgan.
+
+### 7.1 Narx: katalogda joriy chegirmali narx YO'Q
+
+`/v1/product/shop/{shopId}` → `productList[].skuList[]`:
+
+```json
+{
+  "price": 299000,                       // sotuvchi qo'ygan RO'YXAT narxi
+  "marketPrice": 299000,
+  "hasActiveDiscount": true,
+  "specialOffer": {
+    "inOffer": false,                    // sotuvchi aksiyaga QO'SHILMAGAN
+    "hasRecommendation": true,
+    "mechanicPrice": 247500,             // bu — Uzumning TAKLIFI, amaldagi narx emas
+    "promoName": "14.09-22.09 Hafta chegirmalari 2"
+  }
+}
+```
+
+`inOffer: false` bo'lsa `mechanicPrice` ni narx sifatida olish **xato**.
+Xaridor to'lagan haqiqiy narx faqat `/v1/finance/orders` dagi `sellPrice` da:
+o'sha tovar aslida 245 000 ga sotilgan.
+
+Shuning uchun sayt sotuvi bo'lgan tovarda **tushum / dona** ni ko'rsatadi,
+katalog narxi esa `listPrice` sifatida ustidan chizilgan holda chiqadi.
+
+### 7.2 Komissiya va saqlash SKU darajasida beriladi
+
+Katalogdagi o'sha `skuList` elementida yana:
+
+| Maydon | Ma'nosi | Namuna |
+| --- | --- | --- |
+| `commission` | shu SKU uchun komissiya, % | `15` (boshqa SKU'da `5`) |
+| `paidStoragePriceItem` | bir dona uchun oylik saqlash to'lovi | `36` |
+| `skuDimension` | `{length, width, height}` mm, `weight` gramm | `397×68×75`, `540` |
+| `archived` | kabinetda arxivlanganmi | `false` |
+| `quantityActive` / `quantityFbs` | FBO / FBS qoldiq | — |
+| `quantitySold` / `quantityReturned` / `returnedPercentage` | Uzumning o'z statistikasi | `2 / 2 / 50` |
+
+Komissiyani 12% deb taxmin qilish 245 000 so'mlik tovarda har donada
+7 350 so'm xato beradi. Saqlashni hajm bo'yicha taxmin qilish esa
+2,02 L × 120 × 30 = ~7 300 so'm chiqaradi — Uzumning o'z raqami 36 so'm,
+ya'ni **200 barobar** farq.
+
+### 7.3 Balans: sellerProfit yetkazishni oldindan ayiradi
+
+Uzum kabinetidagi **"Umumiy balans"**:
+
+```
+sotuv − komissiya − barcha xizmat to'lovlari
+902 000 − 94 100 − 314 150 = 493 750
+```
+
+`sellerProfit` ("yechib olish uchun") esa har bir dona uchun yetkazishni
+**oldindan** ayiradi (13 dona uchun 69 250), Uzum uni faqat haqiqatda
+ushlaganda yechadi (hozircha 37 250 — 9 ta to'lov, 2 ta qaytarish).
+Shuning uchun balans `payout` dan emas, tushum va komissiyadan quriladi.
+
+Xarajat satrlaridagi `logistics-volume` (va `return-logistics-volume`) —
+aynan o'sha buyurtma yetkazish to'lovi. U `sellerProfit` ichida hisoblangani
+uchun foydaga ikkinchi marta kirmasligi kerak, ammo balansdan ushlanadi —
+bazada `source: 'uzum-payout'` bilan alohida saqlanadi.
+
+### 7.4 Qaytarish `amountReturns` da
+
+Qaytarilgan satrda Uzum `amount: 0` va `amountReturns: N` yuboradi.
+`amount` bo'yicha sanalsa qaytarishlar hamma joyda 0 chiqadi —
+`OrderItem.returnedQty` ustuni aynan shu uchun bor.
