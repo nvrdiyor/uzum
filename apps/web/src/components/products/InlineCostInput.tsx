@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Check, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, groupDigits } from '@/lib/utils';
 
 const BASE =
   'w-full rounded-lg border bg-surface-2 px-2.5 py-1.5 pr-7 text-right text-sm tnum text-ink placeholder:text-muted ' +
@@ -9,8 +9,12 @@ const BASE =
 /**
  * Jadval ichida tannarxni to'g'ridan-to'g'ri tahrirlash.
  * Enter yoki fokusni yo'qotganda saqlanadi, Escape — bekor qiladi.
+ *
+ * Tannarx sahifasidagi `CostInput` dan farqi — bu yerda qiymat darhol
+ * saqlanadi va holat nishoni ko'rsatiladi. Nomlari bir xil bo'lgani
+ * chalkashtirardi, shuning uchun bu `InlineCostInput` deb ataladi.
  */
-export function CostInput({
+export function InlineCostInput({
   value,
   onSave,
   saving,
@@ -28,6 +32,7 @@ export function CostInput({
   disabled?: boolean;
 }) {
   const [raw, setRaw] = useState(value > 0 ? String(value) : '');
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     setRaw(value > 0 ? String(value) : '');
@@ -55,12 +60,16 @@ export function CostInput({
   return (
     <div className={cn('relative inline-block w-28', className)}>
       <input
-        value={raw}
+        value={focused ? raw : groupDigits(value)}
         inputMode="numeric"
         disabled={disabled || saving}
         placeholder={placeholder}
         onChange={(e) => setRaw(e.target.value.replace(/\D/g, ''))}
-        onBlur={commit}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          commit();
+        }}
         onKeyDown={onKeyDown}
         className={cn(BASE, empty ? 'border-warn/50' : 'border-line', disabled && 'opacity-60')}
       />

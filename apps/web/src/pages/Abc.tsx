@@ -68,6 +68,7 @@ registerNamespace('abc', {
     'matrix.xyz.Y': 'O‘zgaruvchan talab — mavsumiylik bor',
     'matrix.xyz.Z': 'Tartibsiz talab — prognoz qilish qiyin',
     'table.title': 'SKU bo‘yicha taqsimot',
+    'table.filteredTotal': 'Jami (filtr bo‘yicha)',
     'col.product': 'Mahsulot',
     'col.revenue': 'Tushum',
     'col.profit': 'Foyda',
@@ -119,6 +120,7 @@ registerNamespace('abc', {
     'matrix.xyz.Y': 'Переменный спрос — есть сезонность',
     'matrix.xyz.Z': 'Хаотичный спрос — прогноз затруднён',
     'table.title': 'Распределение по SKU',
+    'table.filteredTotal': 'Итого (по фильтру)',
     'col.product': 'Товар',
     'col.revenue': 'Выручка',
     'col.profit': 'Прибыль',
@@ -170,6 +172,7 @@ registerNamespace('abc', {
     'matrix.xyz.Y': 'Variable demand — seasonality present',
     'matrix.xyz.Z': 'Erratic demand — hard to forecast',
     'table.title': 'Breakdown by SKU',
+    'table.filteredTotal': 'Total (filtered)',
     'col.product': 'Product',
     'col.revenue': 'Revenue',
     'col.profit': 'Profit',
@@ -282,6 +285,21 @@ export default function Abc() {
       return true;
     });
   }, [rows, abcFilter, xyzFilter, search]);
+
+  /**
+   * Jadval oyog'idagi jami — FILTRLANGAN ro'yxat bo'yicha. Ilgari tushum,
+   * foyda va dona butun ro'yxatdan, ulush esa filtrdan olinardi: A guruhini
+   * tanlaganda pastdagi raqamlar jadvaldagi qatorlarga mos kelmasdi.
+   */
+  const filteredTotals = useMemo(
+    () => ({
+      revenue: filtered.reduce((s, r) => s + r.revenue, 0),
+      profit: filtered.reduce((s, r) => s + r.profit, 0),
+      units: filtered.reduce((s, r) => s + r.units, 0),
+      share: filtered.reduce((s, r) => s + r.share, 0),
+    }),
+    [filtered],
+  );
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages);
@@ -593,13 +611,17 @@ export default function Abc() {
                   }
                   footer={
                     <>
-                      <td className="px-4 py-3 text-sm">{t('common.total')}</td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.money(totals.revenue)}</td>
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
-                        {f.money(totals.profit)}
+                      <td className="px-4 py-3 text-sm">
+                        {filtered.length === rows.length ? t('common.total') : t('table.filteredTotal')}
                       </td>
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">{f.num(totals.units)}</td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.pct(filtered.reduce((s, r) => s + r.share, 0))}</td>
+                      <td className="tnum px-4 py-3 text-right text-sm">{f.money(filteredTotals.revenue)}</td>
+                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
+                        {f.money(filteredTotals.profit)}
+                      </td>
+                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
+                        {f.num(filteredTotals.units)}
+                      </td>
+                      <td className="tnum px-4 py-3 text-right text-sm">{f.pct(filteredTotals.share)}</td>
                       <td className="hidden px-4 py-3 md:table-cell" />
                       <td className="px-4 py-3" />
                     </>

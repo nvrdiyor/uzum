@@ -55,7 +55,7 @@ export class RouteError extends Component<Props, State> {
         <button className="btn-primary px-4 py-2 text-sm" onClick={() => window.location.reload()}>
           Qayta yuklash
         </button>
-        <p className="max-w-lg break-words text-2xs text-muted/70">{error.message}</p>
+        <p className="max-w-lg break-words text-2xs text-muted">{error.message}</p>
       </div>
     );
   }

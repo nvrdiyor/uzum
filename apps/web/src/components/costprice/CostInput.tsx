@@ -3,21 +3,10 @@
  * Fokusda toza raqam, fokussiz — mingliklar bo'yicha ajratilgan ko'rinish.
  */
 import { forwardRef, useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, groupDigits, parseAmount } from '@/lib/utils';
 
-/** Foydalanuvchi kiritgan matndan butun son ajratish */
-export function parseAmount(text: string): number {
-  const digits = text.replace(/\D/g, '');
-  if (!digits) return 0;
-  const n = Number(digits.slice(0, 12));
-  return Number.isFinite(n) ? n : 0;
-}
-
-/** 1250000 → "1 250 000" */
-export function groupDigits(value: number): string {
-  if (!value) return '';
-  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
+// Yordamchilar @/lib/utils da — InlineCostInput ham shulardan foydalanadi
+export { groupDigits, parseAmount };
 
 export interface CostInputProps {
   value: number;

@@ -677,7 +677,7 @@ export default function Landing() {
                       <span className="tnum font-display text-lg font-extrabold text-brand-ink">{n}</span>
                     </div>
                     <div className="lg:mt-5">
-                      <p className="text-2xs font-bold uppercase tracking-[0.14em] text-muted/80">
+                      <p className="text-2xs font-bold uppercase tracking-[0.14em] text-muted">
                         {t('how.step')} {n}
                       </p>
                       <h3 className="mt-1.5 font-display text-base font-bold tracking-tight text-ink">

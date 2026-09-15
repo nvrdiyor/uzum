@@ -31,7 +31,7 @@ export function LandingFooter() {
           </div>
 
           <div>
-            <p className="mb-3.5 text-2xs font-bold uppercase tracking-[0.12em] text-muted/80">{t('footer.product')}</p>
+            <p className="mb-3.5 text-2xs font-bold uppercase tracking-[0.12em] text-muted">{t('footer.product')}</p>
             <ul className="space-y-2.5">
               {PRODUCT_LINKS.map((l) => (
                 <li key={l.id}>
@@ -53,7 +53,7 @@ export function LandingFooter() {
           </div>
 
           <div>
-            <p className="mb-3.5 text-2xs font-bold uppercase tracking-[0.12em] text-muted/80">{t('footer.help')}</p>
+            <p className="mb-3.5 text-2xs font-bold uppercase tracking-[0.12em] text-muted">{t('footer.help')}</p>
             <ul className="space-y-2.5">
               <li>
                 <a

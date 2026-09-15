@@ -138,13 +138,18 @@ export function LandingHeader() {
                   {t(l.key)}
                 </button>
               ))}
-              <div className="flex items-center justify-between gap-3 pt-2">
+              {/*
+                640px dan kengda til, mavzu va "Kirish" yuqori qatorda allaqachon
+                ko'rinadi — menyuda takrorlanmasin. Menyu u yerda faqat bo'limlar
+                uchun qoladi.
+              */}
+              <div className="flex items-center justify-between gap-3 pt-2 sm:hidden">
                 <LangSwitch />
                 <IconButton onClick={toggleTheme} label={theme === 'dark' ? tc('theme.light') : tc('theme.dark')}>
                   {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </IconButton>
               </div>
-              <Link to="/login" className="block pt-1">
+              <Link to="/login" className="block pt-1 sm:hidden">
                 <Button className="w-full" icon={<LogIn className="h-4 w-4" />}>
                   {t('nav.login')}
                 </Button>

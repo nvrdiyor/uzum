@@ -44,3 +44,17 @@ export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300) 
     t = setTimeout(() => fn(...args), ms);
   };
 }
+
+/** Foydalanuvchi kiritgan matndan butun son ajratish */
+export function parseAmount(text: string): number {
+  const digits = text.replace(/D/g, '');
+  if (!digits) return 0;
+  const n = Number(digits.slice(0, 12));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** 1250000 → "1 250 000" */
+export function groupDigits(value: number): string {
+  if (!value) return '';
+  return String(Math.round(value)).replace(/B(?=(d{3})+(?!d))/g, ' ');
+}

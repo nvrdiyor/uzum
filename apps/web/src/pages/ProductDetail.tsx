@@ -34,7 +34,7 @@ import {
 } from '@/components/ui';
 import { ChartCard, DonutChart, LinesChart, TrendChart, CHART_COLORS } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
-import { CostInput } from '@/components/products/CostInput';
+import { InlineCostInput } from '@/components/products/InlineCostInput';
 import { MissingCostBanner } from '@/components/products/MissingCostBanner';
 import {
   STATE_STYLE,
@@ -451,7 +451,7 @@ export default function ProductDetail() {
         align: 'right',
         width: 150,
         render: (r) => (
-          <CostInput
+          <InlineCostInput
             value={r.purchasePrice ?? 0}
             placeholder={t('skus.costPlaceholder')}
             saving={savingSku === r.id}

@@ -44,23 +44,30 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         {/* Yumshoq gradient — rasm kartochkaga singib ketadi */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-surface via-surface/35 to-transparent" />
 
-        <span
-          className={cn(
-            'chip absolute left-3 top-3 border border-line bg-surface/90 backdrop-blur',
-            style.text,
-          )}
-        >
-          <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
-          {t(`state.${state}`)}
-        </span>
-
-        {product.rating > 0 ? (
-          <span className="chip absolute right-3 top-3 border border-line bg-surface/90 text-ink backdrop-blur">
-            <Star className="h-3 w-3 text-warn" />
-            <span className="tnum">{f.num(product.rating, 1)}</span>
-            <span className="text-muted">· {f.num(product.reviewsCount)}</span>
+        {/*
+          Ilgari ikkala nishon ham alohida absolute edi — tor kartochkada
+          (1280px da 4 ustun) ular ustma-ust tushardi. Endi bitta qatorda:
+          holat nishoni qisqaradi, reyting esa to'liq qoladi.
+        */}
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          <span
+            className={cn(
+              'chip min-w-0 border border-line bg-surface/90 backdrop-blur',
+              style.text,
+            )}
+          >
+            <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', style.dot)} />
+            <span className="truncate">{t(`state.${state}`)}</span>
           </span>
-        ) : null}
+
+          {product.rating > 0 ? (
+            <span className="chip shrink-0 border border-line bg-surface/90 text-ink backdrop-blur">
+              <Star className="h-3 w-3 text-warn" />
+              <span className="tnum">{f.num(product.rating, 1)}</span>
+              <span className="text-muted">· {f.num(product.reviewsCount)}</span>
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Mazmun */}
