@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -6,6 +6,8 @@ import { Toaster } from '@/components/ui';
 import { useSession, useNeedsOnboarding } from '@/store/session';
 import { useUi } from '@/store/ui';
 import { useLangStore } from '@/i18n';
+import { lazyPage } from '@/lib/lazyPage';
+import { RouteError } from '@/components/RouteError';
 import '@/i18n/common';
 
 // Ochiq sahifalar — darhol yuklanadi (birinchi ochilishda kutish bo'lmasin;
@@ -17,34 +19,34 @@ import NotFound from '@/pages/NotFound';
 import AdminLogin from '@/pages/AdminLogin';
 
 // Ichki sahifalar — kodni bo'lib yuklash
-const Onboarding = lazy(() => import('@/pages/Onboarding'));
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
-const Sales = lazy(() => import('@/pages/Sales'));
-const Funnel = lazy(() => import('@/pages/Funnel'));
-const SalesStock = lazy(() => import('@/pages/SalesStock'));
-const Reports = lazy(() => import('@/pages/Reports'));
-const Planner = lazy(() => import('@/pages/Planner'));
-const Products = lazy(() => import('@/pages/Products'));
-const ProductDetail = lazy(() => import('@/pages/ProductDetail'));
-const Abc = lazy(() => import('@/pages/Abc'));
-const CostPrice = lazy(() => import('@/pages/CostPrice'));
-const Illiquid = lazy(() => import('@/pages/Illiquid'));
-const Stocks = lazy(() => import('@/pages/Stocks'));
-const WarehousePage = lazy(() => import('@/pages/Warehouse'));
-const Shipments = lazy(() => import('@/pages/Shipments'));
-const Losses = lazy(() => import('@/pages/Losses'));
-const Returns = lazy(() => import('@/pages/Returns'));
-const Storage = lazy(() => import('@/pages/Storage'));
-const Finance = lazy(() => import('@/pages/Finance'));
-const UnitEconomics = lazy(() => import('@/pages/UnitEconomics'));
-const Expenses = lazy(() => import('@/pages/Expenses'));
-const Calculator = lazy(() => import('@/pages/Calculator'));
-const ImportCalculator = lazy(() => import('@/pages/ImportCalculator'));
-const Reviews = lazy(() => import('@/pages/Reviews'));
-const Referral = lazy(() => import('@/pages/Referral'));
-const Pricing = lazy(() => import('@/pages/Pricing'));
-const Settings = lazy(() => import('@/pages/Settings'));
-const Admin = lazy(() => import('@/pages/Admin'));
+const Onboarding = lazyPage(() => import('@/pages/Onboarding'));
+const Dashboard = lazyPage(() => import('@/pages/Dashboard'));
+const Sales = lazyPage(() => import('@/pages/Sales'));
+const Funnel = lazyPage(() => import('@/pages/Funnel'));
+const SalesStock = lazyPage(() => import('@/pages/SalesStock'));
+const Reports = lazyPage(() => import('@/pages/Reports'));
+const Planner = lazyPage(() => import('@/pages/Planner'));
+const Products = lazyPage(() => import('@/pages/Products'));
+const ProductDetail = lazyPage(() => import('@/pages/ProductDetail'));
+const Abc = lazyPage(() => import('@/pages/Abc'));
+const CostPrice = lazyPage(() => import('@/pages/CostPrice'));
+const Illiquid = lazyPage(() => import('@/pages/Illiquid'));
+const Stocks = lazyPage(() => import('@/pages/Stocks'));
+const WarehousePage = lazyPage(() => import('@/pages/Warehouse'));
+const Shipments = lazyPage(() => import('@/pages/Shipments'));
+const Losses = lazyPage(() => import('@/pages/Losses'));
+const Returns = lazyPage(() => import('@/pages/Returns'));
+const Storage = lazyPage(() => import('@/pages/Storage'));
+const Finance = lazyPage(() => import('@/pages/Finance'));
+const UnitEconomics = lazyPage(() => import('@/pages/UnitEconomics'));
+const Expenses = lazyPage(() => import('@/pages/Expenses'));
+const Calculator = lazyPage(() => import('@/pages/Calculator'));
+const ImportCalculator = lazyPage(() => import('@/pages/ImportCalculator'));
+const Reviews = lazyPage(() => import('@/pages/Reviews'));
+const Referral = lazyPage(() => import('@/pages/Referral'));
+const Pricing = lazyPage(() => import('@/pages/Pricing'));
+const Settings = lazyPage(() => import('@/pages/Settings'));
+const Admin = lazyPage(() => import('@/pages/Admin'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,7 +120,9 @@ export default function App() {
       */}
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Bootstrap />
-        <Suspense fallback={<FullPageLoader />}>
+        {/* Sahifa yuklanmasa oq ekran emas, tushunarli xabar chiqadi */}
+        <RouteError>
+          <Suspense fallback={<FullPageLoader />}>
           <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -160,7 +164,8 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
           </Routes>
-        </Suspense>
+          </Suspense>
+        </RouteError>
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

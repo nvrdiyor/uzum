@@ -193,9 +193,18 @@ server {
     index index.html;
     client_max_body_size 12m;
 
-    # SPA marshrutlash
+    # SPA marshrutlash.
+    # index.html HECH QACHON keshlanmaydi: u fayl nomlaridagi xeshlarni
+    # ko'rsatib turadi, har chiqarilishda xeshlar o'zgaradi. Eski index.html
+    # keshdan olinsa, brauzer endi mavjud bo'lmagan fayllarni so'raydi va
+    # ichki sahifalar ochilmay qo'yadi.
     location / {
         try_files \$uri \$uri/ /index.html;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, must-revalidate";
     }
 
     location /api/ {
@@ -212,9 +221,13 @@ server {
         proxy_pass http://127.0.0.1:4000/health;
     }
 
+    # Xeshlangan fayllar uzoq keshlanadi (nomi o'zgarmasa — mazmuni ham o'zgarmaydi)
     location ~* \.(js|css|svg|woff2|png|jpg|webp)\$ {
         expires 30d;
         add_header Cache-Control "public, immutable";
+        # Eski chunk so'ralsa index.html emas, aniq 404 qaytsin — shunda sayt
+        # buni tushunib o'zini yangilaydi (apps/web/src/lib/lazyPage.tsx)
+        try_files \$uri =404;
     }
 }
 NGINX
