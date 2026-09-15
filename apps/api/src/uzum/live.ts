@@ -171,7 +171,10 @@ const KEYS = {
   skuId: ['skuId', 'id', 'skuID', 'sku_id'],
   // Moliyaviy javobda buyurtma pozitsiyasi "skuTitle" maydonida sotuvchi kodini
   // (masalan LOOTBOX-LBTSK20-ЧЕРН) yuboradi — katalogda ham shu kodni asosiy qilamiz
-  skuCode: ['sellerItemCode', 'article', 'sku', 'skuCode', 'vendorCode', 'skuTitle', 'barcode'],
+  // Katalogda sotuvchi kodi `skuFullTitle` da keladi (masalan "LOOTBOX-LBTSK20-ЧЕРН"),
+  // moliyaviy javobda esa xuddi shu qiymat `skuTitle` maydonida bo'ladi — buyurtmalar
+  // katalogga aynan shu kod orqali bog'lanadi.
+  skuCode: ['skuFullTitle', 'sellerItemCode', 'article', 'sku', 'skuCode', 'vendorCode', 'skuTitle', 'barcode'],
   skuTitle: ['skuTitle', 'title', 'name', 'productTitle'],
   barcode: ['barcode', 'barCode', 'ean'],
   price: ['price', 'sellPrice', 'sellerPrice', 'currentPrice'],

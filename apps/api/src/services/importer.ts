@@ -304,12 +304,20 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
 
     if (pending.length === 0) continue;
 
+    // Mavjud SKU'ni AVVAL barqaror `uzumSkuId` bo'yicha qidiramiz: Uzum SKU kodini
+    // (masalan shtrix-koddan sotuvchi kodiga) o'zgartirsa ham yozuv dublikat bo'lmaydi.
     const codes = pending.map((x) => skuCode(x.sku));
+    const uzumIds = pending.map((x) => String(x.sku.id));
     const existingSkus = await prisma.sku.findMany({
-      where: { storeId, sku: { in: codes } },
-      select: { id: true, sku: true },
+      where: { storeId, OR: [{ sku: { in: codes } }, { uzumSkuId: { in: uzumIds } }] },
+      select: { id: true, sku: true, uzumSkuId: true },
     });
-    const bySku = new Map(existingSkus.map((s) => [s.sku, s.id]));
+    const bySku = new Map<string, string>();
+    const byUzumId = new Map<string, string>();
+    for (const row of existingSkus) {
+      bySku.set(row.sku, row.id);
+      if (row.uzumSkuId) byUzumId.set(row.uzumSkuId, row.id);
+    }
 
     const skuCreates: Prisma.SkuCreateManyInput[] = [];
 
@@ -331,10 +339,11 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         archived: false,
       };
 
-      const current = bySku.get(code);
+      const current = byUzumId.get(String(sku.id)) ?? bySku.get(code);
       if (current) {
-        // purchasePrice / extraCost — foydalanuvchi kiritadigan qiymatlar, tegilmaydi
-        await prisma.sku.update({ where: { id: current }, data: common });
+        // purchasePrice / extraCost — foydalanuvchi kiritadigan qiymatlar, tegilmaydi.
+        // SKU kodi o'zgargan bo'lsa (Uzum boshqa maydon bera boshlasa) — yangilaymiz.
+        await prisma.sku.update({ where: { id: current }, data: { ...common, sku: code } });
         res.updated += 1;
       } else {
         skuCreates.push({
@@ -653,6 +662,9 @@ export async function upsertOrders(
       await createManyChunked(itemCreates, (data) => prisma.orderItem.createMany({ data }));
     }
   }
+
+  // Kod o'zgargani sababli bog'lanmay qolgan eski pozitsiyalarni qayta bog'laymiz
+  await relinkOrphanItems(storeId);
 
   // Uzum bergan tannarxni bo'sh SKU'larga yozamiz
   for (const [skuId, value] of costFromUzum) {
@@ -980,6 +992,36 @@ export async function upsertReviews(storeId: string, reviews: UzumReview[]): Pro
  * `commission` kiritilmagan — u har bir buyurtma pozitsiyasidan olinadi.
  * `storage` kiritilmagan — u `StorageFee` jadvalida alohida yuritiladi.
  */
+/**
+ * `skuId` bo'sh qolgan buyurtma pozitsiyalarini SKU kodi bo'yicha qayta bog'laydi.
+ *
+ * Bu kerak bo'ladi, chunki katalog va buyurtmalar turli vaqtda sinxronlanadi yoki
+ * Uzum SKU kodini o'zgartiradi. Bog'lanmagan pozitsiya = mahsulot "hech qachon
+ * sotilmagan" deb ko'rinadi (nolikvid, ABC va rejalashtiruvchi noto'g'ri ishlaydi).
+ */
+export async function relinkOrphanItems(storeId: string): Promise<number> {
+  const orphans = await prisma.orderItem.findMany({
+    where: { skuId: null, order: { storeId } },
+    select: { id: true, skuCode: true },
+  });
+  if (orphans.length === 0) return 0;
+
+  const refs = await getSkuRefs(storeId);
+  let linked = 0;
+
+  for (const batch of chunked(orphans)) {
+    for (const item of batch) {
+      const code = text(item.skuCode);
+      const ref = code ? refs.get(code) : undefined;
+      if (!ref) continue;
+      await prisma.orderItem.update({ where: { id: item.id }, data: { skuId: ref.id } });
+      linked += 1;
+    }
+  }
+
+  return linked;
+}
+
 export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'logistics', 'other'];
 
 /**
