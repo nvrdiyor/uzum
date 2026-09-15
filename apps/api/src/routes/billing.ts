@@ -618,16 +618,17 @@ router.post(
   '/webhook/click',
   ah(async (req, res) => {
     const body = asRecord(req.body);
-    const invoice = await requireInvoice(extractInvoiceId(body));
 
+    // Imzo AVVAL tekshiriladi — imzosiz so'rov bazaga umuman yetib bormasin
     if (!verifyClickSign(body)) throw AppError.forbidden('Imzo tekshiruvidan o‘tmadi');
+
+    const invoice = await requireInvoice(extractInvoiceId(body));
 
     // To'langan summa hisob-fakturaga mos kelishi shart
     const clickAmount = asNumber(body.amount);
-    const clickInvoice = await requireInvoice(extractInvoiceId(body));
-    if (clickAmount !== null && Math.round(clickInvoice.amount) !== Math.round(clickAmount)) {
+    if (clickAmount !== null && Math.round(invoice.amount) !== Math.round(clickAmount)) {
       throw AppError.badRequest('To‘lov summasi hisob-fakturaga mos kelmadi', {
-        expected: Math.round(clickInvoice.amount),
+        expected: Math.round(invoice.amount),
         received: Math.round(clickAmount),
       });
     }
