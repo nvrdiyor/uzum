@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, EmptyState, SkeletonRows } from './primitives';
@@ -43,6 +43,35 @@ export interface DataTableProps<T> {
   stickyFirstColumn?: boolean;
 }
 
+/**
+ * Jadval o'ngga suriladimi — shunga qarab chetida yumshoq soya chiqadi.
+ * Ilgari ustunlar chetda kesilib qolardi va foydalanuvchi ularni umuman
+ * ko'rmasdi.
+ */
+function useEdgeScroll() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      setEdges({ left: el.scrollLeft > 4, right: max > 4 && el.scrollLeft < max - 4 });
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  });
+
+  return { ref, edges };
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -59,6 +88,7 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const { ref: scrollRef, edges } = useEdgeScroll();
 
   const sorted = useMemo(() => {
     if (!localSort || !sortKey) return rows;
@@ -91,8 +121,14 @@ export function DataTable<T>({
   }
 
   return (
-    <div className={cn('w-full', className)}>
-      <div className="overflow-x-auto">
+    <div className={cn('relative w-full', className)}>
+      {edges.right ? (
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-10 bg-gradient-to-l from-surface to-transparent" />
+      ) : null}
+      {edges.left ? (
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-30 w-8 bg-gradient-to-r from-surface to-transparent" />
+      ) : null}
+      <div ref={scrollRef} className="overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
             <tr>
@@ -103,8 +139,8 @@ export function DataTable<T>({
                   className={cn(
                     'table-head border-b border-line',
                     cellPad,
-                    c.align === 'right' && 'text-right',
-                    c.align === 'center' && 'text-center',
+                    c.align === 'right' && 'whitespace-nowrap text-right',
+                    c.align === 'center' && 'whitespace-nowrap text-center',
                     !c.align && 'text-left',
                     c.hideOnMobile && 'hidden md:table-cell',
                     stickyFirstColumn && ci === 0 && 'sticky left-0 z-20 bg-surface-2',
@@ -153,8 +189,10 @@ export function DataTable<T>({
                     className={cn(
                       cellPad,
                       'align-middle text-ink-soft',
-                      c.align === 'right' && 'text-right tnum',
-                      c.align === 'center' && 'text-center',
+                      // Raqamlar hech qachon qatorga bo'linmaydi: "142 050 so'm"
+                      // uch qatorga tushib ketsa jadval o'qilmay qoladi
+                      c.align === 'right' && 'tnum whitespace-nowrap text-right',
+                      c.align === 'center' && 'whitespace-nowrap text-center',
                       c.hideOnMobile && 'hidden md:table-cell',
                       stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface',
                       c.className,

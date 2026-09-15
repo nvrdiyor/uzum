@@ -63,6 +63,7 @@ registerNamespace('productDetail', {
     'kpi.revenue': 'Tushum',
     'kpi.profit': 'Sof foyda',
     'kpi.roi': 'ROI',
+    'kpi.roiNoCost': 'Tannarx kiritilmagan',
     'kpi.margin': 'Marja',
     'info.price': 'Narx',
     'info.cost': 'Tannarx',
@@ -154,6 +155,7 @@ registerNamespace('productDetail', {
     'kpi.revenue': 'Выручка',
     'kpi.profit': 'Чистая прибыль',
     'kpi.roi': 'ROI',
+    'kpi.roiNoCost': 'Себестоимость не заполнена',
     'kpi.margin': 'Маржа',
     'info.price': 'Цена',
     'info.cost': 'Себестоимость',
@@ -245,6 +247,7 @@ registerNamespace('productDetail', {
     'kpi.revenue': 'Revenue',
     'kpi.profit': 'Net profit',
     'kpi.roi': 'ROI',
+    'kpi.roiNoCost': 'Cost price not set',
     'kpi.margin': 'Margin',
     'info.price': 'Price',
     'info.cost': 'Cost price',
@@ -595,7 +598,9 @@ export default function ProductDetail() {
             />
             <StatCard
               label={t('kpi.roi')}
-              value={f.pct(product.roi)}
+              /* Tannarx kiritilmagan bo'lsa ROI hisoblanmaydi — "0,0%" chalg'itadi */
+              value={product.roi > 0 ? f.pct(product.roi) : '—'}
+              hint={product.roi > 0 ? undefined : t('kpi.roiNoCost')}
               icon={<Layers className="h-5 w-5" />}
               tone="info"
             />
@@ -610,7 +615,9 @@ export default function ProductDetail() {
           {/* Rasm + asosiy ko'rsatkichlar */}
           <Card className="p-5">
             <div className="flex flex-col gap-5 lg:flex-row">
-              <div className="w-full shrink-0 lg:w-56">
+              {/* Rasm mobil ekranda ham o'lchovli bo'lsin — aks holda bo'sh kvadrat
+                  butun ekranni egallardi */}
+              <div className="w-full max-w-[200px] shrink-0 sm:max-w-[224px] lg:w-56">
                 <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-surface-2">
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
