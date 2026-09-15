@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { APP, planPrice, type InvoiceRow, type PlanPublic } from '@savdoiq/shared';
 import { Badge, Button, Modal, Segmented, toast } from '@/components/ui';
+import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';
 import { api } from '@/lib/api';
 import { copyToClipboard, cn } from '@/lib/utils';
 import { useFormat, useT } from '@/i18n';
@@ -32,7 +33,7 @@ const PROVIDERS: { value: Provider; icon: typeof Wallet }[] = [
   { value: 'manual', icon: Landmark },
 ];
 
-const BOT_URL = `https://t.me/${APP.supportBot.replace('@', '')}`;
+const BOT_URL = BOT_URL_SHARED;
 const PAY_CARD = import.meta.env.VITE_PAY_CARD as string | undefined;
 const PAY_CARD_HOLDER = import.meta.env.VITE_PAY_CARD_HOLDER as string | undefined;
 

@@ -16,11 +16,12 @@ import {
 } from 'lucide-react';
 import { APP, SYNC_STEPS, formatDuration, type SyncStatus } from '@savdoiq/shared';
 import { Button, ErrorState, ProgressRing, Skeleton } from '@/components/ui';
+import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';
 import { api, ApiError } from '@/lib/api';
 import { useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
-const SUPPORT_URL = `https://t.me/${APP.supportBot.replace('@', '')}`;
+const SUPPORT_URL = BOT_URL_SHARED;
 const POLL_MS = 4000;
 
 /**

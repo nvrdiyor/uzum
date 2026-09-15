@@ -1,16 +1,17 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { BOT_URL, BOT_USERNAME } from '@/lib/bot';
 import { cn } from '@/lib/utils';
 
 /** Landing sahifasining umumiy "atomlari": animatsiya, sarlavha, aurora fon, logo. */
 
 export const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-/** Telegram bot foydalanuvchi nomi (env: VITE_BOT_USERNAME) */
-export const BOT_USERNAME: string = String(import.meta.env.VITE_BOT_USERNAME ?? '').replace(/^@/, '');
+export { BOT_USERNAME };
 
-export const BOT_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : 'https://t.me';
+/** Landing tugmalari uchun bot havolasi */
+export const BOT_LINK = BOT_URL;
 
 /** Scroll'da yumshoq "pastdan yuqoriga" chiqish */
 export function FadeUp({

@@ -16,6 +16,7 @@ import { prisma } from '@savdoiq/db';
 import { z } from 'zod';
 import {
   DEFAULTS,
+  IMPORT_CALC_FALLBACK,
   addDays,
   calcImportPrice,
   calcUnitEconomics,
@@ -529,16 +530,7 @@ router.delete(
 // ─────────────────────── Xitoydan import (PDD) kalkulyatori ───────────────────────
 
 /** Ma'lumot yetarli bo'lmaganda ishlatiladigan bozor bo'yicha odatiy qiymatlar */
-const IMPORT_FALLBACK = {
-  weightGr: 300,
-  pddPrice: 10,
-  cargoPerKg: 80_000,
-  commissionPct: 30,
-  adsPct: 10,
-  deliveryFee: 6_000,
-  profitMultiplier: 2,
-  roundStep: 1_000,
-} as const;
+const IMPORT_FALLBACK = IMPORT_CALC_FALLBACK;
 
 /** Haqiqiy buyurtmalardan komissiya oynasi (kun) */
 const IMPORT_STATS_DAYS = 90;

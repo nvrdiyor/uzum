@@ -10,6 +10,7 @@ import { ApiKeyStep } from '@/components/onboarding/ApiKeyStep';
 import { SyncStep } from '@/components/onboarding/SyncStep';
 import { useSession } from '@/store/session';
 import { registerNamespace, useLangStore, useT, type Lang } from '@/i18n';
+import { BOT_URL as BOT_URL_SHARED, BOT_HANDLE } from '@/lib/bot';
 import { cn } from '@/lib/utils';
 
 registerNamespace('onboarding', {
@@ -322,7 +323,7 @@ type UiStep = 'welcome' | 'company' | 'api_key' | 'syncing';
 
 const LANGS: Lang[] = ['uz', 'ru', 'en'];
 
-const SUPPORT_URL = `https://t.me/${APP.supportBot.replace('@', '')}`;
+const SUPPORT_URL = BOT_URL_SHARED;
 
 /** Onboarding bosqichini progress indikatoridagi qadamga bog'laydi */
 const STEPPER_KEY: Record<UiStep, OnboardStepKey> = {
@@ -485,7 +486,7 @@ export default function Onboarding() {
         ) : null}
 
         <p className="mt-8 text-center text-2xs text-muted">
-          {APP.name} · {APP.supportBot}
+          {APP.name} · {BOT_HANDLE}
         </p>
       </main>
     </div>

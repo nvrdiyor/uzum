@@ -583,8 +583,21 @@ export interface FinanceResponse {
   revenue: number;
   payout: number;
   cogs: number;
+  /** Tushum − tannarx */
   grossProfit: number;
+  /**
+   * Sof foyda — SOTILGAN TOVARLAR bo'yicha: tushum − tannarx − komissiya −
+   * mijozga yetkazish − soliq. Boshqaruv panelidagi "Sof foyda" bilan bir xil.
+   */
   netProfit: number;
+  /**
+   * Davr foydasi — sof foydadan davr xarajatlari ayrilgandan keyin:
+   * omborga logistika, reklama, saqlash, ish haqi va boshqalar.
+   * Bu — yakuniy natija.
+   */
+  operatingProfit: number;
+  /** Sof foydaga kirmagan davr xarajatlari yig'indisi */
+  periodExpenses: number;
   expenses: { category: ExpenseCategory; amount: number; share: number }[];
   expensesTotal: number;
   taxAmount: number;

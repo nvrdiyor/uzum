@@ -64,6 +64,7 @@ const EMPTY_AGG: SalesAgg = {
   orders: 0,
   returns: 0,
   lastSaleAt: null,
+  firstSaleAt: null,
 };
 
 type SortValue = number | string;
@@ -134,7 +135,7 @@ router.get(
       if (!matches(info, search)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)));
+      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
       if (onlyStatus && state.status !== onlyStatus) continue;
 
       rows.push({
@@ -220,7 +221,7 @@ router.get(
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       const agg = sales.get(skuId) ?? EMPTY_AGG;
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)));
+      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
       if (onlyStatus && state.status !== onlyStatus) continue;
       // Sotuvi ham, qoldig'i ham bo'lmagan SKU jadvalni faqat cho'zadi
       if (agg.units === 0 && st.total === 0 && !onlyStatus) continue;
@@ -373,7 +374,7 @@ router.get(
       if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
 
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.own, avg, daysSince(lastSale.get(skuId)));
+      const state = stockState(st.own, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
       const volumeL = round(st.own * info.volumeL, 2);
       const costValue = round(st.own * (info.purchasePrice + info.extraCost));
 

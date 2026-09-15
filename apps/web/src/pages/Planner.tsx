@@ -279,9 +279,14 @@ export default function Planner() {
     return () => clearTimeout(id);
   }, [coverInput]);
 
+  /**
+   * Filtr serverga ham yuboriladi: standart ko'rinishda server "harakat kerak
+   * emas" qatorlarini qaytarmaydi, shuning uchun o'sha yorliq faqat mahalliy
+   * filtr bilan bo'sh ko'rinardi.
+   */
   const planner = useQuery({
-    queryKey: ['planner', q, cover, lead],
-    queryFn: () => api.get<PlannerResponse>('/planner', { ...q, cover, lead }),
+    queryKey: ['planner', q, cover, lead, filter],
+    queryFn: () => api.get<PlannerResponse>('/planner', { ...q, cover, lead, status: filter }),
     placeholderData: (prev) => prev,
   });
 
@@ -465,6 +470,10 @@ export default function Planner() {
       ),
     },
   ];
+
+  /** Jamlanmada ham nol o'rniga "—" — qatorlar bilan bir xil ko'rinish */
+  const totalNum = (v: number) => (v > 0 ? f.num(v) : '—');
+  const totalMoney = (v: number) => (v > 0 ? f.money(v) : '—');
 
   const visibleTotals = useMemo(
     () => ({
@@ -679,12 +688,12 @@ export default function Planner() {
                       <td className="hidden px-3 py-2.5 md:table-cell" />
                       <td className="hidden px-3 py-2.5 md:table-cell" />
                       <td className="hidden px-3 py-2.5 md:table-cell" />
-                      <td className="tnum px-3 py-2.5 text-right text-brand">{f.num(visibleTotals.qty)}</td>
+                      <td className="tnum px-3 py-2.5 text-right text-brand">{totalNum(visibleTotals.qty)}</td>
                       <td className="tnum hidden px-3 py-2.5 text-right md:table-cell">
-                        {f.money(visibleTotals.cost)}
+                        {totalMoney(visibleTotals.cost)}
                       </td>
                       <td className="tnum hidden px-3 py-2.5 text-right text-danger md:table-cell">
-                        {f.money(visibleTotals.lost)}
+                        {totalMoney(visibleTotals.lost)}
                       </td>
                       <td className="px-3 py-2.5" />
                     </>

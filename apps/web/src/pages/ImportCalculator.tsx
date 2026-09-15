@@ -20,6 +20,7 @@ import {
   maxCostForPrice,
   maxPddPrice,
   type ImportCalcInput,
+  IMPORT_CALC_FALLBACK,
   type ImportDefaults,
 } from '@savdoiq/shared';
 import { api } from '@/lib/api';
@@ -316,6 +317,7 @@ export default function ImportCalculator() {
   const {
     data: defaults,
     isLoading,
+    isError,
     refetch,
     isFetching,
   } = useQuery({
@@ -323,6 +325,15 @@ export default function ImportCalculator() {
     queryFn: () => api.get<ImportDefaults>('/unit/import-defaults'),
     staleTime: 30 * 60_000,
   });
+
+  /**
+   * So'rov xato bo'lsa ham kalkulyator ishlashi kerak: qoralama ham, server
+   * qiymatlari ham bo'lmasa umumiy zaxira qiymatlar bilan ochiladi.
+   * Aks holda sahifa cheksiz "yuklanmoqda" holatida qolardi.
+   */
+  useEffect(() => {
+    if (isError) setDraft((prev) => prev ?? { ...IMPORT_CALC_FALLBACK });
+  }, [isError]);
 
   // Boshlang'ich qiymatlar kelganda formani to'ldiramiz (saqlangan qoralama ustuvor)
   useEffect(() => {
@@ -349,7 +360,7 @@ export default function ImportCalculator() {
     return { maxCost, cargo, yuan: maxPddPrice(maxCost, cargo, draft.rate) };
   }, [result, draft, reversePrice]);
 
-  if (isLoading || !draft || !result) {
+  if ((isLoading && !draft) || !draft || !result) {
     return (
       <>
         <PageHeader icon={<Ship className="h-5 w-5" />} title={t('title')} description={t('subtitle')} />

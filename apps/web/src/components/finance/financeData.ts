@@ -74,7 +74,7 @@ export function periodDays(from: string, to: string): number {
 
 // ─────────────────────────── P&L (foyda va zarar) ───────────────────────────
 
-export type PnlKind = 'income' | 'cost' | 'total';
+export type PnlKind = 'income' | 'cost' | 'subtotal' | 'total';
 
 export interface PnlLine {
   id: string;
@@ -106,6 +106,9 @@ const KNOWN_PNL_IDS = new Set([
   'other',
   'grossProfit',
   'netProfit',
+  'operatingProfit',
+  'delivery',
+  'itemOther',
 ]);
 
 export function isKnownPnlId(id: string): boolean {
@@ -114,7 +117,8 @@ export function isKnownPnlId(id: string): boolean {
 
 function guessKind(id: string): PnlKind {
   const key = id.toLowerCase();
-  if (key.includes('net') || key.includes('gross') || key === 'total' || key === 'profit') return 'total';
+  if (key === 'operatingprofit' || key === 'total' || key === 'profit') return 'total';
+  if (key.includes('net') || key.includes('gross')) return 'subtotal';
   if (key === 'revenue' || key === 'income' || key === 'payout' || key === 'sales') return 'income';
   return 'cost';
 }
@@ -134,7 +138,9 @@ function toPnlLine(v: unknown, index: number): PnlLine | null {
   const previous = num(v.previous ?? v.prev);
   const kindRaw = str(v.kind);
   const kind: PnlKind =
-    kindRaw === 'income' || kindRaw === 'cost' || kindRaw === 'total' ? kindRaw : guessKind(id);
+    kindRaw === 'income' || kindRaw === 'cost' || kindRaw === 'subtotal' || kindRaw === 'total'
+      ? kindRaw
+      : guessKind(id);
   return {
     id,
     label,
@@ -163,7 +169,7 @@ export function normalizePnl(raw: unknown): PnlData {
   const lines = source
     .map(toPnlLine)
     .filter((l): l is PnlLine => l !== null)
-    .filter((l) => l.current !== 0 || l.previous !== 0 || l.kind === 'total');
+    .filter((l) => l.current !== 0 || l.previous !== 0 || l.kind === 'total' || l.kind === 'subtotal');
 
   const currency = isRecord(raw) && typeof raw.currency === 'string' ? raw.currency : null;
   return { lines, currency };

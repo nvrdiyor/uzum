@@ -26,13 +26,14 @@ import {
   Toggle,
   toast,
 } from '@/components/ui';
+import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';
 import { api } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { asItems, errText, type NotificationSettings } from './types';
 
-const BOT_URL = `https://t.me/${APP.supportBot.replace('@', '')}`;
+const BOT_URL = BOT_URL_SHARED;
 
 const LEVEL_ICON = {
   info: Info,

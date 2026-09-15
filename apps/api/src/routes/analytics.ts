@@ -252,7 +252,7 @@ function buildInsights(inp: InsightInput): Insight[] {
     const info = inp.catalog.get(skuId);
     if (!info || st.total <= 0) continue;
     const avg = inp.avgDaily.get(skuId) ?? 0;
-    const state = stockState(st.total, avg, daysSince(inp.lastSale.get(skuId)));
+    const state = stockState(st.total, avg, daysSince(inp.lastSale.get(skuId)), daysSince(info.createdAt));
     if (state.daysLeft !== null && state.daysLeft <= STOCK_THRESHOLDS.low && (state.status === 'critical' || state.status === 'low')) {
       ending.push({ info, daysLeft: state.daysLeft, total: st.total });
     }
@@ -304,7 +304,11 @@ function buildInsights(inp: InsightInput): Insight[] {
     if (st.total <= 0) continue;
     const info = inp.catalog.get(skuId);
     if (!info) continue;
-    if (daysSince(inp.lastSale.get(skuId)) < STOCK_THRESHOLDS.deadDays) continue;
+    // Hech sotilmagan yangi tovar nolikvid emas — katalogdagi yoshi ham hisobga olinadi
+    const idle = inp.lastSale.has(skuId)
+      ? daysSince(inp.lastSale.get(skuId))
+      : daysSince(info.createdAt);
+    if (idle < STOCK_THRESHOLDS.deadDays) continue;
     frozen += st.total * (info.purchasePrice + info.extraCost);
     frozenUnits += st.total;
     frozenSkus += 1;

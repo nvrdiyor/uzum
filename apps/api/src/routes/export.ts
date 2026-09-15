@@ -477,7 +477,7 @@ router.get(
         const st = stocks.get(info.id);
         const avg = avgDaily.get(info.id) ?? 0;
         const total = st?.total ?? 0;
-        const state = stockState(total, avg, daysSince(lastSale.get(info.id)));
+        const state = stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt));
         return {
           info,
           sold: agg?.units ?? 0,
@@ -734,7 +734,7 @@ router.get(
           costValue: total * (info.purchasePrice + info.extraCost),
           retailValue: total * info.price,
           avg,
-          state: stockState(total, avg, daysSince(lastSale.get(info.id))),
+          state: stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt)),
         };
       })
       .filter((r) => r.total > 0 || r.reserved > 0 || r.inTransit > 0)

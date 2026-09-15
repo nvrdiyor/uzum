@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Calendar, Check, ChevronDown, Store } from 'lucide-react';
-import { presetPeriod } from '@savdoiq/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Calendar, Check, ChevronDown, Lock, Store } from 'lucide-react';
+import { getPlan, presetPeriod, toISODate } from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
-import { useStores } from '@/store/session';
+import { usePlan, useStores } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,13 @@ const PRESETS: PresetKey[] = [
   'lastMonth',
   'thisYear',
 ];
+
+/** Davr necha kunni qamraydi (ikkala chekka ham kiradi) */
+function presetSpan(p: PresetKey): number {
+  if (p === 'custom') return 0;
+  const { from, to } = presetPeriod(p);
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+}
 
 function useOutsideClose(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -36,9 +43,22 @@ export function PeriodPicker({ className }: { className?: string }) {
   const t = useT('common');
   const f = useFormat();
   const { preset, period, setPreset, setCustomPeriod } = useUi();
+  const plan = usePlan();
   const ref = useOutsideClose(() => setOpen(false));
   const [from, setFrom] = useState(period.from);
   const [to, setTo] = useState(period.to);
+
+  /**
+   * Tarif tarix chuqurligi: server bundan oldingi sanalarni baribir qaytarmaydi,
+   * shuning uchun tanlashning ham iloji bo'lmaydi — foydalanuvchi bo'sh jadval
+   * o'rniga sababni ko'radi.
+   */
+  const historyDays = getPlan(plan).limits.historyDays;
+  const earliest = useMemo(
+    () => toISODate(new Date(Date.now() - historyDays * 86_400_000)),
+    [historyDays],
+  );
+  const today = useMemo(() => toISODate(new Date()), []);
 
   useEffect(() => {
     setFrom(period.from);
@@ -61,23 +81,39 @@ export function PeriodPicker({ className }: { className?: string }) {
       {open ? (
         <div className="absolute right-0 top-12 z-50 w-[300px] rounded-2xl border border-line bg-surface p-3 shadow-pop">
           <div className="grid grid-cols-2 gap-1.5">
-            {PRESETS.map((p) => (
-              <button
-                key={p}
-                onClick={() => {
-                  setPreset(p);
-                  setOpen(false);
-                }}
-                className={cn(
-                  'flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
-                  preset === p ? 'bg-brand/12 text-brand' : 'text-ink-soft hover:bg-surface-2',
-                )}
-              >
-                {t(`period.${p}`)}
-                {preset === p ? <Check className="h-3 w-3" /> : null}
-              </button>
-            ))}
+            {PRESETS.map((p) => {
+              const locked = presetSpan(p) > historyDays;
+              return (
+                <button
+                  key={p}
+                  disabled={locked}
+                  title={locked ? t('period.locked') : undefined}
+                  onClick={() => {
+                    if (locked) return;
+                    setPreset(p);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
+                    locked
+                      ? 'cursor-not-allowed text-muted opacity-60'
+                      : preset === p
+                        ? 'bg-brand/12 text-brand'
+                        : 'text-ink-soft hover:bg-surface-2',
+                  )}
+                >
+                  {t(`period.${p}`)}
+                  {locked ? (
+                    <Lock className="h-3 w-3" />
+                  ) : preset === p ? (
+                    <Check className="h-3 w-3" />
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
+
+          <p className="mt-2 text-2xs text-muted">{t('period.limit', { n: historyDays })}</p>
 
           <div className="mt-3 border-t border-line pt-3">
             <p className="mb-2 text-2xs font-bold uppercase tracking-wider text-muted">{t('period.custom')}</p>
@@ -85,7 +121,8 @@ export function PeriodPicker({ className }: { className?: string }) {
               <input
                 type="date"
                 value={from}
-                max={to}
+                min={earliest}
+                max={to < today ? to : today}
                 onChange={(e) => setFrom(e.target.value)}
                 className="input px-2 py-1.5 text-xs"
               />
@@ -93,14 +130,20 @@ export function PeriodPicker({ className }: { className?: string }) {
               <input
                 type="date"
                 value={to}
-                min={from}
+                min={from > earliest ? from : earliest}
+                max={today}
                 onChange={(e) => setTo(e.target.value)}
                 className="input px-2 py-1.5 text-xs"
               />
             </div>
             <button
               onClick={() => {
-                setCustomPeriod({ from, to });
+                // Kelajak sanalar va tarif chegarasidan oldingi sanalar kesiladi
+                const safeFrom = from < earliest ? earliest : from;
+                const safeTo = to > today ? today : to;
+                setCustomPeriod(
+                  safeFrom > safeTo ? { from: safeTo, to: safeTo } : { from: safeFrom, to: safeTo },
+                );
                 setOpen(false);
               }}
               className="btn-primary mt-2.5 w-full py-2 text-xs"

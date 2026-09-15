@@ -41,8 +41,9 @@ import {
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('planner'));
 
-/** Ruxsat etilgan zaxira davrlari (kun) */
-const COVER_OPTIONS = [7, 14, 30, 60, 90];
+/** Zaxira davri chegaralari (kun) — saytdagi slayder bilan bir xil */
+const COVER_MIN = 7;
+const COVER_MAX = 90;
 const DEFAULT_COVER = 30;
 /** Yetkazib berish muddati (kun) — buyurtma berilgandan omborga tushgunga qadar */
 const DEFAULT_LEAD = 7;
@@ -58,10 +59,15 @@ const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit:
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
-/** Zaxira davri: 7 / 14 / 30 / 60 / 90 kun (standart — 30) */
+/**
+ * Zaxira davri: 7..90 kun (standart — 30).
+ * Saytdagi slayder har qanday butun sonni yuboradi, shuning uchun ro'yxat emas,
+ * oraliq tekshiriladi — aks holda 45 kun so'ralganda jimgina 30 kun qaytardi.
+ */
 function coverParam(value: string | number | undefined): number {
   const raw = Math.round(Number(value ?? DEFAULT_COVER));
-  return COVER_OPTIONS.includes(raw) ? raw : DEFAULT_COVER;
+  if (!Number.isFinite(raw)) return DEFAULT_COVER;
+  return Math.min(COVER_MAX, Math.max(COVER_MIN, raw));
 }
 
 /** Yetkazish muddati (kun), 0..120 oralig'ida (standart — 7) */

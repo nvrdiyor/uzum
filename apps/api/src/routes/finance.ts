@@ -121,10 +121,16 @@ interface FinanceSnapshot {
   units: number;
   grossProfit: number;
   netProfit: number;
+  operatingProfit: number;
+  periodExpenses: number;
   taxAmount: number;
   expensesTotal: number;
   /** Kategoriya kesimidagi xarajatlar (platforma + qo'lda kiritilgan) */
   categories: Record<ExpenseCategory, number>;
+  /** Sotilgan tovarga tegishli xarajatlar — sof foydadan ayrilgan */
+  item: { commission: number; delivery: number; other: number; tax: number };
+  /** Davrga tegishli xarajatlar — davr foydasidan ayriladi */
+  periodCosts: { logistics: number; marketing: number; storage: number; salary: number; other: number };
 }
 
 /**
@@ -181,7 +187,20 @@ async function collectFinance(
 
   const expensesTotal = CATEGORY_ORDER.reduce((s, c) => s + categories[c], 0);
   const grossProfit = revenue - cogs;
-  const netProfit = grossProfit - expensesTotal;
+
+  /**
+   * Ikki xil foyda — atamalar butun saytda bir xil ma'noda ishlatiladi:
+   *
+   *  netProfit       — SOTILGAN TOVARLAR bo'yicha sof foyda. Komissiya, mijozga
+   *                    yetkazish va soliq ayirilgan (Uzum "yechib olish uchun"
+   *                    summasi shu mantiqda). Boshqaruv panelidagi raqam bilan bir xil.
+   *  operatingProfit — davr foydasi: sof foydadan davrga tegishli xarajatlar
+   *                    (omborga logistika, reklama, saqlash, ish haqi) ayriladi.
+   */
+  const itemExpenses = commission + logistics + otherCost + taxAmount;
+  const netProfit = revenue - cogs - itemExpenses;
+  const periodExpenses = expensesTotal - itemExpenses;
+  const operatingProfit = netProfit - periodExpenses;
 
   return {
     revenue,
@@ -190,9 +209,19 @@ async function collectFinance(
     units,
     grossProfit,
     netProfit,
+    operatingProfit,
+    periodExpenses,
     taxAmount,
     expensesTotal,
     categories,
+    item: { commission, delivery: logistics, other: otherCost, tax: taxAmount },
+    periodCosts: {
+      logistics: manual.logistics,
+      marketing: manual.marketing,
+      storage: storage + manual.storage,
+      salary: manual.salary,
+      other: manual.other + manual.commission + manual.tax,
+    },
   };
 }
 
@@ -281,6 +310,8 @@ router.get(
       cogs: round(snap.cogs),
       grossProfit: round(snap.grossProfit),
       netProfit: round(snap.netProfit),
+      operatingProfit: round(snap.operatingProfit),
+      periodExpenses: round(snap.periodExpenses),
       expenses: CATEGORY_ORDER.map((category) => ({
         category,
         amount: round(snap.categories[category]),
@@ -306,7 +337,7 @@ interface PnlLine {
   id: string;
   label: string;
   /** 'income' — tushum, 'cost' — xarajat, 'total' — yakuniy natija */
-  kind: 'income' | 'cost' | 'total';
+  kind: 'income' | 'cost' | 'subtotal' | 'total';
   amount: number;
   previous: number;
   deltaPct: number | null;
@@ -362,22 +393,31 @@ router.get(
       share: pct(amount, cur.revenue),
     });
 
+    /**
+     * Hisobot qatorma-qator qo'shilib boradi — foydalanuvchi har bir raqam
+     * qayerdan chiqqanini ko'radi:
+     *
+     *   Tushum − Tannarx = Yalpi foyda
+     *   Yalpi foyda − (komissiya + yetkazish + soliq + boshqa) = Sof foyda
+     *   Sof foyda − davr xarajatlari = Davr foydasi
+     */
     const lines: PnlLine[] = [
       line('revenue', 'Tushum', 'income', cur.revenue, prev.revenue),
-      line('commission', CATEGORY_LABEL.commission, 'cost', cur.categories.commission, prev.categories.commission),
-      line('logistics', CATEGORY_LABEL.logistics, 'cost', cur.categories.logistics, prev.categories.logistics),
       line('cogs', 'Tannarx', 'cost', cur.cogs, prev.cogs),
-      line('storage', CATEGORY_LABEL.storage, 'cost', cur.categories.storage, prev.categories.storage),
-      line('marketing', CATEGORY_LABEL.marketing, 'cost', cur.categories.marketing, prev.categories.marketing),
-      line('tax', CATEGORY_LABEL.tax, 'cost', cur.categories.tax, prev.categories.tax),
-      line(
-        'other',
-        'Boshqa xarajatlar',
-        'cost',
-        cur.categories.other + cur.categories.salary,
-        prev.categories.other + prev.categories.salary,
-      ),
-      line('netProfit', 'Sof foyda', 'total', cur.netProfit, prev.netProfit),
+      line('grossProfit', 'Yalpi foyda', 'subtotal', cur.grossProfit, prev.grossProfit),
+
+      line('commission', CATEGORY_LABEL.commission, 'cost', cur.item.commission, prev.item.commission),
+      line('delivery', 'Mijozga yetkazish', 'cost', cur.item.delivery, prev.item.delivery),
+      line('tax', CATEGORY_LABEL.tax, 'cost', cur.item.tax, prev.item.tax),
+      line('itemOther', 'Sotuvdagi boshqa ushlanmalar', 'cost', cur.item.other, prev.item.other),
+      line('netProfit', 'Sof foyda (tovarlar bo‘yicha)', 'subtotal', cur.netProfit, prev.netProfit),
+
+      line('logistics', 'Omborga logistika', 'cost', cur.periodCosts.logistics, prev.periodCosts.logistics),
+      line('marketing', CATEGORY_LABEL.marketing, 'cost', cur.periodCosts.marketing, prev.periodCosts.marketing),
+      line('storage', CATEGORY_LABEL.storage, 'cost', cur.periodCosts.storage, prev.periodCosts.storage),
+      line('salary', CATEGORY_LABEL.salary, 'cost', cur.periodCosts.salary, prev.periodCosts.salary),
+      line('other', 'Boshqa xarajatlar', 'cost', cur.periodCosts.other, prev.periodCosts.other),
+      line('operatingProfit', 'Davr foydasi', 'total', cur.operatingProfit, prev.operatingProfit),
     ];
 
     const payload: PnlResponse = {

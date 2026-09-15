@@ -124,6 +124,7 @@ const EMPTY_AGG: SalesAgg = {
   orders: 0,
   returns: 0,
   lastSaleAt: null,
+  firstSaleAt: null,
 };
 
 const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
@@ -142,6 +143,7 @@ interface ProductSkuRecord {
   weightGr: number;
   barcode: string | null;
   archived: boolean;
+  createdAt: Date;
 }
 
 interface ProductRecord {
@@ -195,6 +197,7 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
           weightGr: true,
           barcode: true,
           archived: true,
+          createdAt: true,
         },
         orderBy: { sku: 'asc' },
       },
@@ -578,7 +581,12 @@ router.get(
 
       const avg = avgDaily.get(skuId) ?? 0;
       const last = lastSale.get(skuId) ?? null;
-      const daysWithoutSale = daysSince(last);
+      /**
+       * Hech sotilmagan tovarda "sotilmagan kunlar" — katalogga qo'shilgandan
+       * beri o'tgan kunlar. Ilgari 9999 chiqardi va kecha qo'shilgan tovar ham
+       * "nolikvid" ro'yxatiga tushardi.
+       */
+      const daysWithoutSale = last ? daysSince(last) : daysSince(info.createdAt);
       const daysLeft = avg > 0 ? Math.round(st.total / avg) : null;
 
       // Nolikvid: 30+ kun sotilmagan yoki qoldiq 90 kundan ortiqqa yetadi
@@ -935,7 +943,7 @@ router.get(
       const agg = sales.get(s.id) ?? EMPTY_AGG;
       const st = stocks.get(s.id) ?? EMPTY_STOCK;
       const avg = avgDaily.get(s.id) ?? 0;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(s.id)));
+      const state = stockState(st.total, avg, daysSince(lastSale.get(s.id)), daysSince(s.createdAt));
       return {
         id: s.id,
         sku: s.sku,

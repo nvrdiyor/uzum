@@ -12,5 +12,5 @@ export const APP = {
     ru: 'Аналитика для селлеров Uzum Market',
     en: 'Analytics for Uzum Market sellers',
   },
-  supportBot: '@savdoiq_bot',
+  supportBot: '@savdoiqbot',
 } as const;

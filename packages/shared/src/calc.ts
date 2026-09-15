@@ -126,6 +126,23 @@ export function roundPrice(value: number, step: number): number {
  * Komissiya va reklama SOTUV NARXIDAN olinadi, shuning uchun narx tenglama orqali topiladi.
  * Yakuniy taqsimot yaxlitlangan narx bo'yicha hisoblanadi — yaxlitlash farqi foydaga qo'shiladi.
  */
+/**
+ * Ma'lumot yetarli bo'lmaganda ishlatiladigan bozor bo'yicha odatiy qiymatlar.
+ * Server ham, sayt ham shu qiymatlardan foydalanadi — internet yo'q yoki
+ * so'rov xato bo'lsa ham kalkulyator ishlayveradi.
+ */
+export const IMPORT_CALC_FALLBACK: ImportCalcInput = {
+  weightGr: 300,
+  pddPrice: 10,
+  rate: 1_600,
+  cargoPerKg: 80_000,
+  commissionPct: 30,
+  adsPct: 10,
+  deliveryFee: 6_000,
+  profitMultiplier: 2,
+  roundStep: 1_000,
+};
+
 export function calcImportPrice(input: ImportCalcInput): ImportCalcResult {
   const rate = Math.max(0, input.rate || 0);
   const weightKg = Math.max(0, input.weightGr || 0) / 1000;

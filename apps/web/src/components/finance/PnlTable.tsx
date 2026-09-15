@@ -63,6 +63,7 @@ export function PnlTable({
             <tbody>
               {lines.map((line) => {
                 const isTotal = line.kind === 'total';
+                const isSubtotal = line.kind === 'subtotal';
                 const isCost = line.kind === 'cost';
                 const negative = line.current < 0;
 
@@ -73,15 +74,22 @@ export function PnlTable({
                       'border-b border-line/60 last:border-0',
                       isTotal
                         ? 'border-t border-line-strong bg-surface-2/70 font-bold text-ink'
-                        : 'text-ink-soft',
+                        : isSubtotal
+                          ? 'border-t border-line bg-surface-2/35 font-semibold text-ink'
+                          : 'text-ink-soft',
                     )}
                   >
-                    <td className={cn('px-4 py-3', isTotal ? 'font-display text-base font-extrabold' : '')}>
+                    <td
+                      className={cn(
+                        'px-4 py-3',
+                        isTotal ? 'font-display text-base font-extrabold' : isSubtotal ? 'font-display' : '',
+                      )}
+                    >
                       <span className="flex items-center gap-2">
                         <span
                           className={cn(
                             'h-1.5 w-1.5 shrink-0 rounded-full',
-                            isTotal ? 'bg-brand' : isCost ? 'bg-danger/60' : 'bg-info/70',
+                            isTotal ? 'bg-brand' : isSubtotal ? 'bg-violet' : isCost ? 'bg-danger/60' : 'bg-info/70',
                           )}
                         />
                         {label(line)}
@@ -91,8 +99,9 @@ export function PnlTable({
                     <td
                       className={cn(
                         'tnum px-4 py-3 text-right',
-                        isCost || negative ? 'text-danger' : isTotal ? 'text-ink' : 'text-ink',
+                        isCost || negative ? 'text-danger' : 'text-ink',
                         isTotal && 'font-display text-base font-extrabold',
+                        isSubtotal && 'font-display font-bold',
                       )}
                     >
                       {isCost ? `− ${money(Math.abs(line.current))}` : money(line.current)}

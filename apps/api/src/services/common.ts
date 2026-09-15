@@ -21,6 +21,8 @@ export interface SkuInfo {
   storeId: string;
   storeTitle: string;
   archived: boolean;
+  /** Katalogga qo'shilgan sana — yangi tovarni "nolikvid" deb belgilamaslik uchun */
+  createdAt: Date;
 }
 
 export interface StockInfo {
@@ -46,6 +48,8 @@ export interface SalesAgg {
   orders: number;
   returns: number;
   lastSaleAt: Date | null;
+  /** Davrdagi birinchi sotuv — yangi tovarlarda o'rtachani to'g'ri hisoblash uchun */
+  firstSaleAt: Date | null;
 }
 
 /** Kompaniyaning do'kon id'lari (storeId filtri bilan) */
@@ -91,6 +95,7 @@ export async function getSkuCatalog(storeIds: string[], includeArchived = false)
         storeId: s.storeId,
         storeTitle: s.store.title,
         archived: s.archived,
+        createdAt: s.createdAt,
       } satisfies SkuInfo,
     ]),
   );
@@ -204,6 +209,7 @@ export async function aggregateSales(
         orders: 0,
         returns: 0,
         lastSaleAt: null,
+        firstSaleAt: null,
       } satisfies SalesAgg);
 
     const returned = it.status === 'returned' || Boolean(it.returnedAt);
@@ -219,6 +225,7 @@ export async function aggregateSales(
       cur.otherCost += it.otherCost;
       cur.netProfit += it.netProfit;
       if (!cur.lastSaleAt || it.orderedAt > cur.lastSaleAt) cur.lastSaleAt = it.orderedAt;
+      if (!cur.firstSaleAt || it.orderedAt < cur.firstSaleAt) cur.firstSaleAt = it.orderedAt;
     }
 
     const set = ordersBySku.get(it.skuId) ?? new Set<string>();
@@ -236,13 +243,33 @@ export async function aggregateSales(
   return out;
 }
 
-/** O'rtacha kunlik sotuv (dona) — oxirgi `days` kun bo'yicha */
+/** Yangi tovarda o'rtachani haddan tashqari oshirib yubormaslik uchun eng kichik oyna (kun) */
+const MIN_AVG_WINDOW = 7;
+
+/**
+ * O'rtacha kunlik sotuv (dona) — oxirgi `days` kun bo'yicha.
+ *
+ * Bo'luvchi — tovar HAQIQATDA sotuvda bo'lgan kunlar soni: agar tovar 11 kun
+ * oldin birinchi marta sotilgan bo'lsa, 30 ga emas, 11 ga bo'linadi. Aks holda
+ * yangi tovarlarning tezligi bir necha barobar past ko'rinadi va "qoldiq 160
+ * kunga yetadi" kabi noto'g'ri prognoz chiqadi. Juda yangi tovarlarda (1–2 kun)
+ * teskari xato bo'lmasligi uchun eng kichik oyna — 7 kun.
+ */
 export async function getAvgDaily(storeIds: string[], days = 30): Promise<Map<string, number>> {
   const to = new Date();
   const from = addDays(to, -days);
   const sales = await aggregateSales(storeIds, from, to);
   const out = new Map<string, number>();
-  for (const [skuId, agg] of sales) out.set(skuId, agg.units / days);
+  for (const [skuId, agg] of sales) {
+    if (agg.units <= 0) {
+      out.set(skuId, 0);
+      continue;
+    }
+    const since = agg.firstSaleAt && agg.firstSaleAt > from ? agg.firstSaleAt : from;
+    const onSaleDays = Math.floor((to.getTime() - since.getTime()) / 86_400_000) + 1;
+    const window = Math.min(days, Math.max(MIN_AVG_WINDOW, onSaleDays));
+    out.set(skuId, agg.units / window);
+  }
   return out;
 }
 
@@ -354,16 +381,27 @@ export async function getDailySeries(
   return [...map.values()];
 }
 
-/** Qoldiq holati: kritik / tugayapti / yetarli / ortiqcha / harakatsiz */
+/**
+ * Qoldiq holati: kritik / tugayapti / yetarli / ortiqcha / harakatsiz.
+ *
+ * `daysOnCatalog` berilsa, katalogga yaqinda qo'shilgan va hali sotilmagan tovar
+ * "harakatsiz" deb belgilanmaydi: 3 kun oldin qo'shilgan tovar haqida
+ * "45 kundan beri sotilmayapti" deyish noto'g'ri bo'lardi.
+ */
 export function stockState(
   total: number,
   avgDaily: number,
   daysWithoutSale: number,
+  daysOnCatalog = Number.POSITIVE_INFINITY,
 ): { status: 'critical' | 'low' | 'ok' | 'excess' | 'dead'; daysLeft: number | null } {
   const daysLeft = avgDaily > 0 ? Math.round(total / avgDaily) : null;
-  if (daysWithoutSale >= STOCK_THRESHOLDS.deadDays && total > 0) return { status: 'dead', daysLeft };
+  const longEnough = daysOnCatalog >= STOCK_THRESHOLDS.deadDays;
+  if (daysWithoutSale >= STOCK_THRESHOLDS.deadDays && total > 0) {
+    if (longEnough) return { status: 'dead', daysLeft };
+    return { status: 'ok', daysLeft };
+  }
   if (total <= 0) return { status: 'critical', daysLeft: 0 };
-  if (daysLeft === null) return { status: 'dead', daysLeft: null };
+  if (daysLeft === null) return { status: longEnough ? 'dead' : 'ok', daysLeft: null };
   if (daysLeft <= STOCK_THRESHOLDS.critical) return { status: 'critical', daysLeft };
   if (daysLeft <= STOCK_THRESHOLDS.low) return { status: 'low', daysLeft };
   if (daysLeft >= STOCK_THRESHOLDS.excess) return { status: 'excess', daysLeft };

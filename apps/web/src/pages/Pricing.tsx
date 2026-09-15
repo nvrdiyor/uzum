@@ -41,6 +41,7 @@ import {
   type BillingCycle,
   type Months,
 } from '@/components/billing';
+import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';
 import { api } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -469,7 +470,7 @@ registerNamespace('pricing', {
   },
 });
 
-const BOT_URL = `https://t.me/${APP.supportBot.replace('@', '')}`;
+const BOT_URL = BOT_URL_SHARED;
 const MAX_DISCOUNT = Math.max(...PLAN_ORDER.map((id) => PLANS[id].yearlyDiscount));
 
 const INVOICE_TONE: Record<InvoiceRow['status'], Tone> = {

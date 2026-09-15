@@ -8,6 +8,7 @@ import {
   PiggyBank,
   Receipt,
   RefreshCw,
+  Scale,
   TrendingUp,
   Wallet,
   Wallet2,
@@ -55,7 +56,9 @@ registerNamespace('finance', {
     'kpi.gross': 'Yalpi foyda',
     'kpi.grossHint': 'Tushum minus tannarx',
     'kpi.net': 'Sof foyda',
-    'kpi.netHint': 'Marja {v}',
+    'kpi.netHint': 'Tovarlar bo‘yicha, marja {v}',
+    'kpi.oper': 'Davr foydasi',
+    'kpi.operHint': 'Sof foyda minus davr xarajatlari ({v})',
 
     'chart.title': 'Kunlik dinamika',
     'chart.subtitle': 'Tushum, xarajat va sof foyda',
@@ -84,14 +87,17 @@ registerNamespace('finance', {
     'pnl.payout': 'To‘lovga',
     'pnl.cogs': 'Tannarx',
     'pnl.commission': 'Komissiya',
-    'pnl.logistics': 'Logistika',
     'pnl.storage': 'Ombor (saqlash)',
     'pnl.marketing': 'Marketing',
     'pnl.tax': 'Soliq',
     'pnl.salary': 'Ish haqi',
     'pnl.other': 'Boshqa xarajatlar',
     'pnl.grossProfit': 'Yalpi foyda',
-    'pnl.netProfit': 'Sof foyda',
+    'pnl.netProfit': 'Sof foyda (tovarlar bo‘yicha)',
+    'pnl.operatingProfit': 'Davr foydasi',
+    'pnl.delivery': 'Mijozga yetkazish',
+    'pnl.itemOther': 'Sotuvdagi boshqa ushlanmalar',
+    'pnl.logistics': 'Omborga logistika',
 
     'bal.title': 'Balans',
     'bal.subtitle': 'Uzum bilan hisob-kitob holati',
@@ -121,7 +127,9 @@ registerNamespace('finance', {
     'kpi.gross': 'Валовая прибыль',
     'kpi.grossHint': 'Выручка минус себестоимость',
     'kpi.net': 'Чистая прибыль',
-    'kpi.netHint': 'Маржа {v}',
+    'kpi.netHint': 'По товарам, маржа {v}',
+    'kpi.oper': 'Прибыль периода',
+    'kpi.operHint': 'Чистая прибыль минус расходы периода ({v})',
 
     'chart.title': 'Динамика по дням',
     'chart.subtitle': 'Выручка, расходы и чистая прибыль',
@@ -150,14 +158,17 @@ registerNamespace('finance', {
     'pnl.payout': 'К выплате',
     'pnl.cogs': 'Себестоимость',
     'pnl.commission': 'Комиссия',
-    'pnl.logistics': 'Логистика',
     'pnl.storage': 'Хранение',
     'pnl.marketing': 'Маркетинг',
     'pnl.tax': 'Налог',
     'pnl.salary': 'Зарплата',
     'pnl.other': 'Прочие расходы',
     'pnl.grossProfit': 'Валовая прибыль',
-    'pnl.netProfit': 'Чистая прибыль',
+    'pnl.netProfit': 'Чистая прибыль (по товарам)',
+    'pnl.operatingProfit': 'Прибыль периода',
+    'pnl.delivery': 'Доставка покупателю',
+    'pnl.itemOther': 'Прочие удержания в продаже',
+    'pnl.logistics': 'Логистика на склад',
 
     'bal.title': 'Баланс',
     'bal.subtitle': 'Состояние расчётов с Uzum',
@@ -187,7 +198,9 @@ registerNamespace('finance', {
     'kpi.gross': 'Gross profit',
     'kpi.grossHint': 'Revenue minus cost of goods',
     'kpi.net': 'Net profit',
-    'kpi.netHint': 'Margin {v}',
+    'kpi.netHint': 'On goods sold, margin {v}',
+    'kpi.oper': 'Period profit',
+    'kpi.operHint': 'Net profit minus period expenses ({v})',
 
     'chart.title': 'Daily trend',
     'chart.subtitle': 'Revenue, expenses and net profit',
@@ -216,14 +229,17 @@ registerNamespace('finance', {
     'pnl.payout': 'Payout',
     'pnl.cogs': 'Cost of goods',
     'pnl.commission': 'Commission',
-    'pnl.logistics': 'Logistics',
     'pnl.storage': 'Storage',
     'pnl.marketing': 'Marketing',
     'pnl.tax': 'Tax',
     'pnl.salary': 'Salary',
     'pnl.other': 'Other expenses',
     'pnl.grossProfit': 'Gross profit',
-    'pnl.netProfit': 'Net profit',
+    'pnl.netProfit': 'Net profit (on goods)',
+    'pnl.operatingProfit': 'Period profit',
+    'pnl.delivery': 'Delivery to customer',
+    'pnl.itemOther': 'Other sale deductions',
+    'pnl.logistics': 'Inbound logistics',
 
     'bal.title': 'Balance',
     'bal.subtitle': 'Settlement status with Uzum',
@@ -267,6 +283,7 @@ export default function Finance() {
   // Oldingi davr bilan taqqoslash — P&L javobidan
   const revenueDelta = lineMap.get('revenue')?.deltaPct ?? null;
   const netDelta = lineMap.get('netProfit')?.deltaPct ?? null;
+  const operDelta = lineMap.get('operatingProfit')?.deltaPct ?? null;
   /** Server P&L'da to'lov moddasi bo'lmasa taqqoslov ko'rsatilmaydi */
   const payoutDelta = lineMap.get('payout')?.deltaPct ?? null;
   const grossDelta = useMemo(() => {
@@ -422,6 +439,15 @@ export default function Finance() {
                 hint={t('kpi.payoutHint')}
                 icon={<Wallet2 className="h-5 w-5" />}
                 tone="info"
+                loading={isLoading}
+              />
+              <StatCard
+                label={t('kpi.oper')}
+                value={f.money(data?.operatingProfit ?? 0)}
+                delta={operDelta}
+                hint={t('kpi.operHint', { v: f.money(data?.periodExpenses ?? 0) })}
+                icon={<Scale className="h-5 w-5" />}
+                tone={(data?.operatingProfit ?? 0) < 0 ? 'danger' : 'violet'}
                 loading={isLoading}
               />
               <StatCard
