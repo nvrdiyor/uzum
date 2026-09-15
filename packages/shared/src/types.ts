@@ -292,6 +292,71 @@ export interface SalesAnalyticsResponse {
   byWeekday: { weekday: number; orders: number; revenue: number }[];
 }
 
+// ─────────────────────────── Sotuv voronkasi ───────────────────────────
+
+export type FunnelStepId = 'ordered' | 'sold' | 'canceled' | 'returned';
+
+export interface FunnelStep {
+  id: FunnelStepId;
+  /** Dona */
+  value: number;
+  /** So'm */
+  amount: number;
+  prevValue: number;
+  prevAmount: number;
+  /** Oldingi davrga nisbatan o'zgarish, % */
+  deltaPct: number | null;
+  /** Buyurtmadan shu bosqichgacha yetib kelgan ulush, % */
+  conversion: number | null;
+}
+
+export interface FunnelProductRow {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  ordered: number;
+  orderedAmount: number;
+  sold: number;
+  soldAmount: number;
+  canceled: number;
+  returned: number;
+  /** Sotib olish foizi: sotilgan / buyurtma qilingan */
+  buyoutRate: number;
+  /** Bitta dona uchun o'rtacha narx */
+  avgPrice: number;
+  /** Sotilgan summadagi ulushi, % */
+  share: number;
+  deltas: {
+    ordered: number | null;
+    sold: number | null;
+    soldAmount: number | null;
+    buyoutRate: number | null;
+  };
+}
+
+export interface FunnelResponse {
+  period: Period;
+  previous: Period;
+  currency: string;
+  steps: FunnelStep[];
+  totals: {
+    ordered: number;
+    orderedAmount: number;
+    sold: number;
+    soldAmount: number;
+    canceled: number;
+    returned: number;
+    canceledAmount: number;
+    buyoutRate: number;
+    avgPrice: number;
+  };
+  daily: { date: string; ordered: number; sold: number; canceled: number; returned: number }[];
+  rows: FunnelProductRow[];
+  /** Uzum API bermaydigan bosqichlar (namoyish, kartochka ochish, savatga qo'shish) */
+  missingSteps: string[];
+}
+
 // ─────────────────────────── Sotuv va qoldiq ───────────────────────────
 
 export interface SalesStockRow {

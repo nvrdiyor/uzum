@@ -11,6 +11,7 @@ registerNamespace('common', {
     // Menyu
     'nav.dashboard': 'Boshqaruv paneli',
     'nav.sales': 'Sotuv tahlili',
+    'nav.funnel': 'Sotuv voronkasi',
     'nav.salesStock': 'Sotuv va qoldiq',
     'nav.reports': 'Oylik hisobot',
     'nav.planner': 'Rejalashtiruvchi',
@@ -141,6 +142,7 @@ registerNamespace('common', {
     'group.service': 'Сервисы',
     'nav.dashboard': 'Дашборд',
     'nav.sales': 'Аналитика продаж',
+    'nav.funnel': 'Воронка продаж',
     'nav.salesStock': 'Продажи и остатки',
     'nav.reports': 'Месячный отчёт',
     'nav.planner': 'Планировщик',
@@ -265,6 +267,7 @@ registerNamespace('common', {
     'group.service': 'Services',
     'nav.dashboard': 'Dashboard',
     'nav.sales': 'Sales analytics',
+    'nav.funnel': 'Sales funnel',
     'nav.salesStock': 'Sales & stock',
     'nav.reports': 'Monthly report',
     'nav.planner': 'Planner',

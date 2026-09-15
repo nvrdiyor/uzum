@@ -16,6 +16,7 @@ import uzumRoutes from './routes/uzum.js';
 import syncRoutes from './routes/sync.js';
 import analyticsRoutes from './routes/analytics.js';
 import salesRoutes from './routes/sales.js';
+import funnelRoutes from './routes/funnel.js';
 import productsRoutes from './routes/products.js';
 import stocksRoutes from './routes/stocks.js';
 import plannerRoutes from './routes/planner.js';
@@ -76,6 +77,7 @@ export function createApp() {
   api.use('/sync', syncRoutes);
   api.use('/analytics', analyticsRoutes);
   api.use('/sales', salesRoutes);
+  api.use('/funnel', funnelRoutes);
   api.use('/products', productsRoutes);
   api.use('/stocks', stocksRoutes);
   api.use('/planner', plannerRoutes);

@@ -382,18 +382,24 @@ registerNamespace('admin', {
 
 // ─────────────────────────── Mahalliy tiplar ───────────────────────────
 
+/**
+ * `/admin/stats` javobi. API guruhlangan obyekt qaytaradi
+ * (`users: { total, active, ... }`), lekin tekis raqamlar ham qabul qilinadi —
+ * shuning uchun har bir maydon `number | obyekt` bo'lishi mumkin.
+ */
+type StatGroup = number | Record<string, number> | undefined;
+
 interface AdminStats {
-  users?: number;
-  companies?: number;
-  activeSubscriptions?: number;
-  subscriptions?: number;
-  mrr?: number;
-  revenueMonth?: number;
-  syncsToday?: number;
-  jobsToday?: number;
-  usersToday?: number;
-  companiesToday?: number;
-  pendingInvoices?: number;
+  users?: StatGroup;
+  companies?: StatGroup;
+  subscriptions?: StatGroup;
+  activeSubscriptions?: StatGroup;
+  revenue?: StatGroup;
+  mrr?: StatGroup;
+  sync?: StatGroup;
+  syncsToday?: StatGroup;
+  referral?: StatGroup;
+  pendingInvoices?: StatGroup;
 }
 
 interface AdminUserRow {
@@ -557,9 +563,24 @@ function AdminConsole() {
   });
 
   const s = stats.data;
-  const subs = s?.activeSubscriptions ?? s?.subscriptions ?? 0;
-  const mrr = s?.mrr ?? s?.revenueMonth ?? 0;
-  const syncs = s?.syncsToday ?? s?.jobsToday ?? 0;
+
+  // API guruhlangan obyekt qaytaradi (users:{total,...}, revenue:{mrr}, ...).
+  // Eski tekis ko'rinish ham qo'llab-quvvatlanadi.
+  const numOf = (v: unknown, key: string): number => {
+    if (typeof v === 'number') return v;
+    if (v && typeof v === 'object') {
+      const rec = v as Record<string, unknown>;
+      const n = rec[key];
+      if (typeof n === 'number') return n;
+    }
+    return 0;
+  };
+
+  const users = numOf(s?.users, 'total');
+  const companies = numOf(s?.companies, 'total');
+  const subs = numOf(s?.subscriptions, 'active') || numOf(s?.activeSubscriptions, 'total');
+  const mrr = numOf(s?.revenue, 'mrr') || numOf(s?.mrr, 'mrr');
+  const syncs = numOf(s?.sync, 'done24h') || numOf(s?.syncsToday, 'total');
 
   const tabs: { value: TabKey; label: string }[] = [
     { value: 'users', label: t('tab.users') },
@@ -601,7 +622,7 @@ function AdminConsole() {
         <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard
             label={t('kpi.users')}
-            value={f.num(s?.users ?? 0)}
+            value={f.num(users)}
             hint={t('kpi.usersHint')}
             icon={<Users className="h-5 w-5" />}
             tone="brand"
@@ -609,7 +630,7 @@ function AdminConsole() {
           />
           <StatCard
             label={t('kpi.companies')}
-            value={f.num(s?.companies ?? 0)}
+            value={f.num(companies)}
             hint={t('kpi.companiesHint')}
             icon={<Building2 className="h-5 w-5" />}
             tone="info"

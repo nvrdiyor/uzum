@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   TrendingUp,
+  Filter,
   ShoppingCart,
   FileBarChart,
   Sparkles,
@@ -48,6 +49,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, primary: true },
       { to: '/sales', labelKey: 'nav.sales', icon: TrendingUp, feature: 'sales_analytics', primary: true },
+      { to: '/funnel', labelKey: 'nav.funnel', icon: Filter, feature: 'sales_analytics', badge: 'new' },
       { to: '/sales-stock', labelKey: 'nav.salesStock', icon: ShoppingCart, feature: 'stocks_fbo_fbs' },
       { to: '/reports', labelKey: 'nav.reports', icon: FileBarChart, feature: 'monthly_reports' },
       { to: '/planner', labelKey: 'nav.planner', icon: Sparkles, feature: 'planner', badge: 'new' },

@@ -20,6 +20,7 @@ import AdminLogin from '@/pages/AdminLogin';
 const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Sales = lazy(() => import('@/pages/Sales'));
+const Funnel = lazy(() => import('@/pages/Funnel'));
 const SalesStock = lazy(() => import('@/pages/SalesStock'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Planner = lazy(() => import('@/pages/Planner'));
@@ -129,6 +130,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/sales" element={<Sales />} />
+              <Route path="/funnel" element={<Funnel />} />
               <Route path="/sales-stock" element={<SalesStock />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/planner" element={<Planner />} />
