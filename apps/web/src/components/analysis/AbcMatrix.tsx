@@ -71,7 +71,11 @@ export function AbcMatrix({
             {ABC_KEYS.map((abc) => {
               const cell = at(abc, xyz);
               const intensity = max > 0 ? clamp01(cell.revenue / max) : 0;
-              const alpha = cell.count === 0 ? 0.04 : 0.1 + intensity * 0.4;
+              // Bo'yoq kuchi mavzuga bog'liq — qorong'ida bo'yoq fonni ochadi
+              const alpha =
+                cell.count === 0
+                  ? '0.04'
+                  : `calc(var(--abc-tint-base) + ${intensity} * var(--abc-tint-span))`;
               const isActive = active?.abc === abc && active?.xyz === xyz;
               const disabled = cell.count === 0;
               return (
