@@ -49,8 +49,15 @@ export interface UzumSku {
   barcode?: string;
   title: string;
   imageUrl?: string;
+  /**
+   * Xaridor to'laydigan HAQIQIY narx. Aksiya faol bo'lsa — aksiya narxi,
+   * aks holda ro'yxat narxi. Uzum kabinetidagi "Narxi" ustuni shu.
+   */
   price: number;
+  /** Chegirmasiz (ro'yxat) narxi — aksiya bo'lsa shu yerda qoladi */
   oldPrice?: number;
+  /** Faol aksiya nomi (masalan "14.09-22.09 Hafta chegirmalari") */
+  promoName?: string;
   weightGr?: number;
   volumeL?: number;
   /** Uzum omborida faol qoldiq (FBO) — katalog javobidagi quantityActive */
@@ -63,6 +70,8 @@ export interface UzumSku {
   purchasePrice?: number;
   /** Kategoriya bo'yicha komissiya, % */
   commissionPct?: number;
+  /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem) */
+  storagePerItem?: number;
 }
 
 /** Mahsulot kartochkasi (bir nechta SKU bilan) */

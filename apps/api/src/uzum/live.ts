@@ -178,7 +178,9 @@ const KEYS = {
   skuTitle: ['skuTitle', 'title', 'name', 'productTitle'],
   barcode: ['barcode', 'barCode', 'ean'],
   price: ['price', 'sellPrice', 'sellerPrice', 'currentPrice'],
-  oldPrice: ['fullPrice', 'oldPrice', 'basePrice'],
+  oldPrice: ['fullPrice', 'oldPrice', 'basePrice', 'marketPrice'],
+  /** Aksiya (chegirma) narxi — katalogdagi `specialOffer` ichida */
+  promoPrice: ['mechanicPrice', 'promoPrice', 'discountPrice', 'salePrice'],
   weight: ['weight', 'weightGr', 'grossWeight'],
   volume: ['volume', 'volumeL', 'volumeLiters'],
 
@@ -423,22 +425,44 @@ export class LiveUzumClient implements UzumClient {
     const title = asString(firstOf(r, KEYS.skuTitle)) || product.title;
     const imageUrl = pickImage(firstOf(r, KEYS.image)) || product.imageUrl;
 
+    /**
+     * NARX. Katalogdagi `price` — chegirmasiz RO'YXAT narxi (masalan 299 000).
+     * Aksiya faol bo'lsa, xaridor to'laydigan narx `specialOffer.mechanicPrice`
+     * da bo'ladi (masalan 247 500) — sotuvchi kabinetida aynan shu ko'rsatiladi.
+     * Ilgari ro'yxat narxi olingani uchun saytdagi narx kabinetdagidan katta
+     * chiqardi va marja, ROI, qoldiq qiymati — hammasi noto'g'ri edi.
+     */
+    const listPrice = asMoney(firstOf(r, KEYS.price));
+    const offer = asRecord(r.specialOffer);
+    const promo = asMoney(firstOf(offer, KEYS.promoPrice));
+    const hasDiscount = asBool(r.hasActiveDiscount) && promo > 0 && promo < listPrice;
+    const price = hasDiscount ? promo : listPrice;
+    const oldPrice = hasDiscount ? listPrice : asMoney(firstOf(r, KEYS.oldPrice)) || undefined;
+
+    /** O'lchamlar: `skuDimension` mm va grammda keladi */
+    const dim = asRecord(r.skuDimension);
+    const weightGr = asNumber(firstOf(r, KEYS.weight)) || asNumber(dim.weight) || undefined;
+    const mm = asNumber(dim.length) * asNumber(dim.width) * asNumber(dim.height);
+    const volumeL = asNumber(firstOf(r, KEYS.volume)) || (mm > 0 ? mm / 1_000_000 : 0) || undefined;
+
     return {
       id,
       sku: code,
       barcode: asString(firstOf(r, KEYS.barcode)) || undefined,
       title,
       imageUrl: imageUrl || undefined,
-      price: asMoney(firstOf(r, KEYS.price)),
-      oldPrice: asMoney(firstOf(r, KEYS.oldPrice)) || undefined,
-      weightGr: asNumber(firstOf(r, KEYS.weight)) || undefined,
-      volumeL: asNumber(firstOf(r, KEYS.volume)) || undefined,
+      price,
+      oldPrice,
+      promoName: hasDiscount ? asString(offer.promoName) || undefined : undefined,
+      weightGr,
+      volumeL,
       // Uzum katalogi qoldiqni ham qaytaradi — FBO uchun asosiy manba shu
       quantityFbo: Math.round(asNumber(firstOf(r, KEYS.fbo))),
       quantityFbs: Math.round(asNumber(firstOf(r, KEYS.fbs))),
       reserved: Math.round(asNumber(firstOf(r, KEYS.pending))),
       purchasePrice: asMoney(firstOf(r, KEYS.purchasePrice)) || undefined,
       commissionPct: asNumber(firstOf(r, KEYS.commissionPct)) || undefined,
+      storagePerItem: asMoney(r.paidStoragePriceItem) || undefined,
     };
   }
 
