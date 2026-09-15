@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Children, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Delta, Skeleton, Sparkline } from './primitives';
 
@@ -104,7 +104,26 @@ export function StatCard({
   );
 }
 
-/** KPI qatorini bir xil to'rda joylash uchun */
+/**
+ * KPI qatori.
+ *
+ * Ustunlar soni kartochkalar soniga moslanadi: 5 ta kartochka 4 ustunli to'rda
+ * bittasi yolg'iz qolib, qator noto'g'ri ko'rinardi.
+ */
+const GRID_COLS: Record<number, string> = {
+  1: 'sm:grid-cols-1',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-2 xl:grid-cols-3',
+  4: 'sm:grid-cols-2 xl:grid-cols-4',
+  5: 'sm:grid-cols-2 xl:grid-cols-5',
+  6: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6',
+};
+
 export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('grid gap-4 sm:grid-cols-2 xl:grid-cols-4', className)}>{children}</div>;
+  const count = Children.toArray(children).filter(Boolean).length;
+  return (
+    <div className={cn('grid gap-4', GRID_COLS[count] ?? 'sm:grid-cols-2 xl:grid-cols-4', className)}>
+      {children}
+    </div>
+  );
 }

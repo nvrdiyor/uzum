@@ -437,7 +437,17 @@ export default function SalesStock() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-3">
-              <ChartCard title={t('chart.title')} subtitle={t('chart.subtitle')}>
+              {/* Halqa ranglari nimani bildirishini ko'rsatib turadigan izoh —
+                  ilgari faqat sichqoncha olib borilganda bilinardi */}
+              <ChartCard
+                title={t('chart.title')}
+                subtitle={t('chart.subtitle')}
+                legend={statusChart.map((d) => ({
+                  name: d.name,
+                  color: d.color ?? CHART_COLORS.brand,
+                  value: f.num(d.value),
+                }))}
+              >
                 {isLoading ? (
                   <Skeleton className="h-[260px] w-full" />
                 ) : statusChart.length ? (

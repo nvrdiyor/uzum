@@ -109,8 +109,14 @@ body {
 }
 
 @layer components {
+  /*
+   * min-w-0 muhim: grid/flex ichidagi element standart bo'yicha
+   * `min-width: auto` bo'ladi va kengroq ichki mazmun (jadval, grafik)
+   * uni o'z uyasidan chiqarib yuboradi — natijada grafik kartochkadan
+   * tashqarida chiziladi, kartochka esa ekrandan oshib ketadi.
+   */
   .card {
-    @apply rounded-2xl border border-line bg-surface shadow-card;
+    @apply min-w-0 rounded-2xl border border-line bg-surface shadow-card;
   }
 
   .card-hover {
@@ -118,7 +124,7 @@ body {
   }
 
   .panel {
-    @apply rounded-2xl border border-line bg-surface;
+    @apply min-w-0 rounded-2xl border border-line bg-surface;
   }
 
   .chip {
