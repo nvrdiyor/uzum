@@ -618,7 +618,7 @@ export default function Landing() {
             <div className="card grid grid-cols-2 divide-line bg-surface/70 lg:divide-x lg:grid-cols-4">
               {TRUST.map((k) => (
                 <div key={k} className="px-5 py-6 text-center sm:px-6">
-                  <p className="tnum font-display text-2xl font-extrabold tracking-tight text-brand sm:text-[28px]">
+                  <p className="tnum font-display text-2xl font-extrabold tracking-tight text-brand-ink sm:text-[28px]">
                     {t(`trust.${k}.v`)}
                   </p>
                   <p className="mt-1.5 text-xs leading-snug text-muted sm:text-sm">{t(`trust.${k}.l`)}</p>
@@ -674,7 +674,7 @@ export default function Landing() {
                 <FadeUp key={n} delay={i * 0.09}>
                   <div className="relative flex gap-4 lg:block">
                     <div className="relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-line bg-surface shadow-card">
-                      <span className="tnum font-display text-lg font-extrabold text-brand">{n}</span>
+                      <span className="tnum font-display text-lg font-extrabold text-brand-ink">{n}</span>
                     </div>
                     <div className="lg:mt-5">
                       <p className="text-2xs font-bold uppercase tracking-[0.14em] text-muted/80">

@@ -82,7 +82,7 @@ export function SectionNav({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    <span className={cn('truncate text-sm font-semibold', on ? 'text-brand' : 'text-ink')}>
+                    <span className={cn('truncate text-sm font-semibold', on ? 'text-brand-ink' : 'text-ink')}>
                       {t(`nav.${id}`)}
                     </span>
                     {badges?.[id] ?? null}

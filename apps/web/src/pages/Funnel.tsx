@@ -299,7 +299,7 @@ export default function Funnel() {
           <span
             className={cn(
               'font-semibold',
-              r.buyoutRate >= 70 ? 'text-brand' : r.buyoutRate >= 40 ? 'text-warn-ink' : 'text-danger',
+              r.buyoutRate >= 70 ? 'text-brand-ink' : r.buyoutRate >= 40 ? 'text-warn-ink' : 'text-danger',
             )}
           >
             {f.pct(r.buyoutRate)}

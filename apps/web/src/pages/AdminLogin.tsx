@@ -78,7 +78,7 @@ export default function AdminLogin() {
     <div className="flex min-h-screen items-center justify-center bg-bg bg-aurora px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-grad text-white shadow-[0_10px_30px_-12px_rgb(var(--c-brand)/0.9)]">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_10px_30px_-12px_rgb(var(--c-brand)/0.9)]">
             <ShieldCheck className="h-6 w-6" />
           </span>
           <h1 className="font-display text-xl font-extrabold tracking-tight text-ink">{t('title')}</h1>

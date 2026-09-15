@@ -134,7 +134,7 @@ registerNamespace('storage', {
 /** Foydadagi ulush chegaralari */
 function shareClass(share: number): string {
   if (share > 30) return 'text-danger';
-  if (share > 15) return 'text-warn';
+  if (share > 15) return 'text-warn-ink';
   return 'text-ink-soft';
 }
 
@@ -351,7 +351,7 @@ export default function Storage() {
                     <Link
                       to="/illiquid"
                       title={t('top.linkHint')}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:border-line-strong"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-brand-ink transition-colors hover:border-line-strong"
                     >
                       <Snowflake className="h-4 w-4" />
                       {t('top.link')}

@@ -119,7 +119,7 @@ export function GridPattern({ className }: { className?: string }) {
 export function LandingLogo({ to = '/', className }: { to?: string; className?: string }) {
   return (
     <Link to={to} className={cn('flex items-center gap-2.5 outline-none', className)}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-bg shadow-[0_10px_26px_-10px_rgb(var(--c-brand)/0.95)]">
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-on-brand shadow-[0_10px_26px_-10px_rgb(var(--c-brand)/0.95)]">
         <svg
           viewBox="0 0 24 24"
           className="h-5 w-5"

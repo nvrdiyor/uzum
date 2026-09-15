@@ -17,6 +17,8 @@ export default {
         ink: withAlpha('--c-text'),
         'ink-soft': withAlpha('--c-text-soft'),
         muted: withAlpha('--c-muted'),
+        // Yashil tugma USTIDAGI matn — oq yozuv yashil fonda 3,06:1 edi
+        'on-brand': withAlpha('--c-on-brand'),
         brand: {
           DEFAULT: withAlpha('--c-brand'),
           soft: withAlpha('--c-brand-soft'),

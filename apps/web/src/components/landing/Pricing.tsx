@@ -68,7 +68,7 @@ export function LandingPricing() {
                   <span
                     className={cn(
                       'chip absolute -top-3 left-6 font-bold',
-                      featured ? 'bg-brand-grad text-bg' : 'bg-violet/15 text-violet-ink ring-1 ring-inset ring-violet/30',
+                      featured ? 'bg-brand-grad text-on-brand' : 'bg-violet/15 text-violet-ink ring-1 ring-inset ring-violet/30',
                     )}
                   >
                     {featured ? t('pricing.popular') : t('pricing.best')}

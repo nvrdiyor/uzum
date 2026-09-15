@@ -40,7 +40,7 @@ export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; curr
       scope="col"
       className={cn(
         'table-head border-b border-line px-3 py-3 text-center',
-        p.id === currentPlan && 'text-brand',
+        p.id === currentPlan && 'text-brand-ink',
       )}
     >
       <span className="block truncate text-xs font-bold normal-case tracking-normal">{p.name}</span>

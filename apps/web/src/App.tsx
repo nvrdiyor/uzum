@@ -63,7 +63,7 @@ function FullPageLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg">
       <div className="flex flex-col items-center gap-3">
-        <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-grad text-white">
+        <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-grad text-on-brand">
           <span className="absolute inset-0 animate-pulse-ring rounded-2xl bg-brand/40" />
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
             <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />

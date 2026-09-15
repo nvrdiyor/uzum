@@ -68,7 +68,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         <div className="min-h-[3.25rem]">
           <Link
             to={`/products/${product.id}`}
-            className="line-clamp-2 text-sm font-semibold leading-snug text-ink transition-colors hover:text-brand"
+            className="line-clamp-2 text-sm font-semibold leading-snug text-ink transition-colors hover:text-brand-ink"
             title={product.title}
           >
             {product.title}

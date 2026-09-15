@@ -66,7 +66,7 @@ export function ClaimDraftModal({
             href={UZUM_SUPPORT_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-ink hover:underline"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             {t('claim.support')}

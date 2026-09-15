@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useFormat } from '@/i18n';
-import { ABC_CSS_VAR, ABC_KEYS, XYZ_KEYS, clamp01, type AbcGroupKey, type XyzGroupKey } from './shared';
+import { ABC_CSS_VAR, ABC_INK_VAR, ABC_KEYS, XYZ_KEYS, clamp01, type AbcGroupKey, type XyzGroupKey } from './shared';
 
 export interface MatrixCellData {
   abc: AbcGroupKey;
@@ -51,7 +51,7 @@ export function AbcMatrix({
                 className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg px-2 font-display text-xs font-extrabold"
                 style={{
                   background: `rgb(var(${ABC_CSS_VAR[abc]}) / 0.14)`,
-                  color: `rgb(var(${ABC_CSS_VAR[abc]}))`,
+                  color: `rgb(var(${ABC_INK_VAR[abc]}))`,
                 }}
               >
                 {abc}
@@ -88,12 +88,12 @@ export function AbcMatrix({
                   )}
                   style={{ background: `rgb(var(${ABC_CSS_VAR[abc]}) / ${alpha})` }}
                 >
-                  <span className="absolute left-1.5 top-1.5 text-2xs font-bold tracking-wider text-muted">
+                  <span className="absolute left-1.5 top-1.5 text-2xs font-bold tracking-wider text-ink-soft">
                     {abc}
                     {xyz}
                   </span>
                   <span className="tnum font-display text-xl font-extrabold leading-none text-ink">{cell.count}</span>
-                  <span className="mt-0.5 text-2xs text-muted">{labels.skuWord}</span>
+                  <span className="mt-0.5 text-2xs text-ink-soft">{labels.skuWord}</span>
                   <span className="tnum mt-1 text-xs font-semibold text-ink-soft">{f.compact(cell.revenue)}</span>
                 </button>
               );

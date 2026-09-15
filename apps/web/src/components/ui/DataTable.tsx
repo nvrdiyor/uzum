@@ -159,7 +159,7 @@ export function DataTable<T>({
                       }}
                       className={cn(
                         'inline-flex items-center gap-1 transition-colors hover:text-ink',
-                        sortKey === c.key && 'text-brand',
+                        sortKey === c.key && 'text-brand-ink',
                       )}
                     >
                       {c.header}
@@ -248,7 +248,7 @@ export function DataTable<T>({
                   onClick={() => pagination.onPage(p as number)}
                   className={cn(
                     'h-8 min-w-8 rounded-lg px-2 text-xs font-semibold transition-colors',
-                    p === pagination.page ? 'bg-brand text-white' : 'bg-surface-2 text-muted hover:text-ink',
+                    p === pagination.page ? 'bg-brand text-on-brand' : 'bg-surface-2 text-muted hover:text-ink',
                   )}
                 >
                   {p}

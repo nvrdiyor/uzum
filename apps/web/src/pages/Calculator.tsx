@@ -551,7 +551,7 @@ export default function Calculator() {
                   {defaults.isFetching ? (
                     <p className="mt-2 text-xs text-muted">{t('common.loading')}</p>
                   ) : defaults.data ? (
-                    <p className="mt-2 text-xs text-brand">{t('sku.loaded')}</p>
+                    <p className="mt-2 text-xs text-brand-ink">{t('sku.loaded')}</p>
                   ) : null}
                 </CardBody>
               </Card>
@@ -718,7 +718,7 @@ export default function Calculator() {
                   <p
                     className={cn(
                       'tnum mt-2 font-display text-3xl font-extrabold leading-tight tracking-tight',
-                      profitable ? 'text-brand' : 'text-danger',
+                      profitable ? 'text-brand-ink' : 'text-danger',
                     )}
                   >
                     {f.money(result.netProfitPerUnit)}
@@ -742,7 +742,7 @@ export default function Calculator() {
                       <span
                         className={cn(
                           'tnum font-display text-base font-extrabold',
-                          input.price >= result.breakEvenPrice ? 'text-brand' : 'text-danger',
+                          input.price >= result.breakEvenPrice ? 'text-brand-ink' : 'text-danger',
                         )}
                       >
                         {f.money(result.breakEvenPrice)}
@@ -798,7 +798,7 @@ export default function Calculator() {
                             <td
                               className={cn(
                                 'tnum px-4 py-2 text-right',
-                                row.net && (profitable ? 'font-semibold text-brand' : 'font-semibold text-danger'),
+                                row.net && (profitable ? 'font-semibold text-brand-ink' : 'font-semibold text-danger'),
                               )}
                             >
                               {f.money(row.value / qty)}
@@ -807,7 +807,7 @@ export default function Calculator() {
                               className={cn(
                                 'tnum px-4 py-2 text-right',
                                 row.strong && 'font-semibold text-ink',
-                                row.net && (profitable ? 'text-brand' : 'text-danger'),
+                                row.net && (profitable ? 'text-brand-ink' : 'text-danger'),
                               )}
                             >
                               {f.money(row.value)}
@@ -854,7 +854,7 @@ export default function Calculator() {
                     >
                       <td className="px-4 py-2">
                         <span className="flex items-center gap-2">
-                          <span className={cn('tnum font-semibold', s.step === 0 ? 'text-brand' : 'text-ink-soft')}>
+                          <span className={cn('tnum font-semibold', s.step === 0 ? 'text-brand-ink' : 'text-ink-soft')}>
                             {s.label}
                           </span>
                           {s.step === 0 ? <Badge tone="brand">{t('sens.current')}</Badge> : null}
@@ -864,7 +864,7 @@ export default function Calculator() {
                       <td
                         className={cn(
                           'tnum px-4 py-2 text-right font-semibold',
-                          s.profit < 0 ? 'text-danger' : 'text-brand',
+                          s.profit < 0 ? 'text-danger' : 'text-brand-ink',
                         )}
                       >
                         {f.money(s.profit)}
@@ -943,7 +943,7 @@ export default function Calculator() {
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                           <span className="tnum text-muted">{f.money(s.input.price)}</span>
                           <span className="text-muted">·</span>
-                          <span className={cn('tnum font-semibold', r.netProfit < 0 ? 'text-danger' : 'text-brand')}>
+                          <span className={cn('tnum font-semibold', r.netProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
                             {f.money(r.netProfitPerUnit)}
                           </span>
                           <Badge tone={r.margin < 0 ? 'danger' : 'muted'}>
@@ -1044,7 +1044,7 @@ function SummaryRow({ label, value, tone }: { label: string; value: string; tone
       <span
         className={cn(
           'tnum font-semibold',
-          tone === 'brand' && 'text-brand',
+          tone === 'brand' && 'text-brand-ink',
           tone === 'danger' && 'text-danger',
           !tone && 'text-ink',
         )}

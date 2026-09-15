@@ -741,7 +741,7 @@ function BackLink({ label }: { label: string }) {
   return (
     <Link
       to="/products"
-      className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-brand"
+      className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-brand-ink"
     >
       <ArrowLeft className="h-4 w-4" />
       {label}
@@ -764,9 +764,9 @@ function Metric({
       <p
         className={cn(
           'tnum mt-0.5 truncate text-sm font-bold',
-          tone === 'brand' && 'text-brand',
+          tone === 'brand' && 'text-brand-ink',
           tone === 'danger' && 'text-danger',
-          tone === 'warn' && 'text-warn',
+          tone === 'warn' && 'text-warn-ink',
           !tone && 'text-ink',
         )}
         title={value}
@@ -920,7 +920,7 @@ function UnitTab({ data }: { data: ProductDetailResponse | undefined }) {
               <span
                 className={cn(
                   'tnum font-display text-xl font-extrabold',
-                  u.netProfit >= 0 ? 'text-brand' : 'text-danger',
+                  u.netProfit >= 0 ? 'text-brand-ink' : 'text-danger',
                 )}
               >
                 {f.money(u.netProfit)}
@@ -1016,7 +1016,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Star
                           key={i}
-                          className={cn('h-3.5 w-3.5', i < review.rating ? 'text-warn' : 'text-muted opacity-40')}
+                          className={cn('h-3.5 w-3.5', i < review.rating ? 'text-warn-ink' : 'text-muted opacity-40')}
                         />
                       ))}
                       <span className="ml-1.5 text-xs font-medium text-ink-soft">{review.author ?? '—'}</span>
@@ -1026,7 +1026,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
                   {review.text ? <p className="mt-2 text-sm text-ink-soft">{review.text}</p> : null}
                   {review.answered && review.answerText ? (
                     <div className="mt-2.5 rounded-lg border border-line bg-surface p-2.5">
-                      <p className="text-2xs font-semibold uppercase tracking-wide text-brand">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-brand-ink">
                         {t('reviews.answerLabel')}
                       </p>
                       <p className="mt-0.5 text-xs text-ink-soft">{review.answerText}</p>

@@ -333,7 +333,7 @@ export default function Login() {
                 href={botStartLink}
                 target="_blank"
                 rel="noreferrer"
-                className="font-semibold text-brand hover:underline"
+                className="font-semibold text-brand-ink hover:underline"
               >
                 {t('foot.start')}
               </a>

@@ -1,6 +1,6 @@
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { ABC_CSS_VAR, clamp01, type AbcGroupKey } from './shared';
+import { ABC_CSS_VAR, ABC_INK_VAR, clamp01, type AbcGroupKey } from './shared';
 
 /** Guruh rangida ishlaydigan doiraviy ko'rsatkich (ProgressRing brand rangga qat'iy bog'langani uchun) */
 function GroupRing({ value, group, size = 104, stroke = 9 }: { value: number; group: AbcGroupKey; size?: number; stroke?: number }) {
@@ -8,6 +8,7 @@ function GroupRing({ value, group, size = 104, stroke = 9 }: { value: number; gr
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const color = `rgb(var(${ABC_CSS_VAR[group]}))`;
+  const inkColor = `rgb(var(${ABC_INK_VAR[group]}))`;
   return (
     <div className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -27,7 +28,7 @@ function GroupRing({ value, group, size = 104, stroke = 9 }: { value: number; gr
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="tnum font-display text-lg font-extrabold leading-none text-ink">{Math.round(pct)}%</span>
-        <span className="mt-0.5 font-display text-xs font-extrabold" style={{ color }}>
+        <span className="mt-0.5 font-display text-xs font-extrabold" style={{ color: inkColor }}>
           {group}
         </span>
       </div>
@@ -59,7 +60,7 @@ export function AbcGroupCard({
   onClick?: () => void;
 }) {
   const f = useFormat();
-  const color = `rgb(var(${ABC_CSS_VAR[group]}))`;
+  const color = `rgb(var(${ABC_INK_VAR[group]}))`;
 
   return (
     <button

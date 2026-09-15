@@ -65,7 +65,7 @@ export function CurrentPlanCard({
     <div className="card overflow-hidden bg-aurora p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-white shadow-[0_8px_24px_-10px_rgb(var(--c-brand)/0.9)]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_8px_24px_-10px_rgb(var(--c-brand)/0.9)]">
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -103,7 +103,7 @@ export function CurrentPlanCard({
             <span
               className={cn(
                 'tnum font-display text-sm font-extrabold',
-                tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-brand',
+                tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn-ink' : 'text-brand-ink',
               )}
             >
               {t('current.daysValue', { n: left })}

@@ -417,7 +417,7 @@ export default function Products() {
         align: 'right',
         hideOnMobile: true,
         render: (r) => (
-          <span className={cn('tnum', r.roi >= 0 ? 'text-brand' : 'text-danger')}>{f.pct(r.roi)}</span>
+          <span className={cn('tnum', r.roi >= 0 ? 'text-brand-ink' : 'text-danger')}>{f.pct(r.roi)}</span>
         ),
         sortable: true,
         sortValue: (r) => r.roi,

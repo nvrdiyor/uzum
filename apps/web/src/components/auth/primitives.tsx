@@ -274,7 +274,7 @@ export function BenefitRow({ icon, title, text }: { icon: ReactNode; title: stri
 export function PulseLogo({ size = 64 }: { size?: number }) {
   return (
     <span
-      className="relative flex items-center justify-center rounded-2xl bg-brand-grad text-bg shadow-[0_16px_40px_-16px_rgb(var(--c-brand)/0.95)]"
+      className="relative flex items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_16px_40px_-16px_rgb(var(--c-brand)/0.95)]"
       style={{ width: size, height: size }}
     >
       <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-2xl bg-brand/40" />

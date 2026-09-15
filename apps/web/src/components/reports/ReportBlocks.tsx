@@ -98,8 +98,8 @@ function MiniStat({
 }) {
   const toneClass = {
     ink: 'text-ink',
-    brand: 'text-brand',
-    warn: 'text-warn',
+    brand: 'text-brand-ink',
+    warn: 'text-warn-ink',
     danger: 'text-danger',
     info: 'text-info',
     violet: 'text-violet',
@@ -159,7 +159,7 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
     warn: 'border-warn/30 bg-warn/10',
     brand: 'border-brand/30 bg-brand/10',
   }[zone];
-  const text = { danger: 'text-danger', warn: 'text-warn', brand: 'text-brand' }[zone];
+  const text = { danger: 'text-danger', warn: 'text-warn-ink', brand: 'text-brand-ink' }[zone];
 
   return (
     <Card className="print-avoid-break">
@@ -372,7 +372,7 @@ export function WarehouseCard({ warehouse }: { warehouse: MonthlyReportResponse[
       <CardBody className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-brand/25 bg-brand/10 p-4">
-            <p className="text-2xs font-bold uppercase tracking-wider text-brand">FBO</p>
+            <p className="text-2xs font-bold uppercase tracking-wider text-brand-ink">FBO</p>
             <p className="tnum mt-1.5 font-display text-xl font-extrabold text-ink">{f.num(warehouse.fbo)}</p>
             <p className="text-2xs text-muted">{t('warehouse.units')}</p>
             <p className="tnum mt-2 text-sm font-semibold text-ink-soft">{f.money(warehouse.fboAmount)}</p>
@@ -408,6 +408,14 @@ const LEVEL_ICON = {
   danger: AlertTriangle,
 } as const;
 
+/** Xulosa kartochkasi ostidagi ko'rsatkich nishoni — tarjimasi bo'lsa */
+function metricLabel(t: (k: string) => string, metric?: string) {
+  if (!metric) return null;
+  const label = t(`metric.${metric}`);
+  if (label === `metric.${metric}`) return null;
+  return <span className="chip mt-2 bg-surface-3 text-2xs font-semibold text-ink-soft">{label}</span>;
+}
+
 export function InsightsBlock({ insights }: { insights: Insight[] }) {
   const t = useT('reports');
 
@@ -431,7 +439,12 @@ export function InsightsBlock({ insights }: { insights: Insight[] }) {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink">{i.title}</p>
                     <p className="mt-1 text-xs leading-relaxed text-ink-soft">{i.body}</p>
-                    {i.metric ? <p className="tnum mt-1.5 text-2xs text-muted">{i.metric}</p> : null}
+                    {/*
+                      `metric` — serverdagi texnik kalit. Ilgari u shundayligicha
+                      chiqib, sotuvchi "successRate" degan yozuvni ko'rardi.
+                      Endi tarjimasi bor kalitlargina ko'rsatiladi.
+                    */}
+                    {metricLabel(t, i.metric)}
                   </div>
                 </div>
               );

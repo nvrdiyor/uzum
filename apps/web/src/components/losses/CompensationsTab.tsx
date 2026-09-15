@@ -98,7 +98,7 @@ export function CompensationsTab({
       key: 'compensated',
       header: t('col.compensated'),
       align: 'right',
-      render: (r) => <span className="tnum font-semibold text-brand">{f.money(r.compensated)}</span>,
+      render: (r) => <span className="tnum font-semibold text-brand-ink">{f.money(r.compensated)}</span>,
       sortable: true,
       sortValue: (r) => r.compensated,
     },

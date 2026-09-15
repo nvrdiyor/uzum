@@ -25,6 +25,16 @@ export const ABC_CSS_VAR: Record<AbcGroupKey, string> = {
   C: '--c-danger',
 };
 
+/**
+ * Rangli plastinka USTIDAGI matn uchun to'q variantlar — oddiy rang
+ * 14% tiniq fonda 2,63:1 gacha tushardi.
+ */
+export const ABC_INK_VAR: Record<AbcGroupKey, string> = {
+  A: '--c-brand-ink',
+  B: '--c-warn-ink',
+  C: '--c-danger-ink',
+};
+
 export const XYZ_KEYS: XyzGroupKey[] = ['X', 'Y', 'Z'];
 export const ABC_KEYS: AbcGroupKey[] = ['A', 'B', 'C'];
 

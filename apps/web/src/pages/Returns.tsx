@@ -450,7 +450,7 @@ export default function Returns() {
                           <span className="text-muted">
                             {f.num(p.qty)} {t('common.units')} · {f.money(p.amount)}
                           </span>
-                          <span className={cn('tnum font-semibold', p.share >= 25 ? 'text-danger' : 'text-warn')}>
+                          <span className={cn('tnum font-semibold', p.share >= 25 ? 'text-danger' : 'text-warn-ink')}>
                             {f.pct(p.share)} {t('alert.share')}
                           </span>
                         </div>

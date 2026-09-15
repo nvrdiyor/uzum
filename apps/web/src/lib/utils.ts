@@ -10,9 +10,9 @@ export function clamp(n: number, min: number, max: number): number {
 
 /** 0..100 progress bo'yicha rang */
 export function progressTone(p: number): string {
-  if (p >= 99) return 'text-brand';
+  if (p >= 99) return 'text-brand-ink';
   if (p >= 50) return 'text-info';
-  return 'text-warn';
+  return 'text-warn-ink';
 }
 
 export function copyToClipboard(text: string): Promise<void> {

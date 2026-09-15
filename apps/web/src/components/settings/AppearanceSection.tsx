@@ -120,7 +120,7 @@ export function AppearanceSection() {
                     >
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className={cn('flex-1 text-sm font-semibold', on ? 'text-brand' : 'text-ink')}>
+                    <span className={cn('flex-1 text-sm font-semibold', on ? 'text-brand-ink' : 'text-ink')}>
                       {o.label}
                     </span>
                     {on ? <Check className="h-4 w-4 text-brand" /> : null}

@@ -23,7 +23,7 @@ export function LandingFooter() {
               href={BOT_LINK}
               target="_blank"
               rel="noreferrer noopener"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-brand/40 hover:text-brand"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-brand/40 hover:text-brand-ink"
             >
               <TelegramIcon className="h-4 w-4" />
               {BOT_USERNAME ? `@${BOT_USERNAME}` : t('footer.bot')}
@@ -38,14 +38,14 @@ export function LandingFooter() {
                   <button
                     type="button"
                     onClick={() => scrollToId(l.id)}
-                    className="text-sm text-ink-soft transition-colors hover:text-brand"
+                    className="text-sm text-ink-soft transition-colors hover:text-brand-ink"
                   >
                     {t(l.key)}
                   </button>
                 </li>
               ))}
               <li>
-                <Link to="/login" className="text-sm text-ink-soft transition-colors hover:text-brand">
+                <Link to="/login" className="text-sm text-ink-soft transition-colors hover:text-brand-ink">
                   {t('nav.login')}
                 </Link>
               </li>
@@ -60,7 +60,7 @@ export function LandingFooter() {
                   href={BOT_LINK}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-sm text-ink-soft transition-colors hover:text-brand"
+                  className="text-sm text-ink-soft transition-colors hover:text-brand-ink"
                 >
                   {t('footer.support')}
                 </a>
@@ -69,7 +69,7 @@ export function LandingFooter() {
                 <button
                   type="button"
                   onClick={() => scrollToId('faq')}
-                  className="text-sm text-ink-soft transition-colors hover:text-brand"
+                  className="text-sm text-ink-soft transition-colors hover:text-brand-ink"
                 >
                   {t('footer.faq')}
                 </button>

@@ -227,7 +227,7 @@ const PAGE_SIZE = 25;
 
 function daysTone(days: number): string {
   if (days >= 90) return 'text-danger';
-  if (days >= 60) return 'text-warn';
+  if (days >= 60) return 'text-warn-ink';
   return 'text-ink-soft';
 }
 

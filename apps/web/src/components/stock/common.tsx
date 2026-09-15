@@ -17,9 +17,9 @@ export const STATE_TONE: Record<StockState, Tone> = {
 };
 
 export const TONE_TEXT: Record<Tone, string> = {
-  brand: 'text-brand',
+  brand: 'text-brand-ink',
   info: 'text-info',
-  warn: 'text-warn',
+  warn: 'text-warn-ink',
   danger: 'text-danger',
   muted: 'text-muted',
   violet: 'text-violet',

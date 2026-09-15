@@ -377,7 +377,7 @@ export default function Losses() {
         header: t('col.compensated'),
         align: 'right',
         render: (r) => (
-          <span className={cn('tnum', r.compensated > 0 ? 'font-semibold text-brand' : 'text-muted')}>
+          <span className={cn('tnum', r.compensated > 0 ? 'font-semibold text-brand-ink' : 'text-muted')}>
             {r.compensated > 0 ? f.money(r.compensated) : '—'}
           </span>
         ),
@@ -559,7 +559,7 @@ export default function Losses() {
                         </td>
                         <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
                         <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                        <td className="tnum px-4 py-3 text-right text-brand">{f.money(pageComp)}</td>
+                        <td className="tnum px-4 py-3 text-right text-brand-ink">{f.money(pageComp)}</td>
                         <td className="px-4 py-3" colSpan={2} />
                       </>
                     ) : undefined

@@ -32,7 +32,7 @@ export function PageHeader({
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3.5">
           {icon ? (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-white shadow-[0_8px_24px_-10px_rgb(var(--c-brand)/0.9)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_8px_24px_-10px_rgb(var(--c-brand)/0.9)]">
               {icon}
             </div>
           ) : null}

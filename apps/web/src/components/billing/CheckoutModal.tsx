@@ -173,7 +173,7 @@ export function CheckoutModal({
               />
             </div>
             {n >= 12 && plan.yearlyDiscount > 0 ? (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-brand">
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-brand-ink">
                 <BadgePercent className="h-3.5 w-3.5" />
                 {t('pay.yearlyHint', { pct: plan.yearlyDiscount })}
               </p>
@@ -230,7 +230,7 @@ export function CheckoutModal({
               <span
                 className={cn(
                   'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
-                  useBonus ? 'border-brand bg-brand text-white' : 'border-line-strong bg-surface',
+                  useBonus ? 'border-brand bg-brand text-on-brand' : 'border-line-strong bg-surface',
                 )}
               >
                 {useBonus ? <Check className="h-3 w-3" /> : null}
@@ -283,7 +283,7 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: 'bra
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="text-sm text-muted">{label}</span>
-      <span className={cn('tnum text-sm font-semibold', tone === 'brand' ? 'text-brand' : 'text-ink')}>{value}</span>
+      <span className={cn('tnum text-sm font-semibold', tone === 'brand' ? 'text-brand-ink' : 'text-ink')}>{value}</span>
     </div>
   );
 }
@@ -296,7 +296,7 @@ function ManualInstructions({ invoice, onCopy }: { invoice: InvoiceRow; onCopy: 
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-brand">{t('pay.invoice')}</p>
+        <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('pay.invoice')}</p>
         <p className="tnum mt-1 font-display text-2xl font-extrabold text-ink">{f.money(invoice.amount)}</p>
         <p className="mt-1 text-xs text-muted">
           {t('pay.invoiceNo')}: <span className="font-mono text-ink-soft">{invoice.id.slice(0, 10).toUpperCase()}</span>

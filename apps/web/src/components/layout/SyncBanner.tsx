@@ -51,7 +51,7 @@ export function SyncBanner() {
               style={{ width: `${data.progress}%` }}
             />
           </div>
-          <span className="tnum text-xs font-semibold text-brand">{data.progress}%</span>
+          <span className="tnum text-xs font-semibold text-brand-ink">{data.progress}%</span>
           <span className={cn('hidden text-xs text-muted md:inline')}>
             ~{formatDuration(data.etaSeconds, lang)} {text.left}
           </span>

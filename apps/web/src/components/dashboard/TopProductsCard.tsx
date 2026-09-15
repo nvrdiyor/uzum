@@ -44,7 +44,7 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       align: 'right',
       sortable: true,
       sortValue: (r) => r.profit,
-      render: (r) => <span className={cn('font-semibold', r.profit >= 0 ? 'text-brand' : 'text-danger')}>{f.money(r.profit)}</span>,
+      render: (r) => <span className={cn('font-semibold', r.profit >= 0 ? 'text-brand-ink' : 'text-danger')}>{f.money(r.profit)}</span>,
     },
     {
       key: 'margin',
@@ -81,7 +81,7 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
         actions={
           <Link
             to="/products"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-brand transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-80"
           >
             {t('top.all')}
             <ArrowRight className="h-4 w-4" />

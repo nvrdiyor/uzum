@@ -218,7 +218,7 @@ export function StockHistoryDrawer({
                     <p className="mt-1.5 text-sm text-muted">{t('drawer.enough')}</p>
                   ) : (
                     <>
-                      <p className="tnum mt-2 font-display text-2xl font-extrabold text-brand">
+                      <p className="tnum mt-2 font-display text-2xl font-extrabold text-brand-ink">
                         {f.num(advice.need)} <span className="text-base text-ink-soft">{t('drawer.units')}</span>
                       </p>
                       <p className="mt-1 text-xs text-muted">{t('drawer.cover')}</p>

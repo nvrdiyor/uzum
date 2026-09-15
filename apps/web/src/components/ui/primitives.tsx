@@ -510,7 +510,7 @@ export function Avatar({ src, name, size = 36 }: { src?: string | null; name?: s
     />
   ) : (
     <div
-      className="flex items-center justify-center rounded-full bg-brand-grad font-display text-sm font-bold text-white"
+      className="flex items-center justify-center rounded-full bg-brand-grad font-display text-sm font-bold text-on-brand"
       style={{ width: size, height: size }}
     >
       {letters}

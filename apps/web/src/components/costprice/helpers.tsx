@@ -114,7 +114,7 @@ export function rowEconomics(
 
 /** Marja/ROI qiymati uchun rang */
 export function valueTone(value: number): string {
-  if (value >= 20) return 'text-brand';
+  if (value >= 20) return 'text-brand-ink';
   if (value >= 0) return 'text-warn-ink';
   return 'text-danger';
 }

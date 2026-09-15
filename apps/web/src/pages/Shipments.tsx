@@ -792,7 +792,7 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
                     <td
                       className={cn(
                         'tnum px-3 py-2.5 text-right',
-                        item.accepted >= item.qty ? 'text-brand' : 'text-muted',
+                        item.accepted >= item.qty ? 'text-brand-ink' : 'text-muted',
                       )}
                     >
                       {f.num(item.accepted)}
@@ -944,7 +944,7 @@ function CreateShipmentModal({
               {t('form.totalUnits')}: <span className="tnum font-semibold text-ink">{f.num(totals.units)}</span>
             </span>
             <span>
-              {t('form.totalValue')}: <span className="tnum font-semibold text-brand">{f.money(totals.value)}</span>
+              {t('form.totalValue')}: <span className="tnum font-semibold text-brand-ink">{f.money(totals.value)}</span>
             </span>
           </div>
           <div className="flex items-center gap-2">

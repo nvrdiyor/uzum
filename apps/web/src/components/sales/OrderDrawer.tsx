@@ -98,7 +98,7 @@ function MoneyRow({
         className={cn(
           'tnum text-sm',
           strong ? 'font-display text-base font-extrabold' : 'font-medium',
-          tone === 'danger' ? 'text-danger' : tone === 'brand' ? 'text-brand' : 'text-ink-soft',
+          tone === 'danger' ? 'text-danger' : tone === 'brand' ? 'text-brand-ink' : 'text-ink-soft',
         )}
       >
         {negative ? '−' : ''}

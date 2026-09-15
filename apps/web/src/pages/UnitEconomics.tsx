@@ -379,7 +379,7 @@ export default function UnitEconomics() {
         sortable: true,
         sortValue: (r) => r.netProfit,
         render: (r) => (
-          <span className={cn('tnum font-display font-extrabold', r.netProfit < 0 ? 'text-danger' : 'text-brand')}>
+          <span className={cn('tnum font-display font-extrabold', r.netProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
             {f.money(r.netProfit)}
           </span>
         ),

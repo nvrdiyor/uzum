@@ -315,7 +315,7 @@ export default function Referral() {
       align: 'right',
       sortable: true,
       sortValue: (r) => r.amount,
-      render: (r) => <span className="font-semibold text-brand">{f.money(r.amount)}</span>,
+      render: (r) => <span className="font-semibold text-brand-ink">{f.money(r.amount)}</span>,
     },
     {
       key: 'status',
@@ -437,7 +437,7 @@ export default function Referral() {
                       href={data.botLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-brand"
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-brand-ink"
                     >
                       <Share2 className="h-3.5 w-3.5" />
                       {t('hero.bot')}
@@ -450,7 +450,7 @@ export default function Referral() {
               <div className="flex items-center">
                 <div className="w-full rounded-2xl border border-line bg-surface/70 p-5 backdrop-blur">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-white">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand">
                       <Wallet className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
@@ -519,7 +519,7 @@ export default function Referral() {
                 {[1, 2, 3].map((n) => (
                   <div key={n} className="flex gap-4 md:block">
                     <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-line bg-surface shadow-card">
-                      <span className="tnum font-display text-base font-extrabold text-brand">{n}</span>
+                      <span className="tnum font-display text-base font-extrabold text-brand-ink">{n}</span>
                     </div>
                     <div className="md:mt-4">
                       <p className="text-2xs font-bold uppercase tracking-[0.14em] text-muted">
@@ -597,7 +597,7 @@ export default function Referral() {
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4 text-center">
-            <p className="text-2xs font-semibold uppercase tracking-wider text-brand">{t('wd.amount')}</p>
+            <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('wd.amount')}</p>
             <p className="tnum mt-1 font-display text-3xl font-extrabold text-ink">{f.money(pending)}</p>
           </div>
 

@@ -513,7 +513,7 @@ export default function Planner() {
                 <div>
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="label mb-0">{t('ctrl.cover')}</span>
-                    <span className="tnum font-display text-lg font-extrabold text-brand">
+                    <span className="tnum font-display text-lg font-extrabold text-brand-ink">
                       {coverInput} {t('ctrl.days')}
                     </span>
                   </div>
@@ -559,7 +559,7 @@ export default function Planner() {
             <div className="card overflow-hidden bg-aurora p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-white">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand">
                     <PackagePlus className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
@@ -688,7 +688,7 @@ export default function Planner() {
                       <td className="hidden px-3 py-2.5 md:table-cell" />
                       <td className="hidden px-3 py-2.5 md:table-cell" />
                       <td className="hidden px-3 py-2.5 md:table-cell" />
-                      <td className="tnum px-3 py-2.5 text-right text-brand">{totalNum(visibleTotals.qty)}</td>
+                      <td className="tnum px-3 py-2.5 text-right text-brand-ink">{totalNum(visibleTotals.qty)}</td>
                       <td className="tnum hidden px-3 py-2.5 text-right md:table-cell">
                         {totalMoney(visibleTotals.cost)}
                       </td>

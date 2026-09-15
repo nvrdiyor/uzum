@@ -621,7 +621,7 @@ function ReviewCard({ review, onReply }: { review: ReviewRow; onReply: () => voi
         <div className="mt-4 rounded-xl border border-brand/20 bg-brand/[0.08] p-3.5">
           <div className="mb-1.5 flex items-center gap-2">
             <MessageSquareReply className="h-3.5 w-3.5 text-brand" />
-            <span className="text-xs font-semibold text-brand">{t('card.answer')}</span>
+            <span className="text-xs font-semibold text-brand-ink">{t('card.answer')}</span>
             {review.autoAnswered ? (
               <Badge tone="violet" className="ml-auto">
                 <Bot className="h-3 w-3" />

@@ -66,7 +66,7 @@ export function PlanCard({
             className={cn(
               'chip absolute -top-3 left-6 font-bold shadow-card',
               featured
-                ? 'bg-brand-grad text-white'
+                ? 'bg-brand-grad text-on-brand'
                 : 'bg-violet/15 text-violet-ink ring-1 ring-inset ring-violet/30',
             )}
           >
@@ -75,7 +75,7 @@ export function PlanCard({
         ) : null}
 
         {isCurrent ? (
-          <span className="chip absolute -top-3 right-6 bg-surface font-bold text-brand ring-1 ring-inset ring-brand/40">
+          <span className="chip absolute -top-3 right-6 bg-surface font-bold text-brand-ink ring-1 ring-inset ring-brand/40">
             <Check className="h-3 w-3" />
             {t('card.current')}
           </span>

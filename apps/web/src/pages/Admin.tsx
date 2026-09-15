@@ -1286,7 +1286,7 @@ function JobsTab() {
             {t(`jobs.status.${j.status ?? 'queued'}`)}
           </Badge>
           {j.status === 'running' && typeof j.progress === 'number' ? (
-            <span className="tnum text-xs text-brand">{j.progress}%</span>
+            <span className="tnum text-xs text-brand-ink">{j.progress}%</span>
           ) : null}
         </div>
       ),

@@ -153,7 +153,7 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
                 <Loader2 className="h-4 w-4 animate-spin text-brand" />
                 {t('sync.running')}
               </p>
-              <span className="tnum font-display text-lg font-extrabold text-brand">{s.progress}%</span>
+              <span className="tnum font-display text-lg font-extrabold text-brand-ink">{s.progress}%</span>
             </div>
             <ProgressBar value={s.progress} className="mt-3" />
             <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">

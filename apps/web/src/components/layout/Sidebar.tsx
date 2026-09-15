@@ -11,7 +11,7 @@ import { getPlan } from '@savdoiq/shared';
 export function Logo({ compact }: { compact?: boolean }) {
   return (
     <Link to="/dashboard" className="flex items-center gap-2.5 outline-none">
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-white shadow-[0_8px_20px_-8px_rgb(var(--c-brand)/0.9)]">
+      <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-on-brand shadow-[0_8px_20px_-8px_rgb(var(--c-brand)/0.9)]">
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />
           <circle cx="19.5" cy="12" r="2" fill="currentColor" stroke="none" />
@@ -46,7 +46,7 @@ function PlanCard() {
       </div>
       <Link
         to="/pricing"
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-grad px-3 py-2 text-xs font-bold text-white transition-transform duration-200 hover:scale-[1.02]"
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-grad px-3 py-2 text-xs font-bold text-on-brand transition-transform duration-200 hover:scale-[1.02]"
       >
         <Rocket className="h-3.5 w-3.5" />
         {t('btn.upgrade')}

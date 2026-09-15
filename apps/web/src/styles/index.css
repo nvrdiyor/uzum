@@ -17,12 +17,18 @@
   --c-border-strong: 205 211 220;
   --c-text: 16 21 30;
   --c-text-soft: 55 65 81;
-  --c-muted: 99 109 124;
+  --c-muted: 95 105 120;
 
   --c-brand: 0 168 118;
   --c-brand-2: 20 199 158;
   --c-brand-soft: 226 247 240;
   --c-brand-ink: 0 106 76;
+  /*
+   * Yashil tugma va nishon USTIDAGI matn. Oq yozuv yorug' mavzuda 3,06:1,
+   * qorong'ida 2,3:1 berardi — to'q yozuv ikkala mavzuda ham 6:1 dan yuqori
+   * va yashilning yorqinligini saqlaydi.
+   */
+  --c-on-brand: 6 24 18;
 
   /* Yorug' fonda o'qilishi uchun to'q qilingan — 214 138 0 oq fonda faqat 2.8:1 edi */
   --c-warn: 166 98 0;
@@ -64,6 +70,7 @@
   --c-brand-2: 60 226 190;
   --c-brand-soft: 14 45 38;
   --c-brand-ink: 133 246 213;
+  --c-on-brand: 6 24 18;
 
   --c-warn: 255 176 32;
   --c-danger: 255 99 104;
@@ -155,7 +162,7 @@ body {
   }
 
   .btn-primary {
-    @apply btn bg-brand text-white shadow-[0_6px_20px_-8px_rgb(var(--c-brand)/0.9)] hover:brightness-110 active:scale-[0.98];
+    @apply btn bg-brand text-on-brand shadow-[0_6px_20px_-8px_rgb(var(--c-brand)/0.9)] hover:brightness-110 active:scale-[0.98];
   }
 
   .btn-ghost {
@@ -233,6 +240,14 @@ body {
 }
 .recharts-tooltip-wrapper:focus-visible {
   outline: none;
+}
+/*
+ * Izoh matnini Recharts chiziq rangi bilan bo'yaydi — yashil yoki sariq
+ * yozuv oq fonda 2:1 gacha tushardi. Rangni faqat doiracha saqlaydi,
+ * matn esa asosiy rangda bo'ladi.
+ */
+.recharts-legend-item-text {
+  color: rgb(var(--c-text-soft)) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
