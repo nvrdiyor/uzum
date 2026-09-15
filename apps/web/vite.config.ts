@@ -25,6 +25,17 @@ export default defineConfig({
       },
     },
   },
+  // `vite preview` `server.proxy` dan foydalanmaydi — yig'ilgan bildni
+  // lokal API bilan sinash uchun alohida sozlama kerak
+  preview: {
+    port: 5174,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_PROXY ?? 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
