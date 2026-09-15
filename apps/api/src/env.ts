@@ -60,6 +60,19 @@ export const env = {
       .filter(Boolean),
   },
 
+  /**
+   * Administrator login/parol bilan kirishi (Telegramsiz).
+   * Parol xesh ko'rinishida saqlanadi: ADMIN_PASSWORD_HASH (scrypt$salt$hash).
+   * Qulaylik uchun ADMIN_PASSWORD ham qabul qilinadi — u ishga tushganda xeshlanadi.
+   */
+  admin: {
+    username: (process.env.ADMIN_USERNAME ?? '').trim(),
+    passwordHash: (process.env.ADMIN_PASSWORD_HASH ?? '').trim(),
+    password: process.env.ADMIN_PASSWORD ?? '',
+    /** Admin hisobi uchun barqaror telegramId (Telegram bilan to'qnashmasligi uchun manfiy) */
+    telegramId: process.env.ADMIN_TELEGRAM_ID ?? '-1',
+  },
+
   uzum: {
     baseUrl: process.env.UZUM_API_BASE ?? 'https://api-seller.uzum.uz/api/seller-openapi',
     /** demo — real API'siz ishlash (namunaviy ma'lumot generatsiya qilinadi) */

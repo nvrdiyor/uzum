@@ -28,6 +28,12 @@ export const botCodeSchema = z.object({
   ref: z.string().optional(),
 });
 
+/** Administrator login/parol bilan kirishi */
+export const adminLoginSchema = z.object({
+  username: z.string().trim().min(3).max(64),
+  password: z.string().min(6).max(200),
+});
+
 export const companySchema = z.object({
   name: z.string().trim().min(2).max(120),
   taxRate: z.coerce.number().min(0).max(50).default(1),

@@ -96,6 +96,8 @@ export function useSubscription() {
 export function useNeedsOnboarding(): boolean {
   return useSession((s) => {
     if (!s.me) return false;
+    // Administrator kompaniyasiz ishlaydi — uni onboardingga yubormaymiz
+    if (s.me.user.role === 'admin') return false;
     if (!s.me.company) return true;
     if (s.me.company.onboardStep !== 'done') return true;
     return false;

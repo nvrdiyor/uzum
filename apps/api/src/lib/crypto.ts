@@ -52,6 +52,34 @@ export function randomReferralCode(): string {
   return out;
 }
 
+// ─────────────────────────── Parol (admin kirishi uchun) ───────────────────────────
+
+const SCRYPT_N = 16_384;
+const SCRYPT_KEYLEN = 64;
+
+/**
+ * Parolni scrypt bilan xeshlaydi. Format: `scrypt$<salt hex>$<hash hex>`.
+ * Parolning o'zi hech qayerda saqlanmaydi.
+ */
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, { N: SCRYPT_N });
+  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+}
+
+/** Parolni saqlangan xesh bilan solishtiradi (vaqt bo'yicha barqaror) */
+export function verifyPassword(password: string, stored: string): boolean {
+  try {
+    const [algo, saltHex, hashHex] = stored.split('$');
+    if (algo !== 'scrypt' || !saltHex || !hashHex) return false;
+    const expected = Buffer.from(hashHex, 'hex');
+    const actual = crypto.scryptSync(password, Buffer.from(saltHex, 'hex'), expected.length, { N: SCRYPT_N });
+    return crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
 export function maskKey(key: string): string {
   if (key.length <= 6) return '••••';
   return `••••${key.slice(-4)}`;

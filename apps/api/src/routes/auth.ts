@@ -23,6 +23,7 @@ import {
   FEATURE_IDS,
   PLAN_ORDER,
   TRIAL_DAYS,
+  adminLoginSchema,
   botCodeSchema,
   featureAccess,
   getPlan,
@@ -42,7 +43,9 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { SESSION_COOKIE, createSession, ctx, requireAuth, revokeSession } from '../lib/auth.js';
 import {
+  hashPassword,
   randomReferralCode,
+  verifyPassword,
   verifyTelegramInitData,
   verifyTelegramLogin,
 } from '../lib/crypto.js';
@@ -692,6 +695,68 @@ router.get(
 );
 
 // ─────────────────────────── POST /logout ───────────────────────────
+
+/**
+ * POST /admin-login — administrator login va parol bilan kiradi (Telegramsiz).
+ *
+ * Login va parol xeshi `.env` da: `ADMIN_USERNAME` va `ADMIN_PASSWORD_HASH`
+ * (yoki qulaylik uchun `ADMIN_PASSWORD`). Parolning o'zi bazada saqlanmaydi.
+ * Muvaffaqiyatli kirishda admin hisobi yaratiladi/yangilanadi va sessiya beriladi.
+ */
+router.post(
+  '/admin-login',
+  loginLimiter,
+  ah(async (req, res) => {
+    const { username, password } = adminLoginSchema.parse(req.body);
+
+    const expectedUser = env.admin.username;
+    const storedHash = env.admin.passwordHash || (env.admin.password ? hashPassword(env.admin.password) : '');
+
+    if (!expectedUser || !storedHash) {
+      throw new AppError(503, 'admin_disabled', 'Administrator kirishi sozlanmagan');
+    }
+
+    // Login ham, parol ham noto'g'ri bo'lsa bir xil xabar — qaysi biri xato ekani bildirilmaydi
+    const userOk = username.toLowerCase() === expectedUser.toLowerCase();
+    const passOk = verifyPassword(password, storedHash);
+    if (!userOk || !passOk) {
+      throw AppError.unauthorized('Login yoki parol noto‘g‘ri');
+    }
+
+    const telegramId = env.admin.telegramId;
+    const existing = await prisma.user.findUnique({ where: { telegramId } });
+
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: { role: 'admin', status: 'active', username: expectedUser },
+        })
+      : await prisma.user.create({
+          data: {
+            telegramId,
+            username: expectedUser,
+            firstName: 'Administrator',
+            role: 'admin',
+            languageCode: 'uz',
+            referralCode: randomReferralCode(),
+          },
+        });
+
+    const { token, expiresAt } = await createSession(user.id, {
+      ip: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
+    });
+    setSessionCookie(res, token, expiresAt);
+
+    const payload: LoginResponse = {
+      token,
+      expiresAt: expiresAt.toISOString(),
+      user: toAuthUser(user),
+      isNewUser: !existing,
+    };
+    res.json(payload);
+  }),
+);
 
 /** Chiqish — token bo'lmasa ham 200 (idempotent) */
 router.post(

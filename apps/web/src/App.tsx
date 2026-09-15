@@ -14,6 +14,7 @@ import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
 import AuthCallback from '@/pages/AuthCallback';
 import NotFound from '@/pages/NotFound';
+import AdminLogin from '@/pages/AdminLogin';
 
 // Ichki sahifalar — kodni bo'lib yuklash
 const Onboarding = lazy(() => import('@/pages/Onboarding'));
@@ -121,6 +122,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
 
           <Route element={<Protected />}>
             <Route path="/onboarding" element={<Onboarding />} />
