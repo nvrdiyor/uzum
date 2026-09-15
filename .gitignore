@@ -13,3 +13,6 @@ apps/api/dist/
 apps/bot/dist/
 coverage/
 .vite/
+
+# Agentlar yaratgan vaqtinchalik sinov papkalari
+.tmp-*/
