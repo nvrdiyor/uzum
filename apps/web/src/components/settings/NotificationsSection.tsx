@@ -9,6 +9,7 @@ import {
   Inbox,
   PackageCheck,
   Send,
+  CheckCheck,
   XCircle,
 } from 'lucide-react';
 import type { NotificationRow } from '@savdoiq/shared';
@@ -89,6 +90,17 @@ export function NotificationsSection() {
     queryFn: async () => asItems<NotificationRow>(await api.get<NotificationRow[]>('/notifications')),
   });
 
+  /** Barcha o'qilmagan xabarlarni birdaniga o'qilgan deb belgilash */
+  const markAllRead = useMutation({
+    mutationFn: () => api.post<{ count?: number }>('/notifications/read-all'),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+      void reloadSession();
+      toast.success(t('notif.allMarked'));
+    },
+    onError: (err) => toast.error(t('common.error'), errText(err)),
+  });
+
   const markRead = useMutation({
     mutationFn: (id: string) => api.post<unknown>(`/notifications/${id}/read`),
     onSuccess: () => {
@@ -103,6 +115,7 @@ export function NotificationsSection() {
   const botOn = data?.telegramConnected ?? false;
   const botLink = data?.botLink || BOT_URL;
   const rows = (list.data ?? []).slice(0, 12);
+  const unread = (list.data ?? []).filter((n) => !n.read).length;
 
   return (
     <div className="space-y-4">
@@ -188,7 +201,24 @@ export function NotificationsSection() {
 
       {/* ── Xabarlar tarixi ── */}
       <Card>
-        <CardHeader icon={<Inbox className="h-4 w-4" />} title={t('notif.list')} subtitle={t('notif.listHint')} />
+        <CardHeader
+          icon={<Inbox className="h-4 w-4" />}
+          title={t('notif.list')}
+          subtitle={t('notif.listHint')}
+          actions={
+            unread > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                icon={<CheckCheck className="h-3.5 w-3.5" />}
+                loading={markAllRead.isPending}
+                onClick={() => markAllRead.mutate()}
+              >
+                {t('notif.markAll', { n: unread })}
+              </Button>
+            ) : undefined
+          }
+        />
         <CardBody>
           {list.isError ? (
             <ErrorState message={errText(list.error)} onRetry={() => void list.refetch()} />

@@ -4,7 +4,7 @@ import { ChevronLeft, Lock, Rocket, ShieldCheck } from 'lucide-react';
 import { NAV } from '@/lib/nav';
 import { useT } from '@/i18n';
 import { useUi } from '@/store/ui';
-import { useIsAdmin, useSession } from '@/store/session';
+import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
 import { getPlan } from '@savdoiq/shared';
 
@@ -59,7 +59,6 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT('common');
   const rail = useUi((s) => s.rail);
   const toggleRail = useUi((s) => s.toggleRail);
-  const isAdmin = useIsAdmin();
   const features = useSession((s) => s.me?.features);
 
   return (
@@ -139,25 +138,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
 
-        {isAdmin ? (
-          <div className="mb-5">
-            {!rail ? <p className="mb-2 px-3 text-2xs font-bold uppercase tracking-[0.12em] text-muted/70">Admin</p> : null}
-            <NavLink
-              to="/admin"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                  rail && 'justify-center px-0',
-                  isActive ? 'bg-violet/10 text-violet' : 'text-ink-soft hover:bg-surface-2',
-                )
-              }
-            >
-              <ShieldCheck className="h-[18px] w-[18px]" />
-              {!rail ? <span>{t('nav.admin')}</span> : null}
-            </NavLink>
-          </div>
-        ) : null}
+        {/*
+          Administrator bo'limi yon menyuda ATAYLAB ko'rsatilmaydi.
+          Unga faqat manzilni bilgan odam kiradi: /admin
+          (marshrutning o'zi va serverdagi huquq tekshiruvi joyida qoladi).
+        */}
       </nav>
 
       {!rail ? <PlanCard /> : null}

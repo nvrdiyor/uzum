@@ -1,0 +1,5 @@
+<!doctype html><html><body>
+<script>window.requestAnimationFrame = function(cb){ return setTimeout(function(){ cb(performance.now()); }, 16); };
+window.cancelAnimationFrame = function(id){ clearTimeout(id); };</script>
+<div id="variants-root"></div>
+<script type="module" src="./variants.jsx"></script></body></html>

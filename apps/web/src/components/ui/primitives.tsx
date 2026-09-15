@@ -276,20 +276,27 @@ export function Toggle({
         {label ? <span className="block text-sm font-medium text-ink">{label}</span> : null}
         {hint ? <span className="block text-xs text-muted">{hint}</span> : null}
       </span>
+      {/*
+        p-0 muhim: <button> ning brauzerdagi standart ichki bo'shlig'i (padding)
+        absolyut joylashgan doiraning boshlang'ich nuqtasini o'ngga suradi va u
+        yo'lakchadan chiqib ketadi. left-0.5 bilan boshlang'ich nuqta aniq
+        belgilanadi: yo'lakcha 44px, doira 20px, ikki chetda 2px — yurish 20px.
+      */}
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
+          'relative h-6 w-11 shrink-0 rounded-full border-0 p-0 transition-colors duration-200',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
           checked ? 'bg-brand' : 'bg-surface-3',
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-spring',
-            checked ? 'translate-x-[22px]' : 'translate-x-0.5',
+            'absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-spring',
+            checked ? 'translate-x-5' : 'translate-x-0',
           )}
         />
       </button>
