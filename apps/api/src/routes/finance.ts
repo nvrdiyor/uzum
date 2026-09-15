@@ -130,7 +130,16 @@ interface FinanceSnapshot {
   /** Sotilgan tovarga tegishli xarajatlar — sof foydadan ayrilgan */
   item: { commission: number; delivery: number; other: number; tax: number };
   /** Davrga tegishli xarajatlar — davr foydasidan ayriladi */
-  periodCosts: { logistics: number; marketing: number; storage: number; salary: number; other: number };
+  periodCosts: {
+    logistics: number;
+    marketing: number;
+    storage: number;
+    salary: number;
+    other: number;
+    /** Qo'lda kiritilgan komissiya va soliq — donutdagi kategoriyaga mos qatorlar */
+    manualCommission: number;
+    manualTax: number;
+  };
 }
 
 /**
@@ -220,7 +229,9 @@ async function collectFinance(
       marketing: manual.marketing,
       storage: storage + manual.storage,
       salary: manual.salary,
-      other: manual.other + manual.commission + manual.tax,
+      other: manual.other,
+      manualCommission: manual.commission,
+      manualTax: manual.tax,
     },
   };
 }
@@ -461,6 +472,14 @@ router.get(
       line('marketing', CATEGORY_LABEL.marketing, 'cost', cur.periodCosts.marketing, prev.periodCosts.marketing),
       line('storage', CATEGORY_LABEL.storage, 'cost', cur.periodCosts.storage, prev.periodCosts.storage),
       line('salary', CATEGORY_LABEL.salary, 'cost', cur.periodCosts.salary, prev.periodCosts.salary),
+      line(
+        'manualCommission',
+        'Komissiya (qo‘lda kiritilgan)',
+        'cost',
+        cur.periodCosts.manualCommission,
+        prev.periodCosts.manualCommission,
+      ),
+      line('manualTax', 'Soliq (qo‘lda kiritilgan)', 'cost', cur.periodCosts.manualTax, prev.periodCosts.manualTax),
       line('other', 'Boshqa xarajatlar', 'cost', cur.periodCosts.other, prev.periodCosts.other),
       line('operatingProfit', 'Davr foydasi', 'total', cur.operatingProfit, prev.operatingProfit),
     ];
@@ -565,6 +584,8 @@ router.get(
       where: {
         companyId: company.id,
         date: { gte: range.from, lt: range.toExclusive },
+        // Buyurtma satrlarida hisoblangan yetkazish to'lovlari ro'yxatga kirmaydi
+        source: { not: 'uzum-payout' },
         ...(range.storeId ? { storeId: range.storeId } : {}),
       },
       select: { date: true, category: true, amount: true },
@@ -626,6 +647,8 @@ router.get(
         where: {
           companyId: company.id,
           date: { gte: range.from, lt: range.toExclusive },
+          // Buyurtma satrlarida hisoblangan yetkazish to'lovlari ro'yxatga kirmaydi
+          source: { not: 'uzum-payout' },
           ...(range.storeId ? { storeId: range.storeId } : {}),
           ...(category ? { category } : {}),
           ...(range.search ? { note: { contains: range.search } } : {}),

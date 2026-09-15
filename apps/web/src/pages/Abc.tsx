@@ -599,7 +599,7 @@ export default function Abc() {
                         {f.money(totals.profit)}
                       </td>
                       <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">{f.num(totals.units)}</td>
-                      <td className="tnum px-4 py-3 text-right text-sm">100%</td>
+                      <td className="tnum px-4 py-3 text-right text-sm">{f.pct(filtered.reduce((s, r) => s + r.share, 0))}</td>
                       <td className="hidden px-4 py-3 md:table-cell" />
                       <td className="px-4 py-3" />
                     </>

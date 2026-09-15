@@ -46,12 +46,17 @@ export function calcUnitEconomics(input: UnitCalcInput): UnitCalcResult {
 
   // Nol foyda nuqtasi: bitta dona uchun minimal sotuv narxi
   const variablePerUnitPct = ((input.commissionPct || 0) + (input.taxPct || 0)) / 100;
+  /**
+   * Bir dona uchun o'zgarmas xarajatlar. Sotib olish darajasiga bo'lish FAQAT
+   * yakuniy bosqichda bir marta bajariladi — ilgari logistika ham shu yerda,
+   * ham oxirida bo'linib, nol foyda narxi oshirib ko'rsatilardi.
+   */
   const fixedPerUnit =
     input.purchasePrice +
     (input.packaging || 0) +
     (input.otherCost || 0) +
-    input.logistics / buyout +
-    (input.returnLogistics * (1 - buyout)) / buyout +
+    input.logistics +
+    input.returnLogistics * (1 - buyout) +
     input.storagePerDay * Math.max(0, input.storageDays);
   const breakEvenPrice = variablePerUnitPct >= 1 ? 0 : round(fixedPerUnit / (1 - variablePerUnitPct) / buyout);
 

@@ -113,7 +113,12 @@ function buildRow(
   const commissionPct =
     hasSales && agg && agg.revenue > 0 ? (agg.commission / agg.revenue) * 100 : fallback.commissionPct;
   const logistics = hasSales && agg ? safeDiv(agg.logistics, units) : fallback.logistics;
-  const otherCost = info.extraCost + (hasSales && agg ? safeDiv(agg.otherCost, units) : 0);
+  /**
+   * Qo'shimcha xarajat bitta manbadan olinadi: sotuv bo'lsa — buyurtma
+   * satrlaridagi qiymat, aks holda katalogdagi qiymat. Ilgari ikkalasi
+   * qo'shilib, bir dona uchun xarajat oshib ketardi.
+   */
+  const otherCost = hasSales && agg ? safeDiv(agg.otherCost, units) : info.extraCost;
 
   // Saqlash: davr to'lovi sotilgan donalarga taqsimlanadi, sotuv bo'lmasa — dona-kun bo'yicha
   const storagePerUnit = storage

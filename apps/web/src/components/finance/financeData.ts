@@ -109,6 +109,8 @@ const KNOWN_PNL_IDS = new Set([
   'operatingProfit',
   'delivery',
   'itemOther',
+  'manualCommission',
+  'manualTax',
 ]);
 
 export function isKnownPnlId(id: string): boolean {

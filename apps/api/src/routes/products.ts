@@ -593,6 +593,12 @@ router.get(
     ]);
 
     const search = range.search?.toLowerCase();
+    /**
+     * Saytda "30 / 60 / 90 kun" filtri bor — u serverga `days` bo'lib keladi.
+     * Ilgari e'tiborga olinmagani uchun tanlov jadvalni o'zgartirmasdi.
+     */
+    const daysParam = Number((req.query as Record<string, string | undefined>).days);
+    const minDays = Number.isFinite(daysParam) && daysParam > 0 ? Math.max(ILLIQUID_DAYS, daysParam) : ILLIQUID_DAYS;
     const rows: IlliquidRow[] = [];
     let totalFrozen = 0;
     let totalUnits = 0;
@@ -612,8 +618,8 @@ router.get(
       const daysWithoutSale = last ? daysSince(last) : daysSince(info.createdAt);
       const daysLeft = avg > 0 ? Math.round(st.total / avg) : null;
 
-      // Nolikvid: 30+ kun sotilmagan yoki qoldiq 90 kundan ortiqqa yetadi
-      const stale = daysWithoutSale >= ILLIQUID_DAYS;
+      // Nolikvid: tanlangan kundan ko'p sotilmagan yoki qoldiq 90 kundan ortiqqa yetadi
+      const stale = daysWithoutSale >= minDays;
       const excess = daysLeft !== null && daysLeft > STOCK_THRESHOLDS.excess;
       if (!stale && !excess) continue;
 

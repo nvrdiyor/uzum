@@ -173,7 +173,13 @@ router.get(
     }
 
     const payload: StocksResponse = {
-      totals: { units, costValue: round(costValue), retailValue: round(retailValue), skuCount: rows.length },
+      totals: {
+        units,
+        costValue: round(costValue),
+        retailValue: round(retailValue),
+        // Faqat omborda qoldig'i bor SKU sanaladi — KPI jadval bilan mos bo'lsin
+        skuCount: rows.filter((r) => r.total > 0).length,
+      },
       rows: paginate(rows, range.page, range.pageSize),
     };
 

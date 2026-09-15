@@ -81,6 +81,7 @@ async function collect(storeIds: string[], from: Date, toExclusive: Date, withDa
       sellPrice: true,
       status: true,
       returnedAt: true,
+      returnedQty: true,
       orderedAt: true,
     },
   });
@@ -91,8 +92,8 @@ async function collect(storeIds: string[], from: Date, toExclusive: Date, withDa
 
     const returned = it.status === 'returned' || Boolean(it.returnedAt);
     const canceled = it.status === 'canceled';
-    // Bekor/qaytarilganda qty 0 bo'ladi — bitta dona deb hisoblaymiz
-    const units = Math.max(it.qty, returned || canceled ? 1 : 0);
+    // Qaytarilgan satrda Uzum `amount: 0` yuboradi — haqiqiy dona `returnedQty` da
+    const units = it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1);
     const amount = it.revenue > 0 ? it.revenue : it.sellPrice * units;
 
     bucket.ordered += units;

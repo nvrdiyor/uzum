@@ -254,7 +254,7 @@ export default function Warehouse() {
     if (totals?.byStore?.length) {
       return totals.byStore.map((s, i) => ({
         name: s.title,
-        value: s.amount,
+        value: s.costValue ?? s.amount ?? 0,
         color: SERIES_PALETTE[i % SERIES_PALETTE.length],
       }));
     }

@@ -52,7 +52,8 @@ export interface WarehouseTotals {
   fbo?: SchemeTotal;
   fbs?: SchemeTotal;
   own?: SchemeTotal;
-  byStore?: { storeId?: string | null; title: string; units: number; amount: number }[];
+  /** Server costValue qaytaradi; eski javoblarda amount bo'lishi mumkin */
+  byStore?: { storeId?: string | null; title: string; units: number; costValue?: number; amount?: number }[];
 }
 
 export interface WarehouseResponse {
