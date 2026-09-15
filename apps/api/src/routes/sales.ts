@@ -309,7 +309,7 @@ router.get(
           deliveryType: true,
           orderedAt: true,
           buyerCity: true,
-          items: { select: { revenue: true, status: true, returnedAt: true } },
+          items: { select: { revenue: true, netProfit: true, status: true, returnedAt: true } },
         },
       }),
       prisma.order.count({ where: whereBase }),
@@ -331,11 +331,30 @@ router.get(
     );
     const byCityMap = new Map<string, { orders: number; revenue: number }>();
 
+    /**
+     * Davr bo'yicha jami — FILTRLANGAN to'plamdan. Ilgari sayt foydani
+     * jadvalning joriy 25 ta satridan ekstrapolyatsiya qilardi va 2-sahifaga
+     * o'tilganda raqam o'zgarib ketardi; o'rtacha chek esa filtrlangan tushumni
+     * filtrsiz buyurtmalar soniga bo'lardi.
+     */
+    let periodRevenue = 0;
+    let periodProfit = 0;
+    let ordersActive = 0;
+
     for (const o of aggRows) {
       let revenue = 0;
+      let profit = 0;
+      let effective = false;
       for (const it of o.items) {
-        if (isEffective(it)) revenue += it.revenue;
+        if (isEffective(it)) {
+          revenue += it.revenue;
+          profit += it.netProfit;
+          effective = true;
+        }
       }
+      periodRevenue += revenue;
+      periodProfit += profit;
+      if (effective) ordersActive += 1;
 
       const local = toLocal(o.orderedAt);
       const hourBucket = hourly[local.getUTCHours()];
@@ -383,6 +402,9 @@ router.get(
       period: range.period,
       hourly: hourly.map((h) => ({ hour: h.hour, orders: h.orders, revenue: round(h.revenue) })),
       totalOrders,
+      revenue: round(periodRevenue),
+      netProfit: round(periodProfit),
+      ordersActive,
       orders,
       byDeliveryType: DELIVERY_TYPES.map((type) => {
         const agg = byDelivery.get(type) ?? { orders: 0, revenue: 0 };

@@ -392,8 +392,16 @@ export default function Calculator() {
 
   useEffect(() => {
     if (!defaults.data) return;
-    setDraft((d) => mergeInput(d, defaults.data));
-    setInput((d) => mergeInput(d, defaults.data));
+    /**
+     * Server barcha raqamlarni `input` ichida qaytaradi
+     * (`{ skuId, sku, title, input: {...}, result, skus, source }`).
+     * Ilgari yuqori darajadagi kalitlar o'qilgani uchun SKU tanlansa ham forma
+     * namunaviy 150 000 / 70 000 bilan qolib ketardi — sotuvchi o'z tovarining
+     * emas, o'ylab topilgan tovarning iqtisodini ko'rardi.
+     */
+    const values = defaults.data.input ?? defaults.data;
+    setDraft((d) => mergeInput(d, values));
+    setInput((d) => mergeInput(d, values));
   }, [defaults.data]);
 
   // ── Mahalliy hisob ──

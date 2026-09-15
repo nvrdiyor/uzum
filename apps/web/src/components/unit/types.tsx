@@ -39,11 +39,16 @@ export const DEFAULT_INPUT: UnitCalcInput = {
 };
 
 /** `GET /unit/defaults?skuId=` javobi — maydonlarning bir qismi kelishi mumkin */
-export interface UnitDefaultsResponse extends Partial<UnitCalcInput> {
+/** GET /unit/defaults — barcha raqamlar `input` ichida keladi */
+export interface UnitDefaultsResponse {
   skuId?: string;
   sku?: string;
-  title?: string;
+  title?: string | null;
   imageUrl?: string | null;
+  currency?: string;
+  input?: Partial<UnitCalcInput>;
+  skus?: { id: string; sku: string; title: string }[];
+  source?: Record<string, string>;
 }
 
 export interface UnitScenarioRow {

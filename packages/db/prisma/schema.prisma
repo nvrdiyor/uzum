@@ -313,6 +313,10 @@ model Sku {
   extraCost     Float    @default(0)
   weightGr      Float    @default(0)
   volumeL       Float    @default(0)
+  // Uzum katalogidagi shu SKU uchun komissiya foizi (masalan 15)
+  commissionPct Float    @default(0)
+  // Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem)
+  storagePerItem Float   @default(0)
   archived      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -382,6 +386,8 @@ model OrderItem {
   skuCode       String?
   title         String?
   qty           Int       @default(1)
+  // Qaytarilgan dona (Uzum: amountReturns) — qaytarish foizi shu maydondan
+  returnedQty   Int      @default(0)
   sellPrice     Float     @default(0)
   purchasePrice Float     @default(0)
   commission    Float     @default(0)

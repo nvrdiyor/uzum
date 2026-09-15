@@ -257,6 +257,9 @@ router.get(
         where: {
           companyId: company.id,
           date: { gte: range.from, lt: range.toExclusive },
+          // Buyurtma satrlarida allaqachon ayrilgan to'lovlar kunlik grafikda
+          // qayta ayrilmasin — aks holda bitta yetkazish puli ikki marta ushlanardi
+          source: { not: 'uzum-payout' },
           ...(range.storeId ? { storeId: range.storeId } : {}),
         },
         select: { date: true, amount: true },
@@ -324,7 +327,12 @@ router.get(
     }
 
     const daily = series.map((row) => {
-      const extra = (extraByDay.get(row.date) ?? 0) + (row.revenue * taxRate) / 100;
+      /**
+       * Soliq `orderItem.netProfit` ichida ALLAQACHON ayrilgan (importer.ts),
+       * shuning uchun bu yerda qayta qo'shilmaydi — ilgari kunlik grafik
+       * yuqoridagi "Sof foyda" kartasidan soliq summasi qadar past chiqardi.
+       */
+      const extra = extraByDay.get(row.date) ?? 0;
       const profit = round(row.profit - extra);
       return {
         date: row.date,

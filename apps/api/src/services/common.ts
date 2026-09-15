@@ -23,6 +23,10 @@ export interface SkuInfo {
   archived: boolean;
   /** Katalogga qo'shilgan sana — yangi tovarni "nolikvid" deb belgilamaslik uchun */
   createdAt: Date;
+  /** Uzum katalogidagi komissiya foizi (0 — Uzum bermagan) */
+  commissionPct: number;
+  /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (0 — bermagan) */
+  storagePerItem: number;
 }
 
 export interface StockInfo {
@@ -96,6 +100,8 @@ export async function getSkuCatalog(storeIds: string[], includeArchived = false)
         storeTitle: s.store.title,
         archived: s.archived,
         createdAt: s.createdAt,
+        commissionPct: s.commissionPct,
+        storagePerItem: s.storagePerItem,
       } satisfies SkuInfo,
     ]),
   );
@@ -187,6 +193,7 @@ export async function aggregateSales(
       orderId: true,
       orderedAt: true,
       returnedAt: true,
+      returnedQty: true,
     },
   });
 
@@ -212,9 +219,16 @@ export async function aggregateSales(
         firstSaleAt: null,
       } satisfies SalesAgg);
 
+    /**
+     * Qaytarilgan dona Uzumda `amountReturns` da keladi va o'sha satrning
+     * `amount` i 0 bo'lib qoladi — shuning uchun `qty` emas, `returnedQty`
+     * sanaladi. Ilgari qaytarishlar hamma joyda 0 chiqardi.
+     */
+    if (it.returnedQty > 0) cur.returns += it.returnedQty;
+
     const returned = it.status === 'returned' || Boolean(it.returnedAt);
     if (returned) {
-      cur.returns += it.qty;
+      if (it.returnedQty <= 0) cur.returns += it.qty;
     } else if (it.status !== 'canceled') {
       cur.units += it.qty;
       cur.revenue += it.revenue;
@@ -260,9 +274,36 @@ export async function getAvgDaily(storeIds: string[], days = 30): Promise<Map<st
   const from = addDays(to, -days);
   const sales = await aggregateSales(storeIds, from, to);
   const out = new Map<string, number>();
+  /**
+   * Oyna qisqartmasi FAQAT haqiqatan yangi tovarga tegishli: agar SKU oynadan
+   * oldin ham sotilgan bo'lsa, bo'luvchi to'liq `days` bo'lishi shart.
+   *
+   * Aks holda siyrak sotiladigan tovarda (30 kunda 1 dona, sotuv 3 kun oldin)
+   * bo'luvchi 7 kunga tushib, sur'at 4 barobar oshib ko'rinardi — "Yetadi"
+   * kunlari shuncha kamayib, tovar noo'rin "Kritik" bo'lib qolardi va
+   * rejalashtiruvchi ortiqcha buyurtmani tavsiya qilardi.
+   */
+  const skuIds = [...sales.keys()];
+  const earliest = new Map<string, Date>();
+  if (skuIds.length > 0) {
+    const rows = await prisma.orderItem.groupBy({
+      by: ['skuId'],
+      _min: { orderedAt: true },
+      where: { skuId: { in: skuIds }, orderedAt: { lt: from }, status: { not: 'canceled' } },
+    });
+    for (const r of rows) {
+      if (r.skuId && r._min.orderedAt) earliest.set(r.skuId, r._min.orderedAt);
+    }
+  }
+
   for (const [skuId, agg] of sales) {
     if (agg.units <= 0) {
       out.set(skuId, 0);
+      continue;
+    }
+    // Oynadan oldin ham sotuv bo'lgan bo'lsa — tovar yangi emas, to'liq oyna
+    if (earliest.has(skuId)) {
+      out.set(skuId, agg.units / days);
       continue;
     }
     const since = agg.firstSaleAt && agg.firstSaleAt > from ? agg.firstSaleAt : from;

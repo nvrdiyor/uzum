@@ -471,6 +471,7 @@ export class LiveUzumClient implements UzumClient {
       purchasePrice: asMoney(firstOf(r, KEYS.purchasePrice)) || undefined,
       commissionPct: asNumber(firstOf(r, KEYS.commissionPct)) || undefined,
       storagePerItem: asMoney(r.paidStoragePriceItem) || undefined,
+      archived: asBool(r.archived),
     };
   }
 

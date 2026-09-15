@@ -262,8 +262,9 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
       sku: s.sku,
       title: s.title || p.title,
       price: round(agg.units > 0 ? safeDiv(agg.revenue, agg.units) : s.price),
-      // To'liq tannarx: sotib olish narxi + qo'shimcha xarajat (qadoq, yetkazish va h.k.)
-      purchasePrice: round(s.purchasePrice + s.extraCost),
+      purchasePrice: round(s.purchasePrice),
+      extraCost: round(s.extraCost),
+      totalCost: round(s.purchasePrice + s.extraCost),
       stockFbo: st.fbo,
       stockFbs: st.fbs,
       stockOwn: st.own,
@@ -362,8 +363,13 @@ const PRODUCT_SORT: Record<string, (p: ProductCard) => SortValue> = {
   title: (p) => p.title,
 };
 
-type ProductFilter = 'all' | 'active' | 'archived' | 'need_order' | 'no_stock';
-const PRODUCT_FILTERS: ProductFilter[] = ['all', 'active', 'archived', 'need_order', 'no_stock'];
+/**
+ * Ro'yxat filtri. Sayt tarixan `out` nomini ishlatadi, API esa `no_stock` —
+ * ikkalasi ham qabul qilinadi, aks holda "Qoldiqsiz" tugmasi bosilganda
+ * server jimgina `all` ga tushib, hech narsa filtrlanmasdi.
+ */
+type ProductFilter = 'all' | 'active' | 'archived' | 'need_order' | 'no_stock' | 'out';
+const PRODUCT_FILTERS: ProductFilter[] = ['all', 'active', 'archived', 'need_order', 'no_stock', 'out'];
 
 router.get(
   '/',
@@ -404,7 +410,8 @@ router.get(
     if (filter === 'active') cards = cards.filter((c) => c.status !== 'archived');
     else if (filter === 'archived') cards = cards.filter((c) => c.status === 'archived');
     else if (filter === 'need_order') cards = cards.filter((c) => c.needOrder > 0);
-    else if (filter === 'no_stock') cards = cards.filter((c) => c.stockFbo + c.stockFbs + c.stockOwn <= 0);
+    else if (filter === 'no_stock' || filter === 'out')
+      cards = cards.filter((c) => c.stockFbo + c.stockFbs + c.stockOwn <= 0);
 
     const sorter = PRODUCT_SORT[range.sort ?? 'revenue'] ?? PRODUCT_SORT.revenue;
     applySort(cards, range.order, sorter);
@@ -613,8 +620,19 @@ router.get(
       const unitCost = info.purchasePrice + info.extraCost;
       const frozenCapital = round(st.total * unitCost);
       // Haqiqiy saqlash to'lovi bo'lsa — o'sha, aks holda hajm bo'yicha taxmin
+      /**
+       * Saqlash to'lovi tartibi: haqiqiy to'lov → Uzumning o'z hisobi
+       * (`paidStoragePriceItem`) → hajm bo'yicha taxmin.
+       *
+       * Taxmin oxirgi chora: 397×68×75 mm quti uchun u ~7 300 so'm/oy beradi,
+       * Uzumning o'z raqami esa 36 so'm — ya'ni 200 barobar farq, va shu farq
+       * "muzlatilgan kapital" hamda nol foyda narxini butunlay buzardi.
+       */
       const storageCostPerMonth = round(
-        fees.get(skuId) ?? st.fbo * info.volumeL * DEFAULTS.storagePerLiterPerDay * 30,
+        fees.get(skuId) ??
+          (info.storagePerItem > 0
+            ? info.storagePerItem * st.fbo
+            : st.fbo * info.volumeL * DEFAULTS.storagePerLiterPerDay * 30),
       );
 
       totalFrozen += frozenCapital;
@@ -965,7 +983,8 @@ router.get(
         sku: s.sku,
         title: s.title || product.title,
         price: round(s.price),
-        purchasePrice: round(s.purchasePrice + s.extraCost),
+        purchasePrice: round(s.purchasePrice),
+        totalCost: round(s.purchasePrice + s.extraCost),
         stockFbo: st.fbo,
         stockFbs: st.fbs,
         stockOwn: st.own,

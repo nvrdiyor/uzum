@@ -256,21 +256,23 @@ export default function Sales() {
   const items = data?.orders.items ?? [];
 
   // ── KPI ────────────────────────────────────────────────────────────────
+  /**
+   * Barcha raqamlar serverdan — davr bo'yicha va bir xil to'plamdan.
+   * O'rtacha chek amaldagi (bekor qilinmagan) buyurtmalarga bo'linadi,
+   * shunda u Uzum kabinetidagi chek bilan mos keladi.
+   */
   const kpi = useMemo(() => {
-    const hourly = data?.hourly ?? [];
-    const revenue = hourly.reduce((s, h) => s + h.revenue, 0);
-    const orders = data?.totalOrders ?? 0;
-    const pageRevenue = items.reduce((s, o) => s + o.revenue, 0);
-    const pageProfit = items.reduce((s, o) => s + o.netProfit, 0);
-    const marginRate = pageRevenue > 0 ? pageProfit / pageRevenue : 0;
+    const revenue = data?.revenue ?? 0;
+    const profit = data?.netProfit ?? 0;
+    const ordersActive = data?.ordersActive ?? 0;
     return {
-      orders,
+      orders: data?.orders.total ?? 0,
       revenue,
-      profit: Math.round(revenue * marginRate),
-      marginPct: marginRate * 100,
-      avgCheck: orders > 0 ? revenue / orders : 0,
+      profit,
+      marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
+      avgCheck: ordersActive > 0 ? revenue / ordersActive : 0,
     };
-  }, [data, items]);
+  }, [data]);
 
   // ── Soatlik ────────────────────────────────────────────────────────────
   const hourData = useMemo(() => {

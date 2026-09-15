@@ -284,6 +284,12 @@ export interface OrderRow {
 
 export interface SalesAnalyticsResponse {
   period: Period;
+  /** Davrdagi jami tushum (filtr qo'llangan) */
+  revenue: number;
+  /** Davrdagi jami sof foyda (filtr qo'llangan) */
+  netProfit: number;
+  /** Bekor qilinmagan/qaytarilmagan buyurtmalar soni (filtr qo'llangan) */
+  ordersActive: number;
   hourly: HourlyPoint[];
   totalOrders: number;
   orders: Paginated<OrderRow>;
@@ -401,7 +407,18 @@ export interface ProductCardSku {
   sku: string;
   title: string;
   price: number;
+  /**
+   * SOF sotib olish narxi — foydalanuvchi tahrirlaydigan maydon.
+   * Qo'shimcha xarajat (`extraCost`) bu yerga QO'SHILMAYDI: ilgari
+   * birlashtirilgan qiymat qaytarilar va tahrir oynasiga ham o'sha tushar edi,
+   * saqlanganda esa qo'shimcha xarajat tannarxga qo'shilib ketardi —
+   * har tahrirda tannarx o'z-o'zidan o'sib borardi.
+   */
   purchasePrice: number;
+  /** Qadoq, marker va boshqa qo'shimcha xarajat (bir dona uchun) */
+  extraCost: number;
+  /** `purchasePrice + extraCost` — ko'rsatish uchun to'liq tannarx */
+  totalCost: number;
   stockFbo: number;
   stockFbs: number;
   stockOwn: number;

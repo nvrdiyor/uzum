@@ -26,9 +26,9 @@ export interface CostEdit {
 
 export type CostEdits = Record<string, CostEdit>;
 
-/** `extraCost` hali barcha javoblarda bo'lmasligi mumkin — xavfsiz o'qish */
+/** Eski javoblarda `extraCost` bo'lmasligi mumkin — xavfsiz o'qish */
 function skuExtraCost(sku: ProductCardSku): number {
-  const value = (sku as ProductCardSku & { extraCost?: number }).extraCost;
+  const value = sku.extraCost;
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 

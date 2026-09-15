@@ -281,7 +281,8 @@ interface UnitDefaultsResponse {
   skus: UnitSkuOption[];
   /** Qaysi qiymat qayerdan olingani — UI'da izoh ko'rsatish uchun */
   source: {
-    commission: 'sales' | 'default';
+    /** 'catalogue' — Uzum katalogidagi foiz ishlatildi */
+    commission: 'sales' | 'catalogue' | 'default';
     logistics: 'sales' | 'default';
     storage: 'fees' | 'volume' | 'default';
     buyout: 'sales' | 'default';
@@ -345,9 +346,20 @@ router.get(
     // Komissiya
     const commissionFromSku = agg && agg.revenue > 0 ? (agg.commission / agg.revenue) * 100 : 0;
     const commissionFromCompany = allRevenue > 0 ? (allCommission / allRevenue) * 100 : 0;
-    const commissionPct = commissionFromSku || commissionFromCompany || DEFAULTS.commissionPct;
-    const commissionSource: 'sales' | 'default' =
-      commissionFromSku || commissionFromCompany ? 'sales' : 'default';
+    /**
+     * Tartib: shu SKU sotuvidan hisoblangan foiz → Uzum katalogidagi foiz →
+     * kompaniya o'rtachasi → standart taxmin. Uzumning o'z foizi (masalan 15%)
+     * kompaniya o'rtachasidan ham, 12% taxmindan ham aniqroq.
+     */
+    const commissionPct =
+      commissionFromSku || (info?.commissionPct ?? 0) || commissionFromCompany || DEFAULTS.commissionPct;
+    const commissionSource: 'sales' | 'catalogue' | 'default' = commissionFromSku
+      ? 'sales'
+      : info?.commissionPct
+        ? 'catalogue'
+        : commissionFromCompany
+          ? 'sales'
+          : 'default';
 
     // Logistika (bir dona uchun)
     const logisticsFromSku = agg && units > 0 ? agg.logistics / units : 0;
@@ -362,6 +374,10 @@ router.get(
     if (fee && fee.qtyDays > 0) {
       storagePerDay = fee.amount / fee.qtyDays;
       storageSource = 'fees';
+    } else if (info && info.storagePerItem > 0) {
+      // Uzumning o'z hisobi — oylik, kunlikka bo'linadi
+      storagePerDay = info.storagePerItem / 30;
+      storageSource = 'volume';
     } else if (info && info.volumeL > 0) {
       storagePerDay = info.volumeL * DEFAULTS.storagePerLiterPerDay;
       storageSource = 'volume';

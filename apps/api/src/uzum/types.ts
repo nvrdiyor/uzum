@@ -68,6 +68,8 @@ export interface UzumSku {
   reserved?: number;
   /** Uzum kabinetida kiritilgan tannarx (bo'lsa) */
   purchasePrice?: number;
+  /** Uzumda arxivlanganmi */
+  archived?: boolean;
   /** Kategoriya bo'yicha komissiya, % */
   commissionPct?: number;
   /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem) */

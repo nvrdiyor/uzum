@@ -684,6 +684,8 @@ router.get(
       prisma.expense.findMany({
         where: {
           companyId: company.id,
+          // /monthly bilan bir xil qoida: yetkazish to'lovi buyurtma satrlarida hisoblangan
+          source: { not: 'uzum-payout' },
           date: { gte: spanFrom, lt: spanTo },
           ...(range.storeId ? { storeId: range.storeId } : {}),
         },

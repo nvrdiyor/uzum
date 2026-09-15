@@ -326,6 +326,12 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
       if (seenSku.has(code)) continue;
       seenSku.add(code);
 
+      /**
+       * O'lcham va tannarx — foydalanuvchi qo'lda kiritishi mumkin bo'lgan
+       * qiymatlar. Uzum aniq qiymat bermasa, ular USTIDAN YOZILMAYDI: aks holda
+       * sotuvchi hajmni kiritgandan keyingi birinchi sinxron uni 0 ga qaytarardi
+       * va saqlash xarajati hamda yuk joylari soni nolga tushib qolardi.
+       */
       const common = {
         productId,
         uzumSkuId: String(sku.id),
@@ -334,9 +340,12 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         imageUrl: text(sku.imageUrl) ?? fallbackImage,
         price: round(num(sku.price)),
         oldPrice: round(num(sku.oldPrice)),
-        weightGr: num(sku.weightGr),
-        volumeL: num(sku.volumeL),
-        archived: false,
+        ...(num(sku.weightGr) > 0 ? { weightGr: num(sku.weightGr) } : {}),
+        ...(num(sku.volumeL) > 0 ? { volumeL: num(sku.volumeL) } : {}),
+        ...(num(sku.commissionPct) > 0 ? { commissionPct: num(sku.commissionPct) } : {}),
+        ...(num(sku.storagePerItem) > 0 ? { storagePerItem: num(sku.storagePerItem) } : {}),
+        // Uzumda arxivlangan SKU saytda ham arxiv bo'lib ko'rinishi kerak
+        archived: Boolean(sku.archived),
       };
 
       const current = byUzumId.get(String(sku.id)) ?? bySku.get(code);
@@ -352,6 +361,8 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
           sku: code,
           purchasePrice: 0,
           extraCost: 0,
+          weightGr: num(sku.weightGr),
+          volumeL: num(sku.volumeL),
           ...common,
         });
       }
@@ -410,6 +421,27 @@ export async function upsertStocks(storeId: string, stocks: UzumStock[]): Promis
   const rows = [...dedup.values()];
   if (rows.length === 0) return res;
 
+  /**
+   * `own` (o'z ombori) va `inTransit` (yo'lda) — Uzumdan kelmaydigan, platformada
+   * yuritiladigan qiymatlar. Yangi kun uchun snapshot yaratilganda ular oldingi
+   * kundan KO'CHIRILADI: aks holda ertalabki birinchi sinxrondan keyin "Ombor"
+   * sahifasi bo'm-bo'sh ko'rinardi.
+   */
+  const lastOwn = new Map<string, { own: number; inTransit: number }>();
+  {
+    const skuIds = [...new Set(rows.map((r) => r.skuId))];
+    for (const batch of chunked(skuIds)) {
+      const prev = await prisma.stockSnapshot.findMany({
+        where: { skuId: { in: batch } },
+        orderBy: { date: 'desc' },
+        select: { skuId: true, own: true, inTransit: true },
+      });
+      for (const r of prev) {
+        if (!lastOwn.has(r.skuId)) lastOwn.set(r.skuId, { own: r.own, inTransit: r.inTransit });
+      }
+    }
+  }
+
   for (const batch of chunked(rows)) {
     const existing = await prisma.stockSnapshot.findMany({
       where: { skuId: { in: batch.map((r) => r.skuId) }, date: { in: batch.map((r) => r.date) } },
@@ -421,17 +453,25 @@ export async function upsertStocks(storeId: string, stocks: UzumStock[]): Promis
 
     for (const row of batch) {
       const current = byKey.get(row.key);
-      const data = { fbo: row.fbo, fbs: row.fbs, reserved: row.reserved, inTransit: row.inTransit };
+      // Uzum "yo'lda" miqdorini bermaydi — 0 kelsa mavjud qiymat saqlanadi
+      const data: { fbo: number; fbs: number; reserved: number; inTransit?: number } = {
+        fbo: row.fbo,
+        fbs: row.fbs,
+        reserved: row.reserved,
+        ...(row.inTransit > 0 ? { inTransit: row.inTransit } : {}),
+      };
       if (current) {
         await prisma.stockSnapshot.update({ where: { id: current }, data });
         res.updated += 1;
       } else {
+        const carry = lastOwn.get(row.skuId);
         creates.push({
           id: stableId('ss', row.skuId, toISODate(row.date)),
           skuId: row.skuId,
           storeId,
           date: row.date,
-          own: 0,
+          own: carry?.own ?? 0,
+          inTransit: row.inTransit > 0 ? row.inTransit : (carry?.inTransit ?? 0),
           ...data,
         });
       }
@@ -611,6 +651,7 @@ export async function upsertOrders(
           skuCode: text(it.skuCode) ?? ref?.sku ?? String(it.skuId),
           title: text(it.title),
           qty,
+          returnedQty: Math.max(0, int(it.returnedQty, 0)),
           sellPrice,
           purchasePrice,
           commission,

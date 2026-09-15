@@ -40,6 +40,7 @@ import {
   STATE_STYLE,
   normalizeProductDetail,
   productState,
+  skuTotalCost,
   skusWithoutCost,
   totalStock,
   type ProductDetailResponse,
@@ -737,9 +738,9 @@ export default function ProductDetail() {
 // ─────────────────────────── Yordamchi bloklar ───────────────────────────
 
 function avgCost(skus: ProductDetailSku[]): number {
-  const list = skus.filter((s) => (s.purchasePrice ?? 0) > 0);
+  const list = skus.filter((s) => skuTotalCost(s) > 0);
   if (!list.length) return 0;
-  return Math.round(list.reduce((sum, s) => sum + s.purchasePrice, 0) / list.length);
+  return Math.round(list.reduce((sum, s) => sum + skuTotalCost(s), 0) / list.length);
 }
 
 function BackLink({ label }: { label: string }) {

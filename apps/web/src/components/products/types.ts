@@ -51,18 +51,24 @@ export function coverTone(daysLeft: number | null | undefined): 'brand' | 'info'
   return 'brand';
 }
 
-/** SKU'lar bo'yicha o'rtacha tannarx (0 bo'lganlari hisobga olinmaydi) */
+/** Bir dona uchun to'liq tannarx: sotib olish narxi + qo'shimcha xarajat */
+export function skuTotalCost(sku: { purchasePrice?: number; extraCost?: number; totalCost?: number }): number {
+  if (typeof sku.totalCost === 'number' && Number.isFinite(sku.totalCost)) return sku.totalCost;
+  return (sku.purchasePrice ?? 0) + (sku.extraCost ?? 0);
+}
+
+/** SKU'lar bo'yicha o'rtacha to'liq tannarx (0 bo'lganlari hisobga olinmaydi) */
 export function avgPurchasePrice(skus: ProductCardSku[] | undefined): number {
-  const list = (skus ?? []).filter((s) => (s.purchasePrice ?? 0) > 0);
+  const list = (skus ?? []).filter((s) => skuTotalCost(s) > 0);
   if (!list.length) return 0;
-  return Math.round(list.reduce((sum, s) => sum + s.purchasePrice, 0) / list.length);
+  return Math.round(list.reduce((sum, s) => sum + skuTotalCost(s), 0) / list.length);
 }
 
 // ─────────────────────────── Mahsulot tafsiloti (GET /products/:id) ───────────────────────────
 
 export interface ProductDetailSku extends ProductCardSku {
   /** Qo'shimcha xarajat (qadoq, marker va h.k.) */
-  extraCost?: number;
+  extraCost: number;
   volumeL?: number;
   weightGr?: number;
   margin?: number;
@@ -109,6 +115,7 @@ export interface ProductDetailResponse {
 
 /** Tannarxi kiritilmagan SKU'lar */
 export function skusWithoutCost(skus: ProductDetailSku[] | undefined): ProductDetailSku[] {
+  // Qo'shimcha xarajat kiritilgani tannarx kiritilganini anglatmaydi
   return (skus ?? []).filter((s) => !s.purchasePrice || s.purchasePrice <= 0);
 }
 

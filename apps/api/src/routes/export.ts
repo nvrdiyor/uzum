@@ -883,10 +883,10 @@ router.get(
 
         // Haqiqiy sotuvlar bo'lsa — 1 donaga to'g'ri keladigan real xarajat,
         // aks holda platforma bo'yicha standart taxminlar (DEFAULTS).
-        const commission = units > 0 ? safeDiv(agg?.commission ?? 0, units) : (price * DEFAULTS.commissionPct) / 100;
+        const commission = units > 0 ? safeDiv(agg?.commission ?? 0, units) : (price * (info.commissionPct || DEFAULTS.commissionPct)) / 100;
         const logistics = units > 0 ? safeDiv(agg?.logistics ?? 0, units) : DEFAULTS.logisticsPerUnit;
         // Saqlash: hajm (litr) × kunlik tarif × 30 kun
-        const storage = info.volumeL * DEFAULTS.storagePerLiterPerDay * 30;
+        const storage = (info.storagePerItem > 0 ? info.storagePerItem : info.volumeL * DEFAULTS.storagePerLiterPerDay * 30);
         const otherCost = info.extraCost + (units > 0 ? safeDiv(agg?.otherCost ?? 0, units) : 0);
         const tax = (price * taxRate) / 100;
         const commissionPct = price > 0 ? pct(commission, price) : DEFAULTS.commissionPct;
