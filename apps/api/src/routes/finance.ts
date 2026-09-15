@@ -250,7 +250,8 @@ router.get(
 
     // Kunlik seriya: buyurtmalardan kelgan foydadan qo'lda kiritilgan xarajat,
     // ombor to'lovi va soliq ayriladi — shunda profit = revenue - expenses bo'ladi.
-    const [series, manualRows, feeRows, paidAgg, pendingAgg] = await Promise.all([
+    const [series, manualRows, feeRows, paidAgg, pendingAgg, allPayoutAgg, uzumFeeAgg, storageAllAgg] =
+      await Promise.all([
       getDailySeries(storeIds, range.period),
       prisma.expense.findMany({
         where: {
@@ -279,6 +280,24 @@ router.get(
           status: { notIn: ['canceled', 'returned'] },
           order: { storeId: { in: storeIds }, status: { in: ['new', 'processing'] } },
         },
+      }),
+      /**
+       * Uzumdagi "Umumiy balans" — davr emas, hisobning boshidan beri yig'ilgan
+       * summa: barcha buyurtmalar bo'yicha "yechib olish uchun" minus Uzum
+       * ushlab qolgan xizmat to'lovlari (omborga logistika, reklama, saqlash).
+       * Komissiya va mijozga yetkazish `payout` ichida allaqachon ayrilgan.
+       */
+      prisma.orderItem.aggregate({
+        _sum: { payout: true },
+        where: { status: { notIn: ['canceled', 'returned'] }, order: { storeId: { in: storeIds } } },
+      }),
+      prisma.expense.aggregate({
+        _sum: { amount: true },
+        where: { companyId: company.id, source: 'uzum', ...(range.storeId ? { storeId: range.storeId } : {}) },
+      }),
+      prisma.storageFee.aggregate({
+        _sum: { amount: true },
+        where: { storeId: { in: storeIds } },
       }),
     ]);
 
@@ -323,6 +342,11 @@ router.get(
       balance: {
         paidOut: round(paidAgg._sum.payout ?? 0),
         pending: round(pendingAgg._sum.payout ?? 0),
+        total: round(
+          (allPayoutAgg._sum.payout ?? 0) -
+            (uzumFeeAgg._sum.amount ?? 0) -
+            (storageAllAgg._sum.amount ?? 0),
+        ),
         nextPayoutAt: nextThursday(),
       },
     };

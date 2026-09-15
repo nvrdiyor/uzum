@@ -22,6 +22,7 @@ import {
   toast,
   type Column,
 } from '@/components/ui';
+import { ZeroAware } from '@/components/ui/ZeroAware';
 import { BarsChart, CHART_COLORS, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { api } from '@/lib/api';
@@ -303,7 +304,7 @@ export default function Stocks() {
       align: 'right',
       hideOnMobile: true,
       sortValue: (r) => r.inTransit,
-      render: (r) => <span className="text-info">{f.num(r.inTransit)}</span>,
+      render: (r) => <ZeroAware value={r.inTransit} tone="text-info" text={f.num(r.inTransit)} />,
     },
     {
       key: 'total',

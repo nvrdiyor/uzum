@@ -38,6 +38,7 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
+import { ZeroAware } from '@/components/ui/ZeroAware';
 import { BurnCard } from '@/components/analysis/BurnCard';
 
 registerNamespace('illiquid', {
@@ -384,7 +385,9 @@ export default function Illiquid() {
       hideOnMobile: true,
       sortable: true,
       sortValue: (r) => r.storageCostPerMonth,
-      render: (r) => <span className="text-warn">{f.money(r.storageCostPerMonth)}</span>,
+      render: (r) => (
+        <ZeroAware value={r.storageCostPerMonth} tone="text-warn" text={f.money(r.storageCostPerMonth)} />
+      ),
     },
     {
       key: 'frozen',

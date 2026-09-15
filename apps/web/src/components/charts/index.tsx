@@ -178,7 +178,18 @@ export function BarsChart({
           {horizontal ? (
             <>
               <XAxis type="number" {...axis} tickFormatter={(v: number) => f.compact(Number(v))} />
-              <YAxis type="category" dataKey={xKey} {...axis} width={120} />
+              {/* interval=0 — har bir ustunning nomi chiqadi; ilgari qismi tushib qolardi */}
+              <YAxis
+                type="category"
+                dataKey={xKey}
+                {...axis}
+                width={168}
+                interval={0}
+                tickFormatter={(v: string) => {
+                  const text = String(v);
+                  return text.length > 26 ? `${text.slice(0, 25)}…` : text;
+                }}
+              />
             </>
           ) : (
             <>

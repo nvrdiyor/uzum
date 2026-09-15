@@ -869,12 +869,29 @@ export class LiveUzumClient implements UzumClient {
       const code = asString(r.code);
       const kind = asString(r.type).toUpperCase();
 
-      // Har bir buyurtma uchun mijozga yetkazish to'lovi (va uning qaytarilishi)
-      // Uzumning `sellerProfit` ("yechib olish uchun") summasida ALLAQACHON ayrilgan —
-      // uni yana xarajat sifatida yozsak, ikki marta hisoblangan bo'lardi.
-      if (/^(return-)?logistics-volume$/i.test(code)) continue;
-
       const category = mapExpenseCategory(`${source} ${code} ${name}`);
+
+      /**
+       * Har bir buyurtma uchun mijozga yetkazish to'lovi (va uning qaytarilishi)
+       * Uzumning `sellerProfit` ("yechib olish uchun") summasida ALLAQACHON ayrilgan.
+       * Uni yana xarajat sifatida yozsak, ikki marta hisoblangan bo'lardi —
+       * saytdagi logistika Uzumdagidan katta chiqardi.
+       *
+       * Buyurtmaga bog'langan satrni uch belgidan biri bilan aniqlaymiz:
+       *  • kod `logistics-volume` / `return-logistics-volume`,
+       *  • satrda buyurtma raqami bor ("Buyurtma № 128132890 uchun logistika ..."),
+       *  • javobda buyurtma identifikatori maydoni bor.
+       *
+       * Omborga yetkazish ("Logistika xizmatlari uchun to'lov") buyurtmaga
+       * bog'lanmagani uchun saqlanadi — u haqiqiy davr xarajati.
+       */
+      const orderRef =
+        asString(r.orderId) || asString(r.orderNumber) || asString(r.orderCode) || asString(r.orderIds);
+      const mentionsOrder = /(buyurtma|заказ|order)\s*(?:№|#|no\.?)?\s*\d{3,}/i.test(`${name} ${source}`);
+      const perOrderLogistics =
+        /^(return-)?logistics-volume$/i.test(code) ||
+        (category === 'logistics' && (Boolean(orderRef) || mentionsOrder));
+      if (perOrderLogistics) continue;
       // Saqlash to'lovlari alohida (`getStorageFees`) yig'iladi — ikki marta hisoblamaymiz
       if (category === 'storage') continue;
 

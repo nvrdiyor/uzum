@@ -323,7 +323,13 @@ export async function getDailySeries(
   period: Period,
 ): Promise<{ date: string; revenue: number; profit: number; orders: number; units: number; payout: number; returns: number }[]> {
   const from = new Date(`${period.from}T00:00:00.000Z`);
-  const to = addDays(new Date(`${period.to}T00:00:00.000Z`), 1);
+  /**
+   * Seriya bugundan nariga o'tmaydi: "shu oy" tanlanganda oy oxirigacha nol
+   * kunlar chizilsa, grafik har doim nolga qulagandek ko'rinardi.
+   */
+  const tomorrow = addDays(new Date(`${toISODate(new Date())}T00:00:00.000Z`), 1);
+  const periodEnd = addDays(new Date(`${period.to}T00:00:00.000Z`), 1);
+  const to = periodEnd < tomorrow ? periodEnd : tomorrow;
 
   const map = new Map<
     string,

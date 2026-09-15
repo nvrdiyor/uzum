@@ -218,12 +218,29 @@ export function StoreSwitcher({ className }: { className?: string }) {
   );
 }
 
-/** Sahifalarda ishlatish uchun: davr + do'kon filtri bir qatorda */
+/**
+ * Sahifa filtrlari qatori.
+ *
+ * Davr va do'kon tanlagichlari yuqori panelda doimo ko'rinib turadi, shuning
+ * uchun bu yerda takrorlanmaydi — ilgari har bir sahifada bir xil ikkita
+ * tugma ikki marta chiqardi. Do'kon tanlagichi faqat telefon kengligida
+ * qo'shiladi, chunki yuqori panelda u `sm` dan pastda yashiriladi.
+ */
 export function FilterBar({ children, className }: { children?: React.ReactNode; className?: string }) {
+  const stores = useStores();
+  const hasChildren = Boolean(children);
+  if (!hasChildren && stores.length === 0) return null;
+
   return (
-    <div className={cn('mb-4 flex flex-wrap items-center gap-2.5', className)}>
-      <PeriodPicker />
-      <StoreSwitcher />
+    <div
+      className={cn(
+        'mb-4 flex flex-wrap items-center gap-2.5',
+        // Qo'shimcha filtrlar bo'lmasa, katta ekranda bu qator umuman chiqmaydi
+        !hasChildren && 'sm:hidden',
+        className,
+      )}
+    >
+      {stores.length > 0 ? <StoreSwitcher className="sm:hidden" /> : null}
       {children}
     </div>
   );

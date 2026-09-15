@@ -31,6 +31,7 @@ import {
   toast,
   type Column,
 } from '@/components/ui';
+import { ZeroAware } from '@/components/ui/ZeroAware';
 import { CHART_COLORS, DonutChart, SERIES_PALETTE } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { api } from '@/lib/api';
@@ -323,7 +324,7 @@ export default function Warehouse() {
       align: 'right',
       sortable: true,
       sortValue: (r) => r.reserved ?? 0,
-      render: (r) => <span className="text-warn">{f.num(r.reserved ?? 0)}</span>,
+      render: (r) => <ZeroAware value={r.reserved ?? 0} tone="text-warn" text={f.num(r.reserved ?? 0)} />,
     },
     {
       key: 'inTransit',
@@ -332,7 +333,7 @@ export default function Warehouse() {
       hideOnMobile: true,
       sortable: true,
       sortValue: (r) => r.inTransit ?? 0,
-      render: (r) => <span className="text-info">{f.num(r.inTransit ?? 0)}</span>,
+      render: (r) => <ZeroAware value={r.inTransit ?? 0} tone="text-info" text={f.num(r.inTransit ?? 0)} />,
     },
     {
       key: 'available',

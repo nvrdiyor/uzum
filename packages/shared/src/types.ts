@@ -602,7 +602,15 @@ export interface FinanceResponse {
   expensesTotal: number;
   taxAmount: number;
   daily: { date: string; revenue: number; expenses: number; profit: number }[];
-  balance: { paidOut: number; pending: number; nextPayoutAt: string | null };
+  balance: {
+    /** Yetkazilgan buyurtmalar bo'yicha to'lovga tayyor summa */
+    paidOut: number;
+    /** Hali yetkazilmagan buyurtmalar summasi */
+    pending: number;
+    /** Uzumdagi "Umumiy balans" — hisobda to'plangan, hali yechib olinmagan pul */
+    total: number;
+    nextPayoutAt: string | null;
+  };
 }
 
 export interface UnitEconomicsRow {

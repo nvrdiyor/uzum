@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 
 registerNamespace('onboarding', {
   uz: {
+    'shell.seller': 'Sotuvchi',
     'shell.tagline': 'Uzum Market sotuvchilari uchun analitika',
     'shell.support': 'Yordam',
     'step.company': 'Kompaniya',
@@ -116,6 +117,7 @@ registerNamespace('onboarding', {
     'toast.keyConnected': 'Kabinet ulandi — ma’lumot yig’ish boshlandi',
   },
   ru: {
+    'shell.seller': 'Продавец',
     'shell.tagline': 'Аналитика для селлеров Uzum Market',
     'shell.support': 'Помощь',
     'step.company': 'Компания',
@@ -217,6 +219,7 @@ registerNamespace('onboarding', {
     'toast.keyConnected': 'Кабинет подключён — начался сбор данных',
   },
   en: {
+    'shell.seller': 'Seller',
     'shell.tagline': 'Analytics for Uzum Market sellers',
     'shell.support': 'Help',
     'step.company': 'Company',

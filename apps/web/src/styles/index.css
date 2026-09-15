@@ -44,9 +44,11 @@
   --c-surface-3: 36 41 51;
   --c-border: 42 47 58;
   --c-border-strong: 59 66 80;
-  --c-text: 233 236 242;
-  --c-text-soft: 199 205 216;
-  --c-muted: 143 153 170;
+  /* Qorong'i fonda matn oqqa yaqin bo'lishi kerak — jadval qatorlari
+     va ikkilamchi yozuvlar juda xira ko'rinmasin */
+  --c-text: 240 243 248;
+  --c-text-soft: 214 220 230;
+  --c-muted: 165 175 192;
 
   --c-brand: 16 208 148;
   --c-brand-2: 60 226 190;
@@ -55,7 +57,7 @@
 
   --c-warn: 255 176 32;
   --c-danger: 255 99 104;
-  --c-info: 90 150 255;
+  --c-info: 122 170 255;
   --c-violet: 155 128 255;
   color-scheme: dark;
 }
@@ -156,7 +158,7 @@ body {
   }
 
   .table-head {
-    @apply sticky top-0 z-10 bg-surface-2/95 text-2xs font-semibold uppercase tracking-wider text-muted backdrop-blur;
+    @apply sticky top-0 z-10 bg-surface-2/95 text-2xs font-bold uppercase tracking-wider text-ink-soft backdrop-blur;
   }
 
   .skeleton {

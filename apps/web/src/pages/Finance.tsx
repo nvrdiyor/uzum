@@ -101,6 +101,8 @@ registerNamespace('finance', {
 
     'bal.title': 'Balans',
     'bal.subtitle': 'Uzum bilan hisob-kitob holati',
+    'bal.total': 'Umumiy balans',
+    'bal.totalHint': 'Uzum hisobingizda to‘plangan, hali yechib olinmagan pul',
     'bal.paid': 'To‘langan',
     'bal.paidHint': 'Yetkazilgan buyurtmalar bo‘yicha o‘tkazilgan',
     'bal.pending': 'Kutilmoqda',
@@ -172,6 +174,8 @@ registerNamespace('finance', {
 
     'bal.title': 'Баланс',
     'bal.subtitle': 'Состояние расчётов с Uzum',
+    'bal.total': 'Общий баланс',
+    'bal.totalHint': 'Накоплено на счёте Uzum и ещё не выведено',
     'bal.paid': 'Выплачено',
     'bal.paidHint': 'Переведено по доставленным заказам',
     'bal.pending': 'Ожидается',
@@ -243,6 +247,8 @@ registerNamespace('finance', {
 
     'bal.title': 'Balance',
     'bal.subtitle': 'Settlement status with Uzum',
+    'bal.total': 'Total balance',
+    'bal.totalHint': 'Accumulated in your Uzum account and not withdrawn yet',
     'bal.paid': 'Paid out',
     'bal.paidHint': 'Transferred for delivered orders',
     'bal.pending': 'Pending',
@@ -284,8 +290,6 @@ export default function Finance() {
   const revenueDelta = lineMap.get('revenue')?.deltaPct ?? null;
   const netDelta = lineMap.get('netProfit')?.deltaPct ?? null;
   const operDelta = lineMap.get('operatingProfit')?.deltaPct ?? null;
-  /** Server P&L'da to'lov moddasi bo'lmasa taqqoslov ko'rsatilmaydi */
-  const payoutDelta = lineMap.get('payout')?.deltaPct ?? null;
   const grossDelta = useMemo(() => {
     const rev = lineMap.get('revenue');
     const cogs = lineMap.get('cogs');
@@ -433,30 +437,12 @@ export default function Finance() {
                 loading={isLoading}
               />
               <StatCard
-                label={t('kpi.payout')}
-                value={f.money(data?.payout ?? 0)}
-                delta={payoutDelta}
-                hint={t('kpi.payoutHint')}
-                icon={<Wallet2 className="h-5 w-5" />}
-                tone="info"
-                loading={isLoading}
-              />
-              <StatCard
-                label={t('kpi.oper')}
-                value={f.money(data?.operatingProfit ?? 0)}
-                delta={operDelta}
-                hint={t('kpi.operHint', { v: f.money(data?.periodExpenses ?? 0) })}
-                icon={<Scale className="h-5 w-5" />}
-                tone={(data?.operatingProfit ?? 0) < 0 ? 'danger' : 'violet'}
-                loading={isLoading}
-              />
-              <StatCard
                 label={t('kpi.gross')}
                 value={f.money(data?.grossProfit ?? 0)}
                 delta={grossDelta}
                 hint={t('kpi.grossHint')}
                 icon={<TrendingUp className="h-5 w-5" />}
-                tone={(data?.grossProfit ?? 0) < 0 ? 'danger' : 'violet'}
+                tone={(data?.grossProfit ?? 0) < 0 ? 'danger' : 'info'}
                 loading={isLoading}
               />
               <StatCard
@@ -467,6 +453,15 @@ export default function Finance() {
                 icon={<PiggyBank className="h-5 w-5" />}
                 spark={sparks.profit}
                 tone={(data?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
+                loading={isLoading}
+              />
+              <StatCard
+                label={t('kpi.oper')}
+                value={f.money(data?.operatingProfit ?? 0)}
+                delta={operDelta}
+                hint={t('kpi.operHint', { v: f.money(data?.periodExpenses ?? 0) })}
+                icon={<Scale className="h-5 w-5" />}
+                tone={(data?.operatingProfit ?? 0) < 0 ? 'danger' : 'violet'}
                 loading={isLoading}
               />
             </StatGrid>
@@ -571,8 +566,15 @@ export default function Finance() {
                   ) : (
                     <>
                       <BalanceRow
-                        icon={<PiggyBank className="h-4 w-4" />}
+                        icon={<Wallet2 className="h-4 w-4" />}
                         tone="brand"
+                        label={t('bal.total')}
+                        hint={t('bal.totalHint')}
+                        value={f.money(data?.balance.total ?? 0)}
+                      />
+                      <BalanceRow
+                        icon={<PiggyBank className="h-4 w-4" />}
+                        tone="info"
                         label={t('bal.paid')}
                         hint={t('bal.paidHint')}
                         value={f.money(data?.balance.paidOut ?? 0)}

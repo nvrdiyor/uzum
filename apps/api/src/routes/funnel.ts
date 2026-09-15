@@ -20,6 +20,7 @@ import {
   deltaPct,
   pct,
   round,
+  parseISODate,
   toISODate,
   type FunnelProductRow,
   type FunnelResponse,
@@ -190,9 +191,11 @@ router.get(
       },
     ];
 
-    // ── Kunlik dinamika (bo'sh kunlar ham chiqadi) ──
+    // ── Kunlik dinamika (bo'sh kunlar ham chiqadi, lekin bugundan nariga o'tmaydi) ──
     const daily: FunnelResponse['daily'] = [];
-    for (let d = new Date(range.from); d < range.toExclusive; d = addDays(d, 1)) {
+    const tomorrow = addDays(parseISODate(toISODate(new Date())), 1);
+    const lastDay = range.toExclusive < tomorrow ? range.toExclusive : tomorrow;
+    for (let d = new Date(range.from); d < lastDay; d = addDays(d, 1)) {
       const key = toISODate(d);
       const row = cur.byDay.get(key);
       daily.push({

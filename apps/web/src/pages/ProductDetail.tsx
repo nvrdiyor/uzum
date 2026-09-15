@@ -38,6 +38,7 @@ import { CostInput } from '@/components/products/CostInput';
 import { MissingCostBanner } from '@/components/products/MissingCostBanner';
 import {
   STATE_STYLE,
+  normalizeProductDetail,
   productState,
   skusWithoutCost,
   totalStock,
@@ -343,7 +344,7 @@ export default function ProductDetail() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => api.get<ProductDetailResponse>(`/products/${id}`, periodQuery),
+    queryFn: () => api.get<unknown>(`/products/${id}`, periodQuery).then(normalizeProductDetail),
     enabled: Boolean(id),
   });
 

@@ -44,7 +44,9 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'card card-hover group relative overflow-hidden p-5',
+        // flex-col + pastdagi mt-auto: qatordagi barcha kartochkalarda
+        // o'zgarish chipi va sparkline bir sathda turadi
+        'card card-hover group relative flex flex-col overflow-hidden p-5',
         onClick && 'cursor-pointer',
         className,
       )}
@@ -72,7 +74,10 @@ export function StatCard({
               {value}
             </p>
           )}
-          {hint ? <p className="mt-1 truncate text-xs text-muted">{hint}</p> : null}
+          {/* min-h: bir va ikki qatorli izohlar qatordagi kartochkalarni siljitmasin */}
+          {hint ? (
+            <p className="mt-1 line-clamp-2 min-h-[2.75em] text-xs leading-snug text-muted">{hint}</p>
+          ) : null}
         </div>
         {icon ? (
           <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', TONE_BG[tone])}>
@@ -82,7 +87,7 @@ export function StatCard({
       </div>
 
       {(delta !== undefined || spark) && !loading ? (
-        <div className="relative mt-4 flex items-end justify-between gap-3">
+        <div className="relative mt-3 flex items-end justify-between gap-3">
           {delta !== undefined ? <Delta value={delta} invert={invertDelta} /> : <span />}
           {spark && spark.length > 1 ? (
             <Sparkline data={spark} tone={tone === 'violet' ? 'info' : tone} className="opacity-80" />
@@ -90,7 +95,11 @@ export function StatCard({
         </div>
       ) : null}
 
-      {footer ? <div className="relative mt-4 border-t border-line pt-3 text-xs text-muted">{footer}</div> : null}
+      {footer ? (
+        <div className="relative mt-auto border-t border-line pt-3 text-xs text-muted">
+          <span className="mt-4 block">{footer}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

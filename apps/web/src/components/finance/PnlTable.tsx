@@ -26,6 +26,8 @@ export function PnlTable({
   const f = useFormat();
 
   const money = (v: number) => f.money(v, currency ?? 'UZS');
+  /** Xarajat qatorida minus belgisi faqat haqiqiy summa bo'lsa qo'yiladi */
+  const cost = (v: number) => (v === 0 ? money(0) : `− ${money(Math.abs(v))}`);
   const label = (line: PnlLine) => (isKnownPnlId(line.id) ? t(`pnl.${line.id}`) : line.label);
 
   return (
@@ -104,11 +106,11 @@ export function PnlTable({
                         isSubtotal && 'font-display font-bold',
                       )}
                     >
-                      {isCost ? `− ${money(Math.abs(line.current))}` : money(line.current)}
+                      {isCost ? cost(line.current) : money(line.current)}
                     </td>
 
                     <td className={cn('tnum px-4 py-3 text-right text-muted')}>
-                      {isCost ? `− ${money(Math.abs(line.previous))}` : money(line.previous)}
+                      {isCost ? cost(line.previous) : money(line.previous)}
                     </td>
 
                     <td className="px-4 py-3 text-right">

@@ -111,3 +111,61 @@ export interface ProductDetailResponse {
 export function skusWithoutCost(skus: ProductDetailSku[] | undefined): ProductDetailSku[] {
   return (skus ?? []).filter((s) => !s.purchasePrice || s.purchasePrice <= 0);
 }
+
+// ─────────── GET /products/:id javobini bir ko'rinishga keltirish ───────────
+
+/**
+ * Server `card`, `stockHistory` va yassi `reviews` qaytaradi, sahifa esa
+ * `product`, `stocks` va `reviews.totals` kutadi. Ilgari nomlar mos
+ * kelmagani uchun kartochka ochilganda doim "Mahsulot topilmadi" chiqardi.
+ */
+export function normalizeProductDetail(raw: unknown): ProductDetailResponse | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const product = (r.product ?? r.card) as ProductCard | undefined;
+  if (!product) return undefined;
+
+  const rev = (r.reviews ?? {}) as Record<string, unknown>;
+  const hasTotals = rev && typeof rev === 'object' && 'totals' in rev;
+  const reviews: ProductReviewsBlock | undefined = hasTotals
+    ? (rev as unknown as ProductReviewsBlock)
+    : {
+        totals: {
+          count: Number(rev.count ?? 0),
+          avgRating: Number(rev.avgRating ?? 0),
+          answered: Number(rev.answered ?? 0),
+          unanswered: Number(rev.unanswered ?? 0),
+        },
+        distribution: (rev.distribution ?? []) as { rating: number; count: number }[],
+        rows: ((rev.last ?? rev.rows ?? []) as ReviewRow[]) ?? [],
+      };
+
+  const u = (r.unit ?? {}) as Record<string, number>;
+  const ui = (r.unitInput ?? {}) as Record<string, number>;
+  const unit: ProductUnitBreakdown | undefined =
+    Object.keys(u).length === 0
+      ? undefined
+      : {
+          // Server `UnitCalcResult` (bir dona uchun) qaytaradi — nomlarni moslaymiz
+          price: Number(u.price ?? ui.price ?? 0),
+          purchasePrice: Number(u.cogs ?? ui.purchasePrice ?? 0),
+          commission: Number(u.commission ?? 0),
+          logistics: Number(u.logisticsTotal ?? ui.logistics ?? 0),
+          storage: Number(u.storageTotal ?? 0),
+          otherCost: Number(ui.otherCost ?? 0),
+          tax: Number(u.tax ?? 0),
+          netProfit: Number(u.netProfitPerUnit ?? u.netProfit ?? 0),
+          margin: Number(u.margin ?? 0),
+          roi: Number(u.roi ?? 0),
+          breakEvenPrice: Number(u.breakEvenPrice ?? 0),
+        };
+
+  return {
+    product,
+    skus: (r.skus ?? []) as ProductDetailSku[],
+    series: (r.series ?? []) as TimeSeriesPoint[],
+    stocks: (r.stocks ?? r.stockHistory ?? []) as ProductStockPoint[],
+    reviews,
+    unit,
+  };
+}
