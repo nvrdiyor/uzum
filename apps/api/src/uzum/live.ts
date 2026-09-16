@@ -163,7 +163,9 @@ const KEYS = {
   productTitle: ['productTitle', 'title', 'name', 'productName'],
   category: ['category', 'categoryName', 'categoryTitle'],
   brand: ['brand', 'brandName'],
-  image: ['image', 'imageUrl', 'photo', 'photoUrl', 'mainImage', 'images'],
+  // 'previewImage' — SkuForTable dagi SKU rasmi (docs/UZUM-API.md:78). U ro'yxatda
+  // bo'lmagani uchun har bir variant mahsulotning umumiy rasmini olardi.
+  image: ['previewImage', 'image', 'imageUrl', 'photo', 'photoUrl', 'mainImage', 'images'],
   rating: ['rating', 'avgRating', 'ratingValue'],
   reviewsCount: ['reviewsCount', 'reviewsAmount', 'feedbackCount', 'commentsCount'],
   skuList: ['skuList', 'skus', 'skuDtoList', 'variants', 'items', 'skuInfoList'],
