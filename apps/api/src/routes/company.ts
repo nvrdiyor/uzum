@@ -107,7 +107,7 @@ const MAX_SETTINGS = 60;
  * eng yuqori aktiv tarif bo'yicha. Tariflarda alohida "kompaniya" limiti yo'q, shuning
  * uchun chegara shu yerda belgilangan.
  */
-const COMPANY_LIMIT: Record<PlanId, number> = { trial: 1, standard: 2, business: 5, vip: 20 };
+const COMPANY_LIMIT: Record<PlanId, number> = { trial: 1, standard: 2, vip: 20 };
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 

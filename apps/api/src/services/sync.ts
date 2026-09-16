@@ -521,8 +521,24 @@ async function reloadStores(run: SyncRun): Promise<void> {
 async function stepShops(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const shops = await requireClient(run).getShops();
   if (shops.length > 0) {
-    const res = await upsertShops(run.companyId, run.accountId, shops);
+    const maxStores = getPlan(run.planId).limits.stores;
+    const res = await upsertShops(run.companyId, run.accountId, shops, { maxStores });
     run.totals.shops = countOf(res);
+
+    // Tarif chegarasiga tushgan do'konlar — sotuvchi buni bilishi kerak
+    if (res.skipped.length > 0) {
+      try {
+        await notifyCompanyOwners(run.companyId, {
+          type: 'warning',
+          title: `${res.skipped.length} ta do‘kon ulanmadi`,
+          body: `Tarifingizda ${maxStores} ta do‘kon mumkin. Ulanmaganlari: ${res.skipped.slice(0, 5).join(', ')}`,
+          link: '/pricing',
+          buttonText: 'Tarifni yangilash',
+        });
+      } catch (err) {
+        log(`job ${run.jobId}: do‘kon chegarasi xabari yuborilmadi — ${errorMessage(err)}`);
+      }
+    }
   }
   await reloadStores(run);
   setDetail(

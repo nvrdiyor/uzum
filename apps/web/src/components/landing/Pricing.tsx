@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Crown, Rocket, Sparkles, Zap } from 'lucide-react';
+import { Crown, Rocket, Sparkles } from 'lucide-react';
 import { PLANS, PLAN_ORDER, planPrice, pickLocalized, type PlanId } from '@savdoiq/shared';
 import { Button, CheckItem, Segmented } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';
@@ -12,14 +12,12 @@ type Billing = 'monthly' | 'yearly';
 const BULLETS: Record<PlanId, string[]> = {
   trial: ['plan.trial.1', 'plan.trial.2', 'plan.trial.3', 'plan.trial.4'],
   standard: ['plan.standard.1', 'plan.standard.2', 'plan.standard.3', 'plan.standard.4', 'plan.standard.5'],
-  business: ['plan.business.1', 'plan.business.2', 'plan.business.3', 'plan.business.4', 'plan.business.5'],
   vip: ['plan.vip.1', 'plan.vip.2', 'plan.vip.3', 'plan.vip.4', 'plan.vip.5'],
 };
 
 const PLAN_ICON: Record<PlanId, typeof Rocket> = {
   trial: Sparkles,
   standard: Rocket,
-  business: Zap,
   vip: Crown,
 };
 

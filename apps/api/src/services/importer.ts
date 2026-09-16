@@ -177,17 +177,35 @@ const skuCode = (s: UzumSku): string => text(s.sku) ?? String(s.id);
 
 // ─────────────────────────── Do'konlar ───────────────────────────
 
+export interface ShopsImportResult extends ImportResult {
+  /** Tarif chegarasi sabab ulanmagan do'konlar nomi */
+  skipped: string[];
+}
+
 /**
  * Kabinetdagi do'konlarni yozadi. Tabiiy kalit: `Store(companyId, uzumShopId)`.
  * Mavjud do'konning nomi/holati yangilanadi va kabinetga bog'lanadi.
+ *
+ * TARIF CHEGARASI: `maxStores` berilsa, undan ortiq YANGI do'kon yaratilmaydi.
+ * Butun narx zinapoyamiz do'kon soniga qurilgan (1 / 3 / 10), lekin ilgari bu
+ * chegara faqat ekranda ko'rsatilardi — kabinetda 10 ta do'kon bo'lsa,
+ * Standart tarifdagi mijozning hammasi sinxronlanib ketaverardi.
+ *
+ * Mavjud do'konlar hech qachon o'chirilmaydi — tarif pasaysa ular ishlashda
+ * davom etadi, faqat YANGISI qo'shilmaydi.
  */
 export async function upsertShops(
   companyId: string,
   uzumAccountId: string,
   shops: UzumShop[],
-): Promise<ImportResult> {
-  const res = emptyResult();
+  options: { maxStores?: number } = {},
+): Promise<ShopsImportResult> {
+  const res: ShopsImportResult = { ...emptyResult(), skipped: [] };
   if (shops.length === 0) return res;
+
+  const limit = Number.isFinite(options.maxStores ?? NaN) ? (options.maxStores as number) : Infinity;
+  // Chegarani tekshirish uchun kompaniyada hozir nechta do'kon borligi
+  let slots = limit - (await prisma.store.count({ where: { companyId } }));
 
   const seen = new Set<string>();
 
@@ -215,6 +233,11 @@ export async function upsertShops(
         await prisma.store.update({ where: { id: current }, data: { title, status, uzumAccountId } });
         res.updated += 1;
       } else {
+        if (slots <= 0) {
+          res.skipped.push(title);
+          continue;
+        }
+        slots -= 1;
         creates.push({
           id: stableId('st', companyId, uzumShopId),
           companyId,

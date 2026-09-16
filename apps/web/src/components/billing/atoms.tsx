@@ -3,14 +3,13 @@
  */
 
 import type { ReactNode } from 'react';
-import { Check, Crown, Eye, Minus, Rocket, Sparkles, Zap } from 'lucide-react';
+import { Check, Crown, Eye, Minus, Rocket, Sparkles } from 'lucide-react';
 import type { FeatureAccess, PlanId } from '@savdoiq/shared';
 import { cn } from '@/lib/utils';
 
 export const PLAN_ICON: Record<PlanId, typeof Sparkles> = {
   trial: Sparkles,
   standard: Rocket,
-  business: Zap,
   vip: Crown,
 };
 
