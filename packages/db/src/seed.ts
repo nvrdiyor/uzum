@@ -243,7 +243,7 @@ interface CompanySpec {
   key: string;
   name: string;
   taxRate: number;
-  plan: 'trial' | 'business';
+  plan: 'trial' | 'vip';
   planDays: number;
   planStartedDaysAgo: number;
   storeTitles: string[];
@@ -361,7 +361,7 @@ const COMPANY_SPECS: CompanySpec[] = [
     key: 'samarqand',
     name: 'SAMARQAND SAVDO',
     taxRate: 4,
-    plan: 'business',
+    plan: 'vip',
     planDays: 30,
     planStartedDaysAgo: 8,
     storeTitles: ['Samarqand Savdo', 'Samarqand Home'],
@@ -1061,7 +1061,7 @@ function buildExtras(results: CompanyResult[]): void {
   invoiceRows.push({
     id: 'demo_inv_samarqand_1',
     companyId: 'demo_co_samarqand',
-    plan: 'business',
+    plan: 'vip',
     months: 1,
     amount: 400_000,
     currency: 'UZS',
@@ -1076,7 +1076,7 @@ function buildExtras(results: CompanyResult[]): void {
   invoiceRows.push({
     id: 'demo_inv_samarqand_2',
     companyId: 'demo_co_samarqand',
-    plan: 'business',
+    plan: 'vip',
     months: 3,
     amount: 1_200_000,
     currency: 'UZS',

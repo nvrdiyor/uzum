@@ -94,7 +94,7 @@ export const importCalcSchema = z.object({
 });
 
 export const subscribeSchema = z.object({
-  plan: z.enum(['standard', 'business', 'vip']),
+  plan: z.enum(['standard', 'vip']),
   months: z.coerce.number().int().min(1).max(12).default(1),
   provider: z.enum(['payme', 'click', 'uzum', 'manual']).default('manual'),
   useBonus: z.coerce.boolean().default(false),

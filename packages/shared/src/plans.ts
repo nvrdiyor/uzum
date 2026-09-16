@@ -3,7 +3,12 @@
  * Narxlar UZS/oy. Sinov muddati: 7 kun, bepul.
  */
 
-export const PLAN_IDS = ['trial', 'standard', 'business', 'vip'] as const;
+/**
+ * 'business' 2026-09-16 da olib tashlandi — uchta tarif tanlovni osonlashtiradi.
+ * Uning imkoniyatlari va narxi VIP ga o'tdi, mavjud obunachilar VIP ga ko'chirildi.
+ * Tip'da qoldirilmadi: bazada bu qiymat qolmagan (migratsiya skripti bajarilgan).
+ */
+export const PLAN_IDS = ['trial', 'standard', 'vip'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
 export const FEATURE_IDS = [
@@ -96,12 +101,6 @@ const standardFeatures = (): Record<FeatureId, FeatureAccess> => {
   return f;
 };
 
-const businessFeatures = (): Record<FeatureId, FeatureAccess> => {
-  const f = ALL_FULL();
-  f.api_access = 'off';
-  return f;
-};
-
 export const PLANS: Record<PlanId, Plan> = {
   trial: {
     id: 'trial',
@@ -145,31 +144,11 @@ export const PLANS: Record<PlanId, Plan> = {
     },
     features: standardFeatures(),
   },
-  business: {
-    id: 'business',
-    name: 'Biznes',
-    price: 400_000,
-    yearlyDiscount: 15,
-    tagline: {
-      uz: 'O’sayotgan biznes va bir nechta kabinet uchun',
-      ru: 'Для растущего бизнеса и нескольких кабинетов',
-      en: 'For growing businesses with multiple cabinets',
-    },
-    limits: {
-      stores: 5,
-      cabinets: 5,
-      members: 10,
-      historyDays: 730,
-      syncIntervalMinutes: 15,
-      autoReplyPerDay: 300,
-    },
-    features: businessFeatures(),
-  },
   vip: {
     id: 'vip',
     name: 'VIP',
     badge: 'best',
-    price: 600_000,
+    price: 400_000,
     yearlyDiscount: 20,
     tagline: {
       uz: 'Cheksiz kabinet, API va shaxsiy menejer',
@@ -188,7 +167,7 @@ export const PLANS: Record<PlanId, Plan> = {
   },
 };
 
-export const PLAN_ORDER: PlanId[] = ['trial', 'standard', 'business', 'vip'];
+export const PLAN_ORDER: PlanId[] = ['trial', 'standard', 'vip'];
 
 export const TRIAL_DAYS = 7;
 
