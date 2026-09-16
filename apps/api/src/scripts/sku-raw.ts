@@ -16,17 +16,23 @@ import { env } from '../env.js';
 async function main(): Promise<void> {
   const account = await prisma.uzumAccount.findFirst({
     where: { status: 'active' },
-    select: { apiKey: true, stores: { select: { uzumShopId: true }, take: 1 } },
+    select: { id: true, apiKeyEnc: true },
   });
-  const shopId = account?.stores[0]?.uzumShopId;
-  if (!account?.apiKey || !shopId) {
+  const store = account
+    ? await prisma.store.findFirst({
+        where: { uzumAccountId: account.id },
+        select: { uzumShopId: true },
+      })
+    : null;
+  const shopId = store?.uzumShopId;
+  if (!account?.apiKeyEnc || !shopId) {
     console.error('Faol kabinet yoki do‘kon topilmadi');
     process.exitCode = 1;
     return;
   }
 
-  const http = new UzumHttp({ baseUrl: env.uzum.baseUrl, apiKey: decryptSecret(account.apiKey) });
-  const payload = await http.get<unknown>(uzumPath('products', { shopId }), { page: 0, size: 5 });
+  const http = new UzumHttp({ baseUrl: env.uzum.baseUrl, apiKey: decryptSecret(account.apiKeyEnc) });
+  const payload = await http.get(uzumPath('products', { shopId }), { page: 0, size: 5 });
 
   const root = payload as Record<string, unknown>;
   const list = (root.productList ?? root.content ?? root.items) as Record<string, unknown>[] | undefined;
