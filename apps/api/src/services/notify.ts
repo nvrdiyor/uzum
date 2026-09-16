@@ -100,8 +100,18 @@ export async function sendTelegramMessage(
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
     if (!res.ok) {
+      /*
+       * Sababni ham yozamiz. Ilgari faqat holat kodi chiqardi va "400" nima
+       * uchun ekanini bilish uchun har safar qo'lda tekshirish kerak bo'lardi —
+       * holbuki Telegram sababni javob tanasida aniq aytadi
+       * ("chat not found", "bot was blocked by the user" va hokazo).
+       */
+      const detail = await res
+        .json()
+        .then((d) => (d as { description?: string }).description ?? '')
+        .catch(() => '');
       // eslint-disable-next-line no-console
-      console.warn('[notify] telegram javobi:', res.status);
+      console.warn(`[notify] telegram javobi: ${res.status}${detail ? ` — ${detail}` : ''}`);
       return false;
     }
     const data = (await res.json()) as { ok?: boolean; description?: string };

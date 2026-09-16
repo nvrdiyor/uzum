@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
 import type { TelegramAuthPayload } from '@savdoiq/shared';
 import { Skeleton } from '@/components/ui';
+import { api } from '@/lib/api';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { BOT_USERNAME } from '@/components/landing/primitives';
@@ -48,6 +49,28 @@ export function TelegramLoginButton({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const authRef = useRef(onAuth);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  /**
+   * Domen @BotFather'da botga biriktirilganmi. Biriktirilmagan bo'lsa Telegram
+   * foydalanuvchini tasdiqlaydi-yu, ma'lumotni saytga qaytarmaydi: oynacha
+   * chiqib yo'qoladi va hech narsa bo'lmaydi. Sabab brauzerga ko'rinmaydi
+   * (iframe boshqa domenda), shuning uchun serverdan so'raymiz.
+   */
+  const [domainOk, setDomainOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isTelegramWidgetSupported()) return;
+    let alive = true;
+    api
+      .get<{ ok: boolean }>('/auth/telegram/widget', { origin: window.location.origin })
+      .then((r) => {
+        if (alive) setDomainOk(r.ok);
+      })
+      // Tekshiruv o'zi yiqilsa widget'ni to'smaymiz
+      .catch(() => alive && setDomainOk(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Callback har doim eng so'nggi bo'lsin, lekin skript qayta yuklanmasin
   useEffect(() => {
@@ -56,7 +79,8 @@ export function TelegramLoginButton({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !BOT_USERNAME || !isTelegramWidgetSupported()) return;
+    // Domen tekshiruvi tugamaguncha yoki ruxsat bo'lmasa skript yuklanmaydi
+    if (!host || !BOT_USERNAME || !isTelegramWidgetSupported() || domainOk !== true) return;
 
     window.onTelegramAuth = (user: TelegramAuthPayload) => authRef.current(user);
 
@@ -77,7 +101,20 @@ export function TelegramLoginButton({
       host.innerHTML = '';
       delete window.onTelegramAuth;
     };
-  }, []);
+  }, [domainOk]);
+
+  // Domen botga biriktirilmagan — tugmani ko'rsatish foydasiz, sabab aytamiz
+  if (BOT_USERNAME && isTelegramWidgetSupported() && domainOk === false) {
+    return (
+      <div className={cn('flex gap-3 rounded-2xl border border-warn/25 bg-warn/10 p-4', className)}>
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{t('tg.domainOff')}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{t('tg.domainOffHint')}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (BOT_USERNAME && !isTelegramWidgetSupported()) {
     return (

@@ -369,6 +369,61 @@ const VERIFY_ERRORS: Record<string, string> = {
 const verifyMessage = (reason?: string): string =>
   VERIFY_ERRORS[reason ?? ''] ?? 'Telegram orqali kirishni tasdiqlab bo‘lmadi';
 
+/**
+ * Telegram Login Widget shu domen uchun ishlaydimi?
+ *
+ * Widget faqat @BotFather'da `/setdomain` orqali botga biriktirilgan domenda
+ * ishlaydi. Boshqa domenda Telegram foydalanuvchini tasdiqlaydi-yu, ma'lumotni
+ * saytga QAYTARMAYDI: oynacha chiqib yo'qoladi va hech narsa bo'lmaydi.
+ * Sabab brauzerga ko'rinmaydi (iframe boshqa domenda), shuning uchun
+ * tekshiruvni server bajaradi va sayt tushunarli xabar ko'rsatadi.
+ */
+const WIDGET_CACHE_MS = 10 * 60_000;
+const widgetCache = new Map<string, { ok: boolean; at: number }>();
+
+async function widgetOriginAllowed(origin: string): Promise<boolean> {
+  const cached = widgetCache.get(origin);
+  if (cached && Date.now() - cached.at < WIDGET_CACHE_MS) return cached.ok;
+
+  let ok = false;
+  try {
+    const url =
+      `https://oauth.telegram.org/embed/${encodeURIComponent(env.telegram.botUsername)}` +
+      `?origin=${encodeURIComponent(origin)}&size=large&request_access=write`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const html = await res.text();
+    // Ruxsat berilmagan domenda Telegram shu matnni qaytaradi
+    ok = res.ok && !/bot domain invalid/i.test(html);
+  } catch {
+    /*
+     * Telegramga chiqib bo'lmadi — domenni ayblamaymiz. Widget ko'rsatiladi;
+     * ishlamasa foydalanuvchi bot kodi bilan kira oladi.
+     */
+    ok = true;
+  }
+
+  widgetCache.set(origin, { ok, at: Date.now() });
+  return ok;
+}
+
+/** GET /telegram/widget — widget shu domenda ishlaydimi */
+router.get(
+  '/telegram/widget',
+  ah(async (req, res) => {
+    if (!env.telegram.botToken || !env.telegram.botUsername) {
+      res.json({ ok: false, reason: 'bot_missing' });
+      return;
+    }
+    const origin = String((req.query as Record<string, unknown>).origin ?? '').trim();
+    if (!/^https?:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)) {
+      res.json({ ok: false, reason: 'bad_origin' });
+      return;
+    }
+    const allowed = await widgetOriginAllowed(origin);
+    res.json({ ok: allowed, reason: allowed ? undefined : 'domain_not_set' });
+  }),
+);
+
 router.post(
   '/telegram',
   loginLimiter,

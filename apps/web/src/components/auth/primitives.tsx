@@ -33,6 +33,9 @@ registerNamespace('auth', {
     'tg.hint': 'Tugmani bosing va Telegram’da tasdiqlang — hisobingiz avtomatik topiladi.',
     'tg.loading': 'Telegram tugmasi yuklanmoqda...',
     'tg.missing': 'Telegram tugmasi sozlanmagan',
+    'tg.domainOff': 'Telegram bu manzilni tanimadi',
+    'tg.domainOffHint':
+      'Bot sozlamalarida boshqa domen ko‘rsatilgan, shuning uchun Telegram kirish ma’lumotini saytga qaytara olmaydi. Quyidagi bot kodi bilan kiring — u har doim ishlaydi.',
     'tg.noDomain': 'Telegram tugmasi domen ulangandan keyin ishlaydi',
     'tg.noDomainHint':
       'Telegram xavfsizlik uchun haqiqiy domen talab qiladi — IP manzil bilan ishlamaydi. Hozircha “Bot kodi” orqali kiring: botda 🔑 “Saytga kirish” tugmasini bosing va 6 xonali kodni kiriting.',
@@ -92,6 +95,9 @@ registerNamespace('auth', {
     'tg.hint': 'Нажмите кнопку и подтвердите в Telegram — аккаунт найдётся автоматически.',
     'tg.loading': 'Загружаем кнопку Telegram...',
     'tg.missing': 'Кнопка Telegram не настроена',
+    'tg.domainOff': 'Telegram не распознал этот адрес',
+    'tg.domainOffHint':
+      'В настройках бота указан другой домен, поэтому Telegram не может вернуть данные входа на сайт. Войдите по коду из бота — он работает всегда.',
     'tg.noDomain': 'Кнопка Telegram заработает после подключения домена',
     'tg.noDomainHint':
       'Telegram требует настоящий домен — с IP-адресом вход через виджет не работает. Пока войдите через «Код бота»: нажмите в боте 🔑 «Вход на сайт» и введите 6-значный код.',
@@ -149,6 +155,9 @@ registerNamespace('auth', {
     'tg.hint': 'Press the button and confirm in Telegram — your account is found automatically.',
     'tg.loading': 'Loading the Telegram button...',
     'tg.missing': 'Telegram button is not configured',
+    'tg.domainOff': 'Telegram does not recognise this address',
+    'tg.domainOffHint':
+      'The bot is configured for a different domain, so Telegram cannot return your sign-in data. Use the bot code below — it always works.',
     'tg.noDomain': 'The Telegram button works once a domain is connected',
     'tg.noDomainHint':
       'Telegram requires a real domain — the widget cannot run on a bare IP address. For now use “Bot code”: tap 🔑 “Log in to the site” in the bot and enter the 6-digit code.',
