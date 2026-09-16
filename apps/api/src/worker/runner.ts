@@ -13,18 +13,26 @@
  */
 import { env } from '../env.js';
 import { runDueJobs, scheduleRecurring } from '../services/sync.js';
+import { runExpiryAlerts } from '../services/subscription-alerts.js';
 
 /** Avtomatik sinxronlarni rejalashtirish oralig'i */
 const RECURRING_MS = 60_000;
 /** Poll oralig'ining pastki chegarasi (bazani ortiqcha yuklamaslik uchun) */
 const MIN_POLL_MS = 500;
+/**
+ * Obuna ogohlantirishlari tekshiruvi. Soatiga bir marta yetarli — xabar
+ * baribir chegara (3 kun / 1 kun / tugadi) bo'yicha bir martagina ketadi.
+ */
+const BILLING_MS = 60 * 60_000;
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let recurringTimer: ReturnType<typeof setInterval> | null = null;
+let billingTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Qayta kirishdan himoya: oldingi sikl tugamaguncha yangisi boshlanmaydi */
 let pollBusy = false;
 let recurringBusy = false;
+let billingBusy = false;
 
 function log(message: string): void {
   // eslint-disable-next-line no-console
@@ -67,6 +75,20 @@ async function recurringTick(): Promise<void> {
   }
 }
 
+/** Obuna muddati ogohlantirishlari sikli */
+async function billingTick(): Promise<void> {
+  if (billingBusy) return;
+  billingBusy = true;
+  try {
+    const sent = await runExpiryAlerts();
+    if (sent > 0) log(`${sent} ta obuna ogohlantirishi yuborildi`);
+  } catch (err) {
+    warn(`obuna ogohlantirishida xatolik: ${errorMessage(err)}`);
+  } finally {
+    billingBusy = false;
+  }
+}
+
 /** Ishchini ishga tushiradi (takroriy chaqiruv e'tiborsiz qoldiriladi) */
 export function startWorker(): void {
   if (pollTimer) return;
@@ -74,6 +96,7 @@ export function startWorker(): void {
   const pollMs = Math.max(MIN_POLL_MS, Math.round(env.sync.pollMs));
   pollTimer = setInterval(() => void pollTick(), pollMs);
   recurringTimer = setInterval(() => void recurringTick(), RECURRING_MS);
+  billingTimer = setInterval(() => void billingTick(), BILLING_MS);
 
   log(
     `ishga tushdi — poll ${pollMs} ms, tezlik x${env.sync.speedFactor}, ` +
@@ -83,6 +106,7 @@ export function startWorker(): void {
   // Birinchi siklni kutmasdan boshlaymiz
   void pollTick();
   void recurringTick();
+  void billingTick();
 }
 
 /** Ishchini to'xtatadi (bajarilayotgan job oxirigacha yetkaziladi) */
@@ -95,6 +119,10 @@ export function stopWorker(): void {
   if (recurringTimer) {
     clearInterval(recurringTimer);
     recurringTimer = null;
+  }
+  if (billingTimer) {
+    clearInterval(billingTimer);
+    billingTimer = null;
   }
   if (wasRunning) log('to‘xtatildi');
 }

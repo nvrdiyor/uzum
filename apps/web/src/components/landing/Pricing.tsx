@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Crown, Rocket, Sparkles } from 'lucide-react';
+import { Clock, Crown, Rocket, Sparkles } from 'lucide-react';
 import { PLANS, PLAN_ORDER, planPrice, pickLocalized, type PlanId } from '@savdoiq/shared';
 import { Button, CheckItem, Segmented } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';
@@ -13,12 +13,15 @@ const BULLETS: Record<PlanId, string[]> = {
   trial: ['plan.trial.1', 'plan.trial.2', 'plan.trial.3', 'plan.trial.4'],
   standard: ['plan.standard.1', 'plan.standard.2', 'plan.standard.3', 'plan.standard.4', 'plan.standard.5'],
   vip: ['plan.vip.1', 'plan.vip.2', 'plan.vip.3', 'plan.vip.4', 'plan.vip.5'],
+  // 'expired' PLAN_ORDER da yo'q — bu ro'yxat hech qachon o'qilmaydi
+  expired: [],
 };
 
 const PLAN_ICON: Record<PlanId, typeof Rocket> = {
   trial: Sparkles,
   standard: Rocket,
   vip: Crown,
+  expired: Clock,
 };
 
 const MAX_DISCOUNT = Math.max(...PLAN_ORDER.map((id) => PLANS[id].yearlyDiscount));

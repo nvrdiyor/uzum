@@ -156,9 +156,16 @@ export function toSubscriptionSummary(s: Subscription | null): SubscriptionSumma
 
 /** Aktiv tarif: muddati o'tgan yoki bekor qilingan obuna → 'trial' */
 export function activePlan(s: Subscription | null): PlanId {
+  // Obuna yozuvi yo'q — hali ochilmagan, sinov beriladi
   if (!s) return 'trial';
   const active = s.status === 'active' && !s.canceledAt && s.expiresAt.getTime() > Date.now();
-  return active ? getPlan(s.plan).id : 'trial';
+  if (active) return getPlan(s.plan).id;
+  /*
+   * Muddati tugagan yoki bekor qilingan obuna 'expired' bo'ladi — ilgari
+   * 'trial' ga qaytarilardi va sinovda deyarli hamma narsa ochiq bo'lgani
+   * uchun to'lovni to'xtatgan mijoz bemalol ishlab yuraverardi.
+   */
+  return 'expired';
 }
 
 /**

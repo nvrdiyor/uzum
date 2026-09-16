@@ -32,6 +32,10 @@ export interface Messages {
   onb_tax_invalid: string;
   onb_api_ask: string;
   onb_api_invalid: string;
+  onb_api_checking: string;
+  onb_api_rejected: string;
+  onb_api_no_shops: string;
+  onb_api_network: string;
   onb_syncing: string;
   onb_ref_applied: string;
   onb_api_deleted: string;
@@ -169,6 +173,13 @@ const uz: Messages = {
   onb_tax_invalid: 'Soliq stavkasi 0 dan 50 gacha bo‘lgan son bo‘lishi kerak. Masalan: 1',
   onb_api_ask:
     'Oxirgi qadam — <b>Uzum API kaliti</b>. 🔑\n\nQanday olinadi:\n1️⃣ <a href="https://seller.uzum.uz">seller.uzum.uz</a> saytiga kiring\n2️⃣ <b>Mening profilim</b> bo‘limini oching\n3️⃣ <b>API kalitlar</b> bo‘limiga o‘ting\n4️⃣ Kalitni nusxalab, shu yerga yuboring\n\n🔒 Kalit shifrlangan holda saqlanadi va faqat sizning ma’lumotlaringizni olishga ishlatiladi.',
+  onb_api_checking: '🔍 Kalit tekshirilmoqda…',
+  onb_api_rejected:
+    '❌ <b>Kalit qabul qilinmadi.</b>\n\nUzum uni tanimadi — ehtimol nusxalashda xato ketgan yoki kalit bekor qilingan.\n\nseller.uzum.uz → Mening profilim → API kalitlar bo‘limidan qaytadan nusxalang va yuboring.',
+  onb_api_no_shops:
+    '⚠️ <b>Kalit ishlayapti, lekin unga do‘kon biriktirilmagan.</b>\n\nUzum kabinetida kalitga kamida bitta do‘kon ruxsatini bering, so‘ng qaytadan yuboring.',
+  onb_api_network:
+    '🌐 <b>Hozir tekshirib bo‘lmadi</b> — Uzum javob bermayapti.\n\nBir necha daqiqadan keyin qaytadan yuboring.',
   onb_api_invalid:
     'Bu API kalitga o‘xshamayapti. Kalit kamida 16 ta belgidan iborat bo‘ladi.\nIltimos, kalitni to‘liq nusxalab yuboring.',
   onb_syncing:
@@ -314,6 +325,13 @@ const ru: Messages = {
   onb_tax_invalid: 'Ставка должна быть числом от 0 до 50. Например: 1',
   onb_api_ask:
     'Последний шаг — <b>API-ключ Uzum</b>. 🔑\n\nКак получить:\n1️⃣ Зайдите на <a href="https://seller.uzum.uz">seller.uzum.uz</a>\n2️⃣ Откройте раздел <b>Мой профиль</b>\n3️⃣ Перейдите в <b>API-ключи</b>\n4️⃣ Скопируйте ключ и отправьте сюда\n\n🔒 Ключ хранится в зашифрованном виде и используется только для загрузки ваших данных.',
+  onb_api_checking: '🔍 Проверяем ключ…',
+  onb_api_rejected:
+    '❌ <b>Ключ не принят.</b>\n\nUzum его не распознал — возможно, ошибка при копировании или ключ отозван.\n\nСкопируйте заново: seller.uzum.uz → Мой профиль → API-ключи.',
+  onb_api_no_shops:
+    '⚠️ <b>Ключ рабочий, но к нему не привязан магазин.</b>\n\nДайте ключу доступ хотя бы к одному магазину в кабинете Uzum и отправьте снова.',
+  onb_api_network:
+    '🌐 <b>Сейчас не удалось проверить</b> — Uzum не отвечает.\n\nПопробуйте через несколько минут.',
   onb_api_invalid:
     'Это не похоже на API-ключ. Ключ содержит минимум 16 символов.\nСкопируйте ключ полностью и отправьте ещё раз.',
   onb_syncing:

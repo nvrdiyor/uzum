@@ -8,7 +8,17 @@
  * Uning imkoniyatlari va narxi VIP ga o'tdi, mavjud obunachilar VIP ga ko'chirildi.
  * Tip'da qoldirilmadi: bazada bu qiymat qolmagan (migratsiya skripti bajarilgan).
  */
-export const PLAN_IDS = ['trial', 'standard', 'vip'] as const;
+/**
+ * 'expired' — TARIF EMAS, holat. Obuna muddati tugaganda shu holat qo'yiladi.
+ * Ilgari tugagan obuna 'trial' ga qaytarilardi, sinovda esa deyarli hamma
+ * narsa ochiq — ya'ni to'lovni to'xtatgan mijoz ishlashda davom etaverardi
+ * va qaytish uchun sabab qolmasdi.
+ *
+ * U PLAN_ORDER da YO'Q, shuning uchun narxlar sahifasida kartochka bo'lib
+ * chiqmaydi va `hasMinPlan` tekshiruvida indeksi -1 bo'lib, hech qanday
+ * talabni qanoatlantirmaydi.
+ */
+export const PLAN_IDS = ['trial', 'standard', 'vip', 'expired'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
 export const FEATURE_IDS = [
@@ -97,6 +107,17 @@ const trialFeatures = (): Record<FeatureId, FeatureAccess> => {
   return f;
 };
 
+/**
+ * Muddati tugagan obuna: ma'lumot joyida turganini ko'rsatamiz, lekin
+ * kundalik ish uchun ishlatib bo'lmaydi. Boshqaruv paneli 'preview' —
+ * sotuvchi raqamlari saqlanib qolganini ko'radi va qaytishga undaladi.
+ */
+const expiredFeatures = (): Record<FeatureId, FeatureAccess> =>
+  FEATURE_IDS.reduce((acc, f) => {
+    acc[f] = f === 'dashboard_realtime' ? 'preview' : 'off';
+    return acc;
+  }, {} as Record<FeatureId, FeatureAccess>);
+
 const standardFeatures = (): Record<FeatureId, FeatureAccess> => {
   const f = ALL_FULL();
   f.api_access = 'off';
@@ -168,8 +189,29 @@ export const PLANS: Record<PlanId, Plan> = {
     },
     features: ALL_FULL(),
   },
+  expired: {
+    id: 'expired',
+    name: 'Muddati tugagan',
+    price: 0,
+    yearlyDiscount: 0,
+    tagline: {
+      uz: 'Obuna muddati tugadi — ma’lumotlaringiz saqlanib turibdi',
+      ru: 'Подписка истекла — ваши данные сохранены',
+      en: 'Your subscription has ended — your data is kept',
+    },
+    limits: {
+      stores: 1,
+      cabinets: 1,
+      members: 1,
+      historyDays: 30,
+      syncIntervalMinutes: 1440,
+      autoReplyPerDay: 0,
+    },
+    features: expiredFeatures(),
+  },
 };
 
+/** Narxlar sahifasida va taqqoslashda ko'rinadigan tariflar ('expired' — holat, tarif emas) */
 export const PLAN_ORDER: PlanId[] = ['trial', 'standard', 'vip'];
 
 export const TRIAL_DAYS = 7;

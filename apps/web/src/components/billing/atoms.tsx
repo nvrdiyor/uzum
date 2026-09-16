@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Check, Crown, Eye, Minus, Rocket, Sparkles } from 'lucide-react';
+import { Check, Clock, Crown, Eye, Minus, Rocket, Sparkles } from 'lucide-react';
 import type { FeatureAccess, PlanId } from '@savdoiq/shared';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,8 @@ export const PLAN_ICON: Record<PlanId, typeof Sparkles> = {
   trial: Sparkles,
   standard: Rocket,
   vip: Crown,
+  // 'expired' — holat, narxlar sahifasida kartochka bo'lib chiqmaydi
+  expired: Clock,
 };
 
 /** Taqqoslash jadvalidagi bitta katak belgisi */

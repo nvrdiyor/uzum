@@ -28,6 +28,7 @@ import {
   setLanguage,
 } from './data.js';
 import type { BotLang } from '../i18n.js';
+import { verifyUzumKey } from '../lib/verify-key.js';
 
 /** API kalit kamida shuncha belgidan iborat bo'lsin */
 const MIN_API_KEY_LEN = 16;
@@ -221,6 +222,20 @@ async function handleApiKey(ctx: BotContext, text: string, isUpdate: boolean): P
   const key = text.trim();
   if (key.length < MIN_API_KEY_LEN || /\s/.test(key)) {
     await ctx.reply(t(ctx, 'onb_api_invalid'), { parse_mode: 'HTML' });
+    return;
+  }
+
+  /*
+   * Kalitni SAQLASHDAN OLDIN tekshiramiz. Ilgari u shundayligicha yozilib,
+   * to'liq sinxronizatsiya navbatga qo'yilardi — noto'g'ri kalit bo'lsa
+   * sotuvchi buni o'n daqiqalardan keyin, sinxron yiqilganda bilardi.
+   */
+  await ctx.reply(t(ctx, 'onb_api_checking'));
+  const check = await verifyUzumKey(key);
+  if (!check.ok) {
+    const reason =
+      check.reason === 'no_shops' ? 'onb_api_no_shops' : check.reason === 'network' ? 'onb_api_network' : 'onb_api_rejected';
+    await ctx.reply(t(ctx, reason), { parse_mode: 'HTML' });
     return;
   }
 
