@@ -318,6 +318,27 @@ model Sku {
   // Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem)
   storagePerItem Float   @default(0)
   archived      Boolean  @default(false)
+
+  // ── Aksiya (Uzum katalogidagi specialOffer) ──
+  // Uzum har hafta chegirma kampaniyalari o'tkazadi va ayrim SKU'larni
+  // TAKLIF qiladi. `promoOffered` — taklif bor, `promoJoined` — sotuvchi
+  // qo'shilgan. `promoPrice` taklif narxi; qo'shilmagan bo'lsa AMALDAGI
+  // narx emas (docs/UZUM-API.md 7.1).
+  promoName     String?
+  promoPrice    Float    @default(0)
+  promoJoined   Boolean  @default(false)
+  promoOffered  Boolean  @default(false)
+
+  // ── Kartochka holati (SKU Health) ──
+  blocked       Boolean  @default(false)
+  blockingReason String?
+  /** Uzumning o'z statistikasi: qaytarishlar ulushi, % */
+  returnedPct   Float    @default(0)
+  /** Uzum omborida yaroqsiz (brak) deb belgilangan dona */
+  qtyDefected   Int      @default(0)
+  /** Uzum omborida yo'qolgan dona */
+  qtyMissing    Int      @default(0)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

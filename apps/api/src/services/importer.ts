@@ -369,6 +369,22 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         ...(num(sku.storagePerItem) > 0 ? { storagePerItem: num(sku.storagePerItem) } : {}),
         // Uzumda arxivlangan SKU saytda ham arxiv bo'lib ko'rinishi kerak
         archived: Boolean(sku.archived),
+
+        /*
+         * Quyidagilar TO'LIQ Uzumdan keladi — foydalanuvchi ularni tahrirlamaydi.
+         * Shuning uchun yuqoridagi shartli spread naqshi (`...(x > 0 ? {x} : {})`)
+         * BU YERDA ISHLATILMAYDI: aksiya tugaganda yoki blok olib tashlanganda
+         * eski qiymat SKU'da abadiy qolib ketmasligi kerak.
+         */
+        promoName: text(sku.promoName),
+        promoPrice: round(num(sku.promoPrice)),
+        promoJoined: Boolean(sku.promoJoined),
+        promoOffered: Boolean(sku.promoOffered),
+        blocked: Boolean(sku.blocked),
+        blockingReason: text(sku.blockingReason),
+        returnedPct: round(num(sku.returnedPct)),
+        qtyDefected: int(sku.qtyDefected),
+        qtyMissing: int(sku.qtyMissing),
       };
 
       const current = byUzumId.get(String(sku.id)) ?? bySku.get(code);

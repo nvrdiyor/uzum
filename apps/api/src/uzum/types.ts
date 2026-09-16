@@ -74,6 +74,22 @@ export interface UzumSku {
   commissionPct?: number;
   /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem) */
   storagePerItem?: number;
+  /** Aksiya taklif narxi (mechanicPrice) — qo'shilmagan bo'lsa amaldagi narx EMAS */
+  promoPrice?: number;
+  /** Sotuvchi aksiyaga qo'shilganmi (inOffer) */
+  promoJoined?: boolean;
+  /** Uzum bu SKU'ni aksiyaga taklif qilganmi (hasRecommendation) */
+  promoOffered?: boolean;
+  /** Kartochka bloklanganmi */
+  blocked?: boolean;
+  /** Bloklash sababi */
+  blockingReason?: string;
+  /** Qaytarishlar ulushi, % (returnedPercentage) */
+  returnedPct?: number;
+  /** Yaroqsiz (brak) dona */
+  qtyDefected?: number;
+  /** Yo'qolgan dona */
+  qtyMissing?: number;
 }
 
 /** Mahsulot kartochkasi (bir nechta SKU bilan) */

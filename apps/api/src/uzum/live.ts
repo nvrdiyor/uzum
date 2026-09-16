@@ -192,6 +192,9 @@ const KEYS = {
   purchasePrice: ['purchasePrice', 'costPrice', 'purchase_price'],
   commissionPct: ['commission', 'commissionPercent', 'commissionRate'],
   reserved: ['reserved', 'reservedAmount', 'reservedQuantity'],
+  defected: ['quantityDefected', 'defected', 'defectedAmount'],
+  missing: ['quantityMissing', 'missing', 'missingAmount'],
+  returnedPct: ['returnedPercentage', 'returnPercentage', 'returnRate'],
   inTransit: ['inTransit', 'inWay', 'transitAmount', 'onTheWay'],
 
   orderId: ['orderId', 'id', 'orderID', 'order_id'],
@@ -461,7 +464,6 @@ export class LiveUzumClient implements UzumClient {
       imageUrl: imageUrl || undefined,
       price,
       oldPrice,
-      promoName: hasDiscount ? asString(offer.promoName) || undefined : undefined,
       weightGr,
       volumeL,
       // Uzum katalogi qoldiqni ham qaytaradi — FBO uchun asosiy manba shu
@@ -472,6 +474,24 @@ export class LiveUzumClient implements UzumClient {
       commissionPct: asNumber(firstOf(r, KEYS.commissionPct)) || undefined,
       storagePerItem: asMoney(r.paidStoragePriceItem) || undefined,
       archived: asBool(r.archived),
+
+      /*
+       * Aksiya: `promoName` va `mechanicPrice` sotuvchi qo'shilmagan
+       * TAKLIF holatida ham keladi. Ilgari ular faqat `hasDiscount`
+       * rost bo'lganda olinardi — ya'ni "sizga taklif qilingan aksiyalar"
+       * ma'lumoti butunlay tashlanardi.
+       */
+      promoName: asString(offer.promoName) || undefined,
+      promoPrice: promo || undefined,
+      promoJoined: joined,
+      promoOffered: asBool(offer.hasRecommendation),
+
+      // Kartochka holati va Uzum omboridagi muammoli donalar
+      blocked: asBool(r.blocked),
+      blockingReason: asString(r.blockingReason) || undefined,
+      returnedPct: asNumber(firstOf(r, KEYS.returnedPct)) || undefined,
+      qtyDefected: Math.round(asNumber(firstOf(r, KEYS.defected))) || undefined,
+      qtyMissing: Math.round(asNumber(firstOf(r, KEYS.missing))) || undefined,
     };
   }
 

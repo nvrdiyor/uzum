@@ -136,6 +136,12 @@ interface CatalogItem {
   variants: string[];
 }
 
+/**
+ * Demo aksiyalari. Uzumda ular haftalik bo'ladi. Sinov rejimidagi
+ * foydalanuvchi Aksiyalar sahifasini bo'sh ko'rmasligi uchun kerak.
+ */
+const DEMO_PROMOS = ['Hafta chegirmalari', 'Kuz savdosi', 'Elektronika kuni'];
+
 /** Realistik Uzum assortimenti (o'zbek/rus tilidagi nomlar) */
 const CATALOG: CatalogItem[] = [
   { title: 'Gaming sichqoncha ko‘rpachasi XXL RGB', category: 'Kompyuter', brand: 'Redragon', minPrice: 68_000, maxPrice: 138_000, commissionPct: 15, weightGr: 900, volumeL: 2.4, variants: ['80x30', '90x40', '100x40'] },
@@ -468,6 +474,21 @@ export class DemoUzumClient implements UzumClient {
         };
 
         skus.push(demoSku);
+
+        /*
+         * Aksiya holati: ~20% SKU aksiyaga TAKLIF qilingan (sotuvchi hali
+         * qo'shilmagan), ~12% allaqachon qo'shilgan. Qolganida aksiya yo'q.
+         */
+        const promoRoll = rng.next();
+        const promoOffered = promoRoll < 0.32;
+        const promoJoined = promoOffered && promoRoll < 0.12;
+        const promoName = promoOffered ? DEMO_PROMOS[skuSeq % DEMO_PROMOS.length] : undefined;
+        const promoPrice = promoOffered ? roundTo(demoSku.price * rng.float(0.78, 0.9), 500) : undefined;
+
+        // Kartochka muammolari: ~5% bloklangan, ~8% da brak yoki yo'qolgan dona bor
+        const blocked = rng.next() < 0.05;
+        const damaged = rng.next() < 0.08;
+
         product.skus.push({
           id: demoSku.id,
           sku: demoSku.sku,
@@ -477,6 +498,15 @@ export class DemoUzumClient implements UzumClient {
           oldPrice: demoSku.oldPrice,
           weightGr: demoSku.weightGr,
           volumeL: demoSku.volumeL,
+          promoName,
+          promoPrice,
+          promoJoined,
+          promoOffered,
+          blocked,
+          blockingReason: blocked ? 'Kartochka moderatsiyadan o‘tmadi' : undefined,
+          returnedPct: roundTo(rng.float(0, 18), 1),
+          qtyDefected: damaged ? rng.int(1, 4) : 0,
+          qtyMissing: damaged ? rng.int(0, 2) : 0,
         });
       }
 
