@@ -92,7 +92,16 @@ export function TelegramLoginButton({
     script.setAttribute('data-userpic', 'true');
     script.setAttribute('data-radius', '12');
     script.setAttribute('data-request-access', 'write');
-    script.setAttribute('data-onauth', 'onTelegramAuth');
+    /*
+     * `data-onauth` — funksiya NOMI emas, bajariladigan JavaScript IFODASI.
+     * Telegram widget'i uni `user` o'zgaruvchisi bilan birga baholaydi, ya'ni
+     * chaqiruv qavslari SHART: `onTelegramAuth(user)`.
+     *
+     * Faqat nom yozilganda ifoda funksiyaga havola berib, uni CHAQIRMASDAN
+     * tugaydi: Telegram foydalanuvchini tasdiqlaydi va "saytga kirdingiz"
+     * xabarini yuboradi, lekin sahifada hech narsa bo'lmaydi.
+     */
+    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
     script.onload = () => setState('ready');
     script.onerror = () => setState('failed');
     host.appendChild(script);
