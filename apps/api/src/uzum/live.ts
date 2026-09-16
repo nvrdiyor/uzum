@@ -274,9 +274,29 @@ function mapExpenseCategory(source: string): UzumExpenseCategory {
   return 'other';
 }
 
+/**
+ * Uzum rasm manzilini ko'rsatsa bo'ladigan holatga keltiradi.
+ *
+ * Katalogdagi `previewImage` faqat rasm identifikatorini beradi —
+ * `https://images.uzum.uz/da4d6k21sfvntmv3tnhg`. Bu manzil 404 qaytaradi:
+ * Uzum o'lcham qo'shimchasini talab qiladi. Mahsulot rasmi esa to'liq
+ * keladi (`.../t_product_540_high.jpg`), shuning uchun faqat qo'shimchasi
+ * yo'qlariga uni o'zimiz qo'shamiz.
+ *
+ * Tekshirilgan (jonli kabinet): qo'shimchasiz → 404, `/t_product_540_high.jpg`
+ * bilan → 200.
+ */
+const UZUM_IMAGE_SUFFIX = '/t_product_540_high.jpg';
+
+function normalizeImage(url: string): string {
+  if (!url) return '';
+  const m = /^(https?:\/\/images\.uzum\.uz\/[A-Za-z0-9_-]+)\/?$/.exec(url);
+  return m ? `${m[1]}${UZUM_IMAGE_SUFFIX}` : url;
+}
+
 /** Rasm maydoni matn, obyekt yoki massiv bo'lishi mumkin */
 function pickImage(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'string') return normalizeImage(value.trim());
   if (Array.isArray(value)) {
     for (const item of value) {
       const url = pickImage(item);
@@ -285,7 +305,7 @@ function pickImage(value: unknown): string {
     return '';
   }
   if (isRecord(value)) {
-    return asString(firstOf(value, ['url', 'link', 'high', 'origin', 'image', 'photo']));
+    return normalizeImage(asString(firstOf(value, ['url', 'link', 'high', 'origin', 'image', 'photo'])));
   }
   return '';
 }
