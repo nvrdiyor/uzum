@@ -35,6 +35,16 @@ export const FEATURE_LABELS: Record<FeatureId, L10nText> = {
   unit_calculator: { uz: 'Unit kalkulyator', ru: 'Юнит-калькулятор', en: 'Unit calculator' },
   cost_price: { uz: 'Tannarx boshqaruvi', ru: 'Управление себестоимостью', en: 'Cost price management' },
   expenses: { uz: 'Qo‘shimcha xarajatlar', ru: 'Дополнительные расходы', en: 'Extra expenses' },
+  promos: {
+    uz: 'Aksiyalar va ularning foydasi',
+    ru: 'Акции и их прибыльность',
+    en: 'Promotions and their profitability',
+  },
+  sku_health: {
+    uz: 'SKU holati: blok, brak, qaytarishlar',
+    ru: 'Состояние SKU: блок, брак, возвраты',
+    en: 'SKU health: blocks, defects, returns',
+  },
   reviews_autoreply: { uz: 'Sharhlarga avto-javob', ru: 'Автоответы на отзывы', en: 'Review auto-replies' },
   telegram_notifications: { uz: 'Telegram bildirishnomalari', ru: 'Уведомления в Telegram', en: 'Telegram notifications' },
   referral: { uz: 'Hamkorlik dasturi', ru: 'Партнёрская программа', en: 'Referral program' },

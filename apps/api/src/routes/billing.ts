@@ -67,6 +67,8 @@ const FEATURE_LABELS: Record<FeatureId, string> = {
   unit_calculator: 'Unit-kalkulyator',
   cost_price: 'Tannarx boshqaruvi',
   expenses: 'Xarajatlar hisobi',
+  promos: 'Aksiyalar va ularning foydasi',
+  sku_health: 'SKU holati (blok, brak, qaytarishlar)',
   reviews_autoreply: 'Sharhlarga avto-javob',
   telegram_notifications: 'Telegram bildirishnomalar',
   referral: 'Referal dasturi',

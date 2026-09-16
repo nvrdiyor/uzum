@@ -951,3 +951,99 @@ export interface NotificationRow {
   read: boolean;
   createdAt: string;
 }
+
+// ─────────────────────────── Marketing: aksiyalar ───────────────────────────
+
+/** Aksiyadagi bitta SKU — joriy va aksiya narxidagi iqtisod bilan */
+export interface PromoSkuRow {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  /** Sotuvchi shu aksiyaga qo'shilganmi */
+  joined: boolean;
+  /** Joriy (ro'yxat) narxi */
+  price: number;
+  /** Uzum taklif qilgan aksiya narxi */
+  promoPrice: number;
+  /** Chegirma ulushi, % */
+  discountPct: number;
+  /** Joriy narxda bir donadan sof foyda */
+  profitNow: number;
+  /** Aksiya narxida bir donadan sof foyda */
+  profitPromo: number;
+  /** Aksiya narxidagi marja, % */
+  marginPromo: number;
+  /** Farq: aksiyaga kirsa har donada qancha yo'qotadi/yutadi */
+  profitDelta: number;
+  /** Oxirgi 30 kunda sotilgan dona — qaror uchun muhim */
+  unitsSold: number;
+  stock: number;
+}
+
+/** Bitta aksiya kampaniyasi */
+export interface PromoRow {
+  /** Uzumdagi aksiya nomi — guruhlash kaliti */
+  name: string;
+  /** Aksiyaga mos keladigan SKU soni */
+  matched: number;
+  /** Shulardan nechtasi qatnashyapti */
+  joined: number;
+  /** Qatnashmaganlar orasida foydali bo'lganlari */
+  profitable: number;
+  /** Barcha mos SKU'lar bo'yicha o'rtacha chegirma, % */
+  avgDiscountPct: number;
+  rows: PromoSkuRow[];
+}
+
+export interface PromosResponse {
+  promos: PromoRow[];
+  totals: {
+    promos: number;
+    matched: number;
+    joined: number;
+    /** Qatnashmagan foydali SKU'lardan kutilayotgan qo'shimcha foyda (30 kunlik sotuv tezligida) */
+    potentialProfit: number;
+  };
+}
+
+// ─────────────────────────── SKU holati ───────────────────────────
+
+export type SkuHealthIssue = 'blocked' | 'archived' | 'high_returns' | 'defected' | 'missing' | 'no_cost' | 'ok';
+
+export interface SkuHealthRow {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  issues: SkuHealthIssue[];
+  blocked: boolean;
+  blockingReason: string | null;
+  archived: boolean;
+  /** Uzum hisoblagan qaytarishlar ulushi, % */
+  returnedPct: number;
+  /** Uzum omborida yaroqsiz (brak) dona */
+  qtyDefected: number;
+  /** Uzum omborida yo'qolgan dona */
+  qtyMissing: number;
+  /** Brak va yo'qolganning tannarxdagi qiymati */
+  lossValue: number;
+  stock: number;
+  price: number;
+}
+
+export interface SkuHealthResponse {
+  totals: {
+    skus: number;
+    blocked: number;
+    archived: number;
+    highReturns: number;
+    defected: number;
+    missing: number;
+    /** Brak va yo'qolgan donalarning jami tannarxi */
+    lossValue: number;
+    /** Muammosiz SKU soni */
+    healthy: number;
+  };
+  rows: Paginated<SkuHealthRow>;
+}

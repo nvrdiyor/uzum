@@ -31,6 +31,8 @@ export const FEATURE_IDS = [
   'unit_calculator',
   'cost_price',
   'expenses',
+  'promos',
+  'sku_health',
   'reviews_autoreply',
   'telegram_notifications',
   'referral',
@@ -88,6 +90,7 @@ const trialFeatures = (): Record<FeatureId, FeatureAccess> => {
   f.losses_report = 'preview';
   f.reviews_autoreply = 'preview';
   f.planner = 'preview';
+  f.promos = 'preview';
   f.vgh_report = 'preview';
   f.api_access = 'off';
   f.priority_support = 'off';

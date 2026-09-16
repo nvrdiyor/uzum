@@ -1,5 +1,7 @@
 import {
   LayoutDashboard,
+  HeartPulse,
+  Megaphone,
   TrendingUp,
   Filter,
   ShoppingCart,
@@ -59,9 +61,16 @@ export const NAV: NavGroup[] = [
     titleKey: 'group.product',
     items: [
       { to: '/products', labelKey: 'nav.products', icon: Package, feature: 'products_assortment', primary: true },
+      { to: '/sku-health', labelKey: 'nav.skuHealth', icon: HeartPulse, feature: 'sku_health', badge: 'new' },
       { to: '/abc', labelKey: 'nav.abc', icon: PieChart, feature: 'abc_analysis' },
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
+    ],
+  },
+  {
+    titleKey: 'group.marketing',
+    items: [
+      { to: '/promos', labelKey: 'nav.promos', icon: Megaphone, feature: 'promos', badge: 'new' },
     ],
   },
   {
