@@ -56,6 +56,7 @@ registerNamespace('promos', {
     'table.empty': 'Bu kampaniyada tovar yo‘q',
     hint: 'Foyda bir dona uchun: aksiya narxidan komissiya, yetkazish, tannarx va soliq ayirilgan. Saqlash to‘lovi qo‘shilmagan — u aksiyaga bog‘liq emas.',
     loss: 'Zararga ishlaydi',
+    'promo.applied': 'Chegirma joriy narxga singgan — alohida aksiya narxi yo‘q',
   },
   ru: {
     title: 'Акции',
@@ -88,6 +89,7 @@ registerNamespace('promos', {
     'table.empty': 'В этой кампании нет товаров',
     hint: 'Прибыль на единицу: из цены акции вычтены комиссия, доставка, себестоимость и налог. Хранение не учтено — оно не зависит от акции.',
     loss: 'В убыток',
+    'promo.applied': 'Скидка уже в текущей цене — отдельной цены акции нет',
   },
   en: {
     title: 'Promotions',
@@ -120,6 +122,7 @@ registerNamespace('promos', {
     'table.empty': 'No products in this campaign',
     hint: 'Per-unit profit: promo price minus commission, delivery, cost price and tax. Storage is excluded — it does not depend on the promo.',
     loss: 'Runs at a loss',
+    'promo.applied': 'The discount is already in the current price',
   },
 });
 
@@ -161,13 +164,26 @@ export default function Promos() {
       key: 'promoPrice',
       header: t('col.promoPrice'),
       align: 'right',
-      render: (r) => <span className="tnum font-semibold">{f.money(r.promoPrice)}</span>,
+      // Qatnashayotgan tovarda alohida aksiya narxi bo'lmaydi — u joriy narxga singgan
+      render: (r) =>
+        r.promoPrice > 0 ? (
+          <span className="tnum font-semibold">{f.money(r.promoPrice)}</span>
+        ) : (
+          <span className="text-muted" title={t('promo.applied')}>
+            —
+          </span>
+        ),
     },
     {
       key: 'discountPct',
       header: t('col.discount'),
       align: 'right',
-      render: (r) => <span className="tnum text-warn-ink">−{f.pct(r.discountPct, 0)}</span>,
+      render: (r) =>
+        r.promoPrice > 0 ? (
+          <span className="tnum text-warn-ink">−{f.pct(r.discountPct, 0)}</span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
     },
     {
       key: 'profitNow',

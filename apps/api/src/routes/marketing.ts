@@ -149,12 +149,15 @@ router.get(
       const base = { commissionPct, logistics, purchasePrice: s.purchasePrice, extraCost: s.extraCost, taxPct };
 
       /*
-       * Aksiya narxi kelmagan bo'lsa (Uzum ba'zan `mechanicPrice: null` beradi)
-       * joriy narx olinadi — u holda chegirma 0 va farq ham 0 bo'ladi.
+       * Sotuvchi aksiyaga ALLAQACHON qo'shilgan bo'lsa Uzum `mechanicPrice: null`
+       * yuboradi — chegirma `price` ning o'ziga singib ketgan, alohida aksiya
+       * narxi yo'q. Bunday holda `promoPrice` 0 qoladi va interfeys uni "—"
+       * deb ko'rsatadi; soxta 0% chegirma chizish chalg'itardi.
        */
-      const promoPrice = s.promoPrice > 0 ? s.promoPrice : s.price;
+      const hasPromoPrice = s.promoPrice > 0 && s.promoPrice < s.price;
+      const effectivePrice = hasPromoPrice ? s.promoPrice : s.price;
       const profitNow = unitProfit({ ...base, price: s.price });
-      const profitPromo = unitProfit({ ...base, price: promoPrice });
+      const profitPromo = unitProfit({ ...base, price: effectivePrice });
       const snap = s.stocks[0];
 
       const row: PromoSkuRow = {
@@ -164,11 +167,11 @@ router.get(
         imageUrl: s.imageUrl,
         joined: s.promoJoined,
         price: round(s.price),
-        promoPrice: round(promoPrice),
-        discountPct: s.price > 0 ? round(pct(s.price - promoPrice, s.price)) : 0,
+        promoPrice: hasPromoPrice ? round(s.promoPrice) : 0,
+        discountPct: hasPromoPrice ? round(pct(s.price - s.promoPrice, s.price)) : 0,
         profitNow,
         profitPromo,
-        marginPromo: pct(profitPromo, promoPrice),
+        marginPromo: pct(profitPromo, effectivePrice),
         profitDelta: round(profitPromo - profitNow),
         unitsSold: stat?.units ?? 0,
         stock: (snap?.fbo ?? 0) + (snap?.fbs ?? 0) + (snap?.own ?? 0),
@@ -189,7 +192,11 @@ router.get(
           joined,
           // Qatnashmagan, lekin aksiya narxida ham foydali bo'lganlar
           profitable: rows.filter((r) => !r.joined && r.profitPromo > 0).length,
-          avgDiscountPct: round(safeDiv(rows.reduce((s, r) => s + r.discountPct, 0), rows.length), 1),
+          // O'rtacha chegirma faqat narxi ma'lum bo'lganlar bo'yicha
+          avgDiscountPct: (() => {
+            const withPrice = rows.filter((r) => r.promoPrice > 0);
+            return round(safeDiv(withPrice.reduce((s, r) => s + r.discountPct, 0), withPrice.length), 1);
+          })(),
           rows,
         } satisfies PromoRow;
       })
