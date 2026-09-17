@@ -1050,6 +1050,12 @@ export interface SkuHealthResponse {
 
 // ─────────────────────────── Pul kalendari ───────────────────────────
 
+/**
+ * To'lov jadvali — Uzum kabinetidagi "To'lovlar jadvalini sozlash".
+ * Har birining o'z xizmat haqi bor: tez-tez to'lansa qimmatroq.
+ */
+export type PayoutMode = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
 /** Bir kunda ochiladigan summa */
 export interface PayoutDay {
   /** Yechib olish uchun ochiladigan sana (ISO) */
@@ -1068,9 +1074,20 @@ export interface PayoutOrder {
   acceptedAt: string;
   /** Yechib olish uchun ochiladigan sana */
   unlockAt: string;
+  /** Jadval bo'yicha pul haqiqatda tushadigan sana */
+  payoutAt: string;
   amount: number;
   unlocked: boolean;
   daysLeft: number;
+}
+
+/** Jadval bo'yicha bitta to'lov kuni */
+export interface PayoutPlanDay {
+  date: string;
+  amount: number;
+  orders: number;
+  /** Jadval haqi ayirilgandan keyin qo'lga tegadigan summa */
+  net: number;
 }
 
 /**
@@ -1090,8 +1107,14 @@ export interface PayoutCalendarResponse {
   /** Qoidalar — sozlamalardan olinadi, Uzum shartlari o'zgarsa moslanadi */
   rules: {
     holdDays: number;
-    /** Erta yechib olish uchun xizmat haqi, % */
+    /** Erta (tezkor) yechib olish uchun xizmat haqi, % */
     earlyFeePct: number;
+    /** Tanlangan to'lov jadvali */
+    mode: PayoutMode;
+    /** Shu jadval uchun xizmat haqi, % */
+    scheduleFeePct: number;
+    /** Oy ichidagi to'lov sanalari (daily rejimda bo'sh) */
+    payoutDays: number[];
   };
   totals: {
     /** Muddati kelgan va ochilgan summa */
@@ -1106,6 +1129,8 @@ export interface PayoutCalendarResponse {
   };
   /** Kunlar bo'yicha ochilish jadvali */
   days: PayoutDay[];
+  /** Jadval bo'yicha pul tushadigan kunlar */
+  plan: PayoutPlanDay[];
   /** Har bir buyurtma alohida */
   orders: PayoutOrder[];
   /** Tezkor yechib olish mezonlari */

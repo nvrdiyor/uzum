@@ -26,7 +26,9 @@ import {
   type PayoutCalendarResponse,
   type PayoutCheck,
   type PayoutDay,
+  type PayoutMode,
   type PayoutOrder,
+  type PayoutPlanDay,
 } from '@savdoiq/shared';
 import { ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
@@ -39,11 +41,67 @@ router.use(requireAuth, requireCompany);
 /** Sozlamalar kaliti — kompaniya bo'yicha */
 const HOLD_KEY = 'payout:holdDays';
 const FEE_KEY = 'payout:earlyFeePct';
+const MODE_KEY = 'payout:mode';
 
 /** Uzumning joriy sharti: qabul qilingandan keyin 10 kun */
 const DEFAULT_HOLD_DAYS = 10;
 /** Erta (tezkor) yechib olish xizmat haqi */
 const DEFAULT_EARLY_FEE_PCT = 2.5;
+
+/**
+ * To'lov jadvallari — Uzum kabinetidagi "To'lovlar jadvalini sozlash".
+ * Har birining o'z haqi bor: tez-tez to'lansa qimmatroq.
+ * `daily` — har ISH kuni (dam olish kunlari to'lov yo'q).
+ */
+const SCHEDULE_DAYS: Record<PayoutMode, number[]> = {
+  daily: [],
+  weekly: [7, 14, 21, 28],
+  biweekly: [7, 21],
+  monthly: [7],
+};
+
+const SCHEDULE_FEE: Record<PayoutMode, number> = {
+  daily: 1.5,
+  weekly: 1,
+  biweekly: 0,
+  monthly: 0,
+};
+
+const DEFAULT_MODE: PayoutMode = 'biweekly';
+
+/**
+ * Berilgan sanadan boshlab jadval bo'yicha eng yaqin to'lov kunini topadi.
+ *
+ * Pul ochilgan kuniyoq tushmaydi: u jadvaldagi navbatdagi sanani kutadi.
+ * Masalan 2 haftalik jadvalda (7 va 21) 27-sentyabrda ochilgan summa
+ * 7-oktyabrda tushadi.
+ */
+function nextPayoutDate(from: Date, mode: PayoutMode): Date {
+  const d = new Date(from.getTime());
+
+  if (mode === 'daily') {
+    // Dam olish kunlarida to'lov yo'q — dushanbaga suriladi
+    for (let i = 0; i < 7; i += 1) {
+      const wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) return d;
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return d;
+  }
+
+  const days = SCHEDULE_DAYS[mode];
+  // Ko'pi bilan ikki oy oldinga qaraymiz — jadvalda albatta kun topiladi
+  for (let i = 0; i < 70; i += 1) {
+    if (days.includes(d.getUTCDate())) return d;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return d;
+}
+
+function asMode(value: string | undefined): PayoutMode {
+  const v = (value ?? '') as PayoutMode;
+  return v in SCHEDULE_DAYS ? v : DEFAULT_MODE;
+}
 
 /**
  * Tezkor yechib olish mezonlari (Uzum shartlaridan).
@@ -78,10 +136,16 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [holdDays, earlyFeePct] = await Promise.all([
+    const [holdDays, earlyFeePct, modeRow] = await Promise.all([
       readRule(company.id, HOLD_KEY, DEFAULT_HOLD_DAYS),
       readRule(company.id, FEE_KEY, DEFAULT_EARLY_FEE_PCT),
+      prisma.companySetting.findUnique({
+        where: { companyId_key: { companyId: company.id, key: MODE_KEY } },
+        select: { value: true },
+      }),
     ]);
+    const mode = asMode(modeRow?.value);
+    const scheduleFeePct = SCHEDULE_FEE[mode];
 
     const today = parseISODate(toISODate(new Date()));
 
@@ -116,12 +180,15 @@ router.get(
       const acceptedAt = parseISODate(toISODate(o.deliveredAt));
       const unlockAt = addDays(acceptedAt, holdDays);
       const daysLeft = Math.ceil((unlockAt.getTime() - today.getTime()) / 86_400_000);
+      // Ochilgan pul jadvaldagi navbatdagi sanani kutadi
+      const payoutAt = nextPayoutDate(unlockAt, mode);
 
       rows.push({
         uzumOrderId: o.uzumOrderId,
         title: o.items[0]?.title ?? '',
         acceptedAt: toISODate(acceptedAt),
         unlockAt: toISODate(unlockAt),
+        payoutAt: toISODate(payoutAt),
         amount,
         unlocked: daysLeft <= 0,
         daysLeft: Math.max(0, daysLeft),
@@ -143,6 +210,24 @@ router.get(
         amount: round(v.amount),
         orders: v.orders,
         unlocked: parseISODate(date).getTime() <= today.getTime(),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Jadval bo'yicha to'lov kunlari
+    const byPlan = new Map<string, { amount: number; orders: number }>();
+    for (const r of rows) {
+      const cur = byPlan.get(r.payoutAt) ?? { amount: 0, orders: 0 };
+      cur.amount += r.amount;
+      cur.orders += 1;
+      byPlan.set(r.payoutAt, cur);
+    }
+    const planDays: PayoutPlanDay[] = [...byPlan.entries()]
+      .map(([date, v]) => ({
+        date,
+        amount: round(v.amount),
+        orders: v.orders,
+        // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
+        net: round(v.amount * (1 - scheduleFeePct / 100)),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -248,7 +333,7 @@ router.get(
     const eligible = hasFail ? false : hasUnknown ? null : true;
 
     const payload: PayoutCalendarResponse = {
-      rules: { holdDays, earlyFeePct },
+      rules: { holdDays, earlyFeePct, mode, scheduleFeePct, payoutDays: SCHEDULE_DAYS[mode] },
       totals: {
         unlocked,
         pending,
@@ -257,6 +342,7 @@ router.get(
         nextAmount: next?.amount ?? 0,
       },
       days,
+      plan: planDays,
       orders: rows.sort((a, b) => a.unlockAt.localeCompare(b.unlockAt)),
       instant: { eligible, checks },
     };

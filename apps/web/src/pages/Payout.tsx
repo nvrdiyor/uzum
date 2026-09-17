@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, HelpCircle, Receipt, Wallet } from 'lucide-react';
-import type { PayoutCalendarResponse, PayoutCheck, PayoutDay, PayoutOrder } from '@savdoiq/shared';
+import type { PayoutCalendarResponse, PayoutCheck, PayoutDay, PayoutOrder, PayoutPlanDay } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -64,6 +64,18 @@ registerNamespace('payout', {
     'chk.antifraud': 'Qo‘shimcha antifrod cheklovlari',
     'empty.title': 'Hali qabul qilingan buyurtma yo‘q',
     'empty.hint': 'Xaridor tovarni qabul qilgach, shu yerda ochilish sanasi ko‘rinadi',
+    'plan.title': 'To‘lov jadvali',
+    'plan.subtitle': 'Pul haqiqatda qaysi kuni hisobingizga tushadi',
+    'plan.date': 'To‘lov sanasi',
+    'plan.amount': 'Summa',
+    'plan.net': 'Qo‘lga tegadi',
+    'plan.orders': 'Buyurtma',
+    'mode.daily': 'Har ish kuni',
+    'mode.weekly': 'Har hafta: 7, 14, 21, 28',
+    'mode.biweekly': '2 haftada: 7 va 21',
+    'mode.monthly': 'Oyiga bir marta: 7-sanada',
+    'plan.fee': 'Jadval haqi {n}%',
+    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi. Jadvalni Uzum kabinetidan o‘zgartirasiz.',
     note: 'Bu hisob Uzum shartlari asosida qurilgan. Yakuniy raqam har doim Uzum kabinetida — farq bo‘lsa ayting, qoidani moslaymiz.',
   },
   ru: {
@@ -109,6 +121,18 @@ registerNamespace('payout', {
     'chk.antifraud': 'Дополнительные антифрод-ограничения',
     'empty.title': 'Пока нет полученных заказов',
     'empty.hint': 'Когда покупатель получит товар, здесь появится дата открытия',
+    'plan.title': 'График выплат',
+    'plan.subtitle': 'Когда деньги реально поступят на счёт',
+    'plan.date': 'Дата выплаты',
+    'plan.amount': 'Сумма',
+    'plan.net': 'К получению',
+    'plan.orders': 'Заказов',
+    'mode.daily': 'Каждый рабочий день',
+    'mode.weekly': 'Еженедельно: 7, 14, 21, 28',
+    'mode.biweekly': 'Раз в 2 недели: 7 и 21',
+    'mode.monthly': 'Раз в месяц: 7 числа',
+    'plan.fee': 'Комиссия графика {n}%',
+    'plan.hint': 'Открытые деньги ждут ближайшую дату графика. График меняется в кабинете Uzum.',
     note: 'Расчёт построен на условиях Uzum. Итоговая цифра всегда в кабинете — если есть расхождение, скажите, скорректируем правило.',
   },
   en: {
@@ -154,6 +178,18 @@ registerNamespace('payout', {
     'chk.antifraud': 'Additional antifraud limits',
     'empty.title': 'No accepted orders yet',
     'empty.hint': 'Once a buyer accepts a delivery, its unlock date appears here',
+    'plan.title': 'Payout schedule',
+    'plan.subtitle': 'When the money actually reaches your account',
+    'plan.date': 'Payout date',
+    'plan.amount': 'Amount',
+    'plan.net': 'You receive',
+    'plan.orders': 'Orders',
+    'mode.daily': 'Every business day',
+    'mode.weekly': 'Weekly: 7, 14, 21, 28',
+    'mode.biweekly': 'Every 2 weeks: 7 and 21',
+    'mode.monthly': 'Monthly: on the 7th',
+    'plan.fee': 'Schedule fee {n}%',
+    'plan.hint': 'Unlocked money waits for the next scheduled date. Change the schedule in the Uzum cabinet.',
     note: 'This is computed from Uzum’s terms, not taken from Uzum. The authoritative figure is always in the cabinet — tell us if it differs and we will adjust the rule.',
   },
 });
@@ -192,6 +228,18 @@ export default function Payout() {
     },
   ];
 
+  const planCols: Column<PayoutPlanDay>[] = [
+    { key: 'date', header: t('plan.date'), render: (r) => <span className="tnum font-semibold">{f.date(r.date)}</span> },
+    { key: 'orders', header: t('plan.orders'), align: 'right', render: (r) => <span className="tnum">{f.num(r.orders)}</span> },
+    { key: 'amount', header: t('plan.amount'), align: 'right', render: (r) => <span className="tnum">{f.money(r.amount)}</span> },
+    {
+      key: 'net',
+      header: t('plan.net'),
+      align: 'right',
+      render: (r) => <span className="tnum font-semibold text-brand-ink">{f.money(r.net)}</span>,
+    },
+  ];
+
   const orderCols: Column<PayoutOrder>[] = [
     { key: 'uzumOrderId', header: t('ord.order'), render: (r) => <span className="tnum">№{r.uzumOrderId ?? '—'}</span> },
     {
@@ -201,6 +249,11 @@ export default function Payout() {
     },
     { key: 'acceptedAt', header: t('ord.accepted'), render: (r) => <span className="tnum">{f.date(r.acceptedAt)}</span> },
     { key: 'unlockAt', header: t('ord.unlock'), render: (r) => <span className="tnum">{f.date(r.unlockAt)}</span> },
+    {
+      key: 'payoutAt',
+      header: t('plan.date'),
+      render: (r) => <span className="tnum font-semibold">{f.date(r.payoutAt)}</span>,
+    },
     {
       key: 'daysLeft',
       header: t('ord.left'),
@@ -275,6 +328,34 @@ export default function Payout() {
 
         {data && data.instant.checks.length > 0 ? (
           <InstantCard instant={data.instant} hold={hold} fee={data.rules.earlyFeePct} />
+        ) : null}
+
+        {data && data.plan.length > 0 ? (
+          <Card className="mt-5">
+            <CardHeader
+              icon={<CalendarClock className="h-4 w-4" />}
+              title={t('plan.title')}
+              subtitle={t('plan.subtitle')}
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="info">{t(`mode.${data.rules.mode}`)}</Badge>
+                  <Badge tone={data.rules.scheduleFeePct > 0 ? 'warn' : 'muted'}>
+                    {t('plan.fee', { n: f.dec(data.rules.scheduleFeePct, 1) })}
+                  </Badge>
+                </div>
+              }
+            />
+            <DataTable<PayoutPlanDay>
+              columns={planCols}
+              rows={data.plan}
+              rowKey={(r) => r.date}
+              loading={isLoading}
+              empty={<EmptyState icon={<CalendarClock className="h-6 w-6" />} title={t('empty.title')} />}
+            />
+            <CardBody className="pt-0">
+              <p className="text-xs leading-relaxed text-muted">{t('plan.hint')}</p>
+            </CardBody>
+          </Card>
         ) : null}
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
