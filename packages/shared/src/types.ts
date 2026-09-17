@@ -1047,3 +1047,71 @@ export interface SkuHealthResponse {
   };
   rows: Paginated<SkuHealthRow>;
 }
+
+// ─────────────────────────── Pul kalendari ───────────────────────────
+
+/** Bir kunda ochiladigan summa */
+export interface PayoutDay {
+  /** Yechib olish uchun ochiladigan sana (ISO) */
+  date: string;
+  amount: number;
+  orders: number;
+  /** Bugun yoki undan oldinmi — ya'ni allaqachon ochilganmi */
+  unlocked: boolean;
+}
+
+/** Ochilishini kutayotgan bitta buyurtma */
+export interface PayoutOrder {
+  uzumOrderId: string | null;
+  title: string;
+  /** Xaridor tovarni qabul qilgan sana */
+  acceptedAt: string;
+  /** Yechib olish uchun ochiladigan sana */
+  unlockAt: string;
+  amount: number;
+  unlocked: boolean;
+  daysLeft: number;
+}
+
+/**
+ * Tezkor yechib olish mezoni.
+ *
+ * `unknown` — biz tekshira olmaymiz (faqat Uzumda ma'lum). Uni "bajarildi"
+ * deb ko'rsatish sotuvchini chalg'itardi.
+ */
+export interface PayoutCheck {
+  key: 'no_debt' | 'not_blocked' | 'age_60d' | 'stable_sales' | 'no_anomaly' | 'antifraud';
+  status: 'ok' | 'fail' | 'unknown';
+  /** Aniq raqam bilan izoh: "62 kun", "18 kun savdo bo'lgan" */
+  detail: string;
+}
+
+export interface PayoutCalendarResponse {
+  /** Qoidalar — sozlamalardan olinadi, Uzum shartlari o'zgarsa moslanadi */
+  rules: {
+    holdDays: number;
+    /** Erta yechib olish uchun xizmat haqi, % */
+    earlyFeePct: number;
+  };
+  totals: {
+    /** Muddati kelgan va ochilgan summa */
+    unlocked: number;
+    /** Hali kutilayotgan summa */
+    pending: number;
+    /** Davr ichidagi xizmat to'lovlari (logistika, reklama, saqlash) */
+    charges: number;
+    /** Eng yaqin ochilish sanasi (ISO) yoki null */
+    nextDate: string | null;
+    nextAmount: number;
+  };
+  /** Kunlar bo'yicha ochilish jadvali */
+  days: PayoutDay[];
+  /** Har bir buyurtma alohida */
+  orders: PayoutOrder[];
+  /** Tezkor yechib olish mezonlari */
+  instant: {
+    /** Barcha tekshirsa bo'ladigan mezonlar bajarildimi (null — noma'lum qolganlari bor) */
+    eligible: boolean | null;
+    checks: PayoutCheck[];
+  };
+}

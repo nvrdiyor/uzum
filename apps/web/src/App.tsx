@@ -24,6 +24,7 @@ const Dashboard = lazyPage(() => import('@/pages/Dashboard'));
 const Sales = lazyPage(() => import('@/pages/Sales'));
 const Funnel = lazyPage(() => import('@/pages/Funnel'));
 const Promos = lazyPage(() => import('@/pages/Promos'));
+const Payout = lazyPage(() => import('@/pages/Payout'));
 const SkuHealth = lazyPage(() => import('@/pages/SkuHealth'));
 const SalesStock = lazyPage(() => import('@/pages/SalesStock'));
 const Reports = lazyPage(() => import('@/pages/Reports'));
@@ -156,6 +157,7 @@ export default function App() {
               <Route path="/products" element={<Products />} />
               <Route path="/products/:id" element={<ProductDetail />} />
               <Route path="/promos" element={<Promos />} />
+            <Route path="/payout" element={<Payout />} />
             <Route path="/sku-health" element={<SkuHealth />} />
             <Route path="/abc" element={<Abc />} />
               <Route path="/cost-price" element={<CostPrice />} />
