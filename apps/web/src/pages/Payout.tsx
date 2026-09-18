@@ -422,7 +422,7 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
       >
         <span className="tnum font-display text-xl font-extrabold leading-none">{day}</span>
         <span className="mt-0.5 text-2xs uppercase tracking-wide opacity-80">{month}</span>
-        <span className="tnum text-[9px] leading-none opacity-60">{d.getUTCFullYear()}</span>
+        <span className="tnum text-2xs leading-none opacity-50">{d.getUTCFullYear()}</span>
       </div>
 
       <div className="min-w-0 flex-1">

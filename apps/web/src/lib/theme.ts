@@ -3,17 +3,25 @@
  * Bir joyda saqlanadi — barcha sahifalar shu palitradan foydalanadi.
  */
 
+/*
+ * Grafik ranglari mavzuga ergashadi.
+ *
+ * SVG taqdimot atributi (fill, stroke) CSS o'zgaruvchisini qabul qiladi,
+ * shuning uchun Recharts ga to'g'ridan-to'g'ri uzatish mumkin. Ilgari bu
+ * yerda qorong'i mavzuga moslangan HEX turardi va yorug' mavzuda chiziqlar
+ * oq fonda yo'qolib ketardi.
+ */
 export const CHART_COLORS = {
-  brand: '#10D094',
-  brand2: '#3CE2BE',
-  violet: '#9B80FF',
-  info: '#5A96FF',
-  warn: '#FFB020',
-  danger: '#FF6368',
-  teal: '#2DD4BF',
-  pink: '#F472B6',
-  lime: '#A3E635',
-  slate: '#94A3B8',
+  brand: 'rgb(var(--c-brand))',
+  brand2: 'rgb(var(--c-brand-2))',
+  violet: 'rgb(var(--c-violet))',
+  info: 'rgb(var(--c-info))',
+  warn: 'rgb(var(--c-warn))',
+  danger: 'rgb(var(--c-danger))',
+  teal: 'rgb(var(--c-teal))',
+  pink: 'rgb(var(--c-pink))',
+  lime: 'rgb(var(--c-lime))',
+  slate: 'rgb(var(--c-slate))',
 } as const;
 
 /** Ketma-ket seriyalar uchun tartib */
@@ -50,7 +58,7 @@ export function tooltipStyle(): React.CSSProperties {
     background: 'rgb(var(--c-surface))',
     border: '1px solid rgb(var(--c-border-strong))',
     borderRadius: 12,
-    boxShadow: '0 8px 40px -12px rgb(0 0 0 / 0.45)',
+    boxShadow: '0 8px 40px -12px rgb(var(--c-shadow) / calc(var(--sh-2) + 0.1))',
     fontSize: 12,
     color: 'rgb(var(--c-text))',
     padding: '10px 12px',

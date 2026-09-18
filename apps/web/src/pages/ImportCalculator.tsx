@@ -598,7 +598,7 @@ export default function ImportCalculator() {
             <Card className="p-5">
               <p className="text-sm text-ink-soft">
                 <span className="font-semibold text-ink">{t('rule.title')}</span>{' '}
-                <code className="tnum rounded-lg bg-surface-2 px-2 py-1 font-mono text-[13px] text-brand-ink">
+                <code className="tnum rounded-lg bg-surface-2 px-2 py-1 font-mono text-xs text-brand-ink">
                   {t('rule.formula', { factor: factorLabel, offset: f.num(result.maxCostOffset) })}
                 </code>
               </p>

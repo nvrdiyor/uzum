@@ -56,7 +56,7 @@ function ThemePreview({ vars }: { vars: CSSProperties }) {
         <div className="min-w-0 flex-1 space-y-2">
           <div className="rounded-lg bg-surface p-2">
             <p className="truncate text-2xs font-semibold text-muted">{t('appear.previewMetric')}</p>
-            <p className="tnum mt-0.5 text-xs font-extrabold text-ink">128 400 000</p>
+            <p className="tnum mt-0.5 text-xs font-bold text-ink">128 400 000</p>
             <div className="mt-1.5 flex h-6 items-end gap-1">
               {[40, 65, 30, 80, 55, 95, 70].map((h, i) => (
                 <span key={i} className="flex-1 rounded-sm bg-brand" style={{ height: `${h}%`, opacity: 0.85 }} />

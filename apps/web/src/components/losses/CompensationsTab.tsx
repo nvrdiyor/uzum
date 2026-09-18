@@ -230,7 +230,7 @@ function SummaryTile({
         <span className={cn('flex h-8 w-8 items-center justify-center rounded-xl', toneClass)}>{icon}</span>
         <p className="eyebrow-lg">{label}</p>
       </div>
-      <p className="tnum mt-3 font-display text-[22px] font-extrabold leading-tight tracking-tight text-ink">{value}</p>
+      <p className="tnum mt-3 font-display text-[26px] font-extrabold leading-tight tracking-tight text-ink">{value}</p>
       <p className="mt-1 text-xs text-muted">{hint}</p>
     </div>
   );

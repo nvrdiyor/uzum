@@ -382,7 +382,7 @@ export default function Referral() {
                   <Skeleton className="mt-3 h-14 w-64" />
                 ) : (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <span className="tnum rounded-2xl border border-brand/30 bg-brand/10 px-4 py-2.5 font-mono text-2xl font-extrabold tracking-[0.18em] text-brand-ink sm:text-3xl">
+                    <span className="tnum rounded-2xl border border-brand/30 bg-brand/10 px-4 py-2.5 font-mono text-2xl font-bold tracking-[0.18em] text-brand-ink sm:text-3xl">
                       {data?.code ?? '—'}
                     </span>
                     <Button

@@ -95,7 +95,7 @@ export function LandingPricing() {
                 <div className="mt-5">
                   {free ? (
                     <>
-                      <p className="font-display text-[32px] font-extrabold leading-none tracking-tight text-ink">
+                      <p className="font-display text-[34px] font-extrabold leading-none tracking-tight text-ink">
                         {t('pricing.free')}
                       </p>
                       <p className="mt-2 text-xs text-muted">{t('pricing.days', { days: plan.trialDays ?? 7 })}</p>
@@ -103,7 +103,7 @@ export function LandingPricing() {
                   ) : (
                     <>
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="tnum font-display text-[32px] font-extrabold leading-none tracking-tight text-ink">
+                        <span className="tnum font-display text-[34px] font-extrabold leading-none tracking-tight text-ink">
                           {f.compact(perMonth)}
                         </span>
                         <span className="text-sm text-muted">{t('pricing.perMonth')}</span>

@@ -37,6 +37,16 @@
   --c-violet: 109 74 240;
 
   /*
+   * Grafik seriyalari uchun qo'shimcha ranglar. Ilgari ular TypeScript da
+   * qotirilgan HEX edi va qorong'i mavzuga moslab tanlangandi — oq fonda
+   * esa ochiq yashil va ochiq siyohrang chiziqlar deyarli ko'rinmasdi.
+   */
+  --c-teal: 13 148 136;
+  --c-pink: 214 51 132;
+  --c-lime: 101 133 11;
+  --c-slate: 100 116 139;
+
+  /*
    * Rangli plastinka (chip, nishon) USTIDAGI matn uchun to'qroq variantlar.
    * Oddiy rang mint yoki sariq fonda 2,4:1 gacha tushib ketardi.
    */
@@ -96,6 +106,12 @@
   --c-danger: 255 99 104;
   --c-info: 122 170 255;
   --c-violet: 155 128 255;
+
+  /* Qorong'ida grafik chiziqlari ochroq bo'lishi kerak */
+  --c-teal: 45 212 191;
+  --c-pink: 244 114 182;
+  --c-lime: 163 230 53;
+  --c-slate: 148 163 184;
 
   /* Qorong'ida plastinka foni to'q — matn ochroq bo'lishi kerak */
   --c-warn-ink: 255 200 110;
