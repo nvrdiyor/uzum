@@ -119,6 +119,7 @@ registerNamespace('common', {
     'common.days': 'kun',
     'common.perDay': 'kuniga',
     'common.vsPrev': 'oldingi davrga nisbatan',
+    'common.noCompare': 'Oldingi davr bilan taqqoslash uchun ma’lumot yo‘q',
     'common.demo': 'Namuna ma’lumot',
     // Holatlar
     'status.critical': 'Kritik',
@@ -138,7 +139,7 @@ registerNamespace('common', {
     'plan.preview': 'Namuna rejimi',
     // Theme / til
     'theme.dark': 'Qorong‘i',
-    'theme.light': 'Yorug’',
+    'theme.light': 'Yorug‘',
     'lang.label': 'Til',
   },
   ru: {
@@ -254,6 +255,7 @@ registerNamespace('common', {
     'common.days': 'дней',
     'common.perDay': 'в день',
     'common.vsPrev': 'к прошлому периоду',
+    'common.noCompare': 'Нет данных за предыдущий период',
     'common.demo': 'Демо-данные',
     'status.critical': 'Критично',
     'status.low': 'Заканчивается',
@@ -386,6 +388,7 @@ registerNamespace('common', {
     'common.days': 'days',
     'common.perDay': 'per day',
     'common.vsPrev': 'vs previous period',
+    'common.noCompare': 'No data for the previous period',
     'common.demo': 'Demo data',
     'status.critical': 'Critical',
     'status.low': 'Low',

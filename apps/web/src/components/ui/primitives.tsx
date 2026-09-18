@@ -156,20 +156,29 @@ export function Delta({
   className,
   suffix = '%',
   invert = false,
-  compact = false,
 }: {
   value: number | null | undefined;
   className?: string;
   suffix?: string;
   /** Kamayish yaxshi bo'lgan holatlar uchun (masalan, xarajat) */
   invert?: boolean;
-  compact?: boolean;
 }) {
+  const t = useT('common');
+
+  /*
+   * Taqqoslash uchun oldingi davr ma'lumoti yo'q.
+   *
+   * Ilgari bu yerda minus IKONKASI va tire birga chiqardi — bitta kichkina
+   * plastinkada ikkita chiziq turib, buzilgan kabi ko'rinardi. Endi bitta
+   * tire, sababi esa sichqoncha olib borilganda izohda.
+   */
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return (
-      <span className={cn('chip bg-surface-3 text-muted', className)}>
-        <Minus className="h-3 w-3" />
-        {compact ? '' : '—'}
+      <span
+        className={cn('chip bg-surface-3 text-muted', className)}
+        title={t('common.noCompare')}
+      >
+        {'—'}
       </span>
     );
   }

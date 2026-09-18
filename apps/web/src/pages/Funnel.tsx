@@ -258,7 +258,7 @@ export default function Funnel() {
       render: (r) => (
         <div className="flex flex-col items-end gap-1">
           <span className="font-semibold text-ink">{f.num(r.ordered)}</span>
-          <Delta value={r.deltas.ordered} compact className="px-1.5 py-0.5 text-2xs" />
+          <Delta value={r.deltas.ordered} className="px-1.5 py-0.5 text-2xs" />
         </div>
       ),
     },
@@ -271,7 +271,7 @@ export default function Funnel() {
       render: (r) => (
         <div className="flex flex-col items-end gap-1">
           <span className="font-semibold text-ink">{f.num(r.sold)}</span>
-          <Delta value={r.deltas.sold} compact className="px-1.5 py-0.5 text-2xs" />
+          <Delta value={r.deltas.sold} className="px-1.5 py-0.5 text-2xs" />
         </div>
       ),
     },
@@ -284,7 +284,7 @@ export default function Funnel() {
       render: (r) => (
         <div className="flex flex-col items-end gap-1">
           <span className="font-semibold text-ink">{f.money(r.soldAmount, data.currency)}</span>
-          <Delta value={r.deltas.soldAmount} compact className="px-1.5 py-0.5 text-2xs" />
+          <Delta value={r.deltas.soldAmount} className="px-1.5 py-0.5 text-2xs" />
         </div>
       ),
     },
