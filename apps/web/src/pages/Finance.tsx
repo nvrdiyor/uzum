@@ -497,14 +497,14 @@ export default function Finance() {
                   subtitle={t('exp.subtitle')}
                   actions={
                     <div className="text-right">
-                      <p className="text-2xs uppercase tracking-wider text-muted">{t('exp.total')}</p>
+                      <p className="eyebrow">{t('exp.total')}</p>
                       <p className="tnum font-display text-base font-extrabold text-ink">
                         {f.money(data?.expensesTotal ?? 0)}
                       </p>
                     </div>
                   }
                 />
-                <CardBody className="flex-1 pt-3">
+                <CardBody className="flex-1">
                   {isLoading ? (
                     <Skeleton className="h-[220px] w-full" />
                   ) : expenseRows.length === 0 ? (
@@ -523,7 +523,7 @@ export default function Finance() {
                         outerRadius={94}
                         center={
                           <div>
-                            <p className="text-2xs uppercase tracking-wider text-muted">{t('exp.total')}</p>
+                            <p className="eyebrow">{t('exp.total')}</p>
                             <p className="tnum font-display text-base font-extrabold text-ink">
                               {f.compact(data?.expensesTotal ?? 0)}
                             </p>
@@ -566,7 +566,7 @@ export default function Finance() {
                   title={t('bal.title')}
                   subtitle={t('bal.subtitle')}
                 />
-                <CardBody className="flex-1 space-y-3 pt-3">
+                <CardBody className="flex-1 space-y-3">
                   {isLoading ? (
                     <Skeleton className="h-[220px] w-full" />
                   ) : (
@@ -639,14 +639,14 @@ function BalanceRow({
     tone === 'brand'
       ? 'bg-brand/10 text-brand-ink'
       : tone === 'warn'
-        ? 'bg-warn/[0.12] text-warn-ink'
+        ? 'bg-warn/10 text-warn-ink'
         : 'bg-info/10 text-info-ink';
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5">
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${box}`}>{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+        <p className="eyebrow-lg">{label}</p>
         <p className="tnum mt-0.5 font-display text-lg font-extrabold text-ink">{value}</p>
         <p className="mt-0.5 text-xs text-muted">{hint}</p>
       </div>

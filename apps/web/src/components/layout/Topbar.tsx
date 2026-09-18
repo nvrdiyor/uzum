@@ -54,7 +54,7 @@ function LangMenu() {
               }}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                l.id === lang ? 'bg-brand/[0.12] text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
+                l.id === lang ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
               )}
             >
               <span className="text-base">{l.flag}</span>
@@ -157,7 +157,7 @@ export function Topbar() {
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-line text-muted lg:hidden"
           aria-label="Menyu"
         >
-          <Menu className="h-4.5 w-4.5" />
+          <Menu className="h-5 w-5" />
         </button>
 
         <div className="hidden min-w-0 flex-1 md:block">

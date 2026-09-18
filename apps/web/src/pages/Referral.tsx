@@ -302,7 +302,7 @@ export default function Referral() {
       header: t('table.company'),
       render: (r) => (
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] font-display text-xs font-bold text-brand-ink">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 font-display text-xs font-bold text-brand-ink">
             {(r.company || '?').slice(0, 2).toUpperCase()}
           </span>
           <span className="truncate text-sm font-medium text-ink">{r.company}</span>
@@ -370,7 +370,7 @@ export default function Referral() {
           <div className="card relative overflow-hidden bg-aurora p-5 sm:p-7">
             <div
               aria-hidden
-              className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand/15 blur-[90px]"
+              className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand/10 blur-[90px]"
             />
 
             <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-10">
@@ -598,7 +598,7 @@ export default function Referral() {
         <div className="space-y-4">
           <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4 text-center">
             <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('wd.amount')}</p>
-            <p className="tnum mt-1 font-display text-3xl font-extrabold text-ink">{f.money(pending)}</p>
+            <p className="tnum mt-1 font-display text-3xl font-extrabold tracking-tight text-ink">{f.money(pending)}</p>
           </div>
 
           {canWithdraw ? (

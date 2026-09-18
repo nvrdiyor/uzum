@@ -164,7 +164,7 @@ export function CompensationsTab({
             <p className="section-title">{t('comp.rate')}</p>
             <p className="mt-0.5 text-sm text-muted">{t('comp.rateHint')}</p>
           </div>
-          <p className="tnum font-display text-2xl font-extrabold text-ink">{f.pct(coverPct)}</p>
+          <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.pct(coverPct)}</p>
         </div>
         <ProgressBar value={coverPct} tone={coverPct >= 70 ? 'brand' : coverPct >= 35 ? 'warn' : 'danger'} />
       </Card>
@@ -221,16 +221,16 @@ function SummaryTile({
 }) {
   const toneClass = {
     brand: 'bg-brand/10 text-brand-ink',
-    warn: 'bg-warn/[0.12] text-warn-ink',
+    warn: 'bg-warn/10 text-warn-ink',
     danger: 'bg-danger/10 text-danger-ink',
   }[tone];
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2.5">
         <span className={cn('flex h-8 w-8 items-center justify-center rounded-xl', toneClass)}>{icon}</span>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+        <p className="eyebrow-lg">{label}</p>
       </div>
-      <p className="tnum mt-3 font-display text-[22px] font-extrabold leading-tight text-ink">{value}</p>
+      <p className="tnum mt-3 font-display text-[22px] font-extrabold leading-tight tracking-tight text-ink">{value}</p>
       <p className="mt-1 text-xs text-muted">{hint}</p>
     </div>
   );

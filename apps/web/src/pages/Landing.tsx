@@ -509,7 +509,7 @@ const TONE_CLASS: Record<string, string> = {
   brand: 'bg-brand/10 text-brand-ink',
   info: 'bg-info/10 text-info-ink',
   violet: 'bg-violet/10 text-violet-ink',
-  warn: 'bg-warn/[0.12] text-warn-ink',
+  warn: 'bg-warn/10 text-warn-ink',
   danger: 'bg-danger/10 text-danger-ink',
 };
 
@@ -719,7 +719,7 @@ export default function Landing() {
             <div className="relative overflow-hidden rounded-3xl border border-line bg-surface bg-aurora px-6 py-14 text-center sm:px-12 sm:py-20">
               <div
                 aria-hidden
-                className="pointer-events-none absolute -bottom-24 left-1/2 h-64 w-[680px] -translate-x-1/2 rounded-full bg-brand/[0.12] blur-[110px]"
+                className="pointer-events-none absolute -bottom-24 left-1/2 h-64 w-[680px] -translate-x-1/2 rounded-full bg-brand/10 blur-[110px]"
               />
               <div className="relative mx-auto max-w-2xl">
                 <LandingLogo className="justify-center" />

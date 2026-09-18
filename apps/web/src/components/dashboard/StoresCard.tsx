@@ -19,7 +19,7 @@ export function StoresCard({ data }: { data: DashboardResponse }) {
         title={t('stores.title')}
         subtitle={t('stores.subtitle', { n: rows.length })}
       />
-      <CardBody className="flex-1 pt-3">
+      <CardBody className="flex-1">
         {rows.length === 0 ? (
           <EmptyState className="py-10" icon={<Store className="h-6 w-6" />} title={t('stores.empty')} hint={t('stores.emptyHint')} />
         ) : (

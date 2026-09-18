@@ -32,17 +32,17 @@ export function BurnCard({
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-2xl border border-danger/25 bg-danger/[0.07] p-5 shadow-card sm:p-6',
+        'relative overflow-hidden rounded-2xl border border-danger/25 bg-danger/5 p-5 shadow-card sm:p-6',
         className,
       )}
     >
       <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-danger/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 left-10 h-48 w-48 rounded-full bg-warn/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-10 h-48 w-48 rounded-full bg-warn/10 blur-3xl" />
 
       <div className="relative flex flex-wrap items-start justify-between gap-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-danger/15 text-danger-ink">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-danger/10 text-danger-ink">
               <Flame className="h-4 w-4" />
             </span>
             <p className="font-display text-sm font-extrabold uppercase tracking-wide text-danger">{title}</p>
@@ -57,11 +57,11 @@ export function BurnCard({
 
         <div className="flex shrink-0 gap-3">
           <div className="rounded-xl border border-line bg-surface/70 px-4 py-3 backdrop-blur">
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted">{monthLabel}</p>
+            <p className="eyebrow">{monthLabel}</p>
             <p className="tnum mt-1 font-display text-base font-extrabold text-ink">{f.compact(perMonth)}</p>
           </div>
           <div className="rounded-xl border border-line bg-surface/70 px-4 py-3 backdrop-blur">
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted">{yearLabel}</p>
+            <p className="eyebrow">{yearLabel}</p>
             <p className="tnum mt-1 flex items-center gap-1 font-display text-base font-extrabold text-danger">
               <TrendingDown className="h-3.5 w-3.5" />
               {f.compact(perYear)}

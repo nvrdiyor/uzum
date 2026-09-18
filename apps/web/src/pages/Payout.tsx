@@ -410,7 +410,7 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
     <li
       className={cn(
         'flex items-center gap-3.5 rounded-2xl border p-3.5 transition-colors sm:gap-4',
-        first ? 'border-brand/30 bg-brand/[0.06]' : 'border-line bg-surface-2',
+        first ? 'border-brand/30 bg-brand/5' : 'border-line bg-surface-2',
       )}
     >
       {/* Sana belgisi */}
@@ -443,7 +443,7 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
         {row.net !== row.amount ? (
           <p className="tnum mt-0.5 text-2xs text-muted line-through">{f.money(row.amount)}</p>
         ) : (
-          <p className="mt-0.5 text-2xs uppercase tracking-wide text-muted">{t('plan.net')}</p>
+          <p className="mt-0.5 eyebrow">{t('plan.net')}</p>
         )}
       </div>
     </li>

@@ -446,7 +446,7 @@ export default function Funnel() {
             </div>
 
             {problemCount > 0 ? (
-              <div className="mt-5 flex gap-3 rounded-xl border border-warn/25 bg-warn/[0.07] p-4">
+              <div className="mt-5 flex gap-3 rounded-xl border border-warn/25 bg-warn/5 p-4">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
                 <div>
                   <p className="text-sm font-semibold text-ink">{t('problem.title', { n: problemCount })}</p>

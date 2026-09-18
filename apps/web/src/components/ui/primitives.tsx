@@ -27,7 +27,7 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-wrap items-start justify-between gap-3 px-5 pt-5', className)}>
+    <div className={cn('card-head flex flex-wrap items-start justify-between gap-3 px-5 pt-5', className)}>
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
@@ -45,7 +45,7 @@ export function CardHeader({
 }
 
 export function CardBody({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn('p-5', className)}>{children}</div>;
+  return <div className={cn('card-body p-5', className)}>{children}</div>;
 }
 
 // ─────────────────────────── Button ───────────────────────────
@@ -58,7 +58,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   outline: 'btn-outline',
   ghost: 'btn-ghost',
   danger: 'btn-danger',
-  soft: 'btn bg-brand/[0.12] text-brand-ink hover:bg-brand/20',
+  soft: 'btn bg-brand/10 text-brand-ink hover:bg-brand/20',
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -120,12 +120,12 @@ export function IconButton({
 export type Tone = 'brand' | 'info' | 'warn' | 'danger' | 'muted' | 'violet';
 
 const TONE_CLASS: Record<Tone, string> = {
-  brand: 'bg-brand/[0.12] text-brand-ink',
-  info: 'bg-info/[0.12] text-info-ink',
-  warn: 'bg-warn/[0.14] text-warn-ink',
-  danger: 'bg-danger/[0.12] text-danger-ink',
+  brand: 'bg-brand/10 text-brand-ink',
+  info: 'bg-info/10 text-info-ink',
+  warn: 'bg-warn/10 text-warn-ink',
+  danger: 'bg-danger/10 text-danger-ink',
   muted: 'bg-surface-3 text-muted',
-  violet: 'bg-violet/[0.12] text-violet-ink',
+  violet: 'bg-violet/10 text-violet-ink',
 };
 
 export function Badge({
@@ -180,7 +180,7 @@ export function Delta({
     <span
       className={cn(
         'chip tnum',
-        neutral ? 'bg-surface-3 text-muted' : good ? 'bg-brand/[0.12] text-brand-ink' : 'bg-danger/[0.12] text-danger-ink',
+        neutral ? 'bg-surface-3 text-muted' : good ? 'bg-brand/10 text-brand-ink' : 'bg-danger/10 text-danger-ink',
         className,
       )}
     >
@@ -338,7 +338,7 @@ export function Segmented<T extends string>({
           >
             {o.label}
             {o.count !== undefined ? (
-              <span className={cn('ml-1.5 rounded-md px-1.5 py-0.5 text-2xs tnum', active ? 'bg-brand/15 text-brand-ink' : 'bg-surface-3 text-muted')}>
+              <span className={cn('ml-1.5 rounded-md px-1.5 py-0.5 text-2xs tnum', active ? 'bg-brand/10 text-brand-ink' : 'bg-surface-3 text-muted')}>
                 {o.count}
               </span>
             ) : null}
@@ -528,7 +528,7 @@ export function CheckItem({ children, ok = true }: { children: ReactNode; ok?: b
       <span
         className={cn(
           'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-          ok ? 'bg-brand/15 text-brand-ink' : 'bg-surface-3 text-muted',
+          ok ? 'bg-brand/10 text-brand-ink' : 'bg-surface-3 text-muted',
         )}
       >
         {ok ? <Check className="h-3 w-3" /> : <Minus className="h-3 w-3" />}

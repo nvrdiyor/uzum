@@ -110,7 +110,7 @@ export function SchemeShareCard({
     <div className="card card-hover p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted">{title}</p>
+          <p className="truncate eyebrow-lg">{title}</p>
           <p className="tnum mt-2 font-display text-[26px] font-extrabold leading-tight tracking-tight text-ink">
             {f.num(units)} <span className="text-base font-bold text-muted">{t('common.units')}</span>
           </p>
@@ -123,7 +123,7 @@ export function SchemeShareCard({
               tone === 'brand' && 'bg-brand/10 text-brand-ink',
               tone === 'info' && 'bg-info/10 text-info-ink',
               tone === 'violet' && 'bg-violet/10 text-violet-ink',
-              tone === 'warn' && 'bg-warn/[0.12] text-warn-ink',
+              tone === 'warn' && 'bg-warn/10 text-warn-ink',
               tone === 'danger' && 'bg-danger/10 text-danger-ink',
               tone === 'muted' && 'bg-surface-3 text-muted',
             )}

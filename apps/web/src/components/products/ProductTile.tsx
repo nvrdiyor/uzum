@@ -104,7 +104,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-2xs uppercase tracking-wide text-muted">{t('card.conversion')}</p>
+            <p className="eyebrow">{t('card.conversion')}</p>
             <p className="tnum text-sm font-bold text-ink">{f.pct(product.conversion)}</p>
           </div>
         </div>
@@ -112,13 +112,13 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         {/* ROI va marja */}
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-            <p className="text-2xs uppercase tracking-wide text-muted">{t('card.roi')}</p>
+            <p className="eyebrow">{t('card.roi')}</p>
             <p className={cn('tnum text-sm font-bold', product.roi >= 0 ? 'text-brand-ink' : 'text-danger')}>
               {f.pct(product.roi)}
             </p>
           </div>
           <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-            <p className="text-2xs uppercase tracking-wide text-muted">{t('card.margin')}</p>
+            <p className="eyebrow">{t('card.margin')}</p>
             <p className={cn('tnum text-sm font-bold', product.margin >= 0 ? 'text-ink' : 'text-danger')}>
               {f.pct(product.margin)}
             </p>
@@ -135,7 +135,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
             ] as const
           ).map(([key, value]) => (
             <div key={key} className="rounded-lg bg-surface-2 px-1.5 py-1.5">
-              <p className="text-2xs uppercase tracking-wide text-muted">{t(`card.${key}`)}</p>
+              <p className="eyebrow">{t(`card.${key}`)}</p>
               <p className="tnum text-xs font-semibold text-ink-soft">{f.num(value ?? 0)}</p>
             </div>
           ))}

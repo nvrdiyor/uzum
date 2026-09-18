@@ -22,7 +22,7 @@ export function WelcomeStep({ name, onStart }: { name: string; onStart: () => vo
       className="card overflow-hidden bg-aurora"
     >
       <div className="px-6 py-8 text-center sm:px-10 sm:py-10">
-        <span className="chip mx-auto bg-brand/[0.12] text-brand-ink">
+        <span className="chip mx-auto bg-brand/10 text-brand-ink">
           <Sparkles className="h-3.5 w-3.5" />
           {t('welcome.badge')}
         </span>

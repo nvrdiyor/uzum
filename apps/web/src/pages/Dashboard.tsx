@@ -461,9 +461,9 @@ export default function Dashboard() {
       <div className="space-y-5">
         {/* Qoldiq bor, sotuv yo'q — nima qilish kerakligini aytamiz */}
         {!hasSales ? (
-          <Card className="border-info/25 bg-info/[0.06] p-5">
+          <Card className="border-info/25 bg-info/5 p-5">
             <div className="flex flex-wrap gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/[0.12] text-info-ink">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info-ink">
                 <PackageSearch className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">

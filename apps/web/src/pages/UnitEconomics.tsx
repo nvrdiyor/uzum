@@ -644,7 +644,7 @@ export default function UnitEconomics() {
 
             <div className="rounded-2xl border border-line bg-surface-2 p-4">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted">{t('drawer.price')}</span>
+                <span className="eyebrow-lg">{t('drawer.price')}</span>
                 <span className="tnum font-display text-xl font-extrabold text-ink">{f.money(active.price)}</span>
               </div>
               <p className="mt-1 text-xs text-muted">{t('drawer.hint')}</p>
@@ -687,7 +687,7 @@ export default function UnitEconomics() {
 function MiniStat({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
     <div className="rounded-xl border border-line bg-surface p-3.5">
-      <p className="truncate text-2xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate eyebrow">{label}</p>
       <p className={cn('tnum mt-1 font-display text-base font-extrabold', danger ? 'text-danger' : 'text-ink')}>
         {value}
       </p>

@@ -69,7 +69,7 @@ registerNamespace('salesOrder', {
 function MetaItem({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 p-3">
-      <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted">
+      <div className="flex items-center gap-1.5 eyebrow">
         {icon}
         {label}
       </div>

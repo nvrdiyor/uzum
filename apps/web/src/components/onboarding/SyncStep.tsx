@@ -125,7 +125,7 @@ export function SyncStep({
                 transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-col items-center"
               >
-                <span className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brand/[0.12] text-brand-ink">
+                <span className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brand/10 text-brand-ink">
                   <span className="absolute inset-0 animate-pulse-ring rounded-full bg-brand/30" />
                   <PartyPopper className="h-10 w-10" />
                 </span>
@@ -145,8 +145,8 @@ export function SyncStep({
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-col items-center"
               >
-                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-danger/[0.12] text-danger-ink">
-                  <AlertTriangle className="h-7 w-7" />
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10 text-danger-ink">
+                  <AlertTriangle className="h-6 w-6" />
                 </span>
                 <h2 className="mt-4 font-display text-xl font-extrabold tracking-tight text-ink">
                   {t('sync.failed.title')}
@@ -185,7 +185,7 @@ export function SyncStep({
                     {Math.round(progress)}
                     <span className="text-2xl text-muted">%</span>
                   </span>
-                  <span className="mt-1 max-w-[8rem] text-2xs font-semibold uppercase tracking-wide text-muted">
+                  <span className="mt-1 max-w-[8rem] eyebrow">
                     {t('sync.ring')}
                   </span>
                 </ProgressRing>
@@ -203,7 +203,7 @@ export function SyncStep({
                     </span>
                   </span>
                   {idle ? null : (
-                    <span className="chip bg-brand/[0.12] text-brand-ink">
+                    <span className="chip bg-brand/10 text-brand-ink">
                       <span className="tnum">
                         {t('sync.stepOf', {
                           n: Math.min(SYNC_STEPS.length, Math.max(1, currentIdx + 1)),
@@ -252,9 +252,9 @@ export function SyncStep({
                 <span
                   className={cn(
                     'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
-                    isDone && 'bg-brand/15 text-brand-ink',
-                    isCurrent && 'bg-brand/15 text-brand-ink',
-                    isFailedHere && 'bg-danger/15 text-danger-ink',
+                    isDone && 'bg-brand/10 text-brand-ink',
+                    isCurrent && 'bg-brand/10 text-brand-ink',
+                    isFailedHere && 'bg-danger/10 text-danger-ink',
                     !isDone && !isCurrent && !isFailedHere && 'bg-surface-3 text-muted',
                   )}
                 >

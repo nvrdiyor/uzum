@@ -106,7 +106,8 @@ export function DataTable<T>({
     return copy;
   }, [rows, sortKey, sortDir, columns, localSort]);
 
-  const cellPad = density === 'compact' ? 'px-3 py-2' : 'px-4 py-3';
+  // Gorizontal chekinish kartochka paddingiga (px-5) teng — chap chiziq yagona
+  const cellPad = density === 'compact' ? 'px-5 py-2' : 'px-5 py-3';
 
   if (loading) {
     return (

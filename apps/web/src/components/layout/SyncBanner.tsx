@@ -36,7 +36,7 @@ export function SyncBanner() {
   }[lang];
 
   return (
-    <div className="border-b border-line bg-brand/[0.06]">
+    <div className="border-b border-line bg-brand/5">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand" />
         <p className="text-sm font-medium text-ink">
@@ -55,7 +55,7 @@ export function SyncBanner() {
           <span className={cn('hidden text-xs text-muted md:inline')}>
             ~{formatDuration(data.etaSeconds, lang)} {text.left}
           </span>
-          <Link to="/onboarding" className="chip bg-brand/[0.12] text-brand-ink">
+          <Link to="/onboarding" className="chip bg-brand/10 text-brand-ink">
             <RefreshCw className="h-3 w-3" />
             {text.view}
           </Link>

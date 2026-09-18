@@ -412,7 +412,7 @@ export default function ImportCalculator() {
         {/* ── Kirish ma'lumotlari ── */}
         <Card>
           <CardHeader title={t('inputs')} icon={<Sparkles className="h-4 w-4" />} />
-          <CardBody className="pt-2">
+          <CardBody>
             <NumberField
               label={t('f.pdd')}
               hint={t('f.pdd.hint')}
@@ -537,7 +537,7 @@ export default function ImportCalculator() {
               </div>
             ) : (
               <>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted">{t('result')}</p>
+                <p className="eyebrow-lg">{t('result')}</p>
                 <p className="mt-2 flex items-baseline gap-2">
                   <span className="tnum font-display text-[44px] font-extrabold leading-none tracking-tight text-ink sm:text-[56px]">
                     {f.num(result.price)}
@@ -619,7 +619,7 @@ export default function ImportCalculator() {
                 subtitle={t('reverse.subtitle')}
                 icon={<ArrowLeftRight className="h-4 w-4" />}
               />
-              <CardBody className="pt-3">
+              <CardBody>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <NumberField
                     label={t('reverse.price')}
@@ -638,13 +638,13 @@ export default function ImportCalculator() {
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl bg-surface-2 p-4">
                     <p className="text-xs text-muted">{t('reverse.maxPdd')}</p>
-                    <p className="tnum mt-1 font-display text-2xl font-extrabold text-ink">
+                    <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">
                       {f.num(reverse.yuan, 2)} <span className="text-base text-muted">¥</span>
                     </p>
                   </div>
                   <div className="rounded-xl bg-surface-2 p-4">
                     <p className="text-xs text-muted">{t('reverse.cargo')}</p>
-                    <p className="tnum mt-1 font-display text-2xl font-extrabold text-ink">
+                    <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">
                       {f.num(reverse.cargo)} <span className="text-base text-muted">{t('sum')}</span>
                     </p>
                   </div>

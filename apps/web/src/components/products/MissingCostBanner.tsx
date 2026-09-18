@@ -29,7 +29,7 @@ export function MissingCostBanner({
     <div className="card border-warn/40 bg-warn/5 p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/15 text-warn-ink">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn-ink">
             <AlertTriangle className="h-4 w-4" />
           </span>
           <div className="min-w-0">

@@ -1441,7 +1441,7 @@ function BroadcastTab() {
         <CardBody>
           <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/15 text-brand-ink">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand-ink">
                 <Send className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">
@@ -1459,7 +1459,7 @@ function BroadcastTab() {
       <Modal open={confirm} onClose={() => setConfirm(false)} title={t('bc.confirmTitle')} size="sm">
         <p className="text-sm text-ink-soft">{t('bc.confirmDesc')}</p>
         <div className="mt-4 rounded-xl border border-line bg-surface-2/60 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted">{targetLabel}</p>
+          <p className="eyebrow-lg">{targetLabel}</p>
           <p className="mt-1.5 line-clamp-6 whitespace-pre-wrap break-words text-sm text-ink-soft">{trimmed}</p>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">

@@ -56,7 +56,7 @@ export default function NotFound() {
         <div className="relative inline-block">
           <span
             aria-hidden
-            className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/15 blur-[90px] sm:h-56 sm:w-[420px]"
+            className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/10 blur-[90px] sm:h-56 sm:w-[420px]"
           />
           <p className="tnum relative bg-brand-grad bg-clip-text font-display text-[104px] font-extrabold leading-none tracking-tighter text-transparent sm:text-[148px]">
             404

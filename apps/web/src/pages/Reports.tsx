@@ -605,7 +605,7 @@ export default function Reports() {
                     height={280}
                     center={
                       <>
-                        <span className="text-2xs uppercase tracking-wider text-muted">{t('share.center')}</span>
+                        <span className="eyebrow">{t('share.center')}</span>
                         <span className="tnum mt-0.5 font-display text-lg font-extrabold text-ink">
                           {f.compact(data.revenue)}
                         </span>

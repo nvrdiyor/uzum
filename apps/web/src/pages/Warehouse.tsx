@@ -505,10 +505,10 @@ export default function Warehouse() {
                     ) : (
                       <div className="space-y-4">
                         <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          <p className="eyebrow-lg">
                             {t('capacity.volume')}
                           </p>
-                          <p className="tnum mt-1 font-display text-3xl font-extrabold text-ink">
+                          <p className="tnum mt-1 font-display text-3xl font-extrabold tracking-tight text-ink">
                             {f.num(kpi.volumeL, 1)}{' '}
                             <span className="text-base font-bold text-muted">{t('capacity.volumeUnit')}</span>
                           </p>

@@ -54,7 +54,7 @@ export function NumCellInput({
       className={cn(
         'tnum rounded-lg border bg-surface-2 px-2.5 py-1.5 text-right text-sm text-ink transition-colors',
         'placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25',
-        tone === 'dirty' && 'border-brand/60 bg-brand/[0.07]',
+        tone === 'dirty' && 'border-brand/60 bg-brand/5',
         tone === 'missing' && 'border-warn/50',
         tone === 'default' && 'border-line focus:border-brand/60',
       )}

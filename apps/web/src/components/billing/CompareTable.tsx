@@ -70,7 +70,7 @@ export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; curr
           <tr>
             <td
               colSpan={plans.length + 1}
-              className="sticky left-0 bg-surface-2/60 px-4 py-2 text-2xs font-bold uppercase tracking-wider text-muted"
+              className="sticky left-0 bg-surface-2/60 px-4 py-2 eyebrow"
             >
               {t('compare.limits')}
             </td>
@@ -97,7 +97,7 @@ export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; curr
               <tr>
                 <td
                   colSpan={plans.length + 1}
-                  className="sticky left-0 bg-surface-2/60 px-4 py-2 text-2xs font-bold uppercase tracking-wider text-muted"
+                  className="sticky left-0 bg-surface-2/60 px-4 py-2 eyebrow"
                 >
                   {group.label[lang]}
                 </td>

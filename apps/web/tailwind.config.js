@@ -48,8 +48,9 @@ export default {
         '3xl': '1.5rem',
       },
       boxShadow: {
-        card: '0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.18)',
-        pop: '0 8px 40px -12px rgb(0 0 0 / 0.35)',
+        // Soya rangi mavzuga qarab o'zgaradi (index.css dagi --c-shadow)
+        card: '0 1px 2px rgb(var(--c-shadow) / var(--sh-1)), 0 8px 24px -12px rgb(var(--c-shadow) / var(--sh-2))',
+        pop: '0 8px 40px -12px rgb(var(--c-shadow) / calc(var(--sh-2) + 0.1))',
         glow: '0 0 0 1px rgb(var(--c-brand) / 0.35), 0 8px 30px -10px rgb(var(--c-brand) / 0.35)',
       },
       backgroundImage: {

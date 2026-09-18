@@ -147,7 +147,7 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
         ) : status.isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : active && s ? (
-          <div className="rounded-2xl border border-brand/25 bg-brand/[0.07] p-4">
+          <div className="rounded-2xl border border-brand/25 bg-brand/5 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex items-center gap-2 text-sm font-semibold text-ink">
                 <Loader2 className="h-4 w-4 animate-spin text-brand" />

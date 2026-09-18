@@ -744,7 +744,7 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('detail.info')}</p>
+        <p className="mb-3 eyebrow-lg">{t('detail.info')}</p>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
           {info.map((item) => (
             <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
@@ -757,13 +757,13 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
 
       {row.note ? (
         <div className="rounded-2xl border border-line p-4">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{t('detail.note')}</p>
+          <p className="mb-1.5 eyebrow-lg">{t('detail.note')}</p>
           <p className="text-sm text-ink-soft">{row.note}</p>
         </div>
       ) : null}
 
       <div>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('detail.items')}</p>
+        <p className="mb-3 eyebrow-lg">{t('detail.items')}</p>
         {items.length === 0 ? (
           <EmptyState
             icon={<Package className="h-6 w-6" />}

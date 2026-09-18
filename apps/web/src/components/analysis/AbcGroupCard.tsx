@@ -87,17 +87,17 @@ export function AbcGroupCard({
 
       <div className="relative mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3.5">
         <div className="min-w-0">
-          <p className="truncate text-2xs font-semibold uppercase tracking-wide text-muted">{labels.sku}</p>
+          <p className="truncate eyebrow">{labels.sku}</p>
           <p className="tnum mt-0.5 text-sm font-bold text-ink">{f.num(skuCount)}</p>
         </div>
         <div className="min-w-0">
-          <p className="truncate text-2xs font-semibold uppercase tracking-wide text-muted">{labels.revenue}</p>
+          <p className="truncate eyebrow">{labels.revenue}</p>
           <p className="tnum mt-0.5 text-sm font-bold" style={{ color }}>
             {f.compact(revenue)}
           </p>
         </div>
         <div className="min-w-0">
-          <p className="truncate text-2xs font-semibold uppercase tracking-wide text-muted">{labels.units}</p>
+          <p className="truncate eyebrow">{labels.units}</p>
           <p className="tnum mt-0.5 text-sm font-bold text-ink">{f.num(units)}</p>
         </div>
       </div>

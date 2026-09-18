@@ -404,7 +404,7 @@ export default function Storage() {
                     footer={
                       rows.length ? (
                         <>
-                          <td className="px-4 py-3 text-xs uppercase tracking-wide text-muted">
+                          <td className="px-4 py-3 eyebrow-lg">
                             {t('table.pageTotal')}
                           </td>
                           <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>

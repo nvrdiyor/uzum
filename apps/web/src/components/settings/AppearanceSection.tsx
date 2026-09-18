@@ -115,7 +115,7 @@ export function AppearanceSection() {
                     <span
                       className={cn(
                         'flex h-7 w-7 items-center justify-center rounded-lg',
-                        on ? 'bg-brand/15 text-brand-ink' : 'bg-surface-2 text-muted',
+                        on ? 'bg-brand/10 text-brand-ink' : 'bg-surface-2 text-muted',
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />

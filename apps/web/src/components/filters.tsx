@@ -98,7 +98,7 @@ export function PeriodPicker({ className }: { className?: string }) {
                     locked
                       ? 'cursor-not-allowed text-muted opacity-60'
                       : preset === p
-                        ? 'bg-brand/[0.12] text-brand-ink'
+                        ? 'bg-brand/10 text-brand-ink'
                         : 'text-ink-soft hover:bg-surface-2',
                   )}
                 >
@@ -116,7 +116,7 @@ export function PeriodPicker({ className }: { className?: string }) {
           <p className="mt-2 text-2xs text-muted">{t('period.limit', { n: historyDays })}</p>
 
           <div className="mt-3 border-t border-line pt-3">
-            <p className="mb-2 text-2xs font-bold uppercase tracking-wider text-muted">{t('period.custom')}</p>
+            <p className="mb-2 eyebrow">{t('period.custom')}</p>
             <div className="flex items-center gap-2">
               <input
                 type="date"
@@ -190,7 +190,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
             }}
             className={cn(
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
-              storeId === 'all' ? 'bg-brand/[0.12] text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
+              storeId === 'all' ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
             )}
           >
             {t('common.allStores')}
@@ -205,7 +205,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
               }}
               className={cn(
                 'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors',
-                storeId === s.id ? 'bg-brand/[0.12] text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
+                storeId === s.id ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
               )}
             >
               <span className="truncate">{s.title}</span>

@@ -134,7 +134,7 @@ export function CheckoutModal({
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-2xs font-semibold uppercase tracking-wider text-muted">{t('pay.total')}</p>
+              <p className="eyebrow">{t('pay.total')}</p>
               <p className="tnum font-display text-xl font-extrabold text-ink">{f.money(calc.total)}</p>
             </div>
             <div className="flex items-center gap-2">
@@ -202,7 +202,7 @@ export function CheckoutModal({
                     <span
                       className={cn(
                         'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                        active ? 'bg-brand/[0.12] text-brand-ink' : 'bg-surface-3 text-muted',
+                        active ? 'bg-brand/10 text-brand-ink' : 'bg-surface-3 text-muted',
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -297,7 +297,7 @@ function ManualInstructions({ invoice, onCopy }: { invoice: InvoiceRow; onCopy: 
     <div className="space-y-5">
       <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4">
         <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('pay.invoice')}</p>
-        <p className="tnum mt-1 font-display text-2xl font-extrabold text-ink">{f.money(invoice.amount)}</p>
+        <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">{f.money(invoice.amount)}</p>
         <p className="mt-1 text-xs text-muted">
           {t('pay.invoiceNo')}: <span className="font-mono text-ink-soft">{invoice.id.slice(0, 10).toUpperCase()}</span>
         </p>

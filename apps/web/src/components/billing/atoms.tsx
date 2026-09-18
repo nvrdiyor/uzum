@@ -19,7 +19,7 @@ export const PLAN_ICON: Record<PlanId, typeof Sparkles> = {
 export function AccessMark({ access, previewLabel }: { access: FeatureAccess; previewLabel: string }) {
   if (access === 'full') {
     return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand/[0.12] text-brand-ink">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand-ink">
         <Check className="h-3.5 w-3.5" />
       </span>
     );
@@ -28,7 +28,7 @@ export function AccessMark({ access, previewLabel }: { access: FeatureAccess; pr
     return (
       <span
         title={previewLabel}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-warn/[0.14] text-warn-ink"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-warn/10 text-warn-ink"
       >
         <Eye className="h-3.5 w-3.5" />
       </span>
@@ -59,8 +59,8 @@ export function FeatureLine({
       <span
         className={cn(
           'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-          access === 'full' && 'bg-brand/15 text-brand-ink',
-          access === 'preview' && 'bg-warn/15 text-warn-ink',
+          access === 'full' && 'bg-brand/10 text-brand-ink',
+          access === 'preview' && 'bg-warn/10 text-warn-ink',
           access === 'off' && 'bg-surface-3 text-muted',
         )}
       >

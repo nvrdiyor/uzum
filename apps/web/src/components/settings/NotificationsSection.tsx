@@ -44,10 +44,10 @@ const LEVEL_ICON = {
 } as const;
 
 const LEVEL_STYLE = {
-  info: 'bg-info/[0.12] text-info-ink',
-  success: 'bg-brand/[0.12] text-brand-ink',
-  warning: 'bg-warn/[0.14] text-warn-ink',
-  danger: 'bg-danger/[0.12] text-danger-ink',
+  info: 'bg-info/10 text-info-ink',
+  success: 'bg-brand/10 text-brand-ink',
+  warning: 'bg-warn/10 text-warn-ink',
+  danger: 'bg-danger/10 text-danger-ink',
 } as const;
 
 type ToggleKey = 'notifyDaily' | 'notifyOrders' | 'notifyStock';
@@ -168,14 +168,14 @@ export function NotificationsSection() {
           <div
             className={cn(
               'flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4',
-              botOn ? 'border-brand/25 bg-brand/[0.07]' : 'border-warn/25 bg-warn/10',
+              botOn ? 'border-brand/25 bg-brand/5' : 'border-warn/25 bg-warn/10',
             )}
           >
             <div className="flex min-w-0 items-start gap-3">
               <span
                 className={cn(
                   'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                  botOn ? 'bg-brand/15 text-brand-ink' : 'bg-warn/15 text-warn-ink',
+                  botOn ? 'bg-brand/10 text-brand-ink' : 'bg-warn/10 text-warn-ink',
                 )}
               >
                 <Send className="h-4 w-4" />
@@ -239,7 +239,7 @@ export function NotificationsSection() {
                     key={n.id}
                     className={cn(
                       'flex flex-wrap items-start gap-3 rounded-2xl border p-3.5 transition-colors sm:flex-nowrap',
-                      n.read ? 'border-line bg-surface' : 'border-brand/25 bg-brand/[0.05]',
+                      n.read ? 'border-line bg-surface' : 'border-brand/25 bg-brand/5',
                     )}
                   >
                     <span

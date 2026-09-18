@@ -671,7 +671,7 @@ export default function Sales() {
                     money={false}
                     center={
                       <div>
-                        <p className="tnum font-display text-2xl font-extrabold text-ink">{f.num(deliveryTotal)}</p>
+                        <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.num(deliveryTotal)}</p>
                         <p className="text-xs text-muted">{t('delivery.total')}</p>
                       </div>
                     }

@@ -22,7 +22,7 @@ export interface StatCardProps {
 const TONE_BG = {
   brand: 'bg-brand/10 text-brand-ink',
   info: 'bg-info/10 text-info-ink',
-  warn: 'bg-warn/[0.12] text-warn-ink',
+  warn: 'bg-warn/10 text-warn-ink',
   danger: 'bg-danger/10 text-danger-ink',
   violet: 'bg-violet/10 text-violet-ink',
 } as const;
@@ -66,7 +66,7 @@ export function StatCard({
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+          <p className="truncate eyebrow-lg">{label}</p>
           {loading ? (
             <Skeleton className="mt-3 h-8 w-32" />
           ) : (
@@ -92,8 +92,9 @@ export function StatCard({
         ) : null}
       </div>
 
+      {/* mt-auto — izoh uzunligi turlicha bo'lsa ham pastki blok bir sathda turadi */}
       {(delta !== undefined || spark) && !loading ? (
-        <div className="relative mt-3 flex items-end justify-between gap-3">
+        <div className="relative mt-auto flex items-end justify-between gap-3 pt-3">
           {delta !== undefined ? <Delta value={delta} invert={invertDelta} /> : <span />}
           {spark && spark.length > 1 ? (
             <Sparkline data={spark} tone={tone === 'violet' ? 'info' : tone} className="opacity-80" />

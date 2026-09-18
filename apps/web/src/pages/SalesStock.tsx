@@ -23,11 +23,17 @@ import {
 } from '@/components/ui';
 import { ChartCard, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
-import { StockStatusBadge } from '@/components/sales/StockStatusBadge';
+import {
+  STOCK_STATES,
+  StockStatusBadge,
+  TONE_TEXT,
+  daysTone,
+  type StockState,
+} from '@/components/stock/common';
 import { useDebounced } from '@/components/sales/useDebounced';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
-import { CHART_COLORS, STATUS_TONE, type StatusTone } from '@/lib/theme';
+import { CHART_COLORS } from '@/lib/theme';
 import { cn, downloadBlob } from '@/lib/utils';
 import { usePeriodQuery } from '@/store/ui';
 
@@ -158,7 +164,7 @@ const PAGE_SIZE = 50;
 type Segment = 'all' | 'critical' | 'low' | 'excess' | 'dead';
 const SEGMENTS: Segment[] = ['all', 'critical', 'low', 'excess', 'dead'];
 
-const STATUS_COLOR: Record<StatusTone, string> = {
+const STATUS_COLOR: Record<StockState, string> = {
   critical: CHART_COLORS.danger,
   low: CHART_COLORS.warn,
   ok: CHART_COLORS.brand,
@@ -166,13 +172,6 @@ const STATUS_COLOR: Record<StatusTone, string> = {
   dead: CHART_COLORS.slate,
 };
 
-/** Qoldiq necha kunga yetishiga qarab rang */
-function daysTone(days: number | null): string {
-  if (days === null) return 'text-muted';
-  if (days <= 7) return 'text-danger';
-  if (days <= 14) return 'text-warn-ink';
-  return 'text-brand-ink';
-}
 
 export default function SalesStock() {
   const t = useT('salesStock');
@@ -230,17 +229,15 @@ export default function SalesStock() {
   );
 
   const statusChart = useMemo(() => {
-    const order: StatusTone[] = ['critical', 'low', 'ok', 'excess', 'dead'];
-    const map = new Map<StatusTone, number>();
+    const map = new Map<StockState, number>();
     for (const row of rows) map.set(row.status, (map.get(row.status) ?? 0) + 1);
-    return order
-      .filter((s) => (map.get(s) ?? 0) > 0)
+    return STOCK_STATES.filter((s) => (map.get(s) ?? 0) > 0)
       .map((s) => ({
-        name: STATUS_TONE[s].label[f.lang] ?? STATUS_TONE[s].label.uz,
+        name: tc(`status.${s}`),
         value: map.get(s) ?? 0,
         color: STATUS_COLOR[s],
       }));
-  }, [rows, f.lang]);
+  }, [rows, tc]);
 
   async function onExport() {
     setExporting(true);
@@ -339,7 +336,7 @@ export default function SalesStock() {
         header: t('col.daysLeft'),
         align: 'right',
         render: (row) => (
-          <span className={cn('font-semibold', daysTone(row.daysLeft))}>
+          <span className={cn('font-semibold', TONE_TEXT[daysTone(row.daysLeft)])}>
             {row.daysLeft === null ? t('noSales') : `${f.num(row.daysLeft)} ${t('days')}`}
           </span>
         ),
@@ -469,7 +466,7 @@ export default function SalesStock() {
                     money={false}
                     center={
                       <div>
-                        <p className="tnum font-display text-2xl font-extrabold text-ink">{f.num(rows.length)}</p>
+                        <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.num(rows.length)}</p>
                         <p className="text-xs text-muted">{t('chart.total')}</p>
                       </div>
                     }

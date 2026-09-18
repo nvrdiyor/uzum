@@ -683,7 +683,7 @@ export default function ProductDetail() {
                     ] as const
                   ).map(([key, value]) => (
                     <div key={key} className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-                      <p className="text-2xs uppercase tracking-wide text-muted">{t(key)}</p>
+                      <p className="eyebrow">{t(key)}</p>
                       <p className="tnum text-sm font-bold text-ink">{f.num(value ?? 0)}</p>
                     </div>
                   ))}
@@ -760,7 +760,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-      <p className="truncate text-2xs uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate eyebrow">{label}</p>
       <p
         className={cn(
           'tnum mt-0.5 truncate text-sm font-bold',
@@ -884,7 +884,7 @@ function UnitTab({ data }: { data: ProductDetailResponse | undefined }) {
           height={280}
           center={
             <div>
-              <p className="text-2xs uppercase tracking-wide text-muted">{t('unit.costTotal')}</p>
+              <p className="eyebrow">{t('unit.costTotal')}</p>
               <p className="tnum font-display text-lg font-extrabold text-ink">{f.money(costTotal)}</p>
             </div>
           }
@@ -962,7 +962,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
         <CardBody className="space-y-4">
           <div className="flex items-center gap-4">
             <div>
-              <p className="tnum font-display text-3xl font-extrabold text-ink">{f.num(totals.avgRating, 1)}</p>
+              <p className="tnum font-display text-3xl font-extrabold tracking-tight text-ink">{f.num(totals.avgRating, 1)}</p>
               <p className="text-xs text-muted">{t('reviews.avg')}</p>
             </div>
             <div className="ml-auto text-right">

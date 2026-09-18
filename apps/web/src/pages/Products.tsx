@@ -531,7 +531,7 @@ export default function Products() {
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="hidden text-xs font-semibold uppercase tracking-wide text-muted sm:inline">
+                  <span className="hidden eyebrow-lg sm:inline">
                     {t('cover.label')}
                   </span>
                   <Segmented<CoverDays>

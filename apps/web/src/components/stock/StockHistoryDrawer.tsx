@@ -206,7 +206,7 @@ export function StockHistoryDrawer({
           {advice ? (
             <div className="card border-brand/30 bg-brand/5 p-5">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/[0.12] text-brand-ink">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
                   <Lightbulb className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -218,7 +218,7 @@ export function StockHistoryDrawer({
                     <p className="mt-1.5 text-sm text-muted">{t('drawer.enough')}</p>
                   ) : (
                     <>
-                      <p className="tnum mt-2 font-display text-2xl font-extrabold text-brand-ink">
+                      <p className="tnum mt-2 font-display text-2xl font-extrabold tracking-tight text-brand-ink">
                         {f.num(advice.need)} <span className="text-base text-ink-soft">{t('drawer.units')}</span>
                       </p>
                       <p className="mt-1 text-xs text-muted">{t('drawer.cover')}</p>

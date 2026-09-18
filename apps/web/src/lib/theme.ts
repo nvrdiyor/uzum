@@ -29,44 +29,6 @@ export const SERIES_PALETTE = [
   CHART_COLORS.slate,
 ];
 
-export type StatusTone = 'critical' | 'low' | 'ok' | 'excess' | 'dead';
-
-export const STATUS_TONE: Record<
-  StatusTone,
-  { bg: string; text: string; dot: string; label: { uz: string; ru: string; en: string } }
-> = {
-  critical: {
-    bg: 'bg-danger/[0.12]',
-    text: 'text-danger-ink',
-    dot: 'bg-danger',
-    label: { uz: 'Kritik', ru: 'Критично', en: 'Critical' },
-  },
-  low: {
-    bg: 'bg-warn/[0.12]',
-    text: 'text-warn-ink',
-    dot: 'bg-warn',
-    label: { uz: 'Tugayapti', ru: 'Заканчивается', en: 'Low' },
-  },
-  ok: {
-    bg: 'bg-brand/[0.12]',
-    text: 'text-brand-ink',
-    dot: 'bg-brand',
-    label: { uz: 'Yetarli', ru: 'Достаточно', en: 'Healthy' },
-  },
-  excess: {
-    bg: 'bg-info/[0.12]',
-    text: 'text-info-ink',
-    dot: 'bg-info',
-    label: { uz: 'Ortiqcha', ru: 'Избыток', en: 'Excess' },
-  },
-  dead: {
-    bg: 'bg-muted/[0.12]',
-    text: 'text-muted',
-    dot: 'bg-muted',
-    label: { uz: 'Harakatsiz', ru: 'Неликвид', en: 'Dead stock' },
-  },
-};
-
 export const LEVEL_TONE = {
   info: { bg: 'bg-info/10', border: 'border-info/25', text: 'text-info-ink' },
   success: { bg: 'bg-brand/10', border: 'border-brand/25', text: 'text-brand-ink' },

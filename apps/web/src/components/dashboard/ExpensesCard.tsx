@@ -38,12 +38,12 @@ export function ExpensesCard({ data }: { data: DashboardResponse }) {
         subtitle={t('expenses.subtitle')}
         actions={
           <div className="text-right">
-            <p className="text-2xs uppercase tracking-wider text-muted">{t('expenses.total')}</p>
+            <p className="eyebrow">{t('expenses.total')}</p>
             <p className="tnum font-display text-base font-extrabold text-ink">{f.money(total, data.currency)}</p>
           </div>
         }
       />
-      <CardBody className="flex-1 pt-3">
+      <CardBody className="flex-1">
         {rows.length === 0 ? (
           <EmptyState className="py-10" icon={<Receipt className="h-6 w-6" />} title={t('expenses.empty')} hint={t('expenses.emptyHint')} />
         ) : (
@@ -55,7 +55,7 @@ export function ExpensesCard({ data }: { data: DashboardResponse }) {
               outerRadius={86}
               center={
                 <div>
-                  <p className="text-2xs uppercase tracking-wider text-muted">{t('expenses.total')}</p>
+                  <p className="eyebrow">{t('expenses.total')}</p>
                   <p className="tnum font-display text-sm font-extrabold text-ink">{f.compact(total)}</p>
                 </div>
               }

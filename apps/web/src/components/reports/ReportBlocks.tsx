@@ -106,7 +106,7 @@ function MiniStat({
   }[tone];
   return (
     <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3">
-      <p className="text-2xs font-semibold uppercase tracking-wider text-muted">{label}</p>
+      <p className="eyebrow">{label}</p>
       <p className={cn('tnum mt-1 font-display text-lg font-extrabold leading-tight', toneClass)}>{value}</p>
       {hint ? <p className="mt-0.5 text-2xs text-muted">{hint}</p> : null}
     </div>
@@ -129,8 +129,8 @@ export function OrdersFlowCard({ report }: { report: MonthlyReportResponse }) {
       />
       <CardBody className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
         <ProgressRing value={rate} size={132} stroke={11}>
-          <span className="tnum font-display text-2xl font-extrabold text-ink">{f.pct(rate, 1)}</span>
-          <span className="mt-0.5 text-2xs uppercase tracking-wider text-muted">{t('orders.rate')}</span>
+          <span className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.pct(rate, 1)}</span>
+          <span className="mt-0.5 eyebrow">{t('orders.rate')}</span>
         </ProgressRing>
 
         <div className="grid w-full flex-1 grid-cols-1 gap-2.5 sm:grid-cols-3">
@@ -171,8 +171,8 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
       />
       <CardBody className="space-y-4">
         <div className={cn('rounded-2xl border px-4 py-4 text-center', ring)}>
-          <p className="text-2xs font-semibold uppercase tracking-wider text-muted">{t('risk.returnRate')}</p>
-          <p className={cn('tnum mt-1 font-display text-3xl font-extrabold leading-none', text)}>{f.pct(rate, 1)}</p>
+          <p className="eyebrow">{t('risk.returnRate')}</p>
+          <p className={cn('tnum mt-1 font-display text-3xl font-extrabold leading-none tracking-tight', text)}>{f.pct(rate, 1)}</p>
           <p className="mt-1.5 text-xs text-muted">{t('risk.rateHint')}</p>
           <ProgressBar value={Math.min(100, rate * 5)} tone={zoneBadge} className="mt-3" />
         </div>
@@ -280,7 +280,7 @@ export function DeliveryTypesCard({ rows }: { rows: MonthlyReportResponse['deliv
                     <span className="tnum text-xs text-muted">{f.pct(share, 0)}</span>
                   </div>
                   <p className="tnum mt-3 font-display text-xl font-extrabold text-ink">{f.num(r.orders)}</p>
-                  <p className="text-2xs uppercase tracking-wider text-muted">{t('delivery.orders')}</p>
+                  <p className="eyebrow">{t('delivery.orders')}</p>
                   <ProgressBar value={success} tone={tone.bar} className="mt-3" />
                   <p className="tnum mt-1.5 text-xs text-muted">
                     {t('delivery.success')}: {f.num(r.success)} · {f.pct(success, 1)}

@@ -429,7 +429,7 @@ export default function Planner() {
       sortValue: (r) => r.recommendedQty,
       render: (r) =>
         r.recommendedQty > 0 ? (
-          <span className="tnum inline-flex items-center rounded-xl bg-brand/[0.12] px-3 py-1.5 font-display text-base font-extrabold text-brand-ink">
+          <span className="tnum inline-flex items-center rounded-xl bg-brand/10 px-3 py-1.5 font-display text-base font-extrabold text-brand-ink">
             {f.num(r.recommendedQty)}
           </span>
         ) : (
@@ -563,13 +563,13 @@ export default function Planner() {
                     <PackagePlus className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    <p className="eyebrow-lg">
                       {needRows.length > 0 ? t('hero.need') : t('hero.none')}
                     </p>
                     {planner.isLoading ? (
                       <Skeleton className="mt-2 h-8 w-64" />
                     ) : needRows.length > 0 ? (
-                      <p className="tnum mt-1 font-display text-xl font-extrabold text-ink sm:text-2xl">
+                      <p className="tnum mt-1 font-display text-xl font-extrabold tracking-tight text-ink sm:text-2xl">
                         {t('hero.skus', { n: needRows.length })}
                         <span className="mx-2 text-muted">·</span>
                         <span className="text-brand">

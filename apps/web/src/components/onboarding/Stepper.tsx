@@ -30,8 +30,8 @@ export function OnboardStepper({
             <span
               className={cn(
                 'tnum flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300 ease-spring',
-                done && 'border-brand/50 bg-brand/[0.12] text-brand-ink',
-                active && 'border-brand bg-brand/15 text-brand-ink ring-4 ring-brand/10',
+                done && 'border-brand/50 bg-brand/10 text-brand-ink',
+                active && 'border-brand bg-brand/10 text-brand-ink ring-4 ring-brand/10',
                 !done && !active && 'border-line bg-surface-2 text-muted',
               )}
             >

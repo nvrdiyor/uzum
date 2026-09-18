@@ -538,7 +538,7 @@ export default function Illiquid() {
                     height={260}
                     center={
                       <>
-                        <span className="text-2xs uppercase tracking-wide text-muted">{t('kpi.frozen')}</span>
+                        <span className="eyebrow">{t('kpi.frozen')}</span>
                         <span className="tnum font-display text-lg font-extrabold text-ink">
                           {f.compact(totals.frozen)}
                         </span>

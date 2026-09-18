@@ -554,7 +554,7 @@ export default function Losses() {
                   footer={
                     rows.length ? (
                       <>
-                        <td className="px-4 py-3 text-xs uppercase tracking-wide text-muted" colSpan={4}>
+                        <td className="px-4 py-3 eyebrow-lg" colSpan={4}>
                           {t('table.pageTotal')}
                         </td>
                         <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>

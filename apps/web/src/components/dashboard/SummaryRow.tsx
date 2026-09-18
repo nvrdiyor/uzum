@@ -36,15 +36,15 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
         title={t('payouts.title')}
         subtitle={t('payouts.subtitle')}
       />
-      <CardBody className="flex-1 space-y-4 pt-4">
+      <CardBody className="flex-1 space-y-4">
         {/*
           Uzum kabinetidagi "Umumiy balans" bilan AYNAN bir xil raqam.
           Sotuvchi pulini shu qator bo'yicha solishtiradi — foyda
           ko'rsatkichlari bilan emas (ular tannarxni ham ayiradi).
         */}
-        <div className="rounded-2xl border border-brand/25 bg-brand/[0.08] p-3.5">
+        <div className="rounded-2xl border border-brand/25 bg-brand/10 p-3.5">
           <div className="flex items-end justify-between gap-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+            <span className="eyebrow-lg">
               {t('payouts.balance')}
             </span>
           </div>
@@ -57,7 +57,7 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
         {rows.map((r) => (
           <div key={r.key}>
             <div className="flex items-end justify-between gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">{r.label}</span>
+              <span className="eyebrow-lg">{r.label}</span>
               <span className="tnum text-xs text-muted">{t('payouts.orders', { n: f.num(r.orders) })}</span>
             </div>
             <p className={`tnum mt-1 font-display text-xl font-extrabold tracking-tight ${r.accent}`}>
@@ -85,13 +85,13 @@ export function MarginRoiCard({ data }: { data: DashboardResponse }) {
   return (
     <Card className="flex flex-col">
       <CardHeader icon={<Gauge className="h-4 w-4" />} title={t('margin.title')} subtitle={t('margin.subtitle')} />
-      <CardBody className="flex-1 pt-4">
+      <CardBody className="flex-1">
         <div className="grid grid-cols-2 gap-3">
           {gauges.map((g) => (
             <div key={g.key} className="flex flex-col items-center gap-2 rounded-2xl bg-surface-2 py-4">
               <ProgressRing value={clamp(g.value, 0, 100)} size={100} stroke={9}>
                 <span className="tnum font-display text-lg font-extrabold text-ink">{f.pct(g.value)}</span>
-                <span className="mt-0.5 text-2xs uppercase tracking-wider text-muted">{g.label}</span>
+                <span className="mt-0.5 eyebrow">{g.label}</span>
               </ProgressRing>
               <Delta value={g.delta} />
             </div>
@@ -124,7 +124,7 @@ export function StockValueCard({ data }: { data: DashboardResponse }) {
   return (
     <Card className="flex flex-col">
       <CardHeader icon={<Boxes className="h-4 w-4" />} title={t('stock.title')} subtitle={t('stock.subtitle')} />
-      <CardBody className="flex-1 pt-4">
+      <CardBody className="flex-1">
         <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">
           {f.money(amount, data.currency)}
         </p>

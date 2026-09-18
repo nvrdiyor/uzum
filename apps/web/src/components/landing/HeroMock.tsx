@@ -115,7 +115,7 @@ export function HeroMock() {
         <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line bg-surface-2/60 p-3.5">
           <div className="mb-2.5 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-ink">{t('mock.top')}</p>
-            <span className="text-2xs uppercase tracking-wider text-muted">{t('mock.profit')}</span>
+            <span className="eyebrow">{t('mock.profit')}</span>
           </div>
           <ul className="space-y-2">
             {TOP_ROWS.map((r) => (
@@ -123,10 +123,10 @@ export function HeroMock() {
                 <span
                   className={
                     r.tone === 'brand'
-                      ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/[0.12] text-brand-ink'
+                      ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand-ink'
                       : r.tone === 'info'
-                        ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/[0.12] text-info-ink'
-                        : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warn/[0.12] text-warn-ink'
+                        ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info-ink'
+                        : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn-ink'
                   }
                 >
                   <Package className="h-3.5 w-3.5" />
@@ -151,11 +151,11 @@ export function HeroMock() {
         transition={{ duration: 0.6, delay: 0.55, ease: EASE }}
         className="absolute -bottom-5 -left-3 hidden items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 py-2.5 shadow-pop sm:flex"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/[0.12] text-brand-ink">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
           <Percent className="h-4 w-4" />
         </span>
         <span>
-          <span className="block text-2xs uppercase tracking-wider text-muted">{t('mock.margin')}</span>
+          <span className="block eyebrow">{t('mock.margin')}</span>
           <span className="tnum block font-display text-sm font-extrabold text-ink">24,1%</span>
         </span>
       </motion.div>

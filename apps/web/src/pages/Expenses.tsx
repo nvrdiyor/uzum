@@ -708,7 +708,7 @@ export default function Expenses() {
                   title={t('donut.title')}
                   subtitle={t('donut.subtitle')}
                 />
-                <CardBody className="flex-1 pt-3">
+                <CardBody className="flex-1">
                   {summaryQuery.isLoading ? (
                     <Skeleton className="h-[230px] w-full" />
                   ) : donutData.length === 0 ? (
@@ -727,7 +727,7 @@ export default function Expenses() {
                         outerRadius={88}
                         center={
                           <div>
-                            <p className="text-2xs uppercase tracking-wider text-muted">
+                            <p className="eyebrow">
                               {t('donut.total')}
                             </p>
                             <p className="tnum font-display text-base font-extrabold text-ink">

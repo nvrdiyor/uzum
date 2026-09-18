@@ -53,6 +53,18 @@
   --abc-tint-base: 0.1;
   --abc-tint-span: 0.4;
 
+  /*
+   * Soya va yarqirash. Yorug' mavzuda soya ko'kimtir-kulrang va yumshoq,
+   * qorong'ida esa qora va kuchliroq bo'lishi kerak — bitta qiymat ikkalasida
+   * ham to'g'ri ko'rinmaydi. Skeleton yarqirashi ham shunday: oq yorug'lik
+   * yorug' fonda umuman sezilmaydi.
+   */
+  --c-shadow: 15 20 32;
+  --sh-1: 0.05;
+  --sh-2: 0.13;
+  --c-sheen: 12 18 28;
+  --sheen-a: 0.06;
+
   --sq-radius: 16px;
   --sq-sidebar: 264px;
   --sq-rail: 76px;
@@ -94,6 +106,13 @@
   /* Qorong'ida bo'yoq fonni OCHADI — kuchli bo'yoqda oq yozuv 4,09:1 edi */
   --abc-tint-base: 0.07;
   --abc-tint-span: 0.16;
+
+  /* Qorong'ida soya qora va kuchliroq, yarqirash esa oq bo'lishi kerak */
+  --c-shadow: 0 0 0;
+  --sh-1: 0.32;
+  --sh-2: 0.6;
+  --c-sheen: 255 255 255;
+  --sheen-a: 0.07;
   color-scheme: dark;
 }
 
@@ -162,6 +181,30 @@ body {
     @apply min-w-0 rounded-2xl border border-line bg-surface;
   }
 
+  /*
+   * Kartochka sarlavhasi va tanasi orasidagi bo'shliq.
+   *
+   * Sarlavhada allaqachon pt-5 bor, tanada ham p-5 — ikkisi qo'shilib juda
+   * katta oraliq chiqardi. Shu sababli har bir sahifa uni o'zicha qisqartirib
+   * yozardi va bir ekranda 8, 12, 16 px oraliqlar aralashib ketgan edi.
+   * Endi qoida komponentning o'zida: 16px, hamma joyda bir xil.
+   *
+   * Selektor og'irligi utility'dan yuqori — alohida holatda ustidan yozish
+   * uchun !pt-… kerak bo'ladi.
+   */
+  .card-head + .card-body {
+    @apply pt-4;
+  }
+
+  /*
+   * Kartochka ICHIDAGI panel radiusi tashqarisinikidan kichik bo'lishi
+   * kerak, aks holda burchaklar ustma-ust tushib "qalqib" ko'rinadi.
+   */
+  .card .panel,
+  .card .card {
+    @apply rounded-xl;
+  }
+
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
   }
@@ -195,7 +238,30 @@ body {
   }
 
   .label {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted;
+    @apply eyebrow-lg mb-1.5 block;
+  }
+
+  /*
+   * Kichik BOSH HARFLI sarlavhacha (KPI yorlig'i, kartochka ichidagi maydon
+   * nomi). Ilgari har sahifada qo'lda yozilardi va bir ekranda uch xil
+   * o'lcham, uch xil qalinlik uchrardi.
+   */
+  .eyebrow {
+    @apply text-2xs font-bold uppercase tracking-wider text-muted;
+  }
+
+  /*
+   * O'sha sarlavhachaning kattaroq zinasi (12px) — kartochka ichidagi KPI
+   * nomi va forma yorlig'i uchun. Ikki zina yetarli; ilgari bitta vazifa
+   * uchun uch xil qalinlik va ikki xil harf oralig'i yozilgan edi.
+   */
+  .eyebrow-lg {
+    @apply text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+
+  /* Klaviatura bilan yurish uchun — yon menyu va havolalar jim qolmasin */
+  .focusable {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60;
   }
 
   .table-head {
@@ -207,7 +273,13 @@ body {
   }
   .skeleton::after {
     content: '';
-    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent;
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--c-sheen) / var(--sheen-a)),
+      transparent
+    );
   }
 
   .section-title {
@@ -256,9 +328,15 @@ body {
   stroke-width: 1.75;
 }
 
-/* Kichik o'lchamda chiziq biroz qalinroq bo'lmasa yo'qolib ketadi */
+/*
+ * Kichik o'lchamda chiziq biroz qalinroq bo'lmasa yo'qolib ketadi.
+ *
+ * Tailwind sinfidagi nuqta QOCHIRILISHI shart: `.h-3.5` ni brauzer
+ * `.h-3` va `.5` deb o'qiydi, `.5` esa yaroqsiz selektor — va guruhda
+ * bitta yaroqsiz selektor BUTUN qoidani bekor qiladi.
+ */
 .lucide.h-3,
-.lucide.h-3.5 {
+.lucide.h-3\.5 {
   stroke-width: 2;
 }
 

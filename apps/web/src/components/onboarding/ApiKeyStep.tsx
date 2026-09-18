@@ -80,7 +80,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
       <div className="card overflow-hidden">
         <div className="border-b border-line bg-aurora px-6 py-6">
           <div className="flex items-start gap-3.5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/[0.12] text-brand-ink">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand-ink">
               <KeyRound className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -132,7 +132,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
 
           <div className="space-y-4 p-6">
             {existing ? (
-              <div className="flex items-start gap-2.5 rounded-xl border border-brand/30 bg-brand/[0.08] px-3.5 py-3">
+              <div className="flex items-start gap-2.5 rounded-xl border border-brand/30 bg-brand/10 px-3.5 py-3">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ink">{t('api.found', { label: existing.label })}</p>
@@ -192,7 +192,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
             </div>
 
             {connect.isError ? (
-              <p className="rounded-xl border border-danger/30 bg-danger/[0.08] px-3.5 py-2.5 text-xs text-danger-ink">
+              <p className="rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-xs text-danger-ink">
                 {connect.error instanceof ApiError ? connect.error.message : t('api.errSave')}
               </p>
             ) : null}
@@ -219,7 +219,7 @@ export function ApiKeyStep({ onConnected }: { onConnected: () => void }) {
 
         {/* Muqobil yo'llar */}
         <div className="card p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t('api.alt.title')}</p>
+          <p className="eyebrow-lg">{t('api.alt.title')}</p>
 
           <div className="mt-3 flex items-start gap-2.5">
             <Send className="mt-0.5 h-4 w-4 shrink-0 text-info" />

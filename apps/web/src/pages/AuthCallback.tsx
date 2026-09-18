@@ -71,7 +71,7 @@ export default function AuthCallback() {
       >
         {error ? (
           <Card className="p-6 text-center sm:p-8">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/[0.12] text-danger-ink">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10 text-danger-ink">
               <ShieldAlert className="h-6 w-6" />
             </div>
             <h1 className="mt-5 font-display text-xl font-extrabold tracking-tight text-ink">{t('cb.errTitle')}</h1>

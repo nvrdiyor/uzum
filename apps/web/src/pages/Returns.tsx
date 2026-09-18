@@ -389,7 +389,7 @@ export default function Returns() {
                         center={
                           <>
                             <p className="text-xs text-muted">{t('chart.center')}</p>
-                            <p className="tnum font-display text-2xl font-extrabold text-ink">{f.num(totals.qty)}</p>
+                            <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.num(totals.qty)}</p>
                           </>
                         }
                       />
@@ -434,7 +434,7 @@ export default function Returns() {
               {topRisky.length ? (
                 <Card className="border-warn/30 bg-warn/5 p-5">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/[0.12] text-warn-ink">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn-ink">
                       <AlertTriangle className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
@@ -489,7 +489,7 @@ export default function Returns() {
                     footer={
                       rows.length ? (
                         <>
-                          <td className="px-4 py-3 text-xs uppercase tracking-wide text-muted" colSpan={2}>
+                          <td className="px-4 py-3 eyebrow-lg" colSpan={2}>
                             {t('table.pageTotal')}
                           </td>
                           <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>

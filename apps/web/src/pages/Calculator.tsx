@@ -535,7 +535,7 @@ export default function Calculator() {
                   title={t('sku.label')}
                   subtitle={t('sku.hint')}
                 />
-                <CardBody className="pt-4">
+                <CardBody>
                   {products.isLoading ? (
                     <Skeleton className="h-11 w-full" />
                   ) : (
@@ -562,7 +562,7 @@ export default function Calculator() {
                   title={t('section.price')}
                   subtitle={t('section.priceHint')}
                 />
-                <CardBody className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-2">
+                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <NumberField
                     label={t('fld.price')}
                     hint={t('fld.priceHint')}
@@ -589,7 +589,7 @@ export default function Calculator() {
                   title={t('section.market')}
                   subtitle={t('section.marketHint')}
                 />
-                <CardBody className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-2">
+                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <NumberField
                     label={t('fld.commission')}
                     hint={t('fld.commissionHint')}
@@ -637,7 +637,7 @@ export default function Calculator() {
                   title={t('section.extra')}
                   subtitle={t('section.extraHint')}
                 />
-                <CardBody className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-3">
+                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <NumberField
                     label={t('fld.packaging')}
                     hint={t('fld.packagingHint')}
@@ -673,7 +673,7 @@ export default function Calculator() {
                   title={t('section.batch')}
                   subtitle={t('section.batchHint')}
                 />
-                <CardBody className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-3">
+                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <NumberField
                     label={t('fld.buyout')}
                     hint={t('fld.buyoutHint')}
@@ -710,7 +710,7 @@ export default function Calculator() {
               <div className="space-y-4">
                 <div className="card overflow-hidden bg-aurora p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t('res.profit')}</p>
+                    <p className="eyebrow-lg">{t('res.profit')}</p>
                     <Badge tone={profitable ? 'brand' : 'danger'} dot>
                       {profitable ? t('res.ok') : t('res.loss')}
                     </Badge>
@@ -760,7 +760,7 @@ export default function Calculator() {
                     outerRadius={82}
                     center={
                       <div>
-                        <p className="text-2xs uppercase tracking-wide text-muted">{t('res.costTotal')}</p>
+                        <p className="eyebrow">{t('res.costTotal')}</p>
                         <p className="tnum font-display text-sm font-extrabold text-ink">
                           {f.compact(result.costTotal)}
                         </p>
@@ -896,7 +896,7 @@ export default function Calculator() {
                 </Button>
               }
             />
-            <CardBody className="pt-4">
+            <CardBody>
               {scenarios.isLoading ? (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -1029,7 +1029,7 @@ export default function Calculator() {
 function MiniStat({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
     <div className="rounded-xl border border-line bg-surface p-2.5">
-      <p className="truncate text-2xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate eyebrow">{label}</p>
       <p className={cn('tnum mt-0.5 font-display text-sm font-extrabold', danger ? 'text-danger' : 'text-ink')}>
         {value}
       </p>
