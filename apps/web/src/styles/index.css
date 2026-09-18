@@ -242,6 +242,26 @@ body {
   }
 }
 
+/*
+ * Ikonka chizig'i.
+ *
+ * lucide standarti 2px. 14-16px o'lchamda bu juda qalin ko'rinadi va
+ * interfeys "og'ir" bo'lib qoladi. 1.75 ko'proq nafis, lekin kichik
+ * o'lchamda ham yo'qolib ketmaydi.
+ *
+ * Recharts SVG'lari va o'z chizmalarimizga tegmasligi uchun faqat
+ * lucide sinfiga qo'llanadi.
+ */
+.lucide {
+  stroke-width: 1.75;
+}
+
+/* Kichik o'lchamda chiziq biroz qalinroq bo'lmasa yo'qolib ketadi */
+.lucide.h-3,
+.lucide.h-3.5 {
+  stroke-width: 2;
+}
+
 /* Recharts moslashuvi */
 .recharts-cartesian-grid line {
   stroke: rgb(var(--c-border));
