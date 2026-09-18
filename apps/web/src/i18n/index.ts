@@ -4,7 +4,9 @@ import {
   formatCompact,
   formatDecimal,
   formatDate,
+  formatDateShort,
   formatDateTime,
+  formatMonthShort,
   formatMoney,
   formatNumber,
   formatPercent,
@@ -99,6 +101,10 @@ export function useFormat() {
     compact: (v: number) => formatCompact(v, lang),
     pct: (v: number, digits = 1) => formatPercent(v, lang, digits),
     date: (v: string | Date) => formatDate(v, lang),
+    /** Yilsiz sana — tor jadvallar uchun */
+    dateShort: (v: string | Date) => formatDateShort(v, lang),
+    /** Oy qisqartmasi — kalendar belgisi uchun */
+    monthShort: (v: string | Date) => formatMonthShort(v, lang),
     dateTime: (v: string | Date) => formatDateTime(v, lang),
     /** Grafik o'qlari uchun qisqa pul formati */
     axisMoney: (v: number) => formatCompact(v, lang),

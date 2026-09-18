@@ -82,6 +82,33 @@ export function formatDate(value: string | Date, lang: Lang = 'uz'): string {
   }).format(d);
 }
 
+/**
+ * Oy qisqartmasi — kalendar belgisi kabi tor joylar uchun.
+ * `Intl` ba'zi tillarda nuqtali yoki uzun variant beradi, shuning uchun
+ * ro'yxat qo'lda: natija har doim uch harf va bashorat qilinadigan.
+ */
+const MONTHS_SHORT: Record<Lang, string[]> = {
+  uz: ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'],
+  ru: ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+};
+
+export function formatMonthShort(value: string | Date, lang: Lang = 'uz'): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '';
+  return (MONTHS_SHORT[lang] ?? MONTHS_SHORT.uz)[d.getUTCMonth()] ?? '';
+}
+
+/** Yilsiz qisqa sana: "07.09" — jadvalda uch ustun sana bo'lganda kerak */
+export function formatDateShort(value: string | Date, lang: Lang = 'uz'): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat(LOCALES[lang] ?? 'uz-UZ', {
+    day: '2-digit',
+    month: '2-digit',
+  }).format(d);
+}
+
 export function formatDateTime(value: string | Date, lang: Lang = 'uz'): string {
   const d = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return '—';

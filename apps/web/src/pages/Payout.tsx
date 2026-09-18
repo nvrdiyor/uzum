@@ -213,7 +213,7 @@ export default function Payout() {
   const hold = data?.rules.holdDays ?? 10;
 
   const dayCols: Column<PayoutDay>[] = [
-    { key: 'date', header: t('cal.date'), render: (r) => <span className="tnum">{f.date(r.date)}</span> },
+    { key: 'date', header: t('cal.date'), render: (r) => <span className="tnum whitespace-nowrap">{f.date(r.date)}</span> },
     {
       key: 'state',
       header: t('cal.state'),
@@ -235,18 +235,30 @@ export default function Payout() {
   ];
 
   const orderCols: Column<PayoutOrder>[] = [
-    { key: 'uzumOrderId', header: t('ord.order'), render: (r) => <span className="tnum">№{r.uzumOrderId ?? '—'}</span> },
+    {
+      key: 'uzumOrderId',
+      header: t('ord.order'),
+      render: (r) => <span className="tnum whitespace-nowrap">№{r.uzumOrderId ?? '—'}</span>,
+    },
     {
       key: 'title',
       header: t('ord.product'),
       render: (r) => <span className="line-clamp-2 text-xs leading-snug">{r.title}</span>,
     },
-    { key: 'acceptedAt', header: t('ord.accepted'), render: (r) => <span className="tnum">{f.date(r.acceptedAt)}</span> },
-    { key: 'unlockAt', header: t('ord.unlock'), render: (r) => <span className="tnum">{f.date(r.unlockAt)}</span> },
+    {
+      key: 'acceptedAt',
+      header: t('ord.accepted'),
+      render: (r) => <span className="tnum whitespace-nowrap text-muted">{f.dateShort(r.acceptedAt)}</span>,
+    },
+    {
+      key: 'unlockAt',
+      header: t('ord.unlock'),
+      render: (r) => <span className="tnum whitespace-nowrap">{f.dateShort(r.unlockAt)}</span>,
+    },
     {
       key: 'payoutAt',
       header: t('plan.date'),
-      render: (r) => <span className="tnum font-semibold">{f.date(r.payoutAt)}</span>,
+      render: (r) => <span className="tnum whitespace-nowrap font-semibold">{f.dateShort(r.payoutAt)}</span>,
     },
     {
       key: 'daysLeft',
@@ -391,7 +403,7 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
 
   const d = new Date(`${row.date}T00:00:00Z`);
   const day = d.getUTCDate();
-  const month = f.date(row.date).replace(String(day), '').trim();
+  const month = f.monthShort(row.date);
   const daysLeft = Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86_400_000));
 
   return (
@@ -404,12 +416,13 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
       {/* Sana belgisi */}
       <div
         className={cn(
-          'flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl',
+          'flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl',
           first ? 'bg-brand text-on-brand' : 'bg-surface-3 text-ink',
         )}
       >
         <span className="tnum font-display text-xl font-extrabold leading-none">{day}</span>
         <span className="mt-0.5 text-2xs uppercase tracking-wide opacity-80">{month}</span>
+        <span className="tnum text-[9px] leading-none opacity-60">{d.getUTCFullYear()}</span>
       </div>
 
       <div className="min-w-0 flex-1">
