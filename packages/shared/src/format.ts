@@ -1,6 +1,14 @@
 import type { Lang, Period } from './types.js';
 
-const LOCALES: Record<Lang, string> = { uz: 'uz-UZ', ru: 'ru-RU', en: 'en-US' };
+/*
+ * Sanalar uchun lokal.
+ *
+ * Brauzerdagi uz-UZ sanani ISO tartibida beradi — "2026-09-17", qisqa
+ * shaklda esa "09-17", ya'ni oy oldinda. O'zbek foydalanuvchi buni teskari
+ * o'qiydi. ru-RU qoidasi kutilgan tartibni beradi: 17.09.2026 va 17.09.
+ * Raqamlar uchun ham xuddi shu sabab bilan ru-RU ishlatiladi (pastda).
+ */
+const LOCALES: Record<Lang, string> = { uz: 'ru-RU', ru: 'ru-RU', en: 'en-US' };
 
 /**
  * Raqamlar uchun alohida lokal: o'zbek tilida ham razryadlar bo'sh joy bilan,
