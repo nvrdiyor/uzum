@@ -1,0 +1,38 @@
+# https://savdoiq.uz/robots.txt
+#
+# Bu fayl `apps/web/public/` da turadi: `vite build` uni `dist/` ga ko'chiradi
+# va nginx `try_files $uri` haqiqiy faylni SPA zaxirasidan OLDIN topadi.
+# Ilgari /robots.txt so'ralganda index.html qaytardi (Content-Type: text/html).
+
+User-agent: *
+Allow: /
+
+# Haqiqiy server endpointlari — indekslanadigan sahifa emas
+Disallow: /api/
+Disallow: /health
+
+# Boshqaruv paneli kirishlari
+Disallow: /admin
+Disallow: /admin-login
+
+# DIQQAT: hisobga kirgandan keyingi sahifalar (/dashboard, /sales, /finance…)
+# ataylab bu yerda YOPILMAGAN. Ularning hech biri dist/ ichida haqiqiy fayl
+# emas, shuning uchun nginx ularni `dist/app.html` ga tushiradi, unda esa
+# `<meta name="robots" content="noindex, follow">` bor. Disallow qo'ysak,
+# qidiruv tizimi noindex'ni ko'ra olmay qoladi — klassik ziddiyat.
+
+Sitemap: https://savdoiq.uz/sitemap.xml
+
+# ─────────────────────────────────────────────────────────────────────────
+# Yandex O'zbekistonda qidiruvning sezilarli ulushini egallaydi.
+# `Clean-param` bir xil sahifaning metkali nusxalarini bitta manzilga
+# yopishtiradi. `Host:` ataylab yo'q — Yandex uni 2018 yilda bekor qilgan,
+# o'rniga 301 va rel=canonical ishlaydi.
+# ─────────────────────────────────────────────────────────────────────────
+User-agent: Yandex
+Allow: /
+Disallow: /api/
+Disallow: /health
+Disallow: /admin
+Disallow: /admin-login
+Clean-param: utm_source&utm_medium&utm_campaign&utm_term&utm_content&yclid&gclid&fbclid&ref&from&_openstat

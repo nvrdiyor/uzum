@@ -193,13 +193,37 @@ server {
     index index.html;
     client_max_body_size 12m;
 
+    # Siqish.
+    #
+    # Ubuntu'ning zavod nginx.conf'ida `gzip on` bor, lekin `gzip_types`
+    # izohga olingan va nginx'ning ichki standarti faqat text/html. Ya'ni
+    # JS va CSS SIQILMAY ketardi: bosh sahifa 372 KB o'rniga 1,39 MB.
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 6;
+    gzip_proxied any;
+    gzip_types
+        application/javascript
+        text/javascript
+        text/css
+        application/json
+        application/xml
+        image/svg+xml
+        text/plain;
+
     # SPA marshrutlash.
     # index.html HECH QACHON keshlanmaydi: u fayl nomlaridagi xeshlarni
     # ko'rsatib turadi, har chiqarilishda xeshlar o'zgaradi. Eski index.html
     # keshdan olinsa, brauzer endi mavjud bo'lmagan fayllarni so'raydi va
     # ichki sahifalar ochilmay qo'yadi.
     location / {
-        try_files \$uri \$uri/ /index.html;
+        # Zaxira sifatida app.html, index.html EMAS: app.html da
+        # <meta name="robots" content="noindex, follow"> bor. Aks holda
+        # mavjud bo’lmagan har qanday manzil bosh sahifaning aynan
+        # nusxasini 200 bilan qaytarardi va Google uni «soft 404» deb
+        # belgilab, indekslash byudjetini behuda sarflardi.
+        try_files \$uri \$uri/ /app.html;
         add_header Cache-Control "no-cache, must-revalidate";
     }
 

@@ -3,19 +3,106 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0F1115" />
+
+    <!-- Mavzu rangi — yorug' va qorong'i uchun alohida -->
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1115" media="(prefers-color-scheme: dark)" />
+
+    <title>SavdoIQ — Uzum Market sotuvchilari uchun analitika dasturi</title>
     <meta
       name="description"
-      content="SavdoIQ — Uzum Market sotuvchilari uchun analitika: sotuv, foyda, qoldiq, unit-iqtisod va Telegram bildirishnomalar."
+      content="Uzum Market kabinetingizni ulang: sotuv, sof foyda, qoldiq, unit-iqtisod va to&#8216;lov kalendari bitta panelda. Telegram&#8217;da kunlik hisobot. 7 kun bepul."
     />
-    <title>SavdoIQ — Uzum Market analitikasi</title>
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href="https://savdoiq.uz/" />
+
+    <!--
+      Ijtimoiy tarmoq kartasi.
+
+      Saytga kirish FAQAT Telegram orqali, ya'ni havola doim Telegram'ga
+      tashlanadi. Telegram'ning havola ko'ruvchisi JS ni umuman ishga
+      tushirmaydi — shu sababli u hozirgacha bo'sh sahifa ko'rardi.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SavdoIQ" />
+    <meta property="og:locale" content="uz_UZ" />
+    <meta property="og:locale:alternate" content="ru_RU" />
+    <meta property="og:url" content="https://savdoiq.uz/" />
+    <meta property="og:title" content="SavdoIQ — Uzum&#8217;dagi savdongizni raqamlarda ko&#8216;ring" />
+    <meta
+      property="og:description"
+      content="Sotuv, sof foyda, qoldiq, unit-iqtisod va to&#8216;lov kalendari — bitta panelda. Ulanish 2 daqiqa, to&#8216;liq tahlil 30 daqiqada tayyor."
+    />
+    <meta property="og:image" content="https://savdoiq.uz/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SavdoIQ — Uzum Market analitikasi boshqaruv paneli" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SavdoIQ — Uzum&#8217;dagi savdongizni raqamlarda ko&#8216;ring" />
+    <meta
+      name="twitter:description"
+      content="Uzum Market sotuvchilari uchun analitika: sotuv, sof foyda, qoldiq, unit-iqtisod, to&#8216;lov kalendari. 7 kun bepul."
+    />
+    <meta name="twitter:image" content="https://savdoiq.uz/og.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Manrope 500 va 600 URL dan olib tashlandi: sarlavha shrifti sayt bo'ylab
+      faqat 700 va 800 qalinlikda ishlatiladi (brauzerda o'lchab tekshirilgan),
+      ya'ni ikkita woff2 fayl bekorga yuklanardi.
+    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <script type="application/ld+json" data-seo>
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://savdoiq.uz/#organization",
+            "name": "SavdoIQ",
+            "url": "https://savdoiq.uz/",
+            "logo": "https://savdoiq.uz/favicon.svg",
+            "areaServed": { "@type": "Country", "name": "Uzbekistan" },
+            "sameAs": ["https://t.me/savdoiqbot"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://savdoiq.uz/#website",
+            "url": "https://savdoiq.uz/",
+            "name": "SavdoIQ",
+            "inLanguage": "uz",
+            "publisher": { "@id": "https://savdoiq.uz/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://savdoiq.uz/#software",
+            "name": "SavdoIQ",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "url": "https://savdoiq.uz/",
+            "inLanguage": "uz",
+            "publisher": { "@id": "https://savdoiq.uz/#organization" },
+            "offers": {
+              "@type": "AggregateOffer",
+              "priceCurrency": "UZS",
+              "lowPrice": "0",
+              "highPrice": "400000",
+              "offerCount": "3",
+              "url": "https://savdoiq.uz/"
+            }
+          }
+        ]
+      }
+    </script>
+
     <script>
       // FOUC oldini olish: mavzuni darhol qo'llaymiz
       (function () {

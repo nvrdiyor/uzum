@@ -135,15 +135,10 @@ registerNamespace('landing', {
     'plan.standard.3': 'Unit-iqtisod va tannarx boshqaruvi',
     'plan.standard.4': 'Sharhlarga avto-javob (kuniga 50 ta)',
     'plan.standard.5': 'Excel eksport va 1 yillik tarix',
-    'plan.business.1': 'Standartdagi hamma narsa',
-    'plan.business.2': 'Yo‘qotish, qaytarish va VGH hisobotlari',
-    'plan.business.3': 'Avto-javob kuniga 300 tagacha',
-    'plan.business.4': 'Har 15 daqiqada sinxronizatsiya',
-    'plan.business.5': 'Ustuvor qo‘llab-quvvatlash',
     'plan.vip.1': 'Standartdagi hamma narsa',
-    'plan.vip.2': 'Yo‘qotish, qaytarish va VGH hisobotlari',
-    'plan.vip.3': 'API kirish va cheksiz Uzum kabineti',
-    'plan.vip.4': 'Avto-javob kuniga 2000 ta, 10 daqiqalik sinxron',
+    'plan.vip.2': 'Uzum kabinetlari cheksiz',
+    'plan.vip.3': 'API kirish — o‘z tizimingizga ulash',
+    'plan.vip.4': '5 yillik tarix, har 10 daqiqada sinxron',
     'plan.vip.5': 'Shaxsiy menejer',
 
     'faq.eyebrow': 'Savol-javob',
@@ -157,7 +152,7 @@ registerNamespace('landing', {
       'Birinchi to‘liq yig‘ish taxminan 30 daqiqa davom etadi — eng uzun bosqich buyurtmalar tarixi. Keyin ma’lumot tarifingizga qarab har 10–60 daqiqada avtomatik yangilanib turadi.',
     'faq.q3': 'Nechta do‘kon va kabinet ulash mumkin?',
     'faq.a3':
-      'Sinovda 1 ta, Standartda 3 ta, Biznesda 5 ta, VIP’da esa 10 tagacha do‘kon ulanadi. VIP tarifida Uzum kabinetlari soni cheklanmagan.',
+      'Sinovda 1 ta, Standartda 3 ta, VIP’da esa 10 tagacha do‘kon ulanadi. VIP tarifida Uzum kabinetlari soni cheklanmagan.',
     'faq.q4': 'To‘lov qanday amalga oshiriladi?',
     'faq.a4':
       'Payme, Click yoki bank o‘tkazmasi orqali. To‘lovdan so‘ng tarif darhol faollashadi, hisob-faktura esa hisobingizda saqlanib qoladi.',
@@ -166,7 +161,7 @@ registerNamespace('landing', {
       'Ha, istalgan vaqtda. Avtomatik uzaytirishni o‘chirasiz va tarif to‘langan muddat oxirigacha ishlaydi. Ma’lumotlaringiz yo‘qolmaydi.',
     'faq.q6': 'Qo‘llab-quvvatlash qanday ishlaydi?',
     'faq.a6':
-      'Telegram orqali — ish kunlari 9:00 dan 20:00 gacha javob beramiz. Biznes va VIP tariflarida murojaatlar navbatsiz ko‘rib chiqiladi.',
+      'Telegram orqali — ish kunlari 9:00 dan 20:00 gacha javob beramiz. VIP tarifida murojaatlar navbatsiz ko‘rib chiqiladi.',
 
     'cta.title': 'Bugungi savdongiz qancha foyda keltirdi?',
     'cta.text': 'Bir necha daqiqada ulaning va birinchi hisobotni bugun oching. Karta kerak emas.',
@@ -288,11 +283,6 @@ registerNamespace('landing', {
     'plan.standard.3': 'Юнит-экономика и себестоимость',
     'plan.standard.4': 'Автоответы на отзывы (50 в день)',
     'plan.standard.5': 'Экспорт в Excel и год истории',
-    'plan.business.1': 'Всё из Стандарта',
-    'plan.business.2': 'Отчёты по потерям, возвратам и ВГХ',
-    'plan.business.3': 'До 300 автоответов в день',
-    'plan.business.4': 'Синхронизация каждые 15 минут',
-    'plan.business.5': 'Приоритетная поддержка',
     'plan.vip.1': 'Всё из Стандарта',
     'plan.vip.2': 'Безлимит кабинетов Uzum',
     'plan.vip.3': 'Доступ к API — интеграция в свою систему',
@@ -310,7 +300,7 @@ registerNamespace('landing', {
       'Первая полная синхронизация занимает около 30 минут — самый долгий этап это история заказов. Дальше данные обновляются автоматически каждые 10–60 минут в зависимости от тарифа.',
     'faq.q3': 'Сколько магазинов и кабинетов можно подключить?',
     'faq.a3':
-      'На пробном — 1, на Стандарте — 3, на Бизнесе — 5, на VIP — до 10 магазинов. На VIP число кабинетов Uzum не ограничено.',
+      'На пробном — 1, на Стандарте — 3, на VIP — до 10 магазинов. На VIP число кабинетов Uzum не ограничено.',
     'faq.q4': 'Как проходит оплата?',
     'faq.a4':
       'Через Payme, Click или банковский перевод. После оплаты тариф активируется сразу, а счёт сохраняется в вашем аккаунте.',
@@ -319,7 +309,7 @@ registerNamespace('landing', {
       'Да, в любое время. Вы отключаете автопродление, и тариф работает до конца оплаченного периода. Данные при этом не теряются.',
     'faq.q6': 'Как работает поддержка?',
     'faq.a6':
-      'Через Telegram — отвечаем по будням с 9:00 до 20:00. На тарифах Бизнес и VIP обращения обрабатываются вне очереди.',
+      'Через Telegram — отвечаем по будням с 9:00 до 20:00. На тарифе VIP обращения обрабатываются вне очереди.',
 
     'cta.title': 'Сколько прибыли принесли ваши продажи сегодня?',
     'cta.text': 'Подключитесь за пару минут и откройте первый отчёт уже сегодня. Карта не нужна.',
@@ -441,11 +431,6 @@ registerNamespace('landing', {
     'plan.standard.3': 'Unit economics and cost price',
     'plan.standard.4': 'Review auto-replies (50 per day)',
     'plan.standard.5': 'Excel export and 1 year of history',
-    'plan.business.1': 'Everything in Standard',
-    'plan.business.2': 'Losses, returns and VGH reports',
-    'plan.business.3': 'Up to 300 auto-replies per day',
-    'plan.business.4': 'Sync every 15 minutes',
-    'plan.business.5': 'Priority support',
     'plan.vip.1': 'Everything in Standard',
     'plan.vip.2': 'Unlimited Uzum cabinets',
     'plan.vip.3': 'API access — plug it into your own systems',
@@ -463,7 +448,7 @@ registerNamespace('landing', {
       'The first full sync takes about 30 minutes — order history is the longest step. After that data refreshes automatically every 10–60 minutes depending on your plan.',
     'faq.q3': 'How many stores and cabinets can I connect?',
     'faq.a3':
-      'One on Trial, three on Standard, five on Business and up to ten stores on VIP. On VIP the number of Uzum cabinets is unlimited.',
+      'One on Trial, three on Standard and up to ten stores on VIP. On VIP the number of Uzum cabinets is unlimited.',
     'faq.q4': 'How do payments work?',
     'faq.a4':
       'Through Payme, Click or a bank transfer. The plan activates immediately after payment and the invoice stays in your account.',
@@ -472,7 +457,7 @@ registerNamespace('landing', {
       'Yes, any time. You switch off auto-renewal and the plan keeps working until the paid period ends. Your data is not deleted.',
     'faq.q6': 'How does support work?',
     'faq.a6':
-      'Through Telegram — we reply on weekdays from 9:00 to 20:00. Business and VIP requests are handled first.',
+      'Through Telegram — we reply on weekdays from 9:00 to 20:00. VIP requests are handled first.',
 
     'cta.title': 'How much profit did today actually bring?',
     'cta.text': 'Connect in a couple of minutes and open your first report today. No card needed.',
@@ -533,7 +518,7 @@ export default function Landing() {
             <div className="grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-10">
               <div>
                 <motion.span
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, ease: EASE }}
                   className="chip bg-brand/10 text-brand-ink ring-1 ring-inset ring-brand/25"
@@ -543,7 +528,7 @@ export default function Landing() {
                 </motion.span>
 
                 <motion.h1
-                  initial={{ opacity: 0, y: 18 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.06, ease: EASE }}
                   className="text-balance mt-6 font-display text-[38px] font-extrabold leading-[1.06] tracking-tight text-ink sm:text-[52px] xl:text-[58px]"
@@ -552,7 +537,7 @@ export default function Landing() {
                 </motion.h1>
 
                 <motion.p
-                  initial={{ opacity: 0, y: 18 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.13, ease: EASE }}
                   className="mt-6 max-w-xl text-base leading-relaxed text-muted sm:text-lg"
@@ -561,7 +546,7 @@ export default function Landing() {
                 </motion.p>
 
                 <motion.div
-                  initial={{ opacity: 0, y: 18 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2, ease: EASE }}
                   className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
@@ -583,7 +568,7 @@ export default function Landing() {
                 </motion.div>
 
                 <motion.div
-                  initial={{ opacity: 0 }}
+                  initial={false}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.6, delay: 0.3 }}
                   className="mt-6 flex items-center gap-2 text-xs text-muted"
@@ -593,7 +578,7 @@ export default function Landing() {
                 </motion.div>
 
                 <motion.ul
-                  initial={{ opacity: 0, y: 14 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.36, ease: EASE }}
                   className="mt-8 flex flex-wrap gap-x-5 gap-y-2.5"
