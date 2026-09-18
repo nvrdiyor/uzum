@@ -30,6 +30,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getDailySeries, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
+import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -236,16 +237,6 @@ async function collectFinance(
   };
 }
 
-/** Keyingi payshanba (Uzum to'lovlari haftada bir marta o'tkaziladi) */
-function nextThursday(now = new Date()): string {
-  const today = parseISODate(toISODate(now));
-  const dow = today.getUTCDay(); // 0 — yakshanba, 4 — payshanba
-  const ahead = (4 - dow + 7) % 7;
-  const next = new Date(today.getTime());
-  next.setUTCDate(next.getUTCDate() + (ahead === 0 ? 7 : ahead));
-  return toISODate(next);
-}
-
 // ─────────────────────────── GET / — umumiy moliya ───────────────────────────
 
 router.get(
@@ -327,6 +318,9 @@ router.get(
       }),
     ]);
 
+    // To'lov jadvali — Pul kalendari bilan BIR XIL manbadan
+    const payoutRules = await getPayoutRules(company.id);
+
     const extraByDay = new Map<string, number>();
     for (const r of manualRows) {
       const key = toISODate(r.date);
@@ -379,7 +373,7 @@ router.get(
             (uzumFeeAgg._sum.amount ?? 0) -
             (storageAllAgg._sum.amount ?? 0),
         ),
-        nextPayoutAt: nextThursday(),
+        nextPayoutAt: nextPayoutFromToday(payoutRules.mode),
       },
     };
 

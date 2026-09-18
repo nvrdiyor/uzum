@@ -52,6 +52,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, primary: true },
       { to: '/sales', labelKey: 'nav.sales', icon: TrendingUp, feature: 'sales_analytics', primary: true },
+      { to: '/payout', labelKey: 'nav.payout', icon: CalendarClock, feature: 'unit_economics', badge: 'new' },
       { to: '/funnel', labelKey: 'nav.funnel', icon: Filter, feature: 'sales_analytics', badge: 'new' },
       { to: '/sales-stock', labelKey: 'nav.salesStock', icon: ShoppingCart, feature: 'stocks_fbo_fbs' },
       { to: '/reports', labelKey: 'nav.reports', icon: FileBarChart, feature: 'monthly_reports' },
@@ -89,7 +90,6 @@ export const NAV: NavGroup[] = [
     titleKey: 'group.finance',
     items: [
       { to: '/finance', labelKey: 'nav.finance', icon: Wallet, feature: 'unit_economics', primary: true },
-      { to: '/payout', labelKey: 'nav.payout', icon: CalendarClock, feature: 'unit_economics', badge: 'new' },
       { to: '/unit-economics', labelKey: 'nav.unitEconomics', icon: Scale, feature: 'unit_economics', badge: 'new' },
       { to: '/expenses', labelKey: 'nav.expenses', icon: Receipt, feature: 'expenses' },
       { to: '/calculator', labelKey: 'nav.calculator', icon: Calculator, feature: 'unit_calculator' },

@@ -75,6 +75,8 @@ registerNamespace('payout', {
     'mode.biweekly': '2 haftada: 7 va 21',
     'mode.monthly': 'Oyiga bir marta: 7-sanada',
     'plan.fee': 'Jadval haqi {n}%',
+    'plan.today': 'Bugun tushadi',
+    'plan.inDays': '{n} kundan keyin',
     'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi. Jadvalni Uzum kabinetidan o‘zgartirasiz.',
     note: 'Bu hisob Uzum shartlari asosida qurilgan. Yakuniy raqam har doim Uzum kabinetida — farq bo‘lsa ayting, qoidani moslaymiz.',
   },
@@ -132,6 +134,8 @@ registerNamespace('payout', {
     'mode.biweekly': 'Раз в 2 недели: 7 и 21',
     'mode.monthly': 'Раз в месяц: 7 числа',
     'plan.fee': 'Комиссия графика {n}%',
+    'plan.today': 'Поступит сегодня',
+    'plan.inDays': 'Через {n} дн',
     'plan.hint': 'Открытые деньги ждут ближайшую дату графика. График меняется в кабинете Uzum.',
     note: 'Расчёт построен на условиях Uzum. Итоговая цифра всегда в кабинете — если есть расхождение, скажите, скорректируем правило.',
   },
@@ -189,6 +193,8 @@ registerNamespace('payout', {
     'mode.biweekly': 'Every 2 weeks: 7 and 21',
     'mode.monthly': 'Monthly: on the 7th',
     'plan.fee': 'Schedule fee {n}%',
+    'plan.today': 'Arrives today',
+    'plan.inDays': 'In {n} days',
     'plan.hint': 'Unlocked money waits for the next scheduled date. Change the schedule in the Uzum cabinet.',
     note: 'This is computed from Uzum’s terms, not taken from Uzum. The authoritative figure is always in the cabinet — tell us if it differs and we will adjust the rule.',
   },
@@ -225,18 +231,6 @@ export default function Payout() {
       render: (r) => (
         <span className={cn('tnum font-semibold', r.unlocked ? 'text-brand-ink' : 'text-ink')}>{f.money(r.amount)}</span>
       ),
-    },
-  ];
-
-  const planCols: Column<PayoutPlanDay>[] = [
-    { key: 'date', header: t('plan.date'), render: (r) => <span className="tnum font-semibold">{f.date(r.date)}</span> },
-    { key: 'orders', header: t('plan.orders'), align: 'right', render: (r) => <span className="tnum">{f.num(r.orders)}</span> },
-    { key: 'amount', header: t('plan.amount'), align: 'right', render: (r) => <span className="tnum">{f.money(r.amount)}</span> },
-    {
-      key: 'net',
-      header: t('plan.net'),
-      align: 'right',
-      render: (r) => <span className="tnum font-semibold text-brand-ink">{f.money(r.net)}</span>,
     },
   ];
 
@@ -345,15 +339,13 @@ export default function Payout() {
                 </div>
               }
             />
-            <DataTable<PayoutPlanDay>
-              columns={planCols}
-              rows={data.plan}
-              rowKey={(r) => r.date}
-              loading={isLoading}
-              empty={<EmptyState icon={<CalendarClock className="h-6 w-6" />} title={t('empty.title')} />}
-            />
-            <CardBody className="pt-0">
-              <p className="text-xs leading-relaxed text-muted">{t('plan.hint')}</p>
+            <CardBody>
+              <ol className="space-y-2.5">
+                {data.plan.map((row, i) => (
+                  <PlanRow key={row.date} row={row} first={i === 0} fee={data.rules.scheduleFeePct} />
+                ))}
+              </ol>
+              <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('plan.hint')}</p>
             </CardBody>
           </Card>
         ) : null}
@@ -385,6 +377,63 @@ export default function Payout() {
         <p className="mt-4 text-xs leading-relaxed text-muted">{t('note')}</p>
       </PlanGate>
     </>
+  );
+}
+
+/**
+ * To'lov kuni — sana chapda yirik belgi, summa o'ngda.
+ * Eng yaqin to'lov ajratib ko'rsatiladi: sotuvchi birinchi navbatda
+ * "eng yaqini qachon va qancha" degan savolga javob izlaydi.
+ */
+function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee: number }) {
+  const t = useT('payout');
+  const f = useFormat();
+
+  const d = new Date(`${row.date}T00:00:00Z`);
+  const day = d.getUTCDate();
+  const month = f.date(row.date).replace(String(day), '').trim();
+  const daysLeft = Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86_400_000));
+
+  return (
+    <li
+      className={cn(
+        'flex items-center gap-3.5 rounded-2xl border p-3.5 transition-colors sm:gap-4',
+        first ? 'border-brand/30 bg-brand/[0.06]' : 'border-line bg-surface-2',
+      )}
+    >
+      {/* Sana belgisi */}
+      <div
+        className={cn(
+          'flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl',
+          first ? 'bg-brand text-on-brand' : 'bg-surface-3 text-ink',
+        )}
+      >
+        <span className="tnum font-display text-xl font-extrabold leading-none">{day}</span>
+        <span className="mt-0.5 text-2xs uppercase tracking-wide opacity-80">{month}</span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-ink">
+          {daysLeft === 0 ? t('plan.today') : t('plan.inDays', { n: daysLeft })}
+        </p>
+        <p className="mt-0.5 text-xs text-muted">
+          {t('plan.orders')}: <span className="tnum">{f.num(row.orders)}</span>
+          {fee > 0 ? <> · {t('plan.fee', { n: f.dec(fee, 1) })}</> : null}
+        </p>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p className={cn('tnum font-display text-lg font-extrabold', first ? 'text-brand-ink' : 'text-ink')}>
+          {f.money(row.net)}
+        </p>
+        {/* Haq ushlansa, asl summa ham ko'rsatiladi */}
+        {row.net !== row.amount ? (
+          <p className="tnum mt-0.5 text-2xs text-muted line-through">{f.money(row.amount)}</p>
+        ) : (
+          <p className="mt-0.5 text-2xs uppercase tracking-wide text-muted">{t('plan.net')}</p>
+        )}
+      </div>
+    </li>
   );
 }
 
