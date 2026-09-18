@@ -34,7 +34,7 @@ export function formatDecimal(value: number, lang: Lang = 'uz', maxDigits = 3): 
 }
 
 export function formatMoney(value: number, lang: Lang = 'uz', currency = 'UZS'): string {
-  const suffix = currency === 'UZS' ? (lang === 'ru' ? 'сум' : lang === 'en' ? 'UZS' : 'so’m') : currency;
+  const suffix = currency === 'UZS' ? (lang === 'ru' ? 'сум' : lang === 'en' ? 'UZS' : 'so‘m') : currency;
   return `${formatNumber(Math.round(value), lang)} ${suffix}`;
 }
 

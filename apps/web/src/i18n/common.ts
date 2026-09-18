@@ -138,7 +138,7 @@ registerNamespace('common', {
     'plan.preview': 'Namuna rejimi',
     // Theme / til
     'theme.dark': 'Qorong‘i',
-    'theme.light': 'Yorug‘',
+    'theme.light': 'Yorug’',
     'lang.label': 'Til',
   },
   ru: {

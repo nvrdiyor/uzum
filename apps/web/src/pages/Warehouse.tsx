@@ -523,21 +523,21 @@ export default function Warehouse() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="rounded-xl border border-line p-3.5">
                             <p className="text-xs text-muted">{t('capacity.perDay')}</p>
-                            <p className="tnum mt-1 text-lg font-bold text-ink">{f.money(Math.round(storagePerDay))}</p>
+                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">{f.money(Math.round(storagePerDay))}</p>
                           </div>
                           <div className="rounded-xl border border-line p-3.5">
                             <p className="text-xs text-muted">{t('capacity.perMonth')}</p>
-                            <p className="tnum mt-1 text-lg font-bold text-warn">{f.money(storagePerMonth)}</p>
+                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-warn">{f.money(storagePerMonth)}</p>
                           </div>
                           <div className="rounded-xl border border-line p-3.5">
                             <p className="text-xs text-muted">{t('capacity.rate')}</p>
-                            <p className="tnum mt-1 text-lg font-bold text-ink">
+                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">
                               {f.money(DEFAULTS.storagePerLiterPerDay)}
                             </p>
                           </div>
                           <div className="rounded-xl border border-line p-3.5">
                             <p className="text-xs text-muted">{t('capacity.avgPerUnit')}</p>
-                            <p className="tnum mt-1 text-lg font-bold text-ink">
+                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">
                               {f.num(kpi.units > 0 ? kpi.volumeL / kpi.units : 0, 2)} {t('capacity.volumeUnit')}
                             </p>
                           </div>

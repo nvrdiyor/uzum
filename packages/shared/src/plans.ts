@@ -133,7 +133,7 @@ export const PLANS: Record<PlanId, Plan> = {
     trialDays: 7,
     yearlyDiscount: 0,
     tagline: {
-      uz: '7 kun bepul — hamma narsani sinab ko’ring',
+      uz: '7 kun bepul — hamma narsani sinab ko‘ring',
       ru: '7 дней бесплатно — попробуйте всё',
       en: '7 days free — try everything',
     },

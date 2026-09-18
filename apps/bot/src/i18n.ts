@@ -260,7 +260,7 @@ const uz: Messages = {
   help:
     '<b>SavdoIQ bot</b>\n\n'
     + '📊 Bugungi hisobot — bugungi tushum va foyda\n'
-    + '📦 Qoldiqlar — kritik SKU‘lar\n'
+    + '📦 Qoldiqlar — kritik SKU’lar\n'
     + '🔑 Saytga kirish — bir martalik kod\n'
     + '💳 Tarif — tarif va muddat\n'
     + '👥 Referal — kod va bonuslar\n'

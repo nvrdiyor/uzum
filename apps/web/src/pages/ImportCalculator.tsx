@@ -629,7 +629,7 @@ export default function ImportCalculator() {
                   />
                   <div className="flex items-center justify-between gap-4 py-3">
                     <span className="text-sm font-medium text-ink">{t('reverse.maxCost')}</span>
-                    <span className="tnum font-display text-lg font-bold text-brand-ink">
+                    <span className="tnum font-display text-lg font-extrabold tracking-tight text-brand-ink">
                       {f.num(reverse.maxCost)}
                     </span>
                   </div>

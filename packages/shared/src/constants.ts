@@ -19,7 +19,7 @@ export const SYNC_STEPS: SyncStepDef[] = [
     weight: 30,
     label: { uz: 'API kalit tekshirilmoqda', ru: 'Проверка API-ключа', en: 'Verifying API key' },
     hint: {
-      uz: 'Uzum kabinetiga ulanish sinovdan o’tkazilmoqda',
+      uz: 'Uzum kabinetiga ulanish sinovdan o‘tkazilmoqda',
       ru: 'Проверяем подключение к кабинету Uzum',
       en: 'Testing the connection to your Uzum cabinet',
     },
@@ -27,9 +27,9 @@ export const SYNC_STEPS: SyncStepDef[] = [
   {
     id: 'shops',
     weight: 60,
-    label: { uz: 'Do’konlar yuklanmoqda', ru: 'Загружаем магазины', en: 'Loading shops' },
+    label: { uz: 'Do‘konlar yuklanmoqda', ru: 'Загружаем магазины', en: 'Loading shops' },
     hint: {
-      uz: 'Kabinetdagi barcha do’konlar ro’yxati olinmoqda',
+      uz: 'Kabinetdagi barcha do‘konlar ro‘yxati olinmoqda',
       ru: 'Получаем список магазинов кабинета',
       en: 'Fetching the shops in your cabinet',
     },
@@ -39,7 +39,7 @@ export const SYNC_STEPS: SyncStepDef[] = [
     weight: 280,
     label: { uz: 'Mahsulotlar katalogi', ru: 'Каталог товаров', en: 'Product catalogue' },
     hint: {
-      uz: 'Mahsulotlar, SKU va narxlar yig’ilmoqda',
+      uz: 'Mahsulotlar, SKU va narxlar yig‘ilmoqda',
       ru: 'Собираем товары, SKU и цены',
       en: 'Collecting products, SKUs and prices',
     },
@@ -69,7 +69,7 @@ export const SYNC_STEPS: SyncStepDef[] = [
     weight: 280,
     label: { uz: 'Moliya va komissiyalar', ru: 'Финансы и комиссии', en: 'Finance and fees' },
     hint: {
-      uz: 'Komissiya, logistika va to’lovlar hisoblanmoqda',
+      uz: 'Komissiya, logistika va to‘lovlar hisoblanmoqda',
       ru: 'Считаем комиссии, логистику и выплаты',
       en: 'Computing commission, logistics and payouts',
     },
@@ -77,9 +77,9 @@ export const SYNC_STEPS: SyncStepDef[] = [
   {
     id: 'returns',
     weight: 160,
-    label: { uz: 'Qaytarishlar va yo’qotishlar', ru: 'Возвраты и потери', en: 'Returns and losses' },
+    label: { uz: 'Qaytarishlar va yo‘qotishlar', ru: 'Возвраты и потери', en: 'Returns and losses' },
     hint: {
-      uz: 'Qaytarilgan va yo’qolgan tovarlar aniqlanmoqda',
+      uz: 'Qaytarilgan va yo‘qolgan tovarlar aniqlanmoqda',
       ru: 'Определяем возвраты и потерянные товары',
       en: 'Detecting returned and lost items',
     },
@@ -129,7 +129,7 @@ export const EXPENSE_CATEGORIES: {
   { id: 'salary', label: { uz: 'Ish haqi', ru: 'Зарплата', en: 'Salary' }, color: '#38bdf8' },
   {
     id: 'other',
-    label: { uz: 'Qo’shimcha', ru: 'Прочее', en: 'Other' },
+    label: { uz: 'Qo‘shimcha', ru: 'Прочее', en: 'Other' },
     color: '#94a3b8',
   },
 ];
