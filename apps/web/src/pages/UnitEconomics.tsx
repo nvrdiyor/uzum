@@ -53,7 +53,7 @@ registerNamespace('unitEconomics', {
     'kpi.margin': 'O‘rtacha marja',
     'kpi.marginHint': 'Sof foyda / tushum',
     'kpi.roi': 'O‘rtacha ROI',
-    'kpi.roiHint': 'Sof foyda / tannarxga sarflangan mablag’',
+    'kpi.roiHint': 'Sof foyda / tannarxga sarflangan mablag‘',
     'alert.title': '{n} ta mahsulot zarar keltirmoqda',
     'alert.body': 'Ularning sotuv narxi barcha xarajatlarni qoplamayapti — narx yoki tannarxni qayta ko‘rib chiqing.',
     'alert.action': 'Faqat zararlilarni ko‘rsatish',

@@ -19,7 +19,7 @@ import {
 } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { env } from '../lib/env.js';
-import { encryptSecret, randomCode } from '../crypto.js';
+import { encryptSecret, randomCode, randomTicketCode } from '../crypto.js';
 import type { BotLang } from '../i18n.js';
 
 const DAY_MS = 86_400_000;
@@ -499,4 +499,228 @@ export async function toggleNotify(userId: string, field: NotifyField): Promise<
 
 export async function setLanguage(userId: string, lang: BotLang): Promise<void> {
   await prisma.user.update({ where: { id: userId }, data: { languageCode: lang } });
+}
+
+// ─────────────────────────── Qo'llab-quvvatlash ───────────────────────────
+
+/** Bitta ip ichida qoladigan oyna: shu muddat ichidagi yangi savol yangi murojaat ochmaydi */
+const TICKET_REUSE_MS = 24 * 60 * 60 * 1000;
+/** Bir soat ichida bitta sotuvchidan qabul qilinadigan xabarlar soni */
+export const SUPPORT_RATE_MAX = 15;
+
+export interface TicketOwner {
+  id: string;
+  telegramId: string;
+  botChatId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+}
+
+export interface TicketRow {
+  id: string;
+  code: string;
+  status: string;
+  subject: string;
+  lang: BotLang;
+  createdAt: Date;
+  lastMessageAt: Date;
+  user: TicketOwner;
+}
+
+const TICKET_INCLUDE = {
+  user: {
+    select: { id: true, telegramId: true, botChatId: true, firstName: true, lastName: true, username: true },
+  },
+} as const;
+
+function toTicketRow(row: {
+  id: string;
+  code: string;
+  status: string;
+  subject: string;
+  lang: string;
+  createdAt: Date;
+  lastMessageAt: Date;
+  user: TicketOwner;
+}): TicketRow {
+  return { ...row, lang: row.lang === 'ru' ? 'ru' : 'uz' };
+}
+
+/** Takrorlanmaydigan murojaat kodi (createLoginCode naqshi bo'yicha) */
+async function uniqueTicketCode(): Promise<string> {
+  let code = randomTicketCode();
+  for (let i = 0; i < 10; i += 1) {
+    const busy = await prisma.supportTicket.findUnique({ where: { code }, select: { id: true } });
+    if (!busy) return code;
+    code = randomTicketCode();
+  }
+  // Juda kam ehtimol — uzunroq kod bilan chiqamiz
+  return `${randomTicketCode()}${randomTicketCode().slice(0, 2)}`;
+}
+
+/**
+ * Ochiq murojaatni topadi yoki yangisini ochadi.
+ *
+ * Yopilmagan va so'nggi 24 soat ichida faol bo'lgan ip qayta ishlatiladi:
+ * bitta muammo bo'yicha ketma-ket uchta xabar operatorda uchta alohida
+ * kartochka ochib yubormasligi kerak.
+ */
+export async function openOrReuseTicket(input: {
+  userId: string;
+  lang: BotLang;
+  subject: string;
+}): Promise<{ ticket: TicketRow; isNew: boolean }> {
+  const existing = await prisma.supportTicket.findFirst({
+    where: {
+      userId: input.userId,
+      status: { not: 'closed' },
+      lastMessageAt: { gte: new Date(Date.now() - TICKET_REUSE_MS) },
+    },
+    orderBy: { lastMessageAt: 'desc' },
+    include: TICKET_INCLUDE,
+  });
+
+  if (existing) {
+    // Mavzu birinchi xabarda «[photo]» bo'lib qotib qolmasin: keyingi matnli
+    // xabar uni to'ldiradi, shunda /tickets ro'yxati mazmunli bo'ladi
+    const placeholder = !existing.subject || /^\[\w+\]$/.test(existing.subject);
+    const updated = await prisma.supportTicket.update({
+      where: { id: existing.id },
+      data: {
+        lastMessageAt: new Date(),
+        status: 'open',
+        lang: input.lang,
+        ...(placeholder && input.subject ? { subject: input.subject.slice(0, 120) } : {}),
+      },
+      include: TICKET_INCLUDE,
+    });
+    return { ticket: toTicketRow(updated), isNew: false };
+  }
+
+  const created = await prisma.supportTicket.create({
+    data: {
+      userId: input.userId,
+      code: await uniqueTicketCode(),
+      lang: input.lang,
+      subject: input.subject.slice(0, 120),
+      lastMessageAt: new Date(),
+    },
+    include: TICKET_INCLUDE,
+  });
+  return { ticket: toTicketRow(created), isNew: true };
+}
+
+export async function addSupportMessage(input: {
+  ticketId: string;
+  direction: 'in' | 'out';
+  kind: string;
+  body: string;
+  authorId?: string | null;
+  userChatId?: string | null;
+  userMessageId?: number | null;
+}): Promise<string> {
+  const row = await prisma.supportMessage.create({
+    data: {
+      ticketId: input.ticketId,
+      direction: input.direction,
+      kind: input.kind,
+      body: input.body.slice(0, 4000),
+      authorId: input.authorId ?? null,
+      userChatId: input.userChatId ?? null,
+      userMessageId: input.userMessageId ?? null,
+    },
+    select: { id: true },
+  });
+  return row.id;
+}
+
+/**
+ * Operator chatidagi xabar raqamini saqlaydi — javobni qaytarish shu juftlik
+ * orqali topiladi (bot restartidan keyin ham).
+ */
+export async function markRelayed(messageId: string, adminChatId: string, adminMessageId: number): Promise<void> {
+  await prisma.supportMessage.update({
+    where: { id: messageId },
+    data: { adminChatId, adminMessageId },
+  });
+}
+
+export async function findTicketByAdminMessage(adminChatId: string, adminMessageId: number): Promise<TicketRow | null> {
+  const msg = await prisma.supportMessage.findFirst({
+    where: { adminChatId, adminMessageId },
+    orderBy: { createdAt: 'desc' },
+    select: { ticket: { include: TICKET_INCLUDE } },
+  });
+  return msg ? toTicketRow(msg.ticket) : null;
+}
+
+export async function findTicketByCode(code: string): Promise<TicketRow | null> {
+  if (!code) return null;
+  const row = await prisma.supportTicket.findUnique({
+    where: { code: code.toUpperCase() },
+    include: TICKET_INCLUDE,
+  });
+  return row ? toTicketRow(row) : null;
+}
+
+export async function findTicketById(id: string): Promise<TicketRow | null> {
+  const row = await prisma.supportTicket.findUnique({ where: { id }, include: TICKET_INCLUDE });
+  return row ? toTicketRow(row) : null;
+}
+
+export async function listOpenTickets(limit = 10): Promise<TicketRow[]> {
+  const rows = await prisma.supportTicket.findMany({
+    where: { status: { not: 'closed' } },
+    orderBy: { lastMessageAt: 'desc' },
+    take: limit,
+    include: TICKET_INCLUDE,
+  });
+  return rows.map(toTicketRow);
+}
+
+/**
+ * So'nggi bir soatdagi kiruvchi xabarlar soni.
+ *
+ * Hisob bazada: xotiradagi hisoblagich har deployda nolga tushardi va
+ * spam filtri amalda ishlamasdi.
+ */
+export async function countInboundLastHour(userId: string): Promise<number> {
+  return prisma.supportMessage.count({
+    where: {
+      direction: 'in',
+      createdAt: { gte: new Date(Date.now() - 3_600_000) },
+      ticket: { userId },
+    },
+  });
+}
+
+/**
+ * «Javob berildi» belgisi.
+ *
+ * `updateMany` ataylab: YOPILGAN murojaat qayta ochilib ketmasligi kerak —
+ * `update` uni `answered` ga qaytarib, ro'yxatda yana paydo qilardi.
+ */
+export async function markAnswered(ticketId: string): Promise<void> {
+  await prisma.supportTicket.updateMany({
+    where: { id: ticketId, status: { not: 'closed' } },
+    data: { status: 'answered', answeredAt: new Date() },
+  });
+}
+
+export async function closeTicket(ticketId: string): Promise<void> {
+  await prisma.supportTicket.update({
+    where: { id: ticketId },
+    data: { status: 'closed', closedAt: new Date() },
+  });
+}
+
+/**
+ * JAVOBSIZ murojaatlar soni — /stats uchun.
+ *
+ * Faqat `open`: javob berilgani ham, yopilgani ham e'tiborga olinmaydi,
+ * aks holda hisoblagich o'z yorlig'iga («javobsiz») zid bo'lardi.
+ */
+export async function countOpenTickets(): Promise<number> {
+  return prisma.supportTicket.count({ where: { status: 'open' } });
 }

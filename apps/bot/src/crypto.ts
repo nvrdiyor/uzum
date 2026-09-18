@@ -49,6 +49,19 @@ export function randomReferralCode(): string {
   return out;
 }
 
+/**
+ * Murojaat kodi: 4 belgi (#S-7K2M).
+ *
+ * Alifbo referal kodinikidek — chalkashadigan harflar (O/0, I/1) yo'q,
+ * chunki bu kodni operator ham, sotuvchi ham qo'lda terib yozadi.
+ */
+export function randomTicketCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 4; i += 1) out += alphabet[crypto.randomInt(0, alphabet.length)];
+  return out;
+}
+
 /** Kalitning oxirgi 4 belgisi — ko'rsatish uchun */
 export function maskKey(key: string): string {
   if (key.length <= 6) return '••••';

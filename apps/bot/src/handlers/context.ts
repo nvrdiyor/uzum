@@ -266,10 +266,16 @@ export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Matnni qisqartirish (uzun mahsulot nomlari uchun) */
+/**
+ * Matnni qisqartirish (uzun mahsulot nomlari uchun).
+ *
+ * Kod NUQTALARI bo'yicha qirqiladi: emoji va ba'zi harflar ikkita UTF-16
+ * birlikdan iborat va oddiy `slice` ularni o'rtasidan kesib, «�» chiqarardi.
+ */
 export function cut(value: string, max = 42): string {
   const clean = value.trim();
-  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+  const chars = [...clean];
+  return chars.length <= max ? clean : `${chars.slice(0, max - 1).join('')}…`;
 }
 
 /** Sayt havolasi (`/pricing` → `https://.../pricing`) */
@@ -283,9 +289,17 @@ export function botLink(referralCode: string): string {
   return `https://t.me/${env.telegram.botUsername}?start=ref_${referralCode}`;
 }
 
-/** Telegram cheklovlariga mos xabar (4096 belgidan uzun bo'lmasin) */
+/**
+ * Telegram cheklovlariga mos xabar (4096 belgidan uzun bo'lmasin).
+ *
+ * Kod nuqtalari bo'yicha qirqiladi (emoji buzilmasin) va oxiridagi chala
+ * HTML mnemonikasi olib tashlanadi: `&amp` kabi tugallanmagan qoldiq butun
+ * xabarni Telegram uchun yaroqsiz qilardi.
+ */
 export function clampMessage(text: string): string {
-  return text.length <= 4000 ? text : `${text.slice(0, 3990)}…`;
+  const chars = [...text];
+  if (chars.length <= 4000) return text;
+  return `${chars.slice(0, 3990).join('').replace(/&[a-z]*$/i, '')}…`;
 }
 
 /** Xabarlarni ketma-ket yuborishda kichik pauza (Telegram rate-limit) */

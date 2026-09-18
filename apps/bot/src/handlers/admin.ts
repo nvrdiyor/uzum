@@ -3,12 +3,14 @@
  *   /stats                              — platforma statistikasi
  *   /broadcast <matn>                   — barcha foydalanuvchilarga xabar
  *   /grant <telegramId> <plan> <oy>     — qo'lda tarif berish
+ *
+ * Murojaatlar bilan ishlash (/tickets, /reply, /close) handlers/support.ts da.
  */
 import { PLAN_IDS, formatDate, getPlan, type PlanId } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { isAdmin } from '../lib/env.js';
 import { clampMessage, sleep, t, type BotContext } from './context.js';
-import { localDayStart } from './data.js';
+import { countOpenTickets, localDayStart } from './data.js';
 
 /** Ketma-ket yuborishda Telegram limitiga urilmaslik uchun pauza (ms) */
 const BROADCAST_DELAY_MS = 60;
@@ -28,7 +30,7 @@ export async function onStats(ctx: BotContext): Promise<void> {
   const now = new Date();
   const dayStart = localDayStart(now);
 
-  const [users, usersToday, companies, accounts, subs, queued, chats] = await Promise.all([
+  const [users, usersToday, companies, accounts, subs, queued, chats, tickets] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: dayStart } } }),
     prisma.company.count(),
@@ -39,6 +41,7 @@ export async function onStats(ctx: BotContext): Promise<void> {
     }),
     prisma.syncJob.count({ where: { status: { in: ['queued', 'running'] } } }),
     prisma.user.count({ where: { botChatId: { not: null } } }),
+    countOpenTickets(),
   ]);
 
   const trial = subs.filter((s) => s.plan === 'trial').length;
@@ -54,6 +57,7 @@ export async function onStats(ctx: BotContext): Promise<void> {
       paid: subs.length - trial,
       queued,
       chats,
+      tickets,
     }),
     { parse_mode: 'HTML' },
   );

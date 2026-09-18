@@ -15,6 +15,9 @@ import {
 } from './data.js';
 import { stocksText, todayReportText } from './reports.js';
 import { showSettings } from './settings.js';
+// Yordam kartochkasi endi support.ts da — u yerda ro'yxatdan o'tish bosqichini
+// ham hisobga oladi. Menyu tugmasi shu yerdan chaqiradi.
+import { showSupport } from './support.js';
 import { env } from '../lib/env.js';
 import type { TKey } from '../i18n.js';
 
@@ -185,10 +188,6 @@ export async function showId(ctx: BotContext): Promise<void> {
   await ctx.reply(t(ctx, 'id_text', { id }), { parse_mode: 'HTML' });
 }
 
-export async function showSupport(ctx: BotContext): Promise<void> {
-  await ctx.reply(t(ctx, 'support'), { parse_mode: 'HTML' });
-}
-
 export async function showMenu(ctx: BotContext): Promise<void> {
   await ctx.reply(t(ctx, 'menu_title'), { reply_markup: mainMenu(ctx.sp.lang) });
 }
@@ -215,6 +214,9 @@ export async function onMenuButton(ctx: BotContext, key: TKey): Promise<void> {
       return;
     case 'btn_settings':
       await showSettings(ctx);
+      return;
+    case 'btn_support':
+      await showSupport(ctx);
       return;
     default:
       await showMenu(ctx);

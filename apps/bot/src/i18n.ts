@@ -49,6 +49,7 @@ export interface Messages {
   btn_billing: string;
   btn_referral: string;
   btn_settings: string;
+  btn_support: string;
   btn_open_site: string;
   btn_back: string;
 
@@ -149,6 +150,46 @@ export interface Messages {
   admin_grant_nouser: string;
   admin_grant_nocompany: string;
   admin_grant_badplan: string;
+
+  // ── Qo'llab-quvvatlash ──────────────────────────────
+  support_onb_note: string;
+  support_offhours: string;
+  support_sent: string;
+  support_added: string;
+  support_failed: string;
+  support_throttled: string;
+  support_media_bad: string;
+  support_reply_head: string;
+  btn_support_more: string;
+  sup_card: string;
+  sup_card_media: string;
+  sup_reply_ok: string;
+  sup_reply_fail: string;
+  sup_which: string;
+  sup_sent_via_button: string;
+  sup_draft_expired: string;
+  sup_tickets_title: string;
+  sup_tickets_row: string;
+  sup_tickets_empty: string;
+  sup_reply_usage: string;
+  sup_close_usage: string;
+  sup_not_found: string;
+  sup_closed: string;
+  btn_sup_close: string;
+  btn_sup_cancel: string;
+  btn_faq_key: string;
+  btn_faq_sync: string;
+  btn_faq_billing: string;
+  btn_faq_ask: string;
+  faq_key: string;
+  faq_sync: string;
+  faq_billing: string;
+  faq_ask: string;
+  support_looks_like_key: string;
+  sup_reply_unsupported: string;
+  age_min: string;
+  age_hour: string;
+  age_day: string;
 }
 
 const uz: Messages = {
@@ -196,6 +237,7 @@ const uz: Messages = {
   btn_billing: '💳 Tarif',
   btn_referral: '👥 Referal',
   btn_settings: '⚙️ Sozlamalar',
+  btn_support: '🆘 Yordam',
   btn_open_site: '🌐 Saytga o‘tish',
   btn_back: '⬅️ Orqaga',
 
@@ -264,11 +306,18 @@ const uz: Messages = {
     + '🔑 Saytga kirish — bir martalik kod\n'
     + '💳 Tarif — tarif va muddat\n'
     + '👥 Referal — kod va bonuslar\n'
-    + '⚙️ Sozlamalar — til va bildirishnomalar\n\n'
-    + 'Buyruqlar: /start /help /id /support',
+    + '⚙️ Sozlamalar — til va bildirishnomalar\n'
+    + '🆘 Yordam — operatorga savol\n\n'
+    + 'Savolingizni shu chatga yozsangiz ham bo‘ladi — operatorga yetib boradi.\n\n'
+    + 'Buyruqlar: /start /help /id /support /cancel',
   id_text: 'Sizning Telegram ID: <code>{id}</code>',
   support:
-    '🆘 <b>Yordam</b>\n\nSavolingiz bo‘lsa shu yerga yozing — operatorlarimiz javob beradi.\nIsh vaqti: 9:00–20:00 (Toshkent).',
+    '🆘 <b>Yordam</b>\n\n'
+    + 'Savolingizni shu chatga yozing — operatorga yetib boradi va javob ham shu yerga keladi.\n'
+    + 'Skrinshot, video yoki hujjat yuborsangiz ham bo‘ladi.\n\n'
+    + 'Istalgan paytda: <code>/support savolingiz</code>\n\n'
+    + '🕘 Ish vaqti: 9:00–20:00 (Toshkent).\n'
+    + '🔒 Uzum API kalitini bu yerga yozmang — u «⚙️ Sozlamalar → 🔑 API kalitni yangilash» orqali kiritiladi.',
   need_start: 'Avval /start buyrug‘ini yuboring.',
   need_company: 'Avval ro‘yxatdan o‘ting: /start',
   need_api_key: 'Avval Uzum API kalitini ulang: /start',
@@ -293,7 +342,7 @@ const uz: Messages = {
 
   admin_only: 'Bu buyruq faqat administratorlar uchun.',
   admin_stats:
-    '📈 <b>Statistika</b>\n\nFoydalanuvchilar: <b>{users}</b> (bugun +{usersToday})\nKompaniyalar: <b>{companies}</b>\nUlangan kabinetlar: <b>{accounts}</b>\nFaol obunalar: <b>{active}</b>\nSinov: <b>{trial}</b> · Pullik: <b>{paid}</b>\nNavbatdagi sinxronlar: <b>{queued}</b>\nBotga ulangan chatlar: <b>{chats}</b>',
+    '📈 <b>Statistika</b>\n\nFoydalanuvchilar: <b>{users}</b> (bugun +{usersToday})\nKompaniyalar: <b>{companies}</b>\nUlangan kabinetlar: <b>{accounts}</b>\nFaol obunalar: <b>{active}</b>\nSinov: <b>{trial}</b> · Pullik: <b>{paid}</b>\nNavbatdagi sinxronlar: <b>{queued}</b>\nBotga ulangan chatlar: <b>{chats}</b>\n📥 Javobsiz murojaatlar: <b>{tickets}</b>',
   admin_broadcast_usage: 'Foydalanish: <code>/broadcast matn</code>',
   admin_broadcast_done: '📣 Yuborildi: {sent} ta, xato: {failed} ta.',
   admin_grant_usage: 'Foydalanish: <code>/grant &lt;telegramId&gt; &lt;plan&gt; &lt;oy&gt;</code>\nMasalan: <code>/grant 123456789 business 3</code>',
@@ -301,6 +350,83 @@ const uz: Messages = {
   admin_grant_nouser: 'Bunday Telegram ID topilmadi.',
   admin_grant_nocompany: 'Bu foydalanuvchida kompaniya yo‘q.',
   admin_grant_badplan: 'Tarif noto‘g‘ri. Mumkin: trial, standard, business, vip',
+
+  support_onb_note:
+    '\n\n⚠️ Hozir ro‘yxatdan o‘tish davom etmoqda, shuning uchun oddiy matn ro‘yxatga yoziladi.'
+    + ' Operatorga yozish uchun <code>/support savolingiz</code> shaklidan foydalaning.',
+  support_offhours: '\n🌙 Hozir ish vaqti emas — ertalab soat 9:00 dan keyin javob beramiz.',
+  support_sent:
+    '✅ Savolingiz operatorga yuborildi — murojaat <b>{code}</b>.\nJavob shu chatga keladi.{note}',
+  support_added:
+    '➕ <b>{code}</b> murojaatiga qo‘shildi. Operator javob berganda shu yerda xabar olasiz.{note}',
+  support_failed:
+    '⚠️ Hozir operatorga ulanib bo‘lmadi, lekin savolingiz saqlandi (<b>{code}</b>).'
+    + ' Operator ko‘rishi bilan javob beradi.',
+  support_throttled:
+    '⏳ Juda ko‘p xabar yubordingiz. Bu xabar murojaatingizga saqlandi, lekin darhol bildirishnoma yuborilmadi'
+    + ' — operator oldingi savollaringiz bilan birga ko‘radi.',
+  support_media_bad:
+    'Bu turdagi faylni qabul qila olmayman 🤔\nMatn, rasm, video, ovozli xabar yoki hujjat yuboring.',
+  support_reply_head: '💬 <b>Operator javobi</b> · {code}',
+  btn_support_more: '✍️ Yana savol',
+
+  sup_card:
+    '🆘 <b>{code}</b> · yangi murojaat\n'
+    + '👤 {name} {username} · <code>{tid}</code>\n'
+    + '🏢 {company} · {lang}\n\n'
+    + '{body}\n\n'
+    + '↩️ Javob berish uchun shu xabarga reply qiling.',
+  sup_card_media:
+    '🆘 <b>{code}</b> · {name} {username} · <code>{tid}</code>\n'
+    + '↩️ Javob berish uchun shu xabarga reply qiling.\n\n{body}',
+  sup_reply_ok: '✅ {code} ({name}) ga javob yuborildi.',
+  sup_reply_fail: '⚠️ {code}: foydalanuvchiga yuborib bo‘lmadi — botni bloklagan bo‘lishi mumkin.',
+  sup_which: '❓ Bu matn kimga? Reply qilmagansiz — murojaatni tanlang:',
+  sup_sent_via_button: '✅ {code} ({name}) ga yuborildi.',
+  sup_draft_expired: '⚠️ Matnni topa olmadim. Shunday yuboring: /reply {code} matn',
+  sup_tickets_title: '📥 <b>Ochiq murojaatlar: {count}</b>',
+  sup_tickets_row: '<b>{code}</b> · {name} · {age}\n{subject}',
+  sup_tickets_empty: '📥 Ochiq murojaat yo‘q.',
+  sup_reply_usage: 'Foydalanish: <code>/reply KOD matn</code>\nRo‘yxat: /tickets',
+  sup_close_usage: 'Foydalanish: <code>/close KOD</code>',
+  sup_not_found: 'Murojaat topilmadi. /tickets bilan ro‘yxatni ko‘ring.',
+  sup_closed: '✅ {code} yopildi.',
+  btn_sup_close: '✅ Yopish',
+  btn_sup_cancel: '❌ Bekor',
+
+  btn_faq_key: '🔑 API kalit qayerdan olinadi?',
+  btn_faq_sync: '🔄 Ma’lumot qachon yangilanadi?',
+  btn_faq_billing: '💳 Tarif va to‘lov',
+  btn_faq_ask: '✍️ Savolimni yozmoqchiman',
+  faq_key:
+    '🔑 <b>API kalit qayerdan olinadi</b>\n\n'
+    + '1. <a href="https://seller.uzum.uz">seller.uzum.uz</a> ga kiring\n'
+    + '2. «Mening profilim» → «API kalitlar» bo‘limini oching\n'
+    + '3. Yangi kalit yarating va nusxa oling\n'
+    + '4. Botda «⚙️ Sozlamalar → 🔑 API kalitni yangilash» ni bosing va kalitni yuboring\n\n'
+    + 'Kalit shifrlangan holda saqlanadi va faqat sizning ma’lumotingizni o‘qish uchun ishlatiladi.',
+  faq_sync:
+    '🔄 <b>Ma’lumot qachon yangilanadi</b>\n\n'
+    + 'Har 30 daqiqada avtomatik. Birinchi ulanishda to‘liq tarix yig‘iladi — bu 30 daqiqagacha vaqt oladi.\n\n'
+    + 'Oxirgi yangilanish vaqti saytdagi boshqaruv panelida ko‘rinadi. Ma’lumot eskirgandek tuyulsa, avval sahifani yangilang.',
+  faq_billing:
+    '💳 <b>Tarif va to‘lov</b>\n\n'
+    + 'Joriy tarifingizni «💳 Tarif» tugmasi ko‘rsatadi.\n'
+    + 'Tariflarni solishtirish va to‘lov: {link}\n\n'
+    + 'To‘lovdan keyin tarif bir necha daqiqada faollashadi. Faollashmasa shu yerga yozing.',
+  faq_ask:
+    '✍️ Shunchaki savolingizni shu chatga yozing — u operatorga yetib boradi.\n'
+    + 'Skrinshot yuborsangiz muammoni tezroq tushunamiz.',
+  support_looks_like_key:
+    '🔒 Bu <b>API kalitga</b> o‘xshaydi — uni operatorga yubormadim.\n\n'
+    + 'Kalit faqat «⚙️ Sozlamalar → 🔑 API kalitni yangilash» orqali kiritiladi: u yerda shifrlanadi.\n'
+    + 'Agar bu kalit bo‘lsa, uni Uzum kabinetida bekor qilib, yangisini oling.\n\n'
+    + 'Savolingiz bo‘lsa oddiy so‘zlar bilan yozing.',
+  sup_reply_unsupported:
+    '⚠️ Bu turdagi javobni yubora olmadim. Matn, rasm yoki hujjat bilan javob bering.',
+  age_min: '{n} daqiqa oldin',
+  age_hour: '{n} soat oldin',
+  age_day: '{n} kun oldin',
 };
 
 const ru: Messages = {
@@ -348,6 +474,7 @@ const ru: Messages = {
   btn_billing: '💳 Тариф',
   btn_referral: '👥 Рефералы',
   btn_settings: '⚙️ Настройки',
+  btn_support: '🆘 Поддержка',
   btn_open_site: '🌐 Открыть сайт',
   btn_back: '⬅️ Назад',
 
@@ -416,11 +543,18 @@ const ru: Messages = {
     + '🔑 Вход на сайт — одноразовый код\n'
     + '💳 Тариф — тариф и срок\n'
     + '👥 Рефералы — код и бонусы\n'
-    + '⚙️ Настройки — язык и уведомления\n\n'
-    + 'Команды: /start /help /id /support',
+    + '⚙️ Настройки — язык и уведомления\n'
+    + '🆘 Поддержка — вопрос оператору\n\n'
+    + 'Можно просто написать вопрос в этот чат — он дойдёт до оператора.\n\n'
+    + 'Команды: /start /help /id /support /cancel',
   id_text: 'Ваш Telegram ID: <code>{id}</code>',
   support:
-    '🆘 <b>Поддержка</b>\n\nНапишите ваш вопрос сюда — операторы ответят.\nВремя работы: 9:00–20:00 (Ташкент).',
+    '🆘 <b>Поддержка</b>\n\n'
+    + 'Напишите вопрос прямо в этот чат — он дойдёт до оператора, и ответ придёт сюда же.\n'
+    + 'Можно приложить скриншот, видео или документ.\n\n'
+    + 'В любой момент: <code>/support ваш вопрос</code>\n\n'
+    + '🕘 Время работы: 9:00–20:00 (Ташкент).\n'
+    + '🔒 Не отправляйте сюда API-ключ Uzum — он вводится через «⚙️ Настройки → 🔑 Обновить API-ключ».',
   need_start: 'Сначала отправьте команду /start.',
   need_company: 'Сначала пройдите регистрацию: /start',
   need_api_key: 'Сначала подключите API-ключ Uzum: /start',
@@ -443,7 +577,7 @@ const ru: Messages = {
 
   admin_only: 'Команда доступна только администраторам.',
   admin_stats:
-    '📈 <b>Статистика</b>\n\nПользователи: <b>{users}</b> (сегодня +{usersToday})\nКомпании: <b>{companies}</b>\nПодключено кабинетов: <b>{accounts}</b>\nАктивные подписки: <b>{active}</b>\nПробные: <b>{trial}</b> · Платные: <b>{paid}</b>\nСинхронизаций в очереди: <b>{queued}</b>\nЧатов с ботом: <b>{chats}</b>',
+    '📈 <b>Статистика</b>\n\nПользователи: <b>{users}</b> (сегодня +{usersToday})\nКомпании: <b>{companies}</b>\nПодключено кабинетов: <b>{accounts}</b>\nАктивные подписки: <b>{active}</b>\nПробные: <b>{trial}</b> · Платные: <b>{paid}</b>\nСинхронизаций в очереди: <b>{queued}</b>\nЧатов с ботом: <b>{chats}</b>\n📥 Обращения без ответа: <b>{tickets}</b>',
   admin_broadcast_usage: 'Использование: <code>/broadcast текст</code>',
   admin_broadcast_done: '📣 Отправлено: {sent}, ошибок: {failed}.',
   admin_grant_usage: 'Использование: <code>/grant &lt;telegramId&gt; &lt;plan&gt; &lt;месяцы&gt;</code>\nНапример: <code>/grant 123456789 business 3</code>',
@@ -451,6 +585,83 @@ const ru: Messages = {
   admin_grant_nouser: 'Пользователь с таким Telegram ID не найден.',
   admin_grant_nocompany: 'У пользователя нет компании.',
   admin_grant_badplan: 'Неверный тариф. Доступно: trial, standard, business, vip',
+
+  support_onb_note:
+    '\n\n⚠️ Сейчас идёт регистрация, поэтому обычный текст уйдёт в неё.'
+    + ' Чтобы написать оператору, используйте <code>/support ваш вопрос</code>.',
+  support_offhours: '\n🌙 Сейчас нерабочее время — ответим утром после 9:00.',
+  support_sent:
+    '✅ Ваш вопрос отправлен оператору — обращение <b>{code}</b>.\nОтвет придёт в этот чат.{note}',
+  support_added:
+    '➕ Добавлено к обращению <b>{code}</b>. Мы напишем сюда, когда оператор ответит.{note}',
+  support_failed:
+    '⚠️ Сейчас не удалось связаться с оператором, но ваш вопрос сохранён (<b>{code}</b>).'
+    + ' Оператор ответит, как только увидит его.',
+  support_throttled:
+    '⏳ Слишком много сообщений. Это сообщение сохранено в обращении, но уведомление не отправлено'
+    + ' — оператор увидит его вместе с прежними вопросами.',
+  support_media_bad:
+    'Не могу принять файл такого типа 🤔\nОтправьте текст, фото, видео, голосовое сообщение или документ.',
+  support_reply_head: '💬 <b>Ответ оператора</b> · {code}',
+  btn_support_more: '✍️ Ещё вопрос',
+
+  sup_card:
+    '🆘 <b>{code}</b> · новое обращение\n'
+    + '👤 {name} {username} · <code>{tid}</code>\n'
+    + '🏢 {company} · {lang}\n\n'
+    + '{body}\n\n'
+    + '↩️ Чтобы ответить, ответьте на это сообщение.',
+  sup_card_media:
+    '🆘 <b>{code}</b> · {name} {username} · <code>{tid}</code>\n'
+    + '↩️ Чтобы ответить, ответьте на это сообщение.\n\n{body}',
+  sup_reply_ok: '✅ Ответ отправлен по {code} ({name}).',
+  sup_reply_fail: '⚠️ {code}: не удалось отправить пользователю — возможно, он заблокировал бота.',
+  sup_which: '❓ Кому этот текст? Вы не ответили на сообщение — выберите обращение:',
+  sup_sent_via_button: '✅ Отправлено по {code} ({name}).',
+  sup_draft_expired: '⚠️ Не удалось найти текст. Отправьте так: /reply {code} текст',
+  sup_tickets_title: '📥 <b>Открытые обращения: {count}</b>',
+  sup_tickets_row: '<b>{code}</b> · {name} · {age}\n{subject}',
+  sup_tickets_empty: '📥 Открытых обращений нет.',
+  sup_reply_usage: 'Использование: <code>/reply КОД текст</code>\nСписок: /tickets',
+  sup_close_usage: 'Использование: <code>/close КОД</code>',
+  sup_not_found: 'Обращение не найдено. Посмотрите список через /tickets.',
+  sup_closed: '✅ {code} закрыто.',
+  btn_sup_close: '✅ Закрыть',
+  btn_sup_cancel: '❌ Отмена',
+
+  btn_faq_key: '🔑 Где взять API-ключ?',
+  btn_faq_sync: '🔄 Когда обновляются данные?',
+  btn_faq_billing: '💳 Тариф и оплата',
+  btn_faq_ask: '✍️ Хочу задать вопрос',
+  faq_key:
+    '🔑 <b>Где взять API-ключ</b>\n\n'
+    + '1. Зайдите на <a href="https://seller.uzum.uz">seller.uzum.uz</a>\n'
+    + '2. Откройте «Мой профиль» → «API-ключи»\n'
+    + '3. Создайте новый ключ и скопируйте его\n'
+    + '4. В боте нажмите «⚙️ Настройки → 🔑 Обновить API-ключ» и отправьте ключ\n\n'
+    + 'Ключ хранится в зашифрованном виде и используется только для чтения ваших данных.',
+  faq_sync:
+    '🔄 <b>Когда обновляются данные</b>\n\n'
+    + 'Автоматически каждые 30 минут. При первом подключении собирается вся история — это занимает до 30 минут.\n\n'
+    + 'Время последнего обновления видно в панели на сайте. Если данные кажутся устаревшими — сначала обновите страницу.',
+  faq_billing:
+    '💳 <b>Тариф и оплата</b>\n\n'
+    + 'Текущий тариф показывает кнопка «💳 Тариф».\n'
+    + 'Сравнение тарифов и оплата: {link}\n\n'
+    + 'После оплаты тариф активируется за несколько минут. Если этого не произошло — напишите сюда.',
+  faq_ask:
+    '✍️ Просто напишите вопрос в этот чат — он дойдёт до оператора.\n'
+    + 'Приложите скриншот, и мы быстрее поймём проблему.',
+  support_looks_like_key:
+    '🔒 Это похоже на <b>API-ключ</b> — я не отправил его оператору.\n\n'
+    + 'Ключ вводится только через «⚙️ Настройки → 🔑 Обновить API-ключ»: там он шифруется.\n'
+    + 'Если это действительно ключ — отзовите его в кабинете Uzum и создайте новый.\n\n'
+    + 'Вопрос напишите обычными словами.',
+  sup_reply_unsupported:
+    '⚠️ Такой тип ответа отправить не удалось. Ответьте текстом, фото или документом.',
+  age_min: '{n} мин. назад',
+  age_hour: '{n} ч. назад',
+  age_day: '{n} дн. назад',
 };
 
 const DICT: Record<BotLang, Messages> = { uz, ru };
@@ -476,6 +687,7 @@ export function matchButton(text: string): TKey | null {
     'btn_billing',
     'btn_referral',
     'btn_settings',
+    'btn_support',
   ];
   const clean = text.trim();
   for (const key of keys) {

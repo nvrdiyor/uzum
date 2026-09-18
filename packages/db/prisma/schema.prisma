@@ -43,6 +43,7 @@ model User {
   notifications   Notification[]
   auditLogs       AuditLog[]
   referralBonuses ReferralBonus[] @relation("BonusReferrer")
+  supportTickets  SupportTicket[]
 
   @@index([referredById])
   @@index([botChatId])
@@ -597,6 +598,62 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+}
+
+// ─────────────────────────── Qo'llab-quvvatlash ───────────────────────────
+
+/// Sotuvchining murojaati.
+///
+/// `code` — qisqa belgi (#S-7K2M): operator ham, sotuvchi ham shu bilan tilga oladi.
+/// Bitta sotuvchida bir vaqtda bitta ochiq ip: 24 soat ichidagi yangi savol
+/// yangi murojaat ochmaydi, o'sha ipga qo'shiladi — aks holda bitta muammo
+/// uchun operatorda o'nta alohida kartochka paydo bo'lardi.
+model SupportTicket {
+  id            String    @id @default(cuid())
+  userId        String
+  code          String    @unique
+  status        String    @default("open") // open | answered | closed
+  subject       String    @default("") // birinchi xabarning qisqartmasi — /tickets ro'yxati uchun
+  lang          String    @default("uz")
+  lastMessageAt DateTime  @default(now())
+  answeredAt    DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@index([status, lastMessageAt])
+  @@index([userId, createdAt])
+}
+
+/// Murojaatdagi bitta xabar va AYNI PAYTDA yo'naltirish jadvali.
+///
+/// Operator qaysi xabarga reply qilsa, (adminChatId, adminMessageId) bo'yicha
+/// murojaat topiladi. Bu bazada saqlanadi, xotirada emas: bot har deployda
+/// qayta ishga tushadi va xotiradagi jadval yo'qolardi — operator javobi esa
+/// ertasi kuni ham to'g'ri odamga borishi kerak.
+///
+/// `forwardMessage` ataylab ishlatilmaydi: sotuvchi maxfiylikni yopgan bo'lsa
+/// `forward_origin` ichida uning id'si bo'lmaydi va javobni qaytarib bo'lmaydi.
+model SupportMessage {
+  id             String   @id @default(cuid())
+  ticketId       String
+  direction      String   @default("in") // in (sotuvchi → operator) | out (operator → sotuvchi)
+  kind           String   @default("text") // text | photo | document | video | voice | audio
+  body           String   @default("")
+  authorId       String? // operator telegramId (direction = out bo'lsa)
+  userChatId     String?
+  userMessageId  Int?
+  adminChatId    String?
+  adminMessageId Int?
+  createdAt      DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([adminChatId, adminMessageId])
 }
 
 model UnitScenario {
