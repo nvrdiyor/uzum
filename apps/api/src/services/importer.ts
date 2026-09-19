@@ -700,16 +700,42 @@ export async function upsertOrders(
         const { it, qty, sellPrice, revenue } = line;
         const ref = refs.get(String(it.skuId)) ?? (it.skuCode ? refs.get(it.skuCode) : undefined);
 
-        const commission =
+        const logistics =
+          it.logistics !== undefined
+            ? round(num(it.logistics))
+            : (shareOf(order.logistics, revenue, orderRevenue) ?? round(DEFAULTS.logisticsPerUnit * qty));
+
+        /** Uzum bergan "yechib olish uchun" summasi (bo'lmasa — null) */
+        const uzumPayout = it.payout !== undefined && num(it.payout) > 0 ? round(num(it.payout)) : null;
+
+        const reportedCommission =
           it.commission !== undefined
             ? round(num(it.commission))
             : (shareOf(order.commission, revenue, orderRevenue) ??
               round((revenue * DEFAULTS.commissionPct) / 100));
 
-        const logistics =
-          it.logistics !== undefined
-            ? round(num(it.logistics))
-            : (shareOf(order.logistics, revenue, orderRevenue) ?? round(DEFAULTS.logisticsPerUnit * qty));
+        /*
+         * Uchta maydon bitta tenglama bilan bog'langan:
+         *     payout = tushum − komissiya − logistika
+         *
+         * Uzum ularni ALOHIDA yuboradi va ba'zan ular o'zaro mos kelmaydi.
+         * Aniq holat: aksiyada sotilgan bitta pozitsiyada komissiya 10 500
+         * kelgan, holbuki payout 26 250 edi va u komissiya 2 100 ekanini
+         * ko'rsatib turardi (33 600 − 5 250 − 26 250). Natijada saytdagi
+         * umumiy balans kabinetdagidan AYNAN 8 400 so'm past chiqdi.
+         *
+         * `payout` — kabinetdagi "Yechib olish uchun" ustuni bilan jonli
+         * buyurtmalarda tekshirilgan qiymat, ya'ni u ishonchliroq. Shuning
+         * uchun ziddiyat bo'lganda komissiya QOLDIQ sifatida qayta
+         * hisoblanadi. Bu barcha to'g'ri qatorlarda aynan o'sha qiymatni
+         * qaytaradi (tekshirilgan) va faqat ziddiyatlisini tuzatadi.
+         *
+         * Qoldiq mantiqsiz chiqsa (manfiy yoki tushumdan katta) — Uzum
+         * bergan komissiya qoldiriladi: taxmin bilan yomonlashtirmaymiz.
+         */
+        const residual = uzumPayout === null ? null : round(revenue - logistics - uzumPayout);
+        const commission =
+          residual !== null && residual >= 0 && residual <= revenue ? residual : reportedCommission;
 
         // Tannarx: avval bizdagi (qo'lda kiritilgan) qiymat, bo'lmasa Uzum bergani
         const purchasePrice = round(ref?.purchasePrice || num(it.purchasePrice) || 0);
@@ -719,12 +745,7 @@ export async function upsertOrders(
 
         const otherCost = round((ref?.extraCost ?? 0) * qty);
         const cogs = round(purchasePrice * qty);
-        // Uzum "yechib olish uchun" summasini bersa — o'shani ishlatamiz (aniqroq),
-        // aks holda tushumdan komissiya va logistikani ayiramiz
-        const payout =
-          it.payout !== undefined && num(it.payout) > 0
-            ? round(num(it.payout))
-            : round(revenue - commission - logistics);
+        const payout = uzumPayout ?? round(revenue - commission - logistics);
         const tax = round((revenue * taxRate) / 100);
         const netProfit = round(payout - cogs - otherCost - tax);
 
