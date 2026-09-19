@@ -28,6 +28,17 @@ const SITE = 'https://savdoiq.uz';
 /** Sahifa mazmuni o'zgarganda qo'lda yangilanadi — yig'ish vaqtidan OLINMAYDI */
 const LASTMOD = '2026-09-19';
 
+/**
+ * IndexNow kaliti — Bing va Yandex uchun.
+ *
+ * Ular yangi sahifa haqida XABAR QILINISHINI qo'llab-quvvatlaydi: oddiy
+ * kutishdan ko'ra ancha tez indekslanadi. Kalit fayli
+ * apps/web/public/<kalit>.txt da turadi; o'zgartirilsa ikkalasi ham
+ * birga o'zgarishi kerak. (Google IndexNow ni qo'llab-quvvatlamaydi —
+ * unga Search Console orqali topshiriladi.)
+ */
+export const INDEXNOW_KEY = '6b5356bf210d4a0001ccb935d0c8480f';
+
 /*
  * Framer Motion boshlang'ich holatni ichki uslub sifatida chizadi.
  * `opacity: 0` bilan kelgan matn robot uchun ko'rinmaydigan matn bo'lib
