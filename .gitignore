@@ -16,3 +16,4 @@ coverage/
 
 # Agentlar yaratgan vaqtinchalik sinov papkalari
 .tmp-*/
+apps/web/.prerender/

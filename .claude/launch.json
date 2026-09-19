@@ -37,7 +37,7 @@
         "-w",
         "@savdoiq/web"
       ],
-      "port": 5174
+      "port": 5173
     }
   ]
 }

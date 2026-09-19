@@ -41,7 +41,7 @@ log "Baza sxemasi tekshirilmoqda"
 npx prisma db push --schema packages/db/prisma/schema.prisma
 
 log "Yig'ilmoqda"
-npm run build 2>&1 | tail -3
+npm run build 2>&1 | tail -30
 
 log "Jarayonlar qayta ishga tushirilmoqda"
 pm2 restart savdoiq-api savdoiq-bot >/dev/null
