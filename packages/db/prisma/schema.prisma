@@ -340,6 +340,15 @@ model Sku {
   /** Uzum omborida yo'qolgan dona */
   qtyMissing    Int      @default(0)
 
+  /**
+   * MXIK — Mahsulot va Xizmatlar Identifikatsiya Kodi.
+   *
+   * O'zbekistonda har bir tovar uchun majburiy: kod noto'g'ri bo'lsa soliq
+   * idorasi tovarni sotishga yo'l qo'ymaydi. Uzum katalogi uni `ikpu`
+   * maydonida qaytaradi — ilgari biz uni o'qimasdan tashlab yuborardik.
+   */
+  ikpu          String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -654,6 +663,26 @@ model SupportMessage {
 
   @@index([ticketId, createdAt])
   @@index([adminChatId, adminMessageId])
+}
+
+/**
+ * Soliq qo'mitasi registridan olingan MXIK yozuvi.
+ *
+ * tasnif.soliq.uz ochiq, kalitsiz API beradi, lekin registrda 441 mingdan
+ * ortiq kod bor va to'liq nusxa olish mumkin emas (bo'sh qidiruv nol
+ * qaytaradi, katta sahifa 500 beradi). Shuning uchun faqat qidirilgan
+ * kodlar keshlanadi — takroriy so'rov tashqi xizmatga chiqmaydi.
+ */
+model MxikCache {
+  code        String   @id
+  name        String
+  fullName    String   @default("")
+  groupName   String   @default("")
+  className   String   @default("")
+  unitsName   String   @default("")
+  fetchedAt   DateTime @default(now())
+
+  @@index([fetchedAt])
 }
 
 model UnitScenario {

@@ -74,6 +74,8 @@ export interface UzumSku {
   commissionPct?: number;
   /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (paidStoragePriceItem) */
   storagePerItem?: number;
+  /** MXIK (IKPU) — soliq klassifikatori kodi, katalogda `ikpu` */
+  ikpu?: string;
   /** Aksiya taklif narxi (mechanicPrice) — qo'shilmagan bo'lsa amaldagi narx EMAS */
   promoPrice?: number;
   /** Sotuvchi aksiyaga qo'shilganmi (inOffer) */

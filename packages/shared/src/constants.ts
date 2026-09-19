@@ -134,10 +134,46 @@ export const EXPENSE_CATEGORIES: {
   },
 ];
 
+/**
+ * Uzum logistikasi: bazaviy narx + har qo'shimcha litr uchun ustama.
+ *
+ * Bu raqamlar TAXMIN emas — jonli buyurtmalardan o'lchangan: 7015 ta qatorda
+ * eng kichik to'lov aynan 5 250 so'm, dona boshiga o'rtacha 14 975 so'm,
+ * eng ko'p uchraydigan qiymatlar 12 200–14 100 oralig'ida. Ilgari bu yerda
+ * yagona 12 000 so'm turardi va u haqiqatdan ~20% past edi, ya'ni
+ * kalkulyator foydani oshirib ko'rsatardi.
+ */
+export const LOGISTICS_TARIFF = {
+  /** 1 litrgacha bo'lgan tovar uchun bazaviy to'lov */
+  base: 5_250,
+  /** Har qo'shimcha to'liq litr uchun */
+  perExtraLiter: 250,
+  /**
+   * Hajmi ma'lum bo'lmagan SKU uchun zaxira qiymat — o'lchangan mediana.
+   * Nol emas: nol logistika foydani yolg'on ko'rsatadi.
+   */
+  fallback: 13_350,
+} as const;
+
+/** Hajm bo'yicha logistika to'lovi (litr). Hajm noma'lum bo'lsa — zaxira qiymat. */
+export function logisticsForVolume(volumeL: number | null | undefined): number {
+  if (!volumeL || !Number.isFinite(volumeL) || volumeL <= 0) return LOGISTICS_TARIFF.fallback;
+  const extra = Math.max(0, Math.ceil(volumeL) - 1);
+  return LOGISTICS_TARIFF.base + extra * LOGISTICS_TARIFF.perExtraLiter;
+}
+
 /** Uzum bo'yicha standart taxminlar (real API bo'lmaganda hisob uchun) */
 export const DEFAULTS = {
+  /** Jonli buyurtmalarda o'lchangan: 11,76% */
   commissionPct: 12,
-  logisticsPerUnit: 12_000,
+  /** `logisticsForVolume` ishlatib bo'lmaganda — o'lchangan mediana */
+  logisticsPerUnit: LOGISTICS_TARIFF.fallback,
+  /**
+   * DIQQAT: bu qiymat O'LCHANMAGAN. Bazadagi barcha saqlash to'lovlari
+   * demo ma'lumot bo'lib chiqdi (aynan shu konstantadan generatsiya
+   * qilingan), ya'ni uni tekshirib bo'lmadi. Uzum kabinetidagi haqiqiy
+   * tarif bilan solishtirilishi kerak.
+   */
   storagePerLiterPerDay: 120,
   buyoutPct: 92,
   taxPct: 1,

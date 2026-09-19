@@ -24,6 +24,7 @@ import reportsRoutes from './routes/reports.js';
 import financeRoutes from './routes/finance.js';
 import unitRoutes from './routes/unit.js';
 import marketingRoutes from './routes/marketing.js';
+import mxikRoutes from './routes/mxik.js';
 import payoutRoutes from './routes/payout.js';
 import warehouseRoutes from './routes/warehouse.js';
 import reviewsRoutes from './routes/reviews.js';
@@ -88,6 +89,7 @@ export function createApp() {
   api.use('/unit', unitRoutes);
   api.use('/marketing', marketingRoutes);
   api.use('/payout', payoutRoutes);
+  api.use('/mxik', mxikRoutes);
   api.use('/warehouse', warehouseRoutes);
   api.use('/reviews', reviewsRoutes);
   api.use('/billing', billingRoutes);

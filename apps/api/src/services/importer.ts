@@ -367,6 +367,9 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         ...(num(sku.volumeL) > 0 ? { volumeL: num(sku.volumeL) } : {}),
         ...(num(sku.commissionPct) > 0 ? { commissionPct: num(sku.commissionPct) } : {}),
         ...(num(sku.storagePerItem) > 0 ? { storagePerItem: num(sku.storagePerItem) } : {}),
+        // MXIK: sotuvchi uni saytda ham tahrirlay oladi, shuning uchun
+        // Uzum bo'sh yuborsa mavjud qiymat o'chib ketmasligi kerak
+        ...(text(sku.ikpu) ? { ikpu: text(sku.ikpu) } : {}),
         // Uzumda arxivlangan SKU saytda ham arxiv bo'lib ko'rinishi kerak
         archived: Boolean(sku.archived),
 

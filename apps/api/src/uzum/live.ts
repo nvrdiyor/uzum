@@ -179,6 +179,8 @@ const KEYS = {
   skuCode: ['skuFullTitle', 'sellerItemCode', 'article', 'sku', 'skuCode', 'vendorCode', 'skuTitle', 'barcode'],
   skuTitle: ['skuTitle', 'title', 'name', 'productTitle'],
   barcode: ['barcode', 'barCode', 'ean'],
+  // MXIK/IKPU turli javoblarda turlicha nomlanadi
+  ikpu: ['ikpu', 'ikpuCode', 'mxik', 'mxikCode', 'tnved'],
   price: ['price', 'sellPrice', 'sellerPrice', 'currentPrice'],
   oldPrice: ['fullPrice', 'oldPrice', 'basePrice', 'marketPrice'],
   /** Aksiya (chegirma) narxi — katalogdagi `specialOffer` ichida */
@@ -495,6 +497,8 @@ export class LiveUzumClient implements UzumClient {
       purchasePrice: asMoney(firstOf(r, KEYS.purchasePrice)) || undefined,
       commissionPct: asNumber(firstOf(r, KEYS.commissionPct)) || undefined,
       storagePerItem: asMoney(r.paidStoragePriceItem) || undefined,
+      // Katalog bu kodni beradi, biz esa uni shu paytgacha tashlab yuborardik
+      ikpu: asString(firstOf(r, KEYS.ikpu)) || undefined,
       archived: asBool(r.archived),
 
       /*
