@@ -397,7 +397,31 @@ export default function Dashboard() {
   /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga */
   const topByProfit = useMemo(() => {
     const rows = [...(data?.topProducts ?? [])].filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
-    const head = rows.slice(0, 8).map((r) => ({ name: r.title.length > 34 ? `${r.title.slice(0, 33)}…` : r.title, profit: Math.round(r.profit) }));
+    /*
+     * Bir mahsulotning variantlari deyarli bir xil nom bilan keladi
+     * ("Robot changyutgich Mini H60" va "… Mini H90"). To'liq nomlar
+     * FARQ qiladi, lekin o'q yorlig'i qirqilgandan keyin ikkita ustun
+     * aynan bir xil ko'rinadi.
+     *
+     * Shuning uchun taqqoslash KO'RINADIGAN shakl bo'yicha bo'ladi, va
+     * ajratuvchi belgi yorliq BOSHIGA qo'yiladi — oxiriga qo'yilgani
+     * qirqilib ketardi. Ajratgich sifatida SKU'ning oxirgi bo'lagi
+     * ishlatiladi: aynan u variantni bildiradi (masalan «ЧЕРН»).
+     */
+    const shown = (text: string) => (text.length > 26 ? text.slice(0, 25) : text);
+    const variant = (sku: string) => sku.split('-').pop() ?? sku;
+
+    const collide = new Map<string, number>();
+    for (const r of rows.slice(0, 8)) collide.set(shown(r.title), (collide.get(shown(r.title)) ?? 0) + 1);
+
+    const head = rows.slice(0, 8).map((r) => {
+      const dup = (collide.get(shown(r.title)) ?? 0) > 1;
+      const label = dup ? `${variant(r.sku)} · ${r.title}` : r.title;
+      return {
+        name: label.length > 32 ? `${label.slice(0, 31)}…` : label,
+        profit: Math.round(r.profit),
+      };
+    });
     const tail = rows.slice(8).reduce((sum, r) => sum + r.profit, 0);
     return tail > 0 ? [...head, { name: t('ptop.other'), profit: Math.round(tail) }] : head;
     // eslint-disable-next-line react-hooks/exhaustive-deps

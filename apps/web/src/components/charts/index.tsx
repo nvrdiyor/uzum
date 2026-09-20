@@ -202,11 +202,11 @@ export function BarsChart({
                 type="category"
                 dataKey={xKey}
                 {...axis}
-                width={168}
+                width={196}
                 interval={0}
                 tickFormatter={(v: string) => {
                   const text = String(v);
-                  return text.length > 26 ? `${text.slice(0, 25)}…` : text;
+                  return text.length > 32 ? `${text.slice(0, 31)}…` : text;
                 }}
               />
             </>
@@ -286,12 +286,23 @@ export function ScatterMap({
             {...axis}
             tickFormatter={(v: number) => f.compact(Number(v))}
           />
+          {/*
+            O'q 0–100% ga cho'zilmaydi, MA'LUMOTGA moslashadi.
+            Marjalar odatda tor oraliqda (masalan 50–65%) bo'ladi va
+            0–100 shkalada barcha nuqtalar bitta sathda turib qoladi —
+            xarita tekis chiziqqa aylanadi va hech narsani taqqoslab
+            bo'lmaydi. Chetlaridan 10% zaxira qoldiriladi.
+          */}
           <YAxis
             type="number"
             dataKey="y"
             name={yLabel}
             {...axis}
             width={48}
+            domain={([min, max]: [number, number]) => {
+              const pad = Math.max(2, (max - min) * 0.18);
+              return [Math.floor(min - pad), Math.ceil(max + pad)];
+            }}
             tickFormatter={(v: number) => `${Math.round(Number(v))}%`}
           />
           {/* Nuqta kattaligi — sotilgan dona; afsona chiqarmaymiz, u shovqin */}
