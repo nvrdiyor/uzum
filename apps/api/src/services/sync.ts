@@ -837,6 +837,36 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
     type === 'full' ? Math.min(plan.limits.historyDays, MAX_HISTORY_DAYS) : INCREMENTAL_DAYS;
 
   const to = new Date();
+  let from = addDays(to, -historyDays);
+
+  /*
+   * OYNANI OCHIQ BUYURTMALARGACHA KENGAYTIRAMIZ.
+   *
+   * Oraliq sinxron oxirgi 14 kunni qayta o'qiydi va oyna BUYURTMA SANASIGA
+   * bog'langan. Bekor qilish yoki qaytarish esa ancha keyin sodir bo'ladi:
+   * 4-sentabrda berilgan buyurtma 20-sentabrda bekor qilinsa, uning sanasi
+   * allaqachon oynadan tashqarida qoladi va biz bekor qilinganini HECH QACHON
+   * bilmaymiz — u bazada abadiy "tirik sotuv" bo'lib turaveradi, tushumni va
+   * umumiy balansni oshirib ko'rsatadi. Aynan shu sabab kabinetdagi balans
+   * bilan saytdagisi farq qilardi.
+   *
+   * Yechim: yakunlanmagan buyurtmalarning eng eskisigacha orqaga qaraymiz.
+   * Yakunlangan (delivered/canceled/returned) buyurtmalar boshqa o'zgarmaydi,
+   * shuning uchun ular oynani kengaytirmaydi va so'rov hajmi cheklangan
+   * qoladi. Tarif tarixi chegarasidan orqaga o'tmaymiz.
+   */
+  const oldestOpen = await prisma.order.findFirst({
+    where: {
+      store: { companyId: company.id },
+      status: { notIn: ['delivered', 'canceled', 'returned'] },
+    },
+    orderBy: { orderedAt: 'asc' },
+    select: { orderedAt: true },
+  });
+  const historyFloor = addDays(to, -Math.min(plan.limits.historyDays, MAX_HISTORY_DAYS));
+  if (oldestOpen && oldestOpen.orderedAt < from) {
+    from = oldestOpen.orderedAt < historyFloor ? historyFloor : oldestOpen.orderedAt;
+  }
 
   return {
     jobId: job.id,
@@ -846,7 +876,7 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
     planId,
     syncIntervalMinutes: plan.limits.syncIntervalMinutes,
     taxRate: company.taxRate,
-    from: addDays(to, -historyDays),
+    from,
     to,
     client: null,
     stores: [],

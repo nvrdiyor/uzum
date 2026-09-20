@@ -726,7 +726,9 @@ export class LiveUzumClient implements UzumClient {
               id,
             skuCode: asString(firstOf(i, KEYS.skuCode)) || undefined,
             title: asString(firstOf(i, KEYS.skuTitle)) || undefined,
-            qty: Math.max(1, Math.round(asNumber(firstOf(i, KEYS.qty), 1))),
+            // `Math.max(1, …)` EMAS: bekor qilingan buyurtmada Uzum 0 yuboradi
+            // va uni 1 ga ko'tarsak, bo'lmagan sotuv paydo bo'lardi
+            qty: Math.max(0, Math.round(asNumber(firstOf(i, KEYS.qty), 1))),
             sellPrice: asMoney(firstOf(i, KEYS.price)),
             commission: asMoney(firstOf(i, KEYS.commission)),
             logistics: asMoney(firstOf(i, KEYS.logistics)),
