@@ -32,7 +32,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { ZeroAware } from '@/components/ui/ZeroAware';
-import { CHART_COLORS, DonutChart, SERIES_PALETTE } from '@/components/charts';
+import { CHART_COLORS, DonutChart, SERIES_PALETTE, seriesColor } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { api } from '@/lib/api';
 import { downloadBlob } from '@/lib/utils';
@@ -255,7 +255,7 @@ export default function Warehouse() {
       return totals.byStore.map((s, i) => ({
         name: s.title,
         value: s.costValue ?? s.amount ?? 0,
-        color: SERIES_PALETTE[i % SERIES_PALETTE.length],
+        color: seriesColor(i),
       }));
     }
     const map = new Map<string, number>();
@@ -265,7 +265,7 @@ export default function Warehouse() {
     });
     return [...map.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([name, value], i) => ({ name, value, color: SERIES_PALETTE[i % SERIES_PALETTE.length] }));
+      .map(([name, value], i) => ({ name, value, color: seriesColor(i) }));
   }, [totals, rows, tc]);
 
   const filtered = useMemo(() => {

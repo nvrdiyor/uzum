@@ -67,6 +67,13 @@ const STALE_RUNNING_MS = 5 * 60_000;
 /** Inkremental sinxronda nechta kunlik oyna qayta o'qiladi (status o'zgarishlarini ushlash uchun) */
 const INCREMENTAL_DAYS = 14;
 /**
+ * Yetkazilgandan keyin tovar qancha vaqt qaytarilishi mumkin (kun).
+ *
+ * Uzumning qaytarish muddati + yetkazishdagi kechikish uchun zaxira. Shu
+ * muddat ichidagi YETKAZILGAN buyurtmalar ham sinxron oynasiga kiritiladi.
+ */
+const RETURN_WINDOW_DAYS = 45;
+/**
  * "Tovaringiz sotildi" xabari faqat shu vaqt ichida berilgan buyurtmalar uchun.
  *
  * Inkremental sinxron 14 kunlik oynani tortadi. Kompaniyaga YANGI do'kon
@@ -855,10 +862,29 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
    * shuning uchun ular oynani kengaytirmaydi va so'rov hajmi cheklangan
    * qoladi. Tarif tarixi chegarasidan orqaga o'tmaymiz.
    */
+  /*
+    * DIQQAT: `delivered` ham kiritilgan.
+    *
+    * Yetkazilgan buyurtma — aynan qaytarilishi MUMKIN bo'lgan buyurtma:
+    * xaridor tovarni olgandan keyin bir necha kun yoki hafta o'tib
+    * qaytaradi. Agar uni "yakunlangan" deb hisoblasak, qaytarilganini
+    * hech qachon bilmaymiz va u bazada tirik sotuv bo'lib qolaveradi —
+    * bekor qilingan buyurtmalarda aynan shu xato bo'lgan edi.
+    *
+    * Yetkazilganlari cheksiz emas, faqat qaytarish muddati ichidagilari
+    * oynani kengaytiradi, shuning uchun so'rov hajmi cheklangan qoladi.
+    */
+  const returnEdge = addDays(to, -RETURN_WINDOW_DAYS);
   const oldestOpen = await prisma.order.findFirst({
     where: {
       store: { companyId: company.id },
-      status: { notIn: ['delivered', 'canceled', 'returned'] },
+      status: { notIn: ['canceled', 'returned'] },
+      OR: [
+        { status: { not: 'delivered' } },
+        { deliveredAt: { gte: returnEdge } },
+        // Yetkazilgan sanasi noma'lum bo'lsa buyurtma sanasiga tayanamiz
+        { AND: [{ deliveredAt: null }, { orderedAt: { gte: returnEdge } }] },
+      ],
     },
     orderBy: { orderedAt: 'asc' },
     select: { orderedAt: true },

@@ -24,18 +24,40 @@ export const CHART_COLORS = {
   slate: 'rgb(var(--c-slate))',
 } as const;
 
-/** Ketma-ket seriyalar uchun tartib */
+/**
+ * Kategorik seriyalar palitrasi — «bu qaysi narsa» degan savolga javob beradi.
+ *
+ * Holat ranglaridan (brand, warn, danger) ATAYLAB ajratilgan: holat rangi
+ * band bo'lgan ma'noni tashiydi va uni «to'rtinchi seriya» sifatida qayta
+ * ishlatish mumkin emas.
+ *
+ * Tartib tekshirgich bilan tasdiqlangan — o'zgartirilsa qayta tekshirilishi
+ * shart, chunki ajralish aynan QO'SHNI juftliklar bo'yicha o'lchanadi.
+ */
 export const SERIES_PALETTE = [
-  CHART_COLORS.brand,
-  CHART_COLORS.violet,
-  CHART_COLORS.info,
-  CHART_COLORS.warn,
-  CHART_COLORS.pink,
-  CHART_COLORS.teal,
-  CHART_COLORS.lime,
-  CHART_COLORS.danger,
-  CHART_COLORS.slate,
+  'rgb(var(--sc-1))',
+  'rgb(var(--sc-2))',
+  'rgb(var(--sc-3))',
+  'rgb(var(--sc-4))',
+  'rgb(var(--sc-5))',
+  'rgb(var(--sc-6))',
+  'rgb(var(--sc-7))',
+  'rgb(var(--sc-8))',
 ];
+
+/** Sakkizdan keyingi hamma narsa — bitta neytral «Boshqa» rangi */
+export const SERIES_OTHER = 'rgb(var(--c-slate))';
+
+/**
+ * Seriya rangi.
+ *
+ * Palitra AYLANTIRILMAYDI: to'qqizinchi seriya birinchisining rangini
+ * olsa, ikkalasi bir xil narsa bo'lib ko'rinadi. Sakkizdan keyingilari
+ * neytral rangga tushadi — chaqiruvchi ularni «Boshqa» ga yig'ishi kerak.
+ */
+export function seriesColor(index: number): string {
+  return SERIES_PALETTE[index] ?? SERIES_OTHER;
+}
 
 export const LEVEL_TONE = {
   info: { bg: 'bg-info/10', border: 'border-info/25', text: 'text-info-ink' },

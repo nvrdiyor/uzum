@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { BarsChart, ChartCard, CHART_COLORS } from '@/components/charts';
 import {
   Badge,
   Card,
@@ -31,6 +32,11 @@ registerNamespace('payout', {
     'kpi.next': 'Eng yaqin ochilish',
     'kpi.charges': 'Xizmat to‘lovlari',
     'kpi.chargesHint': 'Logistika, reklama va saqlash — davr ichida',
+    'chart.title': 'Pul qaysi kuni ochiladi',
+    'chart.subtitle': 'Har bir ustun — o‘sha kuni yechib olish uchun ochiladigan summa',
+    'chart.unlocked': 'Ochilgan',
+    'chart.pending': 'Kutilmoqda',
+    'chart.empty': 'Ko‘rsatadigan kun yo‘q',
     'cal.title': 'Ochilish jadvali',
     'cal.subtitle': 'Har bir kun uchun ochiladigan summa',
     'cal.date': 'Sana',
@@ -90,6 +96,11 @@ registerNamespace('payout', {
     'kpi.next': 'Ближайшее открытие',
     'kpi.charges': 'Платежи за услуги',
     'kpi.chargesHint': 'Логистика, реклама и хранение — за период',
+    'chart.title': 'Когда открываются деньги',
+    'chart.subtitle': 'Каждый столбец — сумма, открывающаяся к выводу в этот день',
+    'chart.unlocked': 'Открыто',
+    'chart.pending': 'Ожидается',
+    'chart.empty': 'Нет дней для показа',
     'cal.title': 'График открытия',
     'cal.subtitle': 'Сумма, открывающаяся в каждый день',
     'cal.date': 'Дата',
@@ -149,6 +160,11 @@ registerNamespace('payout', {
     'kpi.next': 'Next unlock',
     'kpi.charges': 'Service charges',
     'kpi.chargesHint': 'Logistics, ads and storage — in the period',
+    'chart.title': 'When the money unlocks',
+    'chart.subtitle': 'Each bar is the amount that becomes withdrawable that day',
+    'chart.unlocked': 'Unlocked',
+    'chart.pending': 'Pending',
+    'chart.empty': 'Nothing to show yet',
     'cal.title': 'Unlock schedule',
     'cal.subtitle': 'Amount unlocking on each day',
     'cal.date': 'Date',
@@ -360,6 +376,33 @@ export default function Payout() {
               <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('plan.hint')}</p>
             </CardBody>
           </Card>
+        ) : null}
+
+        {data && data.days.length > 0 ? (
+          <ChartCard
+            className="mt-5"
+            title={t('chart.title')}
+            subtitle={t('chart.subtitle')}
+          >
+            <BarsChart
+              data={data.days.map((d) => ({
+                date: d.date,
+                // Bitta kun faqat bitta holatda bo'ladi, shuning uchun
+                // ustunlar ustma-ust turadi va bir-birini bekitmaydi
+                unlocked: d.unlocked ? d.amount : 0,
+                pending: d.unlocked ? 0 : d.amount,
+              }))}
+              xKey="date"
+              xIsDate
+              stacked
+              showLegend
+              height={260}
+              series={[
+                { key: 'unlocked', name: t('chart.unlocked'), color: CHART_COLORS.brand, money: true },
+                { key: 'pending', name: t('chart.pending'), color: CHART_COLORS.warn, money: true },
+              ]}
+            />
+          </ChartCard>
         ) : null}
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">

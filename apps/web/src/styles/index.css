@@ -47,6 +47,31 @@
   --c-slate: 100 116 139;
 
   /*
+   * GRAFIK SERIYALARI — interfeys ranglaridan ALOHIDA.
+   *
+   * Ilgari grafiklar interfeys token’laridan (brand, info, violet…)
+   * foydalanardi va tekshirgich uni rad etdi: ko‘k bilan siyohrang
+   * qo‘shni seriyalar bo‘lib ΔE 10,4 chiqdi — bu to‘liq rangni
+   * ko‘radigan odam ham ajrata olmaydigan daraja; kulrang esa
+   * xromatiklik chegarasidan past bo‘lib, seriya emas, fon kabi o‘qilardi.
+   *
+   * Bu sakkizta qadam ikkala mavzuda ham barcha tekshiruvdan o‘tdi
+   * (yorqinlik oralig‘i, xromatiklik, rang ko‘rmaslikda ajralish,
+   * oddiy ko‘rishda ajralish, fon bilan kontrast).
+   *
+   * TARTIB — bezak emas, xavfsizlik mexanizmi: qo‘shni juftliklar
+   * shu tartibda tekshirilgan. O‘zgartirish uchun qayta tekshirish shart.
+   */
+  --sc-1: 42 120 214; /* ko‘k */
+  --sc-2: 235 104 52; /* to‘q sariq */
+  --sc-3: 27 175 122; /* zangori-yashil */
+  --sc-4: 237 161 0; /* sariq */
+  --sc-5: 232 123 164; /* pushti */
+  --sc-6: 0 131 0; /* yashil */
+  --sc-7: 74 58 167; /* siyohrang */
+  --sc-8: 227 73 72; /* qizil */
+
+  /*
    * Rangli plastinka (chip, nishon) USTIDAGI matn uchun to'qroq variantlar.
    * Oddiy rang mint yoki sariq fonda 2,4:1 gacha tushib ketardi.
    */
@@ -112,6 +137,17 @@
   --c-pink: 244 114 182;
   --c-lime: 163 230 53;
   --c-slate: 148 163 184;
+
+  /* Qorong‘i mavzu uchun ALOHIDA tanlangan qadamlar — yorug‘ining
+     avtomatik aylantirilgani emas; ular qorong‘i fonga qarab tekshirilgan */
+  --sc-1: 57 135 229;
+  --sc-2: 217 89 38;
+  --sc-3: 25 158 112;
+  --sc-4: 201 133 0;
+  --sc-5: 213 81 129;
+  --sc-6: 0 131 0;
+  --sc-7: 144 133 233;
+  --sc-8: 230 103 103;
 
   /* Qorong'ida plastinka foni to'q — matn ochroq bo'lishi kerak */
   --c-warn-ink: 255 200 110;

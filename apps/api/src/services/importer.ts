@@ -1259,7 +1259,15 @@ export async function upsertExpenses(
     }
   }
 
-  const rows = [...merged.values()].filter((r) => r.amount !== 0);
+  /*
+   * Nol summali kun ham YOZILADI.
+   *
+   * Ilgari `filter(r => r.amount !== 0)` turardi. Kun ichidagi to'lov
+   * keyinchalik qaytarilib, yig'indi nolga tenglashsa, o'sha kun butunlay
+   * yozuvdan tushib qolardi — bazadagi ESKI, nolga teng bo'lmagan qator
+   * esa hech qachon yangilanmay, balansdan abadiy ayrilib turardi.
+   */
+  const rows = [...merged.values()];
   if (rows.length === 0) return res;
 
   for (const batch of chunked(rows)) {

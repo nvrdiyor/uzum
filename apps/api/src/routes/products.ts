@@ -142,6 +142,8 @@ interface ProductSkuRecord {
   extraCost: number;
   volumeL: number;
   weightGr: number;
+  /** Uzum hisoblagan oylik saqlash to'lovi, bir dona uchun */
+  storagePerItem: number;
   barcode: string | null;
   archived: boolean;
   createdAt: Date;
@@ -197,6 +199,8 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
           extraCost: true,
           volumeL: true,
           weightGr: true,
+          // Uzum hisoblagan oylik saqlash to'lovi — taxmindan ustun turadi
+          storagePerItem: true,
           barcode: true,
           archived: true,
           createdAt: true,
@@ -1105,6 +1109,10 @@ router.get(
     const avgExtra = product.skus.length
       ? product.skus.reduce((s, x) => s + x.extraCost, 0) / product.skus.length
       : 0;
+    /** Uzumning o'zi bergan oylik saqlash to'lovi (bo'lmasa 0) */
+    const avgStoragePerItem = product.skus.length
+      ? product.skus.reduce((s, x) => s + x.storagePerItem, 0) / product.skus.length
+      : 0;
     const price = units > 0 ? safeDiv(revenue, units) : card.minPrice;
     const purchasePrice =
       units > 0
@@ -1119,7 +1127,19 @@ router.get(
       purchasePrice: round(purchasePrice),
       commissionPct: revenue > 0 ? pct(commission, revenue) : DEFAULTS.commissionPct,
       logistics: units > 0 ? round(safeDiv(logistics, units)) : DEFAULTS.logisticsPerUnit,
-      storagePerDay: round(avgVolume * DEFAULTS.storagePerLiterPerDay),
+      /*
+       * Saqlash: avval Uzumning O'ZI hisoblagan qiymat (oylik → kunlik),
+       * faqat u bo'lmaganda hajm bo'yicha taxmin.
+       *
+       * Ilgari bu yerda to'g'ridan-to'g'ri hajm × DEFAULTS.storagePerLiterPerDay
+       * turardi. O'sha konstanta TEKSHIRILMAGAN (o'z izohida shunday yozilgan),
+       * ya'ni mahsulot kartasidagi marja va ROI unga bevosita bog'liq edi —
+       * oshirilgan saqlash xarajati foydali tovarni zararli ko'rsatib,
+       * sotuvchi uni assortimentdan chiqarib tashlashi mumkin edi.
+       */
+      storagePerDay: round(
+        avgStoragePerItem > 0 ? avgStoragePerItem / 30 : avgVolume * DEFAULTS.storagePerLiterPerDay,
+      ),
       storageDays: 30,
       packaging: 0,
       otherCost: round(avgExtra),

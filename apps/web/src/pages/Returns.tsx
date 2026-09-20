@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
-import { ChartCard, DonutChart, SERIES_PALETTE, TrendChart } from '@/components/charts';
+import { ChartCard, DonutChart, SERIES_PALETTE, TrendChart, seriesColor } from '@/components/charts';
 import {
   Badge,
   Button,
@@ -211,7 +211,7 @@ export default function Returns() {
       reasons.slice(0, 8).map((r, i) => ({
         name: r.reason || t('reason.unknown'),
         value: r.qty,
-        color: SERIES_PALETTE[i % SERIES_PALETTE.length],
+        color: seriesColor(i),
       })),
     [reasons, t],
   );
@@ -400,7 +400,7 @@ export default function Returns() {
                               <span className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
                                 <span
                                   className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{ background: SERIES_PALETTE[i % SERIES_PALETTE.length] }}
+                                  style={{ background: seriesColor(i) }}
                                 />
                                 <span className="truncate">{r.reason || t('reason.unknown')}</span>
                               </span>

@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CHART_COLORS, SERIES_PALETTE, chartAxisProps, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from '@/lib/theme';
+import { CHART_COLORS, SERIES_PALETTE, SERIES_OTHER, seriesColor, chartAxisProps, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from '@/lib/theme';
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -74,7 +74,7 @@ export function TrendChart({
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             {series.map((s, i) => {
-              const color = s.color ?? SERIES_PALETTE[i % SERIES_PALETTE.length];
+              const color = s.color ?? seriesColor(i);
               return (
                 <linearGradient key={s.key} id={`grad-${uid}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={color} stopOpacity={0.35} />
@@ -101,7 +101,7 @@ export function TrendChart({
           />
           {showLegend ? <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} /> : null}
           {series.map((s, i) => {
-            const color = s.color ?? SERIES_PALETTE[i % SERIES_PALETTE.length];
+            const color = s.color ?? seriesColor(i);
             return (
               <Area
                 key={s.key}
@@ -144,7 +144,7 @@ export function LinesChart({ data, xKey = 'date', series, height = 280, classNam
               type="monotone"
               dataKey={s.key}
               name={s.name}
-              stroke={s.color ?? SERIES_PALETTE[i % SERIES_PALETTE.length]}
+              stroke={s.color ?? seriesColor(i)}
               strokeWidth={2.4}
               dot={false}
             />
@@ -210,7 +210,7 @@ export function BarsChart({
               key={s.key}
               dataKey={s.key}
               name={s.name}
-              fill={s.color ?? SERIES_PALETTE[i % SERIES_PALETTE.length]}
+              fill={s.color ?? seriesColor(i)}
               radius={horizontal ? [0, 8, 8, 0] : [8, 8, 0, 0]}
               stackId={stacked ? 'a' : undefined}
               maxBarSize={horizontal ? 22 : 46}
@@ -262,7 +262,7 @@ export function DonutChart({
             strokeWidth={2}
           >
             {data.map((d, i) => (
-              <Cell key={d.name} fill={d.color ?? SERIES_PALETTE[i % SERIES_PALETTE.length]} />
+              <Cell key={d.name} fill={d.color ?? seriesColor(i)} />
             ))}
           </Pie>
           <Tooltip
@@ -326,4 +326,4 @@ export function ChartCard({
   );
 }
 
-export { CHART_COLORS, SERIES_PALETTE };
+export { CHART_COLORS, SERIES_PALETTE, SERIES_OTHER, seriesColor };

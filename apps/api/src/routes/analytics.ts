@@ -479,7 +479,13 @@ router.get(
       }),
       prisma.expense.aggregate({
         _sum: { amount: true },
-        where: { companyId: company.id, source: { in: ['uzum', 'uzum-payout'] } },
+        where: {
+          companyId: company.id,
+          source: { in: ['uzum', 'uzum-payout'] },
+          // Do'kon tanlangan bo'lsa faqat o'shaniki — aks holda bitta
+          // do'kon balansidan boshqa do'konlarning to'lovlari ham ayrilardi
+          ...(range.storeId ? { storeId: range.storeId } : {}),
+        },
       }),
       prisma.storageFee.aggregate({ _sum: { amount: true }, where: { storeId: { in: storeIds } } }),
     ]);
