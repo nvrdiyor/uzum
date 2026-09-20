@@ -60,6 +60,9 @@ registerNamespace('sales', {
     'city.title': 'Shaharlar bo‘yicha top 10',
     'city.subtitle': 'Tushum miqdori bo‘yicha eng yirik shaharlar',
     'city.revenue': 'Tushum',
+    'city.none': 'Shahar ma’lumoti kelmadi',
+    'city.noneHint':
+      'Uzumning ochiq API’si FBO buyurtmalarida xaridor shahrini bermaydi — u faqat o‘zingiz yetkazadigan (FBS/DBS) buyurtmalarda bo‘ladi.',
     'weekday.title': 'Hafta kunlari',
     'weekday.subtitle': 'Buyurtmalar taqsimoti',
     'weekday.orders': 'Buyurtmalar',
@@ -117,6 +120,9 @@ registerNamespace('sales', {
     'city.title': 'Топ-10 городов',
     'city.subtitle': 'Крупнейшие города по выручке',
     'city.revenue': 'Выручка',
+    'city.none': 'Данных о городе нет',
+    'city.noneHint':
+      'Открытый API Uzum не передаёт город покупателя по FBO-заказам — он есть только для заказов, которые вы доставляете сами (FBS/DBS).',
     'weekday.title': 'Дни недели',
     'weekday.subtitle': 'Распределение заказов',
     'weekday.orders': 'Заказы',
@@ -174,6 +180,9 @@ registerNamespace('sales', {
     'city.title': 'Top 10 cities',
     'city.subtitle': 'Largest cities by revenue',
     'city.revenue': 'Revenue',
+    'city.none': 'No city data',
+    'city.noneHint':
+      'The public Uzum API does not return the buyer city for FBO orders — it is only present on orders you deliver yourself (FBS/DBS).',
     'weekday.title': 'Weekdays',
     'weekday.subtitle': 'Order distribution',
     'weekday.orders': 'Orders',
@@ -355,14 +364,17 @@ export default function Sales() {
     [data],
   );
 
-  const cityData = useMemo(
-    () =>
-      [...(data?.byCity ?? [])]
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10)
-        .map((c) => ({ city: c.city, revenue: c.revenue, orders: c.orders })),
-    [data],
-  );
+  const cityData = useMemo(() => {
+    const rows = [...(data?.byCity ?? [])].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    /*
+     * FBO buyurtmalarida Uzum xaridor shahrini bermaydi va hammasi bitta
+     * "noma'lum" qatoriga yig'iladi. Bitta ustunli "top 10" — grafik emas,
+     * shuning uchun bunday holatda sababni yozib, bo'sh holat ko'rsatamiz.
+     */
+    const meaningful = rows.some((c) => !/noma|неизв|unknown/i.test(c.city));
+    if (!meaningful) return [];
+    return rows.map((c) => ({ city: c.city, revenue: c.revenue, orders: c.orders }));
+  }, [data]);
 
   const weekdayData = useMemo(() => {
     const map = new Map((data?.byWeekday ?? []).map((w) => [w.weekday, w]));
@@ -695,7 +707,11 @@ export default function Sales() {
                     series={[{ key: 'revenue', name: t('city.revenue'), color: CHART_COLORS.brand, money: true }]}
                   />
                 ) : (
-                  <EmptyState icon={<MapPin className="h-6 w-6" />} title={tc('common.noData')} />
+                  <EmptyState
+                    icon={<MapPin className="h-6 w-6" />}
+                    title={t('city.none')}
+                    hint={t('city.noneHint')}
+                  />
                 )}
               </ChartCard>
 

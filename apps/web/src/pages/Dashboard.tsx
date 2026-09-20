@@ -17,7 +17,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
-import { ChartCard, TrendChart, type SeriesDef } from '@/components/charts';
+import { BarsChart, ChartCard, ScatterMap, TrendChart, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import {
   Button,
@@ -87,6 +87,17 @@ registerNamespace('dashboard', {
     'insights.empty': 'Hammasi joyida',
     'insights.emptyHint': 'Bu davrda e’tibor talab qiladigan holat topilmadi.',
 
+    'ptop.title': 'Qaysi tovar ko‘proq foyda keltiryapti',
+    'ptop.subtitle': 'Sof foyda bo‘yicha, davr ichida',
+    'ptop.other': 'Boshqa tovarlar',
+    'ptop.empty': 'Bu davrda sotuv bo‘lmadi',
+    'map.title': 'Marja xaritasi',
+    'map.subtitle': 'O‘ngda — ko‘p sotilgan, tepada — foydali. Nuqta kattaligi: sotilgan dona',
+    'map.x': 'Tushum',
+    'map.y': 'Marja',
+    'map.hint':
+      'Chiziqdan pastdagi nuqtalar — ko‘p pul aylanyapti, lekin foyda o‘rtachadan kam. Narxni yoki tannarxni shular bo‘yicha qayta ko‘ring.',
+    'map.empty': 'Xarita uchun kamida ikkita sotilgan tovar kerak',
     'chart.title': 'Dinamika',
     'chart.subtitle': 'Kunlik ko‘rsatkichlar',
     'chart.empty': 'Grafik uchun ma’lumot yetarli emas',
@@ -181,6 +192,17 @@ registerNamespace('dashboard', {
     'insights.empty': 'Всё в порядке',
     'insights.emptyHint': 'За этот период проблем не обнаружено.',
 
+    'ptop.title': 'Какой товар приносит больше прибыли',
+    'ptop.subtitle': 'По чистой прибыли за период',
+    'ptop.other': 'Прочие товары',
+    'ptop.empty': 'За этот период продаж не было',
+    'map.title': 'Карта маржи',
+    'map.subtitle': 'Правее — больше продаж, выше — выгоднее. Размер точки: штук продано',
+    'map.x': 'Выручка',
+    'map.y': 'Маржа',
+    'map.hint':
+      'Точки ниже линии — денег проходит много, а прибыль ниже средней. Пересмотрите по ним цену или себестоимость.',
+    'map.empty': 'Для карты нужно хотя бы два проданных товара',
     'chart.title': 'Динамика',
     'chart.subtitle': 'Показатели по дням',
     'chart.empty': 'Недостаточно данных для графика',
@@ -275,6 +297,17 @@ registerNamespace('dashboard', {
     'insights.empty': 'All good',
     'insights.emptyHint': 'Nothing needs your attention in this period.',
 
+    'ptop.title': 'Which product earns the most',
+    'ptop.subtitle': 'By net profit over the period',
+    'ptop.other': 'Other products',
+    'ptop.empty': 'No sales in this period',
+    'map.title': 'Margin map',
+    'map.subtitle': 'Right — sells more, up — earns more. Dot size: units sold',
+    'map.x': 'Revenue',
+    'map.y': 'Margin',
+    'map.hint':
+      'Dots below the line move a lot of money at below-average margin. Revisit their price or cost.',
+    'map.empty': 'The map needs at least two sold products',
     'chart.title': 'Trend',
     'chart.subtitle': 'Daily performance',
     'chart.empty': 'Not enough data to draw a chart',
@@ -360,6 +393,33 @@ export default function Dashboard() {
     }),
     [points],
   );
+
+  /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga */
+  const topByProfit = useMemo(() => {
+    const rows = [...(data?.topProducts ?? [])].filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
+    const head = rows.slice(0, 8).map((r) => ({ name: r.title.length > 34 ? `${r.title.slice(0, 33)}…` : r.title, profit: Math.round(r.profit) }));
+    const tail = rows.slice(8).reduce((sum, r) => sum + r.profit, 0);
+    return tail > 0 ? [...head, { name: t('ptop.other'), profit: Math.round(tail) }] : head;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.topProducts, t]);
+
+  /** Marja xaritasi: tushum × marja, nuqta kattaligi — dona */
+  const marginMap = useMemo(() => {
+    const rows = (data?.topProducts ?? []).filter((r) => r.revenue > 0);
+    const points = rows.map((r) => ({
+      x: Math.round(r.revenue),
+      y: Number(r.margin.toFixed(1)),
+      z: Math.max(1, r.units),
+      name: r.title,
+      sku: r.sku,
+    }));
+    const totalRevenue = rows.reduce((s2, r) => s2 + r.revenue, 0);
+    const totalProfit = rows.reduce((s2, r) => s2 + r.profit, 0);
+    // O'rtacha marja — oddiy o'rtacha emas, TUSHUM bo'yicha tortilgan:
+    // kichik tovarning katta marjasi qiyoslash chizig'ini surib yubormasin
+    const avg = totalRevenue > 0 ? Number(((totalProfit / totalRevenue) * 100).toFixed(1)) : undefined;
+    return { points, avg };
+  }, [data?.topProducts]);
 
   const chartSeries: SeriesDef[] = useMemo(() => {
     const revenue: SeriesDef = { key: 'revenue', name: t('metric.revenue'), money: true, color: CHART_COLORS.brand };
@@ -579,6 +639,40 @@ export default function Dashboard() {
             />
           )}
         </ChartCard>
+
+        {/* 5. Qaysi tovar foyda keltiryapti va marja xaritasi */}
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ChartCard title={t('ptop.title')} subtitle={t('ptop.subtitle')}>
+            {topByProfit.length > 0 ? (
+              <BarsChart
+                data={topByProfit}
+                xKey="name"
+                horizontal
+                height={Math.max(220, topByProfit.length * 38 + 40)}
+                series={[{ key: 'profit', name: t('metric.profit'), color: CHART_COLORS.brand, money: true }]}
+              />
+            ) : (
+              <EmptyState className="py-12" icon={<TrendingUp className="h-6 w-6" />} title={t('ptop.empty')} />
+            )}
+          </ChartCard>
+
+          <ChartCard title={t('map.title')} subtitle={t('map.subtitle')}>
+            {marginMap.points.length > 1 ? (
+              <>
+                <ScatterMap
+                  data={marginMap.points}
+                  height={300}
+                  xLabel={t('map.x')}
+                  yLabel={t('map.y')}
+                  medianY={marginMap.avg}
+                />
+                <p className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('map.hint')}</p>
+              </>
+            ) : (
+              <EmptyState className="py-12" icon={<TrendingUp className="h-6 w-6" />} title={t('map.empty')} />
+            )}
+          </ChartCard>
+        </div>
 
         {/* 5. Xarajatlar va do'konlar */}
         <div className="grid gap-4 xl:grid-cols-2">

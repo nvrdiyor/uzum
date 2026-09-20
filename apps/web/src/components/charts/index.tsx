@@ -11,7 +11,11 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  ZAxis,
   Tooltip,
   XAxis,
   YAxis,
@@ -237,6 +241,97 @@ export interface DonutDatum {
   name: string;
   value: number;
   color?: string;
+}
+
+/**
+ * Marja xaritasi — har bir nuqta bitta mahsulot.
+ *
+ * Gorizontal o'q: tushum. Vertikal o'q: marja, %. Nuqta kattaligi: sotilgan
+ * dona. Bu IKKI O'QLI grafik EMAS — ikkala o'q ham alohida o'lchov, ya'ni
+ * bu oddiy tarqoq diagramma; taqiqlangani bitta seriyaga ikkita Y shkalasi
+ * qo'yish edi.
+ *
+ * Nega shu shakl: "qaysi tovar zo'r ketyapti" degan savolning javobi bitta
+ * ustunda ko'rinmaydi. Ko'p sotilib, kam foyda beradigan tovar eng xavfli
+ * holat va u aynan shu xaritada — o'ngda, lekin pastda — ko'rinadi.
+ */
+export function ScatterMap({
+  data,
+  height = 300,
+  className,
+  xLabel,
+  yLabel,
+  medianY,
+}: {
+  data: { x: number; y: number; z: number; name: string; sku?: string }[];
+  height?: number;
+  className?: string;
+  xLabel: string;
+  yLabel: string;
+  /** Qiyoslash chizig'i — masalan o'rtacha marja */
+  medianY?: number;
+}) {
+  const f = useFormat();
+  const axis = chartAxisProps();
+
+  return (
+    <div className={cn('w-full', className)} style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart margin={{ top: 12, right: 16, left: 4, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis
+            type="number"
+            dataKey="x"
+            name={xLabel}
+            {...axis}
+            tickFormatter={(v: number) => f.compact(Number(v))}
+          />
+          <YAxis
+            type="number"
+            dataKey="y"
+            name={yLabel}
+            {...axis}
+            width={48}
+            tickFormatter={(v: number) => `${Math.round(Number(v))}%`}
+          />
+          {/* Nuqta kattaligi — sotilgan dona; afsona chiqarmaymiz, u shovqin */}
+          <ZAxis type="number" dataKey="z" range={[60, 460]} />
+          {medianY !== undefined ? (
+            <ReferenceLine
+              y={medianY}
+              stroke="rgb(var(--c-border-strong))"
+              strokeDasharray="4 4"
+              ifOverflow="extendDomain"
+            />
+          ) : null}
+          <Tooltip
+            cursor={{ strokeDasharray: '3 3' }}
+            contentStyle={tooltipStyle()}
+            itemStyle={tooltipItemStyle()}
+            labelStyle={tooltipLabelStyle()}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload as { name: string; sku?: string; x: number; y: number; z: number };
+              return (
+                <div style={tooltipStyle()}>
+                  <p style={{ ...tooltipLabelStyle(), maxWidth: 260 }}>{d.name}</p>
+                  {d.sku ? <p style={{ ...tooltipLabelStyle(), marginBottom: 6 }}>{d.sku}</p> : null}
+                  <p style={tooltipItemStyle()}>
+                    {xLabel}: {f.money(d.x)}
+                  </p>
+                  <p style={tooltipItemStyle()}>
+                    {yLabel}: {f.dec(d.y, 1)}%
+                  </p>
+                  <p style={tooltipItemStyle()}>{f.num(d.z)} dona</p>
+                </div>
+              );
+            }}
+          />
+          <Scatter data={data} fill={CHART_COLORS.brand} fillOpacity={0.75} stroke="rgb(var(--c-surface))" strokeWidth={2} />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 export function DonutChart({
