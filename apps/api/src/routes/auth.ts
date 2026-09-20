@@ -410,17 +410,25 @@ async function widgetOriginAllowed(origin: string): Promise<boolean> {
 router.get(
   '/telegram/widget',
   ah(async (req, res) => {
+    /*
+     * Demo kirish ochiqmi — kirish sahifasi shu bo'yicha tugmani
+     * ko'rsatadi yoki yashiradi. Ilgari tugma har doim chizilardi va
+     * ishlab chiqarishda bosilganda `POST /auth/demo` 404 qaytarardi:
+     * tashrif buyuruvchi bosardi-yu, hech narsa bo'lmasdi.
+     */
+    const demo = demoLoginEnabled();
+
     if (!env.telegram.botToken || !env.telegram.botUsername) {
-      res.json({ ok: false, reason: 'bot_missing' });
+      res.json({ ok: false, reason: 'bot_missing', demo });
       return;
     }
     const origin = String((req.query as Record<string, unknown>).origin ?? '').trim();
     if (!/^https?:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)) {
-      res.json({ ok: false, reason: 'bad_origin' });
+      res.json({ ok: false, reason: 'bad_origin', demo });
       return;
     }
     const allowed = await widgetOriginAllowed(origin);
-    res.json({ ok: allowed, reason: allowed ? undefined : 'domain_not_set' });
+    res.json({ ok: allowed, reason: allowed ? undefined : 'domain_not_set', demo });
   }),
 );
 

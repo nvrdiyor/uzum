@@ -137,6 +137,28 @@ export default function Login() {
   }, [params, submitCode]);
 
   // ── 3. Demo rejim ───────────────────────────────────────────
+
+  /*
+   * Demo tugmasi ochiqmi — SERVERDAN so'raladi.
+   *
+   * Ilgari tugma har doim chizilardi va ishlab chiqarishda bosilganda
+   * `POST /auth/demo` 404 qaytarardi: tashrif buyuruvchi bosardi, hech
+   * narsa bo'lmasdi va faqat shundan keyin tugma yo'qolardi. Endi u
+   * umuman ko'rsatilmaydi.
+   */
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<{ demo?: boolean }>('/auth/telegram/widget', { origin: window.location.origin })
+      .then((res) => {
+        if (alive && res.demo === false) setDemoAvailable(false);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const handleDemo = useCallback(async () => {
     setBusy('demo');
     try {
