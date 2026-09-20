@@ -76,6 +76,8 @@ export interface UzumSku {
   storagePerItem?: number;
   /** MXIK (IKPU) — soliq klassifikatori kodi, katalogda `ikpu` */
   ikpu?: string;
+  /** Aksiya tugash sanasi (ISO) — `specialOffer.endDate` */
+  promoEndsAt?: string;
   /** Aksiya taklif narxi (mechanicPrice) — qo'shilmagan bo'lsa amaldagi narx EMAS */
   promoPrice?: number;
   /** Sotuvchi aksiyaga qo'shilganmi (inOffer) */

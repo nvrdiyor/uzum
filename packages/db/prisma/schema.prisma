@@ -329,6 +329,8 @@ model Sku {
   promoPrice    Float    @default(0)
   promoJoined   Boolean  @default(false)
   promoOffered  Boolean  @default(false)
+  /// Aksiya qachon tugaydi (katalogdagi `specialOffer.endDate`)
+  promoEndsAt   DateTime?
 
   // ── Kartochka holati (SKU Health) ──
   blocked       Boolean  @default(false)

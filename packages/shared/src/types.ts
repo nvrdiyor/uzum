@@ -444,10 +444,23 @@ export interface ProductCard {
   rating: number;
   reviewsCount: number;
   skuCount: number;
-  /** Xaridor to'laydigan eng past narx (aksiya bo'lsa — aksiya narxi) */
+  /**
+   * Ko'rsatiladigan narx.
+   *
+   * Sotuvi bo'lgan tovarda bu — xaridorlar HAQIQATDA to'lagan narxning
+   * DAVR BO'YICHA O'RTACHASI, joriy narx emas. Uzumning ochiq API'si
+   * aksiyadagi joriy narxni umuman bermaydi (`specialOffer.mechanicPrice`
+   * doim null, `price` esa ro'yxat narxi), shuning uchun joriy narxni
+   * faqat sotuvdan keyin bilish mumkin. `priceIsAverage` shu holatni
+   * bildiradi va interfeys raqamni shunga yarasha nomlaydi.
+   */
   minPrice: number;
-  /** Chegirmasiz ro'yxat narxi — aksiya faol bo'lsagina `minPrice` dan katta */
+  /** Chegirmasiz ro'yxat narxi (katalogdagi `price`) */
   listPrice: number;
+  /** `minPrice` sotuvlardan olingan o'rtachami yoki katalog narximi */
+  priceIsAverage: boolean;
+  /** Faol aksiya — nomi va tugash sanasi (ISO) */
+  promo: { name: string; endsAt: string | null } | null;
   sold: number;
   returns: number;
   revenue: number;

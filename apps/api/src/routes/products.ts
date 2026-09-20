@@ -140,6 +140,9 @@ interface ProductSkuRecord {
   oldPrice: number;
   purchasePrice: number;
   extraCost: number;
+  promoName: string | null;
+  promoJoined: boolean;
+  promoEndsAt: Date | null;
   volumeL: number;
   weightGr: number;
   /** Uzum hisoblagan oylik saqlash to'lovi, bir dona uchun */
@@ -197,6 +200,9 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
           oldPrice: true,
           purchasePrice: true,
           extraCost: true,
+          promoName: true,
+          promoJoined: true,
+          promoEndsAt: true,
           volumeL: true,
           weightGr: true,
           // Uzum hisoblagan oylik saqlash to'lovi — taxmindan ustun turadi
@@ -229,6 +235,8 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   let avgTotal = 0;
   let needOrder = 0;
   let minPrice = Number.POSITIVE_INFINITY;
+  /** Ko'rsatilgan narx sotuvlardan olinganmi (o'rtacha) yoki katalogdanmi */
+  let priceFromSales = false;
   /** Katalogdagi ro'yxat narxi (sotuv narxi bilan solishtirish uchun) */
   let listPrice = 0;
 
@@ -259,6 +267,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     if (realPrice > 0 && realPrice < minPrice) {
       minPrice = realPrice;
       listPrice = Math.max(s.price, s.oldPrice);
+      priceFromSales = agg.units > 0;
     }
 
     skus.push({
@@ -278,6 +287,18 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     });
   }
 
+  /*
+   * Faol aksiya. Uzum narxni bermaydi, lekin nomi va tugash sanasi keladi —
+   * sotuvchi kamida "chegirma qachongacha" degan savolga javob oladi.
+   */
+  const joinedSku = p.skus.find((s2) => s2.promoJoined && s2.promoName);
+  const promoInfo = joinedSku
+    ? {
+        name: joinedSku.promoName ?? '',
+        endsAt: joinedSku.promoEndsAt ? joinedSku.promoEndsAt.toISOString() : null,
+      }
+    : null;
+
   const stockTotal = stockFbo + stockFbs + stockOwn;
   // Barcha SKU'lari arxivlangan mahsulot ham arxiv hisoblanadi (filtr uchun qulay)
   const archived = p.skus.length > 0 && p.skus.every((s) => s.archived);
@@ -294,6 +315,8 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     skuCount: p.skus.length,
     minPrice: Number.isFinite(minPrice) ? round(minPrice) : 0,
     listPrice: round(listPrice),
+    priceIsAverage: priceFromSales,
+    promo: promoInfo,
     sold,
     returns,
     revenue: round(revenue),

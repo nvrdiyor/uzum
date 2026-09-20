@@ -88,8 +88,20 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         {/* Narx / konversiya */}
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
-            {/* Aksiya bo'lsa: joriy narx + ustidan chizilgan chegirmasiz narx —
-                sotuvchi kabinetdagi bilan bir xil ko'radi */}
+            {/*
+              Raqam TO'G'RI NOMLANADI.
+
+              Sotuvi bo'lgan tovarda bu joriy narx EMAS, davr bo'yicha
+              o'rtacha to'langan narx: Uzumning ochiq API'si aksiyadagi
+              joriy narxni umuman bermaydi. Ilgari u oddiygina narx
+              sifatida ko‘rsatilardi va sotuvchi narxni o‘zgartirgach
+              «nega o‘zgarmadi» degan savol tug‘ilardi.
+            */}
+            {product.priceIsAverage ? (
+              <p className="eyebrow truncate" title={t('card.priceWhy')}>
+                {t('card.avgPrice')}
+              </p>
+            ) : null}
             <p className="tnum truncate font-display text-lg font-extrabold text-ink">{f.money(product.minPrice)}</p>
             {product.listPrice > product.minPrice ? (
               <p className="tnum truncate text-2xs text-muted">
@@ -97,6 +109,14 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
                 <span className="ml-1.5 font-semibold text-brand-ink">
                   −{f.pct(((product.listPrice - product.minPrice) / product.listPrice) * 100, 0)}
                 </span>
+              </p>
+            ) : null}
+            {product.promo ? (
+              <p className="mt-1 truncate text-2xs text-warn-ink" title={product.promo.name}>
+                {t('card.promo')}
+                {product.promo.endsAt
+                  ? ' · ' + t('card.promoUntil', { date: f.dateShort(product.promo.endsAt) })
+                  : ''}
               </p>
             ) : null}
             <p className="truncate text-2xs text-muted">

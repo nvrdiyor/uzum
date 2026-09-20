@@ -510,6 +510,15 @@ export class LiveUzumClient implements UzumClient {
       promoName: asString(offer.promoName) || undefined,
       promoPrice: promo || undefined,
       promoJoined: joined,
+      /*
+       * Aksiya NARXI katalogda yo'q: `mechanicPrice` har doim null keladi
+       * (jonli kabinetda tekshirilgan), `price` va `marketPrice` esa
+       * ro'yxat narxini beradi. Ya'ni "aksiyadagi joriy narx" ni ochiq
+       * API'dan bilib bo'lmaydi — u faqat sotuvdan keyin
+       * `finance/orders.sellPrice` da paydo bo'ladi. Shuning uchun hech
+       * bo'lmasa aksiya QACHON TUGASHINI saqlaymiz.
+       */
+      promoEndsAt: asNumber(offer.endDate) > 0 ? asIso(offer.endDate, '') || undefined : undefined,
       promoOffered: asBool(offer.hasRecommendation),
 
       // Kartochka holati va Uzum omboridagi muammoli donalar

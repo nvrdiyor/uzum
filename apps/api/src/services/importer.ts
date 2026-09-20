@@ -382,6 +382,7 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         promoName: text(sku.promoName),
         promoPrice: round(num(sku.promoPrice)),
         promoJoined: Boolean(sku.promoJoined),
+        promoEndsAt: sku.promoEndsAt ? new Date(sku.promoEndsAt) : null,
         promoOffered: Boolean(sku.promoOffered),
         blocked: Boolean(sku.blocked),
         blockingReason: text(sku.blockingReason),
