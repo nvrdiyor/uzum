@@ -169,6 +169,17 @@ export function BarsChart({
   const f = useFormat();
   const fmt = useTooltipFormatter(series);
   const axis = chartAxisProps();
+
+  /*
+   * Burchak radiusi ustun ENIDAN katta bo'lib qolmasligi kerak.
+   *
+   * Recharts bunday holatda yaroqsiz shakl yasaydi va ustunni UMUMAN
+   * chizmaydi: o'qlar, to'r va afsona joyida turadi-yu, ustunlar yo'q.
+   * 127 ta kun 900 px ga sig'dirilganda ustun eni ~5 px bo'ladi, radius
+   * esa 8 px edi — grafik bo'm-bo'sh chiqardi.
+   */
+  const radius = data.length > 60 ? 0 : data.length > 30 ? 2 : 4;
+
   return (
     <div className={cn('w-full', className)} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -211,7 +222,7 @@ export function BarsChart({
               dataKey={s.key}
               name={s.name}
               fill={s.color ?? seriesColor(i)}
-              radius={horizontal ? [0, 8, 8, 0] : [8, 8, 0, 0]}
+              radius={horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0]}
               stackId={stacked ? 'a' : undefined}
               maxBarSize={horizontal ? 22 : 46}
             />

@@ -385,7 +385,15 @@ export default function Payout() {
             subtitle={t('chart.subtitle')}
           >
             <BarsChart
-              data={data.days.map((d) => ({
+              /*
+               * Butun tarix emas, YAQIN ORA.
+               *
+               * Ochilish jadvalida 127 kungacha yozuv bo'ladi va ularning
+               * deyarli hammasi o'tmish. Sotuvchining savoli esa "pulim
+               * qachon ochiladi" — ya'ni oldinda nima borligi. Shuning
+               * uchun oxirgi 7 kun va oldindagi barcha kunlar ko'rsatiladi.
+               */
+              data={data.days.slice(-Math.min(30, data.days.length)).map((d) => ({
                 date: d.date,
                 // Bitta kun faqat bitta holatda bo'ladi, shuning uchun
                 // ustunlar ustma-ust turadi va bir-birini bekitmaydi
