@@ -650,6 +650,13 @@ export interface FinanceResponse {
     /** Uzumdagi "Umumiy balans" — hisobda to'plangan, hali yechib olinmagan pul */
     total: number;
     nextPayoutAt: string | null;
+    /**
+     * `nextPayoutAt` sotuvchi TASDIQLAGAN jadvaldan hisoblanganmi.
+     *
+     * Uzum to'lov jadvalini API'da bermaydi. Tasdiqlanmagan bo'lsa sana
+     * standart jadvaldan chiqadi va uni haqiqatdek ko'rsatish xato bo'ladi.
+     */
+    payoutConfirmed: boolean;
   };
 }
 
@@ -1077,6 +1084,13 @@ export interface PayoutDay {
   orders: number;
   /** Bugun yoki undan oldinmi — ya'ni allaqachon ochilganmi */
   unlocked: boolean;
+  /**
+   * Shu kunlik summaning jadval bo'yicha allaqachon o'tkazilgan qismi.
+   *
+   * Busiz jadvaldagi yig'indi "Ochilgan" ko'rsatkichidan katta chiqib,
+   * ikkovi bir-biriga zid tushardi.
+   */
+  paid: number;
 }
 
 /** Ochilishini kutayotgan bitta buyurtma */
@@ -1092,6 +1106,8 @@ export interface PayoutOrder {
   amount: number;
   unlocked: boolean;
   daysLeft: number;
+  /** Jadvaldagi to'lov sanasi o'tib ketgan — pul allaqachon o'tkazilgan */
+  paid: boolean;
 }
 
 /** Jadval bo'yicha bitta to'lov kuni */
@@ -1101,6 +1117,17 @@ export interface PayoutPlanDay {
   orders: number;
   /** Jadval haqi ayirilgandan keyin qo'lga tegadigan summa */
   net: number;
+  /** Shu sanada kuchda bo'lgan jadval — o'zgarish rejalashtirilgan bo'lsa farq qiladi */
+  mode: PayoutMode;
+  /** Shu sanadagi jadval haqi, % */
+  feePct: number;
+  /**
+   * Shu sanagacha necha kun qolgani — SERVERDA sanaladi.
+   *
+   * Brauzerda sanalganda UTC yarim tuni mijozning mahalliy vaqti bilan
+   * solishtirilib, Toshkentda 00:00–05:00 orasida bir kunga adashardi.
+   */
+  daysLeft: number;
 }
 
 /**
@@ -1116,22 +1143,48 @@ export interface PayoutCheck {
   detail: string;
 }
 
+/** `PATCH /payout/rules` tanasi — sotuvchi kabinetdagi jadvalni qayd etadi */
+export interface PayoutRulesRequest {
+  mode: PayoutMode;
+  /** Kelajakdagi o'zgarish — ikkalasi birga yuboriladi yoki ikkalasi ham `null` */
+  nextMode?: PayoutMode | null;
+  nextFrom?: string | null;
+}
+
 export interface PayoutCalendarResponse {
   /** Qoidalar — sozlamalardan olinadi, Uzum shartlari o'zgarsa moslanadi */
   rules: {
     holdDays: number;
     /** Erta (tezkor) yechib olish uchun xizmat haqi, % */
     earlyFeePct: number;
-    /** Tanlangan to'lov jadvali */
+    /** BUGUN kuchda turgan to'lov jadvali */
     mode: PayoutMode;
     /** Shu jadval uchun xizmat haqi, % */
     scheduleFeePct: number;
     /** Oy ichidagi to'lov sanalari (daily rejimda bo'sh) */
     payoutDays: number[];
+    /**
+     * Kelajakda kuchga kiradigan jadval — Uzum kabinetida jadvalni
+     * o'zgartirganda u darhol emas, kelgusi sanadan ishlaydi
+     * ("08.10.2026 dan amal qiladi"). O'zgarish yo'q bo'lsa `null`.
+     */
+    nextMode: PayoutMode | null;
+    /** Yangi jadval kuchga kiradigan sana (ISO) */
+    nextFrom: string | null;
+    /**
+     * Sotuvchi jadvalni TASDIQLAGANMI.
+     *
+     * Uzum ochiq API'da to'lov jadvalini bermaydi, shuning uchun u
+     * tasdiqlanmaguncha standart variant olinadi. Tasdiqlanmagan hisob
+     * ekranda ochiq aytiladi — jim turgan taxmin sotuvchini chalg'itadi.
+     */
+    confirmed: boolean;
   };
   totals: {
-    /** Muddati kelgan va ochilgan summa */
+    /** Ochilgan, lekin hali o'tkazilmagan — jadvaldagi navbatdagi sanani kutmoqda */
     unlocked: number;
+    /** Jadval bo'yicha allaqachon o'tkazilgan summa */
+    paidOut: number;
     /** Hali kutilayotgan summa */
     pending: number;
     /** Davr ichidagi xizmat to'lovlari (logistika, reklama, saqlash) */

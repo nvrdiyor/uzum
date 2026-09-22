@@ -111,6 +111,7 @@ registerNamespace('finance', {
     'bal.pendingHint': 'Hali yetkazilmagan buyurtmalar summasi',
     'bal.next': 'Keyingi to‘lov',
     'bal.nextHint': 'To‘lov jadvalingiz bo‘yicha — batafsili Pul kalendarida',
+    'bal.nextUnset': 'Jadval hali belgilanmagan — Pul kalendarida Uzum kabinetingizdagi sanalarni tanlang',
     'bal.none': 'Sana ma’lum emas',
 
     'empty.title': 'Bu davr uchun moliyaviy ma’lumot yo‘q',
@@ -186,6 +187,7 @@ registerNamespace('finance', {
     'bal.pendingHint': 'Сумма по ещё не доставленным заказам',
     'bal.next': 'Следующая выплата',
     'bal.nextHint': 'По вашему графику выплат — подробнее в Календаре выплат',
+    'bal.nextUnset': 'График ещё не указан — выберите в Календаре выплат те же даты, что в кабинете Uzum',
     'bal.none': 'Дата неизвестна',
 
     'empty.title': 'За этот период финансовых данных нет',
@@ -261,6 +263,7 @@ registerNamespace('finance', {
     'bal.pendingHint': 'Amount for orders not delivered yet',
     'bal.next': 'Next payout',
     'bal.nextHint': 'Per your payout schedule — details in the payout calendar',
+    'bal.nextUnset': 'Schedule not set yet — pick the same dates as your Uzum cabinet in the payout calendar',
     'bal.none': 'Date unknown',
 
     'empty.title': 'No financial data for this period',
@@ -596,7 +599,12 @@ export default function Finance() {
                         icon={<CalendarClock className="h-4 w-4" />}
                         tone="info"
                         label={t('bal.next')}
-                        hint={t('bal.nextHint')}
+                        /*
+                         * Jadval tasdiqlanmagan bo'lsa sana TAXMIN — buni
+                         * aytmasdan aniq sanadek ko'rsatish sotuvchini
+                         * chalg‘itadi. Tanlash Pul kalendarida.
+                         */
+                        hint={data?.balance.payoutConfirmed === false ? t('bal.nextUnset') : t('bal.nextHint')}
                         value={
                           data?.balance.nextPayoutAt ? f.date(data.balance.nextPayoutAt) : t('bal.none')
                         }

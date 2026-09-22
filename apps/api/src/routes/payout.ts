@@ -1,7 +1,8 @@
 /**
  * Pul kalendari — /api/v1/payout
  *
- *  GET /  → PayoutCalendarResponse
+ *  GET   /       → PayoutCalendarResponse
+ *  PATCH /rules  → sotuvchi kabinetdagi to'lov jadvalini qayd etadi
  *
  * Uzum pulni darhol bermaydi: xaridor tovarni QABUL QILGANIDAN keyin
  * belgilangan kun o'tishi kerak, shundan keyingina summa yechib olish uchun
@@ -29,12 +30,21 @@ import {
   type PayoutMode,
   type PayoutOrder,
   type PayoutPlanDay,
+  type PayoutRulesRequest,
+  SCHEDULE_FEE,
 } from '@savdoiq/shared';
-import { ah } from '../lib/errors.js';
-import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
+import { AppError, ah } from '../lib/errors.js';
+import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
 import { getStoreIds } from '../services/common.js';
-import { getPayoutRules, nextPayoutDate } from '../services/payout-schedule.js';
+import {
+  PAYOUT_KEYS,
+  businessToday,
+  getPayoutRules,
+  isPayoutMode,
+  modeOn,
+  nextPayoutDate,
+} from '../services/payout-schedule.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -63,9 +73,18 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const { mode, holdDays, earlyFeePct, scheduleFeePct, payoutDays } = await getPayoutRules(company.id);
+    const rules = await getPayoutRules(company.id);
+    const { mode, holdDays, earlyFeePct, scheduleFeePct, payoutDays, schedule, confirmed } = rules;
 
-    const today = parseISODate(toISODate(new Date()));
+    const today = businessToday();
+    /*
+     * Jadval TASDIQLANMAGAN bo'lsa hech qanday pulni "o'tkazilgan" deb
+     * belgilamaymiz. Sana standart jadval TAXMINIDAN chiqadi, taxminga
+     * tayanib "bu pul allaqachon keldi" deyish — sotuvchiga bo'lmagan
+     * narsani aytish. Bunday holda o'tib ketgan sana oldinga suriladi:
+     * ro'yxatda eskirgan kun turmaydi, lekin yolg'on da'vo ham qilinmaydi.
+     */
+    const firstUpcoming = nextPayoutDate(today, schedule);
 
     /*
      * Faqat QABUL QILINGAN buyurtmalar soatni boshlaydi. `deliveredAt` —
@@ -99,7 +118,17 @@ router.get(
       const unlockAt = addDays(acceptedAt, holdDays);
       const daysLeft = Math.ceil((unlockAt.getTime() - today.getTime()) / 86_400_000);
       // Ochilgan pul jadvaldagi navbatdagi sanani kutadi
-      const payoutAt = nextPayoutDate(unlockAt, mode);
+      const scheduled = nextPayoutDate(unlockAt, schedule);
+
+      /*
+       * To'lov sanasi o'tib ketgan bo'lsa, o'sha pul allaqachon
+       * o'tkazilgan. Ilgari bunday satr ro'yxatda qolib ketardi va
+       * sahifa kechagi sanani "bugun tushadi" deb ko'rsatardi.
+       */
+      const past = scheduled.getTime() < today.getTime();
+      const paid = confirmed && past;
+      // Tasdiqlanmagan jadvalda o'tib ketgan sana oldinga suriladi
+      const payoutAt = past && !paid ? firstUpcoming : scheduled;
 
       rows.push({
         uzumOrderId: o.uzumOrderId,
@@ -110,15 +139,17 @@ router.get(
         amount,
         unlocked: daysLeft <= 0,
         daysLeft: Math.max(0, daysLeft),
+        paid,
       });
     }
 
     // Kunlar bo'yicha jamlash — kalendarda bir kun bitta qator
-    const byDay = new Map<string, { amount: number; orders: number }>();
+    const byDay = new Map<string, { amount: number; orders: number; paid: number }>();
     for (const r of rows) {
-      const cur = byDay.get(r.unlockAt) ?? { amount: 0, orders: 0 };
+      const cur = byDay.get(r.unlockAt) ?? { amount: 0, orders: 0, paid: 0 };
       cur.amount += r.amount;
       cur.orders += 1;
+      if (r.paid) cur.paid += r.amount;
       byDay.set(r.unlockAt, cur);
     }
 
@@ -128,30 +159,66 @@ router.get(
         amount: round(v.amount),
         orders: v.orders,
         unlocked: parseISODate(date).getTime() <= today.getTime(),
+        /*
+         * Shu kuni ochilgan pulning qancha qismi jadval bo'yicha
+         * allaqachon o'tkazilgani. Busiz jadval yig'indisi "Ochilgan"
+         * ko‘rsatkichidan katta chiqib, ikkovi zid tushardi.
+         */
+        paid: round(v.paid),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Jadval bo'yicha to'lov kunlari
+    // Jadval bo'yicha to'lov kunlari — faqat oldinda turganlari
     const byPlan = new Map<string, { amount: number; orders: number }>();
     for (const r of rows) {
+      if (r.paid) continue;
       const cur = byPlan.get(r.payoutAt) ?? { amount: 0, orders: 0 };
       cur.amount += r.amount;
       cur.orders += 1;
       byPlan.set(r.payoutAt, cur);
     }
     const planDays: PayoutPlanDay[] = [...byPlan.entries()]
-      .map(([date, v]) => ({
-        date,
-        amount: round(v.amount),
-        orders: v.orders,
-        // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
-        net: round(v.amount * (1 - scheduleFeePct / 100)),
-      }))
+      .map(([date, v]) => {
+        /*
+         * Haq BITTA emas: jadval o'rtada almashsa, 7-oktyabr hali eski
+         * jadval (0%), 14-oktyabr esa yangisi (1%) bo'yicha to'lanadi.
+         */
+        const rowMode = modeOn(parseISODate(date), schedule);
+        const feePct = SCHEDULE_FEE[rowMode];
+        return {
+          date,
+          amount: round(v.amount),
+          orders: v.orders,
+          mode: rowMode,
+          feePct,
+          // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
+          net: round(v.amount * (1 - feePct / 100)),
+          /*
+           * Qolgan kun SERVERDA sanaladi. Brauzerda sanalganda UTC yarim
+           * tuni mijozning mahalliy vaqti bilan solishtirilib, Toshkentda
+           * 00:00–05:00 orasida bir kunga adashardi.
+           */
+          daysLeft: Math.max(
+            0,
+            Math.round((parseISODate(date).getTime() - today.getTime()) / 86_400_000),
+          ),
+        };
+      })
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const unlocked = round(rows.filter((r) => r.unlocked).reduce((s, r) => s + r.amount, 0));
+    const unlocked = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
+    const paidOut = round(rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0));
     const pending = round(rows.filter((r) => !r.unlocked).reduce((s, r) => s + r.amount, 0));
     const next = days.find((d) => !d.unlocked);
+
+    /*
+     * Uzum hali o'tkazmagan butun summa. Qarzdorlik tekshiruvi aynan
+     * shunga taqaladi: `unlocked` endi faqat navbatdagi to'lovni kutayotgan
+     * pul, ya'ni har to'lov sanasidan keyingi kuni u nolga yaqinlashadi va
+     * o'ttiz kunlik xarajat bilan solishtirilsa har safar yolg'on "qarz bor"
+     * chiqardi.
+     */
+    const owed = round(unlocked + pending);
 
     // ── Xizmat to'lovlari: Uzum ushlab qoladigan summalar ──
     const chargeRows = await prisma.expense.aggregate({
@@ -170,12 +237,12 @@ router.get(
 
     // 1) Qarzdorlik — ochilgan summa xizmat to'lovlarini qoplaydimi
     checks.push(
-      unlocked >= charges
-        ? { key: 'no_debt', status: 'ok', detail: 'Ochilgan summa xizmat to‘lovlaridan ko‘p' }
+      owed >= charges
+        ? { key: 'no_debt', status: 'ok', detail: 'Hisobdagi summa xizmat to‘lovlaridan ko‘p' }
         : {
             key: 'no_debt',
             status: 'fail',
-            detail: `Xizmat to‘lovlari ochilgan summadan ${round(charges - unlocked)} so‘mga ko‘p`,
+            detail: `Xizmat to‘lovlari hisobdagi summadan ${round(charges - owed)} so‘mga ko‘p`,
           },
     );
 
@@ -251,9 +318,19 @@ router.get(
     const eligible = hasFail ? false : hasUnknown ? null : true;
 
     const payload: PayoutCalendarResponse = {
-      rules: { holdDays, earlyFeePct, mode, scheduleFeePct, payoutDays },
+      rules: {
+        holdDays,
+        earlyFeePct,
+        mode,
+        scheduleFeePct,
+        payoutDays,
+        nextMode: rules.nextMode,
+        nextFrom: rules.nextFrom,
+        confirmed: rules.confirmed,
+      },
       totals: {
         unlocked,
+        paidOut,
         pending,
         charges,
         nextDate: next?.date ?? null,
@@ -265,6 +342,100 @@ router.get(
       instant: { eligible, checks },
     };
     res.json(payload);
+  }),
+);
+
+// ─────────────────────────── PATCH /rules ───────────────────────────
+
+/**
+ * Sotuvchi kabinetdagi to'lov jadvalini qayd etadi.
+ *
+ * Uzum bu jadvalni ochiq API'da BERMAYDI, shuning uchun uni o'qib olishning
+ * imkoni yo'q. Lekin jadval o'zgarganda butun Pul kalendari siljiydi, ya'ni
+ * uni bilish shart. Yechim: sotuvchi bir marta tanlaydi.
+ *
+ * Kelajakdagi o'zgarish ham shu yerda saqlanadi — Uzum jadvalni darhol
+ * emas, belgilangan sanadan almashtiradi. Sana kelganda hisob o'zi
+ * o'tadi, sotuvchi qaytib kirishi shart emas.
+ */
+
+/** Jadvalni juda uzoq kelajakka qo'yish — deyarli har doim xato */
+const MAX_SWITCH_AHEAD_DAYS = 400;
+
+router.patch(
+  '/rules',
+  requireRole('owner', 'manager'),
+  // O'qish qaysi tarifda ochiq bo'lsa, yozish ham o'sha tarifda
+  requireFeature('unit_economics'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const body = (req.body ?? {}) as PayoutRulesRequest;
+
+    if (!isPayoutMode(body.mode)) throw new AppError(400, 'bad_request', 'To‘lov jadvali noto‘g‘ri');
+
+    const rawFrom = typeof body.nextFrom === 'string' ? body.nextFrom.trim() : '';
+    const hasSwitch = Boolean(rawFrom) || (body.nextMode != null && body.nextMode !== undefined);
+
+    let nextMode: PayoutMode | null = null;
+    let nextFrom: string | null = null;
+
+    if (hasSwitch) {
+      if (!isPayoutMode(body.nextMode)) {
+        throw new AppError(400, 'bad_request', 'Yangi jadvalni tanlang');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawFrom)) {
+        throw new AppError(400, 'bad_request', 'O‘zgarish sanasi YYYY-MM-DD ko‘rinishida bo‘lishi kerak');
+      }
+      const at = parseISODate(rawFrom);
+      const today = businessToday();
+      if (Number.isNaN(at.getTime()) || at.getTime() <= today.getTime()) {
+        throw new AppError(400, 'bad_request', 'O‘zgarish sanasi kelajakda bo‘lishi kerak');
+      }
+      if (at.getTime() > addDays(today, MAX_SWITCH_AHEAD_DAYS).getTime()) {
+        throw new AppError(400, 'bad_request', 'O‘zgarish sanasi juda uzoqda');
+      }
+      if (body.nextMode === body.mode) {
+        throw new AppError(400, 'bad_request', 'Yangi jadval joriysidan farq qilishi kerak');
+      }
+      nextMode = body.nextMode;
+      nextFrom = rawFrom;
+    }
+
+    const values: Record<string, string | null> = {
+      [PAYOUT_KEYS.mode]: body.mode,
+      [PAYOUT_KEYS.modeNext]: nextMode,
+      [PAYOUT_KEYS.modeNextFrom]: nextFrom,
+      [PAYOUT_KEYS.confirmedAt]: new Date().toISOString(),
+    };
+
+    /*
+     * Uchta kalit BIRGA yoziladi. Yarim yozilgan holat — yangi rejim,
+     * lekin eski kelajakdagi o'zgarish hamon o'rnida — jadvalni
+     * sotuvchi kutmagan sanada almashtirib yuborardi.
+     */
+    await prisma.$transaction(
+      Object.entries(values).map(([key, value]) =>
+        value === null
+          ? prisma.companySetting.deleteMany({ where: { companyId: company.id, key } })
+          : prisma.companySetting.upsert({
+              where: { companyId_key: { companyId: company.id, key } },
+              create: { companyId: company.id, key, value },
+              update: { value },
+            }),
+      ),
+    );
+
+    const rules = await getPayoutRules(company.id);
+    res.json({
+      holdDays: rules.holdDays,
+      earlyFeePct: rules.earlyFeePct,
+      mode: rules.mode,
+      scheduleFeePct: rules.scheduleFeePct,
+      payoutDays: rules.payoutDays,
+      nextMode: rules.nextMode,
+      nextFrom: rules.nextFrom,
+      confirmed: rules.confirmed,
+    });
   }),
 );
 

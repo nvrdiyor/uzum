@@ -248,3 +248,22 @@ export function initials(first?: string | null, last?: string | null): string {
   const b = (last ?? '').trim()[0] ?? '';
   return (a + b).toUpperCase() || 'U';
 }
+
+/**
+ * Bugungi sana SAVDO MINTAQASI bo'yicha (Asia/Tashkent), ISO ko'rinishda.
+ *
+ * NEGA `toISODate(new Date())` emas. U UTC kunini beradi, bizning
+ * mintaqa esa UTC+5. Ya'ni Toshkentda 00:00 dan 05:00 gacha server hali
+ * "kechagi kun"da turadi. To'lov sanalari — kalendar sanalari: jadval
+ * "08.10 dan amal qiladi" deganda u Toshkent bo'yicha 8-oktyabrda
+ * boshlanishi kerak, 8-oktyabr soat 05:00 da emas.
+ */
+export function todayInBusinessTz(now: Date = new Date(), timeZone = 'Asia/Tashkent'): string {
+  // en-CA aynan `YYYY-MM-DD` beradi
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}

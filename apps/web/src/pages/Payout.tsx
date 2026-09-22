@@ -1,23 +1,50 @@
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, HelpCircle, Receipt, Wallet } from 'lucide-react';
-import type { PayoutCalendarResponse, PayoutCheck, PayoutDay, PayoutOrder, PayoutPlanDay } from '@savdoiq/shared';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  HelpCircle,
+  Receipt,
+  Settings2,
+  Wallet,
+} from 'lucide-react';
+import {
+  PAYOUT_MODES,
+  SCHEDULE_FEE,
+  type PayoutCalendarResponse,
+  type PayoutCheck,
+  type PayoutDay,
+  type PayoutMode,
+  type PayoutOrder,
+  type PayoutPlanDay,
+  type PayoutRulesRequest,
+} from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
+import { useSession } from '@/store/session';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { BarsChart, ChartCard, CHART_COLORS } from '@/components/charts';
 import {
   Badge,
+  Button,
   Card,
   CardBody,
   CardHeader,
   DataTable,
   EmptyState,
   ErrorState,
+  Input,
+  Modal,
   PageHeader,
   PlanGate,
+  Select,
   StatCard,
   StatGrid,
+  Toggle,
+  toast,
   type Column,
 } from '@/components/ui';
 
@@ -26,7 +53,7 @@ registerNamespace('payout', {
     title: 'Pul kalendari',
     subtitle: 'Qaysi summa qaysi kuni yechib olish uchun ochiladi',
     'kpi.unlocked': 'Ochilgan',
-    'kpi.unlockedHint': 'Muddati kelgan, yechib olsa bo‘ladi',
+    'kpi.unlockedHint': 'Muddati kelgan — jadvaldagi navbatdagi sanani kutmoqda',
     'kpi.pending': 'Kutilmoqda',
     'kpi.pendingHint': 'Qabul sanasidan {n} kun o‘tishi kerak',
     'kpi.next': 'Eng yaqin ochilish',
@@ -55,6 +82,7 @@ registerNamespace('payout', {
     'ord.left': 'Qoldi',
     'ord.days': '{n} kun',
     'ord.ready': 'Tayyor',
+    'ord.paid': 'To‘langan',
     'inst.title': 'Tezkor yechib olish',
     'inst.subtitle': 'Uzum shartlari bo‘yicha — {n} kunni kutmasdan yechish mumkinmi',
     'inst.yes': 'Shartlar bajarilgan',
@@ -83,14 +111,36 @@ registerNamespace('payout', {
     'plan.fee': 'Jadval haqi {n}%',
     'plan.today': 'Bugun tushadi',
     'plan.inDays': '{n} kundan keyin',
-    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi. Jadvalni Uzum kabinetidan o‘zgartirasiz.',
+    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi.',
+    'plan.paid': 'Jadval bo‘yicha allaqachon o‘tkazilgan: {v}',
+    'plan.switchHere': 'Yangi jadval',
+    'plan.empty': 'Oldinda turgan to‘lov yo‘q',
+    'plan.emptyHint': 'Yangi buyurtma qabul qilingach, bu yerda to‘lov sanasi paydo bo‘ladi',
+    'plan.assumed': 'Sanalar standart jadval bo‘yicha taxmin qilingan.',
+    'state.paid': 'To‘langan',
+    'state.partPaid': 'Qisman to‘langan',
+    'sched.edit': 'Jadvalni sozlash',
+    'sched.title': 'To‘lov jadvalini sozlash',
+    'sched.subtitle': 'Uzum kabinetida qaysi variant belgilangan bo‘lsa, shuni tanlang',
+    'sched.why': 'Uzum to‘lov jadvalini API orqali bermaydi — biz uni kalitdan o‘qiy olmaymiz. Shu sababli bir marta o‘zingiz belgilaysiz, keyin butun kalendar shu bo‘yicha hisoblanadi.',
+    'sched.unconfirmed': 'Jadval tasdiqlanmagan — hisob standart «{mode}» bo‘yicha ketyapti. Kabinetdagi variantni belgilang.',
+    'sched.pending': '{date} dan: {mode}',
+    'sched.pendingHint': 'Shu sanagacha eski jadval ishlaydi',
+    'sched.hasSwitch': 'Jadval kelajakda o‘zgaradi',
+    'sched.switchHint': 'Uzum jadvalni darhol almashtirmaydi: kabinetda «… dan amal qiladi» deb turadi. O‘sha sanani yozing — belgilangan kuni hisob o‘zi o‘tadi.',
+    'sched.newMode': 'Yangi jadval',
+    'sched.from': 'Amal qilish sanasi',
+    'sched.save': 'Saqlash',
+    'sched.cancel': 'Bekor qilish',
+    'sched.saved': 'Jadval saqlandi',
+    'sched.free': 'haqsiz',
     note: 'Bu hisob Uzum shartlari asosida qurilgan. Yakuniy raqam har doim Uzum kabinetida — farq bo‘lsa ayting, qoidani moslaymiz.',
   },
   ru: {
     title: 'Календарь выплат',
     subtitle: 'Какая сумма и когда открывается к выводу',
     'kpi.unlocked': 'Доступно',
-    'kpi.unlockedHint': 'Срок подошёл, можно выводить',
+    'kpi.unlockedHint': 'Срок подошёл — ждёт ближайшую дату графика',
     'kpi.pending': 'Ожидает',
     'kpi.pendingHint': 'Нужно {n} дней с даты получения',
     'kpi.next': 'Ближайшее открытие',
@@ -119,6 +169,7 @@ registerNamespace('payout', {
     'ord.left': 'Осталось',
     'ord.days': '{n} дн',
     'ord.ready': 'Готово',
+    'ord.paid': 'Выплачено',
     'inst.title': 'Мгновенный вывод',
     'inst.subtitle': 'По условиям Uzum — можно ли вывести не дожидаясь {n} дней',
     'inst.yes': 'Условия выполнены',
@@ -147,14 +198,36 @@ registerNamespace('payout', {
     'plan.fee': 'Комиссия графика {n}%',
     'plan.today': 'Поступит сегодня',
     'plan.inDays': 'Через {n} дн',
-    'plan.hint': 'Открытые деньги ждут ближайшую дату графика. График меняется в кабинете Uzum.',
+    'plan.hint': 'Открытые деньги ждут ближайшую дату графика.',
+    'plan.paid': 'Уже перечислено по графику: {v}',
+    'plan.switchHere': 'Новый график',
+    'plan.empty': 'Предстоящих выплат нет',
+    'plan.emptyHint': 'Когда покупатель получит новый заказ, здесь появится дата выплаты',
+    'plan.assumed': 'Даты рассчитаны по графику по умолчанию.',
+    'state.paid': 'Выплачено',
+    'state.partPaid': 'Частично выплачено',
+    'sched.edit': 'Настроить график',
+    'sched.title': 'Настройка графика выплат',
+    'sched.subtitle': 'Выберите тот вариант, который стоит в кабинете Uzum',
+    'sched.why': 'Uzum не отдаёт график выплат через API — прочитать его по ключу невозможно. Поэтому вы указываете его один раз, и весь календарь считается по нему.',
+    'sched.unconfirmed': 'График не подтверждён — расчёт идёт по варианту «{mode}» по умолчанию. Укажите тот, что в кабинете.',
+    'sched.pending': 'С {date}: {mode}',
+    'sched.pendingHint': 'До этой даты работает прежний график',
+    'sched.hasSwitch': 'График изменится в будущем',
+    'sched.switchHint': 'Uzum меняет график не сразу: в кабинете стоит «действует с …». Укажите эту дату — в нужный день расчёт переключится сам.',
+    'sched.newMode': 'Новый график',
+    'sched.from': 'Действует с',
+    'sched.save': 'Сохранить',
+    'sched.cancel': 'Отмена',
+    'sched.saved': 'График сохранён',
+    'sched.free': 'без комиссии',
     note: 'Расчёт построен на условиях Uzum. Итоговая цифра всегда в кабинете — если есть расхождение, скажите, скорректируем правило.',
   },
   en: {
     title: 'Payout calendar',
     subtitle: 'Which amount unlocks for withdrawal, and when',
     'kpi.unlocked': 'Available',
-    'kpi.unlockedHint': 'The hold has passed — withdrawable',
+    'kpi.unlockedHint': 'The hold has passed — waiting for the next scheduled date',
     'kpi.pending': 'Pending',
     'kpi.pendingHint': 'Needs {n} days from the acceptance date',
     'kpi.next': 'Next unlock',
@@ -183,6 +256,7 @@ registerNamespace('payout', {
     'ord.left': 'Left',
     'ord.days': '{n} d',
     'ord.ready': 'Ready',
+    'ord.paid': 'Paid out',
     'inst.title': 'Instant withdrawal',
     'inst.subtitle': 'Per Uzum terms — can you withdraw without waiting {n} days',
     'inst.yes': 'Conditions met',
@@ -211,7 +285,29 @@ registerNamespace('payout', {
     'plan.fee': 'Schedule fee {n}%',
     'plan.today': 'Arrives today',
     'plan.inDays': 'In {n} days',
-    'plan.hint': 'Unlocked money waits for the next scheduled date. Change the schedule in the Uzum cabinet.',
+    'plan.hint': 'Unlocked money waits for the next scheduled date.',
+    'plan.paid': 'Already transferred on schedule: {v}',
+    'plan.switchHere': 'New schedule',
+    'plan.empty': 'No upcoming payouts',
+    'plan.emptyHint': 'Once a new order is accepted, its payout date appears here',
+    'plan.assumed': 'Dates are based on the default schedule.',
+    'state.paid': 'Paid out',
+    'state.partPaid': 'Partly paid out',
+    'sched.edit': 'Configure schedule',
+    'sched.title': 'Payout schedule settings',
+    'sched.subtitle': 'Pick the option that is selected in your Uzum cabinet',
+    'sched.why': 'Uzum does not expose the payout schedule through its API, so we cannot read it from your key. You set it once and the whole calendar follows it.',
+    'sched.unconfirmed': 'Schedule not confirmed — the calculation uses the default “{mode}”. Pick the one from your cabinet.',
+    'sched.pending': 'From {date}: {mode}',
+    'sched.pendingHint': 'The previous schedule applies until then',
+    'sched.hasSwitch': 'The schedule changes later',
+    'sched.switchHint': 'Uzum does not switch immediately — the cabinet says “effective from …”. Enter that date and the calculation flips itself on the day.',
+    'sched.newMode': 'New schedule',
+    'sched.from': 'Effective from',
+    'sched.save': 'Save',
+    'sched.cancel': 'Cancel',
+    'sched.saved': 'Schedule saved',
+    'sched.free': 'no fee',
     note: 'This is computed from Uzum’s terms, not taken from Uzum. The authoritative figure is always in the cabinet — tell us if it differs and we will adjust the rule.',
   },
 });
@@ -227,17 +323,38 @@ export default function Payout() {
   });
 
   const hold = data?.rules.holdDays ?? 10;
+  const [editing, setEditing] = useState(false);
+  /*
+   * Jadvalni faqat egasi va menejer o'zgartira oladi — server ham shunday.
+   * Kuzatuvchiga tugmani ko'rsatib, formani to'ldirgandan keyin 403 berish
+   * ochiqdan-ochiq vaqtini olish bo‘lardi.
+   */
+  const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
 
   const dayCols: Column<PayoutDay>[] = [
     { key: 'date', header: t('cal.date'), render: (r) => <span className="tnum whitespace-nowrap">{f.date(r.date)}</span> },
     {
       key: 'state',
       header: t('cal.state'),
-      render: (r) => (
-        <Badge tone={r.unlocked ? 'brand' : 'warn'} dot>
-          {r.unlocked ? t('state.unlocked') : t('state.waiting')}
-        </Badge>
-      ),
+      /*
+       * To'langan ulush alohida ko'rsatiladi. Busiz bu jadvalning
+       * yig‘indisi "Ochilgan" ko‘rsatkichidan katta chiqib, sotuvchi
+       * ikkovini solishtirganda chalg‘irdi.
+       */
+      render: (r) =>
+        r.paid >= r.amount && r.amount > 0 ? (
+          <Badge tone="muted" dot>
+            {t('state.paid')}
+          </Badge>
+        ) : r.paid > 0 ? (
+          <Badge tone="muted" dot>
+            {t('state.partPaid')}
+          </Badge>
+        ) : (
+          <Badge tone={r.unlocked ? 'brand' : 'warn'} dot>
+            {r.unlocked ? t('state.unlocked') : t('state.waiting')}
+          </Badge>
+        ),
     },
     { key: 'orders', header: t('cal.orders'), align: 'right', render: (r) => <span className="tnum">{f.num(r.orders)}</span> },
     {
@@ -281,7 +398,9 @@ export default function Payout() {
       header: t('ord.left'),
       align: 'right',
       render: (r) =>
-        r.unlocked ? (
+        r.paid ? (
+          <Badge tone="muted">{t('ord.paid')}</Badge>
+        ) : r.unlocked ? (
           <Badge tone="brand">{t('ord.ready')}</Badge>
         ) : (
           <span className="tnum text-warn-ink">{t('ord.days', { n: r.daysLeft })}</span>
@@ -352,7 +471,7 @@ export default function Payout() {
           <InstantCard instant={data.instant} hold={hold} fee={data.rules.earlyFeePct} />
         ) : null}
 
-        {data && data.plan.length > 0 ? (
+        {data ? (
           <Card className="mt-5">
             <CardHeader
               icon={<CalendarClock className="h-4 w-4" />}
@@ -364,16 +483,92 @@ export default function Payout() {
                   <Badge tone={data.rules.scheduleFeePct > 0 ? 'warn' : 'muted'}>
                     {t('plan.fee', { n: f.dec(data.rules.scheduleFeePct, 1) })}
                   </Badge>
+                  {/* Kelajakdagi jadval haqi boshqa — sarlavha ikkalasini ko‘rsatadi */}
+                  {data.rules.nextMode ? (
+                    <Badge tone="info">
+                      → {t(`mode.${data.rules.nextMode}`)}
+                    </Badge>
+                  ) : null}
+                  {canEdit ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<Settings2 className="h-3.5 w-3.5" />}
+                      onClick={() => setEditing(true)}
+                    >
+                      {t('sched.edit')}
+                    </Button>
+                  ) : null}
                 </div>
               }
             />
             <CardBody>
-              <ol className="space-y-2.5">
-                {data.plan.map((row, i) => (
-                  <PlanRow key={row.date} row={row} first={i === 0} fee={data.rules.scheduleFeePct} />
-                ))}
-              </ol>
-              <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('plan.hint')}</p>
+              {/*
+                Jadval tasdiqlanmagan bo'lsa buni ochiq aytamiz: butun
+                kalendar shu taxminga tayanadi, jim turgani chalg'itadi.
+              */}
+              {!data.rules.confirmed ? (
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => setEditing(true)}
+                  className="mb-3.5 flex w-full items-start gap-2.5 rounded-xl border border-warn/30 bg-warn/5 p-3 text-left transition-colors enabled:hover:bg-warn/10 disabled:cursor-default"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn-ink" />
+                  <span className="text-xs leading-relaxed text-ink">
+                    {t('sched.unconfirmed', { mode: t(`mode.${data.rules.mode}`) })}
+                  </span>
+                </button>
+              ) : null}
+
+              {/* Kelajakdagi o'zgarish — kabinetdagi «… dan amal qiladi» */}
+              {data.rules.nextMode && data.rules.nextFrom ? (
+                <div className="mb-3.5 flex items-start gap-2.5 rounded-xl border border-info/30 bg-info/5 p-3">
+                  <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-info-ink" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-ink">
+                      {t('sched.pending', {
+                        date: f.date(data.rules.nextFrom),
+                        mode: t(`mode.${data.rules.nextMode}`),
+                      })}
+                    </p>
+                    <p className="mt-0.5 text-2xs text-muted">{t('sched.pendingHint')}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {data.plan.length > 0 ? (
+                <ol className="space-y-2.5">
+                  {data.plan.map((row, i) => (
+                    <PlanRow
+                      key={row.date}
+                      row={row}
+                      first={i === 0}
+                      /*
+                       * Rejim almashgan birinchi satr ajratib belgilanadi.
+                       * Taqqoslash BUGUNGI jadvaldan boshlanadi: aks holda
+                       * o'zgarish ro'yxatdagi birinchi sanada kuchga kirsa,
+                       * belgi umuman chiqmay qolardi.
+                       */
+                      switched={(i === 0 ? data.rules.mode : data.plan[i - 1].mode) !== row.mode}
+                    />
+                  ))}
+                </ol>
+              ) : (
+                <EmptyState
+                  icon={<CalendarClock className="h-6 w-6" />}
+                  title={t('plan.empty')}
+                  hint={t('plan.emptyHint')}
+                />
+              )}
+
+              <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">
+                {t('plan.hint')}
+                {data.totals.paidOut > 0 ? (
+                  <> {t('plan.paid', { v: f.money(data.totals.paidOut) })}</>
+                ) : null}
+                {!data.rules.confirmed ? <> {t('plan.assumed')}</> : null}
+              </p>
             </CardBody>
           </Card>
         ) : null}
@@ -439,6 +634,10 @@ export default function Payout() {
 
         <p className="mt-4 text-xs leading-relaxed text-muted">{t('note')}</p>
       </PlanGate>
+
+      {data && canEdit ? (
+        <ScheduleModal open={editing} onClose={() => setEditing(false)} rules={data.rules} />
+      ) : null}
     </>
   );
 }
@@ -448,14 +647,19 @@ export default function Payout() {
  * Eng yaqin to'lov ajratib ko'rsatiladi: sotuvchi birinchi navbatda
  * "eng yaqini qachon va qancha" degan savolga javob izlaydi.
  */
-function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee: number }) {
+function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean; switched: boolean }) {
   const t = useT('payout');
   const f = useFormat();
 
   const d = new Date(`${row.date}T00:00:00Z`);
   const day = d.getUTCDate();
   const month = f.monthShort(row.date);
-  const daysLeft = Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86_400_000));
+  /*
+   * Qolgan kun SERVERDAN keladi. Ilgari u brauzerda UTC yarim tunini
+   * mahalliy vaqt bilan solishtirib sanalardi va Toshkentda 00:00–05:00
+   * orasida bir kunga adashardi: to‘lov kuni "1 kun" deb ko‘rinardi.
+   */
+  const daysLeft = row.daysLeft;
 
   return (
     <li
@@ -482,8 +686,16 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {t('plan.orders')}: <span className="tnum">{f.num(row.orders)}</span>
-          {fee > 0 ? <> · {t('plan.fee', { n: f.dec(fee, 1) })}</> : null}
+          {row.feePct > 0 ? <> · {t('plan.fee', { n: f.dec(row.feePct, 1) })}</> : null}
         </p>
+        {/* Shu satrdan boshlab yangi jadval ishlaydi */}
+        {switched ? (
+          <p className="mt-1">
+            <Badge tone="info">
+              {t('plan.switchHere')}: {t(`mode.${row.mode}`)}
+            </Badge>
+          </p>
+        ) : null}
       </div>
 
       <div className="shrink-0 text-right">
@@ -499,6 +711,192 @@ function PlanRow({ row, first, fee }: { row: PayoutPlanDay; first: boolean; fee:
       </div>
     </li>
   );
+}
+
+/**
+ * To'lov jadvalini sozlash oynasi — kabinetdagi ro'yxatning aynan o'zi.
+ *
+ * NEGA QO'LDA. Uzumning ochiq API'sida bu jadval uchun endpoint yo'q,
+ * ya'ni kalitdan o'qib bo'lmaydi. Lekin jadval butun Pul kalendarini
+ * suradi, shuning uchun uni bilish shart: sotuvchi bir marta belgilaydi.
+ *
+ * KELAJAKDAGI O'ZGARISH. Uzum jadvalni darhol almashtirmaydi — kabinetda
+ * "08.10.2026 dan amal qiladi" deb turadi. Shu sana kiritilsa, hisob
+ * o'sha kuni o'zi o'tadi va sotuvchi qaytib kelishi shart emas.
+ */
+function ScheduleModal({
+  open,
+  onClose,
+  rules,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rules: PayoutCalendarResponse['rules'];
+}) {
+  const t = useT('payout');
+  const f = useFormat();
+  const qc = useQueryClient();
+
+  const [mode, setMode] = useState<PayoutMode>(rules.mode);
+  const [hasSwitch, setHasSwitch] = useState(Boolean(rules.nextMode));
+  const [nextMode, setNextMode] = useState<PayoutMode>(rules.nextMode ?? otherMode(rules.mode));
+  const [nextFrom, setNextFrom] = useState(rules.nextFrom ?? '');
+
+  /*
+   * Oyna bir marta yig‘iladi va yopilganda yo‘qolmaydi, shuning uchun
+   * `useState` boshlang'ich qiymatlari FAQAT birinchi ochilishda ishlaydi.
+   * Busiz saqlangandan keyin yoki bekor qilingandan keyin qayta ochilgan
+   * oyna eski, saqlanmagan qiymatlarni ko‘rsatardi.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setMode(rules.mode);
+    setHasSwitch(Boolean(rules.nextMode));
+    setNextMode(rules.nextMode ?? otherMode(rules.mode));
+    setNextFrom(rules.nextFrom ?? '');
+  }, [open, rules.mode, rules.nextMode, rules.nextFrom]);
+
+  /*
+   * Joriy jadval tanlanganda kelajakdagisi u bilan bir xil bo'lib qolmasin:
+   * bunda ro'yxatdan o'zi tushib qolib, maydon bo'sh ko'rinardi va Saqlash
+   * tugmasi hech qachon yonmasdi.
+   */
+  const pickMode = (m: PayoutMode) => {
+    setMode(m);
+    if (nextMode === m) setNextMode(otherMode(m));
+  };
+
+  const save = useMutation({
+    mutationFn: (body: PayoutRulesRequest) => api.patch('/payout/rules', body),
+    onSuccess: () => {
+      toast.success(t('sched.saved'));
+      onClose();
+      // Moliya sahifasidagi "Keyingi to'lov" ham shu jadvaldan hisoblanadi
+      void qc.invalidateQueries({ queryKey: ['payout'] });
+      void qc.invalidateQueries({ queryKey: ['finance'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : ''),
+  });
+
+  /*
+   * Kelajakdagi jadval joriysi bilan ustma-ust tushib qolmasligi RENDERDA
+   * hal qilinadi, holatni yangilash tartibiga tayanmasdan. Aks holda maydon
+   * o'z ro'yxatidan tushib qolgan qiymatni ushlab turib, Saqlash tugmasi
+   * sababsiz o'chib qolardi.
+   */
+  const effectiveNextMode = nextMode === mode ? otherMode(mode) : nextMode;
+
+  /*
+   * Server ham tekshiradi, lekin tugmani o'chirib qo'ygan ma'qul:
+   * xatoni oldindan ko'rsatish qayta urinishdan yaxshiroq.
+   */
+  const switchInvalid = hasSwitch && (!nextFrom || nextFrom < toInputDate(1));
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('sched.title')}
+      description={t('sched.subtitle')}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            {t('sched.cancel')}
+          </Button>
+          <Button
+            onClick={() =>
+              save.mutate({
+                mode,
+                nextMode: hasSwitch ? effectiveNextMode : null,
+                nextFrom: hasSwitch ? nextFrom : null,
+              })
+            }
+            disabled={switchInvalid || save.isPending}
+          >
+            {t('sched.save')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-2" role="radiogroup" aria-label={t('sched.subtitle')}>
+        {PAYOUT_MODES.map((m) => (
+          <label
+            key={m}
+            className={cn(
+              'flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors',
+              mode === m ? 'border-brand/40 bg-brand/5' : 'border-line bg-surface-2 hover:bg-surface-3',
+            )}
+          >
+            <input
+              type="radio"
+              name="payout-mode"
+              className="h-4 w-4 shrink-0 accent-[rgb(var(--c-brand))]"
+              checked={mode === m}
+              onChange={() => pickMode(m)}
+            />
+            <span className="min-w-0 flex-1 text-sm font-medium text-ink">{t(`mode.${m}`)}</span>
+            <Badge tone={SCHEDULE_FEE[m] > 0 ? 'warn' : 'muted'}>
+              {SCHEDULE_FEE[m] > 0 ? t('plan.fee', { n: f.dec(SCHEDULE_FEE[m], 1) }) : t('sched.free')}
+            </Badge>
+          </label>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-line pt-4">
+        <Toggle checked={hasSwitch} onChange={setHasSwitch} label={t('sched.hasSwitch')} hint={t('sched.switchHint')} />
+
+        {hasSwitch ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="eyebrow">{t('sched.newMode')}</span>
+              <Select
+                className="mt-1"
+                value={effectiveNextMode}
+                onChange={(e) => setNextMode(e.target.value as PayoutMode)}
+              >
+                {PAYOUT_MODES.filter((m) => m !== mode).map((m) => (
+                  <option key={m} value={m}>
+                    {t(`mode.${m}`)} — {SCHEDULE_FEE[m]}%
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="block">
+              <span className="eyebrow">{t('sched.from')}</span>
+              <Input
+                className="mt-1"
+                type="date"
+                value={nextFrom}
+                min={toInputDate(1)}
+                onChange={(e) => setNextFrom(e.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
+
+      <p className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('sched.why')}</p>
+    </Modal>
+  );
+}
+
+/**
+ * Berilganidan farq qiladigan birinchi jadval.
+ *
+ * Kelajakdagi o'zgarish joriy jadval bilan bir xil bo'lishi mantiqsiz —
+ * Uzum ham bunday tanlovni bermaydi. Standart qiymat sifatida `weekly`
+ * olinganda, sotuvchining joriy jadvali `weekly` bo‘lsa, maydon o‘z
+ * ro‘yxatidan tushib qolardi.
+ */
+function otherMode(mode: PayoutMode): PayoutMode {
+  return PAYOUT_MODES.find((m) => m !== mode) ?? mode;
+}
+
+/** Bugundan `days` kun keyingi sana — <input type="date"> uchun */
+function toInputDate(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Tezkor yechib olish mezonlari ro'yxati */

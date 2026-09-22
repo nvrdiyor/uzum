@@ -1,4 +1,4 @@
-import type { SyncStepId, ExpenseCategory } from './types.js';
+import type { SyncStepId, ExpenseCategory, PayoutMode } from './types.js';
 
 /**
  * Dastlabki to'liq sinxronizatsiya bosqichlari.
@@ -191,3 +191,43 @@ export const STOCK_THRESHOLDS = {
 
 export const SESSION_DAYS = 30;
 export const LOGIN_CODE_TTL_MINUTES = 10;
+
+// ─────────────────────────── To'lov jadvali ───────────────────────────
+
+/*
+ * Uzum kabinetidagi "To'lovlar jadvalini sozlash" to'rtta variant beradi.
+ * Bu jadval UCHUN API ENDPOINT YO'Q — Uzum uni ochiq API'da bermaydi,
+ * shuning uchun sotuvchi o'zi tanlaydi. Jadvalni ikki joy o'qiydi (server
+ * hisobi va sozlama ekrani), shu bois u umumiy paketda turadi.
+ */
+
+/** Oy ichidagi to'lov sanalari (`daily` — har ish kuni, sana bilan emas) */
+export const SCHEDULE_DAYS: Record<PayoutMode, number[]> = {
+  daily: [],
+  weekly: [7, 14, 21, 28],
+  biweekly: [7, 21],
+  monthly: [7],
+};
+
+/** Jadval uchun xizmat haqi, % — tez-tez to'lansa qimmatroq */
+export const SCHEDULE_FEE: Record<PayoutMode, number> = {
+  daily: 1.5,
+  weekly: 1,
+  biweekly: 0,
+  monthly: 0,
+};
+
+/** Kabinetdagi tartib — ekranda ham shu ketma-ketlikda ko'rsatiladi */
+export const PAYOUT_MODES: PayoutMode[] = ['daily', 'weekly', 'biweekly', 'monthly'];
+
+/**
+ * Sotuvchi jadvalni tasdiqlamaguncha shu variant olinadi.
+ *
+ * Uzumda yangi do'konning boshlang'ich jadvali shu, lekin bu TAXMIN:
+ * shuning uchun tasdiqlanmagani ekranda ochiq aytiladi.
+ */
+export const DEFAULT_PAYOUT_MODE: PayoutMode = 'biweekly';
+/** Uzumning joriy sharti: tovar qabul qilingandan keyin 10 kun */
+export const DEFAULT_HOLD_DAYS = 10;
+/** Tezkor (erta) yechib olish xizmat haqi */
+export const DEFAULT_EARLY_FEE_PCT = 2.5;

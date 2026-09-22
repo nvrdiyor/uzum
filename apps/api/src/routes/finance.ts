@@ -373,7 +373,8 @@ router.get(
             (uzumFeeAgg._sum.amount ?? 0) -
             (storageAllAgg._sum.amount ?? 0),
         ),
-        nextPayoutAt: nextPayoutFromToday(payoutRules.mode),
+        nextPayoutAt: nextPayoutFromToday(payoutRules.schedule),
+        payoutConfirmed: payoutRules.confirmed,
       },
     };
 
