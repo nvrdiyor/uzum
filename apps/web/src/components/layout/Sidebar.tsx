@@ -54,15 +54,23 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn('flex h-16 shrink-0 items-center justify-between px-4', rail && 'justify-center px-2')}>
+      {/*
+        Yig'ilgan menyuda tugma logoning TAGIDA turadi: avval u logo ustiga
+        absolute qo'yilgan edi va belgining o'ng chetini yopib, "kesilgan"
+        ko'rinish berardi.
+      */}
+      <div
+        className={cn(
+          'flex h-16 shrink-0 items-center justify-between px-4',
+          rail && 'h-auto flex-col justify-start gap-2 px-2 pb-3 pt-4',
+        )}
+      >
         <Logo compact={rail} />
         <button
           onClick={toggleRail}
-          className={cn(
-            'hidden h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:flex',
-            rail && 'absolute right-2',
-          )}
-          aria-label="Menyuni yig‘ish"
+          className="focusable hidden h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:flex"
+          aria-label={rail ? 'Menyuni yoyish' : 'Menyuni yig‘ish'}
+          title={rail ? 'Menyuni yoyish' : 'Menyuni yig‘ish'}
         >
           <ChevronLeft className={cn('h-4 w-4 transition-transform duration-300', rail && 'rotate-180')} />
         </button>

@@ -92,7 +92,8 @@ export function BrandLogo({
 }) {
   return (
     <span className={cn('flex items-center gap-2.5', className)}>
-      <LogoMark size={size} className="shadow-[0_8px_20px_-8px_rgb(var(--c-brand)/0.8)]" />
+      {/* Nursiz: 36 px da yashil soya belgi tagida dog' bo'lib ko'rinardi */}
+      <LogoMark size={size} />
       {!compact ? <Wordmark className={cn('text-[21px]', textClassName)} /> : null}
     </span>
   );
