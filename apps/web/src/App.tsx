@@ -33,6 +33,8 @@ const Products = lazyPage(() => import('@/pages/Products'));
 const ProductDetail = lazyPage(() => import('@/pages/ProductDetail'));
 const Abc = lazyPage(() => import('@/pages/Abc'));
 const CostPrice = lazyPage(() => import('@/pages/CostPrice'));
+const Batches = lazyPage(() => import('@/pages/Batches'));
+const BatchDetail = lazyPage(() => import('@/pages/BatchDetail'));
 const Mxik = lazyPage(() => import('@/pages/Mxik'));
 const Illiquid = lazyPage(() => import('@/pages/Illiquid'));
 const Stocks = lazyPage(() => import('@/pages/Stocks'));
@@ -162,6 +164,8 @@ export default function App() {
             <Route path="/sku-health" element={<SkuHealth />} />
             <Route path="/abc" element={<Abc />} />
               <Route path="/cost-price" element={<CostPrice />} />
+              <Route path="/batches" element={<Batches />} />
+              <Route path="/batches/:id" element={<BatchDetail />} />
               <Route path="/mxik" element={<Mxik />} />
               <Route path="/illiquid" element={<Illiquid />} />
               <Route path="/stocks" element={<Stocks />} />

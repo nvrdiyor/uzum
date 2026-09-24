@@ -32,6 +32,7 @@ import billingRoutes from './routes/billing.js';
 import referralRoutes from './routes/referral.js';
 import notificationsRoutes from './routes/notifications.js';
 import exportRoutes from './routes/export.js';
+import batchesRoutes from './routes/batches.js';
 import adminRoutes from './routes/admin.js';
 
 export function createApp() {
@@ -96,6 +97,7 @@ export function createApp() {
   api.use('/referral', referralRoutes);
   api.use('/notifications', notificationsRoutes);
   api.use('/export', exportRoutes);
+  api.use('/batches', batchesRoutes);
   api.use('/admin', adminRoutes);
 
   app.use('/api/v1', api);

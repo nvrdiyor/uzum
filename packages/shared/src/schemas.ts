@@ -121,6 +121,31 @@ export const shipmentSchema = z.object({
     .default([]),
 });
 
+/** Bitta partiyadagi qatorlar chegarasi */
+export const BATCH_MAX_ITEMS = 500;
+
+export const batchItemSchema = z.object({
+  name: z.string().trim().max(200).default(''),
+  trackCode: z.string().trim().max(64).default(''),
+  priceCny: z.coerce.number().min(0).max(10_000_000).default(0),
+  cargoName: z.string().trim().max(60).default(''),
+  delivery: z.enum(['avia', 'avto']).default('avto'),
+  cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
+});
+
+export const batchCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  /** Berilmasa — Markaziy bank kursi */
+  rate: z.coerce.number().positive().max(1_000_000).optional(),
+});
+
+export const batchUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  rate: z.coerce.number().positive().max(1_000_000),
+  extra: z.coerce.number().min(0).max(10_000_000_000).default(0),
+  items: z.array(batchItemSchema).max(BATCH_MAX_ITEMS),
+});
+
 export const settingsSchema = z.object({
   language: z.enum(['uz', 'ru', 'en']).optional(),
   notifyDaily: z.boolean().optional(),

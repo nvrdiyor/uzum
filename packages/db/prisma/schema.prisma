@@ -106,6 +106,7 @@ model Company {
   settings        CompanySetting[]
   scenarios       UnitScenario[]
   referralBonuses ReferralBonus[]
+  purchaseBatches PurchaseBatch[]
 }
 
 model Membership {
@@ -698,6 +699,45 @@ model UnitScenario {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
+}
+
+/**
+ * Xitoydan olingan tovar partiyasi (sotuvchining Excel jadvali o'rniga).
+ * Kurs partiya uchun bir marta belgilanadi: keyin Markaziy bank kursi
+ * o'zgarsa ham eski partiyaning tannarxi o'zgarmasligi kerak.
+ */
+model PurchaseBatch {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  /// 1 ¥ necha so'm
+  rate      Float
+  /// Partiya bo'yicha qo'shimcha xarajat, so'm
+  extra     Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items   PurchaseBatchItem[]
+
+  @@index([companyId, createdAt])
+}
+
+model PurchaseBatchItem {
+  id        String @id @default(cuid())
+  batchId   String
+  position  Int    @default(0)
+  name      String @default("")
+  trackCode String @default("")
+  priceCny  Float  @default(0)
+  cargoName String @default("")
+  /// avia | avto
+  delivery  String @default("avto")
+  cargoCost Float  @default(0)
+
+  batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, position])
 }
 
 model AuditLog {

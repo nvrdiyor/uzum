@@ -1,4 +1,11 @@
-import type { ImportCalcInput, ImportCalcResult, UnitCalcInput, UnitCalcResult } from './types.js';
+import type {
+  BatchItemInput,
+  BatchTotals,
+  ImportCalcInput,
+  ImportCalcResult,
+  UnitCalcInput,
+  UnitCalcResult,
+} from './types.js';
 
 export const round = (n: number, d = 0): number => {
   const p = Math.pow(10, d);
@@ -207,4 +214,43 @@ export function maxCostForPrice(price: number, factor: number, offset: number): 
 export function maxPddPrice(maxCost: number, cargoCost: number, rate: number): number {
   if (rate <= 0) return 0;
   return Math.max(0, round((maxCost - cargoCost) / rate, 2));
+}
+
+/**
+ * Xarid partiyasi hisobi. Har bir qatorning so'mdagi narxi alohida
+ * yaxlitlanadi va jamlar aynan shu yaxlitlangan qatorlardan yig'iladi —
+ * jadvaldagi ustun yig'indisi pastdagi jami bilan har doim bir xil chiqadi.
+ */
+export function calcBatch(
+  rate: number,
+  extra: number,
+  items: ReadonlyArray<Pick<BatchItemInput, 'priceCny' | 'cargoCost'>>,
+): { rows: { priceUzs: number; total: number }[]; totals: BatchTotals } {
+  const r = Math.max(0, rate || 0);
+  let priceCny = 0;
+  let goodsUzs = 0;
+  let cargoUzs = 0;
+
+  const rows = items.map((it) => {
+    const cny = Math.max(0, it.priceCny || 0);
+    const cargo = Math.round(Math.max(0, it.cargoCost || 0));
+    const priceUzs = Math.round(cny * r);
+    priceCny += cny;
+    goodsUzs += priceUzs;
+    cargoUzs += cargo;
+    return { priceUzs, total: priceUzs + cargo };
+  });
+
+  const ex = Math.round(Math.max(0, extra || 0));
+  return {
+    rows,
+    totals: {
+      items: items.length,
+      priceCny: round(priceCny, 2),
+      goodsUzs,
+      cargoUzs,
+      extra: ex,
+      total: goodsUzs + cargoUzs + ex,
+    },
+  };
 }

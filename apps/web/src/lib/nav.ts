@@ -28,6 +28,7 @@ import {
   CreditCard,
   Settings,
   Ship,
+  Boxes,
   type LucideIcon,
 } from 'lucide-react';
 import type { FeatureId } from '@savdoiq/shared';
@@ -67,6 +68,7 @@ export const NAV: NavGroup[] = [
       { to: '/sku-health', labelKey: 'nav.skuHealth', icon: HeartPulse, feature: 'sku_health', badge: 'new' },
       { to: '/abc', labelKey: 'nav.abc', icon: PieChart, feature: 'abc_analysis' },
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
+      { to: '/batches', labelKey: 'nav.batches', icon: Boxes, feature: 'cost_price', badge: 'new' },
       { to: '/mxik', labelKey: 'nav.mxik', icon: ScanBarcode, badge: 'new' },
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
     ],

@@ -775,6 +775,66 @@ export interface ImportDefaults extends ImportCalcInput {
   commissionFromData: boolean;
 }
 
+// ─────────────────────────── Xarid partiyalari ───────────────────────────
+
+export type BatchDelivery = 'avia' | 'avto';
+
+/** Sotuvchi kiritadigan maydonlar — qolgani hisoblanadi */
+export interface BatchItemInput {
+  name: string;
+  trackCode: string;
+  /** Narxi, ¥ */
+  priceCny: number;
+  cargoName: string;
+  delivery: BatchDelivery;
+  /** Kargo haqi, so'm */
+  cargoCost: number;
+}
+
+export interface BatchItemRow extends BatchItemInput {
+  id: string;
+  /** priceCny × kurs, so'm */
+  priceUzs: number;
+  /** priceUzs + cargoCost */
+  total: number;
+}
+
+export interface BatchTotals {
+  items: number;
+  priceCny: number;
+  goodsUzs: number;
+  cargoUzs: number;
+  extra: number;
+  total: number;
+}
+
+export interface BatchSummary {
+  id: string;
+  name: string;
+  rate: number;
+  extra: number;
+  totals: BatchTotals;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BatchDetail extends BatchSummary {
+  items: BatchItemRow[];
+  /** Kompaniyaning boshqa partiyalarida ishlatilgan kargo nomlari — tanlash uchun */
+  cargoNames: string[];
+}
+
+export interface BatchListResponse {
+  items: BatchSummary[];
+  total: number;
+}
+
+export interface BatchRate {
+  rate: number;
+  source: 'cbu' | 'fallback';
+  updatedAt: string | null;
+}
+
 // ─────────────────────────── Yo'qotish / qaytarish / saqlash ───────────────────────────
 
 export interface LossRow {
