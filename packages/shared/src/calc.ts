@@ -220,25 +220,35 @@ export function maxPddPrice(maxCost: number, cargoCost: number, rate: number): n
  * Xarid partiyasi hisobi. Har bir qatorning so'mdagi narxi alohida
  * yaxlitlanadi va jamlar aynan shu yaxlitlangan qatorlardan yig'iladi —
  * jadvaldagi ustun yig'indisi pastdagi jami bilan har doim bir xil chiqadi.
+ *
+ * `priceCny` — qatordagi barcha donalarning jami narxi, shuning uchun 1 dona
+ * tannarxi = (tovar + kargo) ÷ soni. Partiyaning qo'shimcha xarajati bunga
+ * kirmaydi — u qatorlarga bo'linmaydi.
  */
 export function calcBatch(
   rate: number,
   extra: number,
-  items: ReadonlyArray<Pick<BatchItemInput, 'priceCny' | 'cargoCost'>>,
-): { rows: { priceUzs: number; total: number }[]; totals: BatchTotals } {
+  items: ReadonlyArray<Pick<BatchItemInput, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>>,
+): { rows: { priceUzs: number; total: number; unitCost: number | null }[]; totals: BatchTotals } {
   const r = Math.max(0, rate || 0);
+  let qty = 0;
+  let weightKg = 0;
   let priceCny = 0;
   let goodsUzs = 0;
   let cargoUzs = 0;
 
   const rows = items.map((it) => {
+    const n = Math.max(0, Math.floor(it.qty || 0));
     const cny = Math.max(0, it.priceCny || 0);
     const cargo = Math.round(Math.max(0, it.cargoCost || 0));
     const priceUzs = Math.round(cny * r);
+    const total = priceUzs + cargo;
+    qty += n;
+    weightKg += Math.max(0, it.weightKg || 0);
     priceCny += cny;
     goodsUzs += priceUzs;
     cargoUzs += cargo;
-    return { priceUzs, total: priceUzs + cargo };
+    return { priceUzs, total, unitCost: n > 0 ? Math.round(total / n) : null };
   });
 
   const ex = Math.round(Math.max(0, extra || 0));
@@ -246,6 +256,8 @@ export function calcBatch(
     rows,
     totals: {
       items: items.length,
+      qty,
+      weightKg: round(weightKg, 2),
       priceCny: round(priceCny, 2),
       goodsUzs,
       cargoUzs,

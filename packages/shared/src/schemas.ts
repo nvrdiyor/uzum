@@ -127,9 +127,11 @@ export const BATCH_MAX_ITEMS = 500;
 export const batchItemSchema = z.object({
   name: z.string().trim().max(200).default(''),
   trackCode: z.string().trim().max(64).default(''),
+  qty: z.coerce.number().int().min(0).max(10_000_000).default(0),
   priceCny: z.coerce.number().min(0).max(10_000_000).default(0),
   cargoName: z.string().trim().max(60).default(''),
   delivery: z.enum(['avia', 'avto']).default('avto'),
+  weightKg: z.coerce.number().min(0).max(1_000_000).default(0),
   cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
 });
 

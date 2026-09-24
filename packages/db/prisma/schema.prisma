@@ -729,10 +729,14 @@ model PurchaseBatchItem {
   position  Int    @default(0)
   name      String @default("")
   trackCode String @default("")
+  /// Nechta dona; 0 — kiritilmagan (1 dona tannarxi hisoblanmaydi)
+  qty       Int    @default(0)
+  /// Shu qatorning jami narxi (barcha donalar uchun), ¥
   priceCny  Float  @default(0)
   cargoName String @default("")
   /// avia | avto
   delivery  String @default("avto")
+  weightKg  Float  @default(0)
   cargoCost Float  @default(0)
 
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)

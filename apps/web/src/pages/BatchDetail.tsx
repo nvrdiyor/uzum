@@ -84,24 +84,29 @@ function blankRow(prev?: Row): Row {
     key: newKey(),
     name: '',
     trackCode: '',
+    qty: 0,
     priceCny: 0,
     cargoName: prev?.cargoName ?? '',
     delivery: prev?.delivery ?? 'avto',
+    weightKg: 0,
     cargoCost: 0,
   };
 }
 
 /** Hech narsa yozilmagan qator saqlanmaydi (kargo va yetkazish oldingi qatordan meros) */
-const isBlank = (r: Row) => !r.name.trim() && !r.trackCode.trim() && !r.priceCny && !r.cargoCost;
+const isBlank = (r: Row) =>
+  !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
 
 function toDraft(d: BatchDetailData): Draft {
-  const rows = d.items.map(({ id, name, trackCode, priceCny, cargoName, delivery, cargoCost }) => ({
+  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, weightKg, cargoCost }) => ({
     key: id,
     name,
     trackCode,
+    qty,
     priceCny,
     cargoName,
     delivery,
+    weightKg,
     cargoCost,
   }));
   return { id: d.id, name: d.name, rate: d.rate, extra: d.extra, rows: rows.length ? rows : [blankRow()] };
@@ -125,6 +130,7 @@ function NumCell({
   cell,
   onKeyDown,
   className,
+  format,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -135,6 +141,8 @@ function NumCell({
   onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void;
   /** Jadvaldan tashqarida — oddiy maydon ko'rinishi */
   className?: string;
+  /** Kasr qismi o'zgaruvchan bo'lsa (kg: "12" va "0,35") — `digits` o'rniga */
+  format?: (v: number) => string;
 }) {
   const f = useFormat();
   const ref = useRef<HTMLInputElement>(null);
@@ -156,7 +164,7 @@ function NumCell({
       data-cell={cell}
       inputMode={integer ? 'numeric' : 'decimal'}
       disabled={disabled}
-      value={text ?? (value ? f.num(value, digits) : '')}
+      value={text ?? (value ? (format ? format(value) : f.num(value, digits)) : '')}
       placeholder="0"
       onFocus={() => {
         selectAll.current = true;
@@ -284,6 +292,11 @@ export default function BatchDetailRoute() {
 function BatchDetail({ id }: { id: string }) {
   const t = useT('batches');
   const f = useFormat();
+  // Og'irlik keraklicha kasr bilan: "12", "2,5", "0,35" — "2,50" emas
+  const kgText = (v: number) => {
+    const digits = [0, 1, 2].find((d) => Math.abs(v * 10 ** d - Math.round(v * 10 ** d)) < 1e-6) ?? 2;
+    return f.num(v, digits);
+  };
   const qc = useQueryClient();
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
 
@@ -590,7 +603,15 @@ function BatchDetail({ id }: { id: string }) {
             <StatCard
               label={t('kpi.cargo')}
               value={<span className="whitespace-nowrap">{f.num(calc.totals.cargoUzs)}</span>}
-              hint={t('kpi.cargoHint', { avia: f.num(cargoSplit.avia), avto: f.num(cargoSplit.avto) })}
+              hint={
+                calc.totals.weightKg > 0
+                  ? t('kpi.cargoHintKg', {
+                      avia: f.num(cargoSplit.avia),
+                      avto: f.num(cargoSplit.avto),
+                      kg: kgText(calc.totals.weightKg),
+                    })
+                  : t('kpi.cargoHint', { avia: f.num(cargoSplit.avia), avto: f.num(cargoSplit.avto) })
+              }
               icon={<Truck className="h-5 w-5" />}
               tone="warn"
             />
@@ -604,7 +625,11 @@ function BatchDetail({ id }: { id: string }) {
             <StatCard
               label={t('kpi.total')}
               value={<span className="whitespace-nowrap text-brand-ink">{f.num(calc.totals.total)}</span>}
-              hint={t('kpi.totalHint', { n: filledCount })}
+              hint={
+                calc.totals.qty > 0
+                  ? t('kpi.totalHintQty', { n: filledCount, qty: f.num(calc.totals.qty) })
+                  : t('kpi.totalHint', { n: filledCount })
+              }
               icon={<Boxes className="h-5 w-5" />}
               tone="brand"
             />
@@ -613,17 +638,20 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1100px] border-collapse text-sm">
+              <table ref={tableRef} className="w-full min-w-[1360px] border-collapse text-sm">
                 <colgroup>
                   <col className="w-11" />
                   <col />
                   <col className="w-[112px]" />
+                  <col className="w-[72px]" />
                   <col className="w-[100px]" />
                   <col className="w-[108px]" />
                   <col className="w-[136px]" />
                   <col className="w-[136px]" />
+                  <col className="w-[80px]" />
                   <col className="w-[112px]" />
                   <col className="w-[124px]" />
+                  <col className="w-[116px]" />
                   <col className="w-11" />
                 </colgroup>
                 <thead>
@@ -631,12 +659,19 @@ function BatchDetail({ id }: { id: string }) {
                     <th className={cn(th, 'text-center')}>{t('th.no')}</th>
                     <th className={cn(th, 'text-left')}>{t('th.name')}</th>
                     <th className={cn(th, 'text-left')}>{t('th.track')}</th>
-                    <th className={cn(th, 'text-right')}>{t('th.cny')}</th>
+                    <th className={cn(th, 'text-right')}>{t('th.qty')}</th>
+                    <th className={cn(th, 'text-right')} title={t('th.cnyHint')}>
+                      {t('th.cny')}
+                    </th>
                     <th className={cn(th, 'text-right')}>{t('th.uzs')}</th>
                     <th className={cn(th, 'text-left')}>{t('th.cargoName')}</th>
                     <th className={cn(th, 'text-center')}>{t('th.delivery')}</th>
+                    <th className={cn(th, 'text-right')}>{t('th.kg')}</th>
                     <th className={cn(th, 'text-right')}>{t('th.cargo')}</th>
                     <th className={cn(th, 'text-right')}>{t('th.total')}</th>
+                    <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
+                      {t('th.unit')}
+                    </th>
                     <th className={th} />
                   </tr>
                 </thead>
@@ -669,6 +704,16 @@ function BatchDetail({ id }: { id: string }) {
                             onChange={(e) => patchRow(r.key, { trackCode: e.target.value })}
                             onKeyDown={onCellKey(i, 'track')}
                             className={cn(CELL_INPUT, 'tnum')}
+                          />
+                        </td>
+                        <td className={EDITABLE_TD}>
+                          <NumCell
+                            cell={`${i}:qty`}
+                            value={r.qty}
+                            integer
+                            disabled={readonly}
+                            onChange={(qty) => patchRow(r.key, { qty })}
+                            onKeyDown={onCellKey(i, 'qty')}
                           />
                         </td>
                         <td className={EDITABLE_TD}>
@@ -740,6 +785,16 @@ function BatchDetail({ id }: { id: string }) {
                         </td>
                         <td className={EDITABLE_TD}>
                           <NumCell
+                            cell={`${i}:kg`}
+                            value={r.weightKg}
+                            format={kgText}
+                            disabled={readonly}
+                            onChange={(weightKg) => patchRow(r.key, { weightKg })}
+                            onKeyDown={onCellKey(i, 'kg')}
+                          />
+                        </td>
+                        <td className={EDITABLE_TD}>
+                          <NumCell
                             cell={`${i}:cargo`}
                             value={r.cargoCost}
                             integer
@@ -750,6 +805,9 @@ function BatchDetail({ id }: { id: string }) {
                         </td>
                         <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-bold text-ink">
                           {res.total ? f.num(res.total) : '—'}
+                        </td>
+                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-semibold text-brand-ink">
+                          {res.unitCost !== null && res.total ? f.num(res.unitCost) : '—'}
                         </td>
                         <td className="px-1 text-center">
                           {canEdit ? (
@@ -774,14 +832,18 @@ function BatchDetail({ id }: { id: string }) {
                     <td className="px-3 py-3" colSpan={2}>
                       {t('total')}
                     </td>
+                    <td className="tnum px-3 py-3 text-right">{calc.totals.qty ? f.num(calc.totals.qty) : ''}</td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.priceCny, 2)}</td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.goodsUzs)}</td>
                     <td colSpan={2} />
+                    <td className="tnum px-3 py-3 text-right">
+                      {calc.totals.weightKg ? kgText(calc.totals.weightKg) : ''}
+                    </td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.cargoUzs)}</td>
                     <td className="tnum px-3 py-3 text-right text-brand-ink">
                       {f.num(calc.totals.goodsUzs + calc.totals.cargoUzs)}
                     </td>
-                    <td />
+                    <td colSpan={2} />
                   </tr>
                 </tfoot>
               </table>

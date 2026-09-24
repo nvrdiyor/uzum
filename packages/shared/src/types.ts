@@ -783,10 +783,13 @@ export type BatchDelivery = 'avia' | 'avto';
 export interface BatchItemInput {
   name: string;
   trackCode: string;
-  /** Narxi, ¥ */
+  /** Nechta dona; 0 — kiritilmagan */
+  qty: number;
+  /** Qatorning jami narxi (barcha donalar uchun), ¥ */
   priceCny: number;
   cargoName: string;
   delivery: BatchDelivery;
+  weightKg: number;
   /** Kargo haqi, so'm */
   cargoCost: number;
 }
@@ -797,10 +800,14 @@ export interface BatchItemRow extends BatchItemInput {
   priceUzs: number;
   /** priceUzs + cargoCost */
   total: number;
+  /** total ÷ qty; soni kiritilmagan bo'lsa null */
+  unitCost: number | null;
 }
 
 export interface BatchTotals {
   items: number;
+  qty: number;
+  weightKg: number;
   priceCny: number;
   goodsUzs: number;
   cargoUzs: number;

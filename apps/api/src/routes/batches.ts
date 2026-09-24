@@ -41,15 +41,19 @@ interface ItemRecord {
   id: string;
   name: string;
   trackCode: string;
+  qty: number;
   priceCny: number;
   cargoName: string;
   delivery: string;
+  weightKg: number;
   cargoCost: number;
 }
 
 const toDelivery = (v: string): BatchDelivery => (v === 'avia' ? 'avia' : 'avto');
 
-function toSummary(b: BatchRecord, items: ReadonlyArray<Pick<ItemRecord, 'priceCny' | 'cargoCost'>>): BatchSummary {
+type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>;
+
+function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>): BatchSummary {
   return {
     id: b.id,
     name: b.name,
@@ -82,12 +86,15 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       id: it.id,
       name: it.name,
       trackCode: it.trackCode,
+      qty: it.qty,
       priceCny: it.priceCny,
       cargoName: it.cargoName,
       delivery: toDelivery(it.delivery),
+      weightKg: it.weightKg,
       cargoCost: it.cargoCost,
       priceUzs: rows[i].priceUzs,
       total: rows[i].total,
+      unitCost: rows[i].unitCost,
     })),
     cargoNames: used.map((u) => u.cargoName).sort((a, b) => a.localeCompare(b)),
   };
@@ -111,7 +118,7 @@ router.get(
       where: { companyId: company.id },
       orderBy: { createdAt: 'desc' },
       take: MAX_BATCHES,
-      include: { items: { select: { priceCny: true, cargoCost: true } } },
+      include: { items: { select: { priceCny: true, cargoCost: true, qty: true, weightKg: true } } },
     });
     const items = rows.map((b) => toSummary(b, b.items));
     res.json({ items, total: items.length } satisfies BatchListResponse);
