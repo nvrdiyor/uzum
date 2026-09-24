@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { BOT_URL, BOT_USERNAME } from '@/lib/bot';
 import { cn } from '@/lib/utils';
+import { BrandLogo } from '@/components/brand/Logo';
 
 /** Landing sahifasining umumiy "atomlari": animatsiya, sarlavha, aurora fon, logo. */
 
@@ -118,24 +119,8 @@ export function GridPattern({ className }: { className?: string }) {
 
 export function LandingLogo({ to = '/', className }: { to?: string; className?: string }) {
   return (
-    <Link to={to} className={cn('flex items-center gap-2.5 outline-none', className)}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-on-brand shadow-[0_10px_26px_-10px_rgb(var(--c-brand)/0.95)]">
-        <svg
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />
-          <circle cx="19.5" cy="12" r="2" fill="currentColor" stroke="none" />
-        </svg>
-      </span>
-      <span className="font-display text-[17px] font-extrabold tracking-tight text-ink">
-        Savdo<span className="text-brand">IQ</span>
-      </span>
+    <Link to={to} aria-label="SavdoIQ" className={cn('flex items-center rounded-xl outline-none', className)}>
+      <BrandLogo />
     </Link>
   );
 }

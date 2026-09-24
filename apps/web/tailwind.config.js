@@ -37,6 +37,8 @@ export default {
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         display: ['Manrope', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Faqat logo yozuvi uchun (SavdoIQ)
+        logo: ['Righteous', 'Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: {

@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, ShieldCheck, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, User } from 'lucide-react';
 import type { LoginResponse } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { registerNamespace, useT } from '@/i18n';
 import { Button, toast } from '@/components/ui';
+import { LogoMark } from '@/components/brand/Logo';
 
 registerNamespace('adminLogin', {
   uz: {
@@ -78,9 +79,7 @@ export default function AdminLogin() {
     <div className="flex min-h-screen items-center justify-center bg-bg bg-aurora px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_10px_30px_-12px_rgb(var(--c-brand)/0.9)]">
-            <ShieldCheck className="h-6 w-6" />
-          </span>
+          <LogoMark size={48} className="mb-3 shadow-[0_10px_30px_-12px_rgb(var(--c-brand)/0.9)]" />
           <h1 className="font-display text-xl font-extrabold tracking-tight text-ink">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
         </div>

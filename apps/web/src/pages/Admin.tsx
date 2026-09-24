@@ -40,6 +40,7 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
+import { LogoMark } from '@/components/brand/Logo';
 import { api } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { registerNamespace, useFormat, useLang, useT } from '@/i18n';
@@ -1441,9 +1442,7 @@ function BroadcastTab() {
         <CardBody>
           <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand-ink">
-                <Send className="h-3.5 w-3.5" />
-              </div>
+              <LogoMark size={32} className="rounded-full" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">SavdoIQ</p>
                 <p className="truncate text-xs text-muted">{targetLabel}</p>

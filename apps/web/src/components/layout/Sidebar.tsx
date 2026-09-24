@@ -7,21 +7,12 @@ import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
 import { getPlan } from '@savdoiq/shared';
+import { BrandLogo } from '@/components/brand/Logo';
 
 export function Logo({ compact }: { compact?: boolean }) {
   return (
-    <Link to="/dashboard" className="flex items-center gap-2.5 outline-none">
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-brand-grad text-on-brand shadow-[0_8px_20px_-8px_rgb(var(--c-brand)/0.9)]">
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />
-          <circle cx="19.5" cy="12" r="2" fill="currentColor" stroke="none" />
-        </svg>
-      </span>
-      {!compact ? (
-        <span className="font-display text-[17px] font-extrabold tracking-tight text-ink">
-          Savdo<span className="text-brand">IQ</span>
-        </span>
-      ) : null}
+    <Link to="/dashboard" aria-label="SavdoIQ" className="focusable rounded-xl outline-none">
+      <BrandLogo compact={compact} />
     </Link>
   );
 }

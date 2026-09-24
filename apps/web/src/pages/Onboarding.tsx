@@ -12,6 +12,7 @@ import { useSession } from '@/store/session';
 import { registerNamespace, useLangStore, useT, type Lang } from '@/i18n';
 import { BOT_URL as BOT_URL_SHARED, BOT_HANDLE } from '@/lib/bot';
 import { cn } from '@/lib/utils';
+import { LogoMark, Wordmark } from '@/components/brand/Logo';
 
 registerNamespace('onboarding', {
   uz: {
@@ -414,13 +415,9 @@ export default function Onboarding() {
       <header className="border-b border-line bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />
-              </svg>
-            </span>
+            <LogoMark size={36} />
             <div className="min-w-0">
-              <p className="font-display text-sm font-extrabold tracking-tight text-ink">{APP.name}</p>
+              <Wordmark className="text-[17px]" />
               <p className="truncate text-2xs text-muted">{t('shell.tagline')}</p>
             </div>
           </div>

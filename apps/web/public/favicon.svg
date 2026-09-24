@@ -1,11 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#10D094"/>
-      <stop offset="100%" stop-color="#3CE2BE"/>
+    <clipPath id="c"><rect width="64" height="64" rx="15"/></clipPath>
+    <linearGradient id="bg" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B4A39"/>
+      <stop offset=".45" stop-color="#03170F"/>
+      <stop offset="1" stop-color="#021A13"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#12B887"/>
+      <stop offset=".5" stop-color="#3EF0C3"/>
+      <stop offset="1" stop-color="#22DDA5"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8CFBE1"/>
+      <stop offset=".5" stop-color="#2CE9B1"/>
+      <stop offset="1" stop-color="#14C690"/>
+    </linearGradient>
+    <linearGradient id="bot" x1="0" y1="0" x2="1" y2=".6">
+      <stop offset="0" stop-color="#7DF9DA"/>
+      <stop offset=".45" stop-color="#22E2A7"/>
+      <stop offset="1" stop-color="#0C9F74"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#0F1115"/>
-  <path d="M8 40 L20 40 L26 22 L34 50 L40 34 L46 34" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="52" cy="34" r="5" fill="url(#g)"/>
+  <g clip-path="url(#c)">
+    <rect width="64" height="64" fill="url(#bg)"/>
+    <path fill="url(#top)" d="M-2 15C4 14 9 10 14 5.5C18 2 22-.5 30-2H61C57 3.5 50 5.4 42 6.3C32 7.4 24 9 18 14C12 19 6 23.5-2 25Z"/>
+    <g fill="url(#bar)" stroke="url(#bar)" stroke-width="2.4" stroke-linejoin="round">
+      <path d="M14.6 35.4L24.4 31.2V51H14.6Z"/>
+      <path d="M30 27.6L39.4 23.4V51H30Z"/>
+      <path d="M44.2 18.9L53.2 14.8V51H44.2Z"/>
+    </g>
+    <path fill="url(#bot)" d="M-2 50C2 44.2 6 42 11 42.2C22 42.7 34 47.8 44 49.3C51.5 50.4 56.5 48 59.2 42.5C60.8 39.3 61.8 36.2 62.5 33H66V40C60 49.5 50 56 42 59.5C36 62 30 64 26 66H-2Z"/>
+  </g>
+  <rect x=".5" y=".5" width="63" height="63" rx="14.5" fill="none" stroke="#5FF5CF" stroke-opacity=".18"/>
 </svg>

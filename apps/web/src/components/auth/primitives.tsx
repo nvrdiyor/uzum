@@ -5,6 +5,7 @@ import { registerNamespace, useLangStore, useT, type Lang } from '@/i18n';
 import { useUi } from '@/store/ui';
 import { cn } from '@/lib/utils';
 import { Aurora, LandingLogo } from '@/components/landing/primitives';
+import { LogoMark } from '@/components/brand/Logo';
 
 /**
  * Kirish (auth) sahifalarining umumiy qobig'i va tarjimalari.
@@ -282,25 +283,9 @@ export function BenefitRow({ icon, title, text }: { icon: ReactNode; title: stri
 /** Yuklanish/kutish holati uchun "pulsatsiyalanuvchi" logo */
 export function PulseLogo({ size = 64 }: { size?: number }) {
   return (
-    <span
-      className="relative flex items-center justify-center rounded-2xl bg-brand-grad text-on-brand shadow-[0_16px_40px_-16px_rgb(var(--c-brand)/0.95)]"
-      style={{ width: size, height: size }}
-    >
-      <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-2xl bg-brand/40" />
-      <svg
-        viewBox="0 0 24 24"
-        className="relative"
-        style={{ width: size * 0.5, height: size * 0.5 }}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M2 15h3.5L8 7l3.5 11L14 12h2" />
-        <circle cx="19.5" cy="12" r="2" fill="currentColor" stroke="none" />
-      </svg>
+    <span className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-[23%] bg-brand/40" />
+      <LogoMark size={size} className="relative shadow-[0_16px_40px_-16px_rgb(var(--c-brand)/0.95)]" />
     </span>
   );
 }
