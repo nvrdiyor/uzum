@@ -432,6 +432,8 @@ model OrderItem {
   netProfit     Float     @default(0)
   status        String    @default("delivered")
   returnedAt    DateTime?
+  /// Uzum `returnCause` — bekor qilish yoki qaytarish sababi (asl matni)
+  returnCause   String?
   orderedAt     DateTime
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -463,22 +465,27 @@ model StockSnapshot {
 }
 
 model Shipment {
-  id          String    @id @default(cuid())
-  companyId   String
-  storeId     String?
-  code        String
-  destination String?
-  status      String    @default("draft")
-  plannedAt   DateTime?
-  acceptedAt  DateTime?
-  note        String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  companyId     String
+  storeId       String?
+  code          String
+  destination   String?
+  status        String    @default("draft")
+  plannedAt     DateTime?
+  acceptedAt    DateTime?
+  note          String?
+  /// manual — saytda yaratilgan; uzum — Uzum nakladnoyidan import qilingan (faqat o'qiladi)
+  source        String    @default("manual")
+  /// Uzum nakladnoy id'si (source = uzum bo'lganda)
+  uzumInvoiceId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   store   Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
   items   ShipmentItem[]
 
+  @@unique([storeId, uzumInvoiceId])
   @@index([companyId])
 }
 

@@ -876,6 +876,13 @@ export interface LossesResponse {
   rows: Paginated<LossRow>;
 }
 
+/**
+ * Xaridor tomonidagi holat:
+ *  • `returned` — tovar punktga keldi, xaridor olmadi yoki oldi-yu qaytardi;
+ *  • `canceled` — xaridor tovarni olmasdan buyurtmani bekor qildi.
+ */
+export type ReturnKind = 'returned' | 'canceled';
+
 export interface ReturnRow {
   id: string;
   sku: string | null;
@@ -884,12 +891,19 @@ export interface ReturnRow {
   orderCode: string | null;
   qty: number;
   amount: number;
+  /** Uzum bergan asl sabab matni (ko'pincha ruscha) */
   reason: string | null;
+  /** `kind` bilan bir xil — eski mijozlar uchun qoldirilgan */
   status: string;
+  kind: ReturnKind;
   returnedAt: string;
 }
 
 export interface ReturnsResponse {
+  /** Qaysi tur ko'rsatilmoqda */
+  kind: ReturnKind | 'all';
+  /** Ikkala tur bo'yicha davr jamlari — tanlovdan qat'i nazar */
+  counts: Record<ReturnKind, { qty: number; amount: number }>;
   totals: { qty: number; amount: number; rate: number };
   byReason: { reason: string; qty: number; share: number }[];
   /** Kunlik qaytarishlar — BUTUN davr bo'yicha (jadval sahifasiga bog'liq emas) */
@@ -949,6 +963,8 @@ export interface ShipmentRow {
   unitsCount: number;
   costValue: number;
   note: string | null;
+  /** manual — saytda yaratilgan; uzum — Uzum nakladnoyidan (faqat o'qiladi) */
+  source: 'manual' | 'uzum';
   items?: ShipmentItemRow[];
 }
 
@@ -969,6 +985,11 @@ export interface ReviewRow {
 }
 
 export interface ReviewsResponse {
+  /**
+   * Sayt sharhga javobni Uzum'ga yubora oladimi. Uzum API javob yozishga
+   * ruxsat bermaydi — jonli rejimda `false`, javob Uzum kabinetida yoziladi.
+   */
+  canReply: boolean;
   totals: { count: number; avgRating: number; answered: number; unanswered: number };
   distribution: { rating: number; count: number }[];
   rows: Paginated<ReviewRow>;

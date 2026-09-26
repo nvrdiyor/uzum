@@ -29,7 +29,7 @@ import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } 
 import { paginate, resolveRange } from '../lib/period.js';
 import { decryptSecret } from '../lib/crypto.js';
 import { getStoreIds } from '../services/common.js';
-import { createUzumClient } from '../uzum/client.js';
+import { createUzumClient, resolveUzumMode } from '../uzum/client.js';
 import type { UzumClient } from '../uzum/types.js';
 
 const router = Router();
@@ -233,6 +233,17 @@ function createReplySender() {
   };
 }
 
+/**
+ * Uzum Seller API sharhga javob yozishga ruxsat bermaydi (endpoint yo'q).
+ * Jonli rejimda javob faqat Uzum kabinetida yoziladi; u keyingi sinxronda bu
+ * yerga ham tushadi. Ilgari sayt javobni "yuborildi" deb saqlab qo'yardi —
+ * sotuvchi javob berdim deb o'ylardi, xaridor esa hech narsa ko'rmasdi.
+ */
+const canReplyViaApi = (): boolean => resolveUzumMode() === 'demo';
+
+const REPLY_UNSUPPORTED =
+  'Uzum API sharhga javob yozishga ruxsat bermaydi. Javobni Uzum kabinetida yozing (seller.uzum.uz → Sharhlar) — u keyingi sinxronda shu yerda ham ko‘rinadi.';
+
 /** Kompaniyaning do'konlaridagi sharhni topadi */
 async function findCompanyReview(storeIds: string[], id: string) {
   return prisma.review.findFirst({
@@ -284,6 +295,7 @@ router.get(
 
     // Ma'lumot bo'lmasa ham 200 va nol qiymatlar qaytadi
     const payload: ReviewsResponse = {
+      canReply: canReplyViaApi(),
       totals: {
         count,
         avgRating: round(avg._avg.rating ?? 0, 2),
@@ -377,6 +389,7 @@ router.post(
     const review = await findCompanyReview(storeIds, String(req.params.id));
     if (!review) throw AppError.notFound('Sharh topilmadi');
     if (review.answered) throw AppError.conflict('Bu sharhga allaqachon javob berilgan');
+    if (!canReplyViaApi()) throw AppError.badRequest(REPLY_UNSUPPORTED);
 
     const sender = createReplySender();
     const sentToUzum = await sender.send(review.storeId, review.uzumReviewId, input.text);
@@ -438,6 +451,7 @@ router.post(
     const { company, plan } = companyCtx(req);
     const input = autoReplySchema.parse(req.body ?? {});
     const dailyLimit = getPlan(plan).limits.autoReplyPerDay;
+    if (!canReplyViaApi()) throw AppError.badRequest(REPLY_UNSUPPORTED);
 
     const storeIds = await getStoreIds(company.id, input.storeId);
 

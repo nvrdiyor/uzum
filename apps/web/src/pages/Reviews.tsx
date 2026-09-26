@@ -4,7 +4,9 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   FileText,
+  Info,
   MessageSquare,
   MessageSquareOff,
   MessageSquareReply,
@@ -73,6 +75,11 @@ registerNamespace('reviews', {
 
     'btn.templates': 'Shablonlar',
     'btn.autoReply': 'Barcha javobsizlarga javob berish',
+    'readonly.title': 'Javoblar Uzum kabinetida yoziladi',
+    'readonly.body':
+      'Uzum API sharhga javob yozishga ruxsat bermaydi. Javobni kabinetda yozing — u keyingi sinxronda shu yerda ham ko‘rinadi. Matnni shablonlardan nusxalab olishingiz mumkin.',
+    'readonly.open': 'Uzum kabinetini ochish',
+    'card.replyInUzum': 'Uzum’da javob berish',
 
     'reply.title': 'Sharhga javob',
     'reply.subtitle': 'Shablondan boshlang yoki o‘zingiz yozing',
@@ -143,6 +150,11 @@ registerNamespace('reviews', {
 
     'btn.templates': 'Шаблоны',
     'btn.autoReply': 'Ответить на все без ответа',
+    'readonly.title': 'Ответы пишутся в кабинете Uzum',
+    'readonly.body':
+      'API Uzum не позволяет отвечать на отзывы. Напишите ответ в кабинете — при следующей синхронизации он появится и здесь. Текст можно скопировать из шаблонов.',
+    'readonly.open': 'Открыть кабинет Uzum',
+    'card.replyInUzum': 'Ответить в Uzum',
 
     'reply.title': 'Ответ на отзыв',
     'reply.subtitle': 'Начните с шаблона или напишите сами',
@@ -213,6 +225,11 @@ registerNamespace('reviews', {
 
     'btn.templates': 'Templates',
     'btn.autoReply': 'Reply to everything unanswered',
+    'readonly.title': 'Replies are written in the Uzum cabinet',
+    'readonly.body':
+      'The Uzum API does not allow replying to reviews. Write the reply in the cabinet — it shows up here after the next sync. You can copy the text from your templates.',
+    'readonly.open': 'Open the Uzum cabinet',
+    'card.replyInUzum': 'Reply on Uzum',
 
     'reply.title': 'Reply to the review',
     'reply.subtitle': 'Start from a template or write your own',
@@ -375,6 +392,8 @@ export default function Reviews() {
 
   const locked = access !== 'full';
   const unanswered = totals?.unanswered ?? 0;
+  /** Jonli rejimda Uzum API javob yozishga ruxsat bermaydi */
+  const canReply = data?.canReply ?? true;
 
   return (
     <>
@@ -393,13 +412,20 @@ export default function Reviews() {
             >
               {t('btn.templates')}
             </Button>
-            <Button
-              icon={<Wand2 className="h-4 w-4" />}
-              disabled={locked || unanswered === 0}
-              onClick={() => setAutoOpen(true)}
-            >
-              {t('btn.autoReply')}
-            </Button>
+            {canReply ? (
+              <Button
+                icon={<Wand2 className="h-4 w-4" />}
+                disabled={locked || unanswered === 0}
+                onClick={() => setAutoOpen(true)}
+              >
+                {t('btn.autoReply')}
+              </Button>
+            ) : (
+              <a href={UZUM_CABINET_URL} target="_blank" rel="noreferrer" className="btn-primary">
+                <ExternalLink className="h-4 w-4" />
+                {t('readonly.open')}
+              </a>
+            )}
           </>
         }
       />
@@ -417,6 +443,16 @@ export default function Reviews() {
           </Card>
         ) : (
           <div className="space-y-5">
+            {!canReply ? (
+              <Card className="flex items-start gap-3 border-info/25 bg-info/5 p-4">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{t('readonly.title')}</p>
+                  <p className="mt-0.5 text-sm text-muted">{t('readonly.body')}</p>
+                </div>
+              </Card>
+            ) : null}
+
             {/* ── KPI ── */}
             <StatGrid>
               <StatCard
@@ -517,7 +553,7 @@ export default function Reviews() {
               <div className={cn('space-y-4', reviews.isFetching && 'opacity-70 transition-opacity')}>
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   {rows.map((review) => (
-                    <ReviewCard key={review.id} review={review} onReply={() => setReplyTo(review)} />
+                    <ReviewCard key={review.id} review={review} canReply={canReply} onReply={() => setReplyTo(review)} />
                   ))}
                 </div>
 
@@ -579,9 +615,20 @@ export default function Reviews() {
   );
 }
 
+/** Uzum sotuvchi kabineti — javob faqat shu yerda yoziladi */
+const UZUM_CABINET_URL = 'https://seller.uzum.uz/';
+
 // ─────────────────────────── Sharh kartochkasi ───────────────────────────
 
-function ReviewCard({ review, onReply }: { review: ReviewRow; onReply: () => void }) {
+function ReviewCard({
+  review,
+  canReply,
+  onReply,
+}: {
+  review: ReviewRow;
+  canReply: boolean;
+  onReply: () => void;
+}) {
   const t = useT('reviews');
   const f = useFormat();
 
@@ -633,9 +680,21 @@ function ReviewCard({ review, onReply }: { review: ReviewRow; onReply: () => voi
         </div>
       ) : (
         <div className="mt-4">
-          <Button variant="outline" size="sm" icon={<MessageSquareReply className="h-4 w-4" />} onClick={onReply}>
-            {t('card.reply')}
-          </Button>
+          {canReply ? (
+            <Button variant="outline" size="sm" icon={<MessageSquareReply className="h-4 w-4" />} onClick={onReply}>
+              {t('card.reply')}
+            </Button>
+          ) : (
+            <a
+              href={UZUM_CABINET_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-outline gap-1.5 rounded-lg px-3 py-1.5 text-xs"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {t('card.replyInUzum')}
+            </a>
+          )}
         </div>
       )}
     </Card>

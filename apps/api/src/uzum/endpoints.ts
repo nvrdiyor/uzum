@@ -150,8 +150,9 @@ export const UZUM_ENDPOINTS = {
 
   // ─────────── Sharhlar ───────────
   /**
-   * DIQQAT: seller OpenAPI'da sharh endpointi topilmadi.
-   * Yo'l taxminiy — `LiveUzumClient` uni chaqirib ko'radi va xato bo'lsa bo'sh massiv qaytaradi.
+   * DIQQAT: seller OpenAPI'da sharh endpointi YO'Q (2026-09-26 da qayta tekshirildi).
+   * Sharhlar uzum.uz ochiq API'sidan o'qiladi — `storefront.ts`. Quyidagi yo'llar
+   * ishlatilmaydi, faqat tarix uchun qoldirilgan; javob yozish API orqali mumkin emas.
    */
   reviews: {
     method: 'GET',

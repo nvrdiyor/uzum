@@ -143,6 +143,13 @@ export interface UzumOrderItem {
   purchasePrice?: number;
   /** Uzum tomonidagi mahsulot id */
   productId?: string;
+  /**
+   * Bekor qilish yoki qaytarish sababi — Uzum `returnCause` (asl matni,
+   * masalan "Отменён до получения"). Pozitsiya holati shundan aniqlanadi.
+   */
+  returnCause?: string;
+  /** Faqat haqiqiy qaytarish uchun (tovar mijozga topshirilgandan keyin) */
+  returnedAt?: string;
 }
 
 /** Buyurtma */
@@ -173,6 +180,33 @@ export interface UzumReturn {
   amount: number;
   reason?: string;
   returnedAt: string;
+}
+
+/** Uzum omboriga yetkazma (FBO nakladnoy) pozitsiyasi */
+export interface UzumInvoiceItem {
+  /** Sotuvchi SKU kodi (masalan `LOOTBOX-LBTMPPNK`) — katalogga shu bilan bog'lanadi */
+  skuCode: string;
+  title?: string;
+  qty: number;
+  accepted: number;
+  purchasePrice?: number;
+}
+
+/** Uzum omboriga yetkazma (FBO nakladnoy) */
+export interface UzumInvoice {
+  id: string;
+  /** Kabinetda ko'rinadigan raqam */
+  number: string;
+  /** draft | planned | in_transit | accepted | canceled */
+  status: 'draft' | 'planned' | 'in_transit' | 'accepted' | 'canceled';
+  /** Uzum holat matni ("Stokda qabul qilingan") */
+  statusText?: string;
+  createdAt: string;
+  plannedAt?: string;
+  acceptedAt?: string;
+  /** Qabul ombori ("Fullfilment Markazi") */
+  destination?: string;
+  items: UzumInvoiceItem[];
 }
 
 /** Marketpleys aybi bilan yo'qolgan/shikastlangan tovar */
@@ -244,7 +278,14 @@ export interface UzumClient {
   getReturns(shopId: string, from: Date, to: Date): Promise<UzumReturn[]>;
   getLosses(shopId: string, from: Date, to: Date): Promise<UzumLoss[]>;
   getStorageFees(shopId: string, from: Date, to: Date): Promise<UzumStorageFee[]>;
-  getReviews(shopId: string, from: Date, to: Date): Promise<UzumReview[]>;
+  /**
+   * Sharhlar. Seller API'da sharh endpointi yo'q — live klient ularni uzum.uz
+   * ochiq API'sidan mahsulot bo'yicha o'qiydi, shuning uchun mahsulot id'lari
+   * beriladi (faqat sharhi bor mahsulotlar).
+   */
+  getReviews(shopId: string, from: Date, to: Date, productIds?: string[]): Promise<UzumReview[]>;
+  /** Uzum omboriga yetkazmalar (FBO nakladnoylar) */
+  getInvoices(shopId: string): Promise<UzumInvoice[]>;
   getExpenses(shopId: string, from: Date, to: Date): Promise<UzumExpense[]>;
   replyReview(shopId: string, reviewId: string, text: string): Promise<boolean>;
 }

@@ -52,6 +52,7 @@ import {
   stockState,
   type SkuInfo,
 } from '../services/common.js';
+import { loadReturnLines } from '../services/returns.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('export_excel'));
@@ -270,6 +271,7 @@ const LOSS_STATUS_LABEL: Record<string, string> = {
 };
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
+  canceled: 'Bekor qilingan',
   returned: 'Qaytarilgan',
   refunded: 'Puli qaytarilgan',
   pending: 'Kutilmoqda',
@@ -1138,26 +1140,23 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const where = {
-      storeId: { in: storeIds },
-      returnedAt: { gte: range.from, lt: range.toExclusive },
-    };
+    // Xaridor qaytarishlari va bekor qilishlari — buyurtma pozitsiyalaridan (sahifa bilan bir xil manba)
+    const q = req.query as Record<string, string | undefined>;
+    const kind = q.kind === 'canceled' || q.kind === 'all' ? q.kind : 'returned';
 
-    const [total, records, catalog, sales] = await Promise.all([
-      prisma.returnRecord.count({ where }),
-      prisma.returnRecord.findMany({ where, orderBy: { returnedAt: 'desc' }, take: MAX_ROWS }),
-      getSkuCatalog(storeIds, true),
+    const [allLines, sales] = await Promise.all([
+      loadReturnLines(storeIds, range.from, range.toExclusive),
       aggregateSales(storeIds, range.from, range.toExclusive),
     ]);
+    const lines = kind === 'all' ? allLines : allLines.filter((l) => l.kind === kind);
+    const total = lines.length;
 
-    // Qaytarish ulushi: qaytarilgan dona / (sotilgan + qaytarilgan) dona
     let soldUnits = 0;
-    let returnedUnits = 0;
-    for (const agg of sales.values()) {
-      soldUnits += agg.units;
-      returnedUnits += agg.returns;
-    }
+    for (const agg of sales.values()) soldUnits += agg.units;
+    const returnedUnits = allLines.filter((l) => l.kind === 'returned').reduce((n, l) => n + l.qty, 0);
+    const canceledUnits = allLines.filter((l) => l.kind === 'canceled').reduce((n, l) => n + l.qty, 0);
     const returnRate = pct(returnedUnits, soldUnits + returnedUnits);
+    const cancelRate = pct(canceledUnits, soldUnits + canceledUnits);
 
     const columns: ColumnDef[] = [
       { header: 'Sana', width: 12 },
@@ -1167,22 +1166,19 @@ router.get(
       { header: 'Miqdor', width: 10, fmt: 'int', sum: true },
       { header: 'Summa', width: 16, fmt: 'money', sum: true },
       { header: 'Sabab', width: 30 },
-      { header: 'Holat', width: 16 },
+      { header: 'Turi', width: 16 },
     ];
 
-    const rows: Cell[][] = records.map((r) => {
-      const info = r.skuId ? catalog.get(r.skuId) : undefined;
-      return [
-        toISODate(r.returnedAt),
-        dash(info?.sku ?? null),
-        info ? info.title : '—',
-        dash(r.orderCode),
-        r.qty,
-        round(r.amount),
-        dash(r.reason),
-        RETURN_STATUS_LABEL[r.status] ?? r.status,
-      ];
-    });
+    const rows: Cell[][] = lines.slice(0, MAX_ROWS).map((l) => [
+      toISODate(l.date),
+      dash(l.sku),
+      l.title ?? '—',
+      dash(l.orderCode),
+      l.qty,
+      round(l.amount),
+      dash(l.reason),
+      RETURN_STATUS_LABEL[l.kind] ?? l.kind,
+    ]);
 
     const wb = newWorkbook();
     addSheet(wb, {
@@ -1199,9 +1195,11 @@ router.get(
       { header: 'Qiymat', width: 18, fmt: 'decimal' },
     ];
     const summaryRows: Cell[][] = [
-      ['Qaytarilgan dona (davr bo‘yicha)', returnedUnits],
       ['Sotilgan dona (davr bo‘yicha)', soldUnits],
+      ['Qaytarilgan dona', returnedUnits],
       ['Qaytarish ulushi, %', returnRate],
+      ['Bekor qilingan dona', canceledUnits],
+      ['Bekor qilish ulushi, %', cancelRate],
     ];
     addSheet(wb, { name: 'Xulosa', columns: summaryColumns, rows: summaryRows });
 

@@ -318,6 +318,7 @@ router.post(
       status: 'draft',
       plannedAt: created.plannedAt ? toISODate(created.plannedAt) : null,
       acceptedAt: null,
+      source: 'manual',
       itemsCount: items.length,
       unitsCount: items.reduce((s, i) => s + i.qty, 0),
       costValue: round(costValue),

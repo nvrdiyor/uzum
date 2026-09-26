@@ -21,6 +21,7 @@ import type {
   UzumClientOptions,
   UzumDeliveryType,
   UzumExpense,
+  UzumInvoice,
   UzumLoss,
   UzumLossStatus,
   UzumLossType,
@@ -185,6 +186,9 @@ const CITIES = [
   'Namangan', 'Andijon', 'Qarshi', 'Nukus', 'Urganch', 'Jizzax', 'Termiz', 'Navoiy',
 ];
 
+/** Uzum topshirilishidan oldingi bekor qilishni aynan shu matn bilan yuboradi */
+const CANCEL_BEFORE_RECEIPT_CAUSE = 'Отменён до получения';
+
 const RETURN_REASONS = [
   'O‘lchami to‘g‘ri kelmadi',
   'Mijoz fikridan qaytdi',
@@ -346,9 +350,14 @@ export class DemoUzumClient implements UzumClient {
     return all.filter((f) => inRange(f.date, from, to));
   }
 
-  async getReviews(shopId: string, from: Date, to: Date): Promise<UzumReview[]> {
+  async getReviews(shopId: string, from: Date, to: Date, _productIds?: string[]): Promise<UzumReview[]> {
     const all = this.dataset().reviewsByShop.get(shopId) ?? [];
     return all.filter((r) => inRange(r.publishedAt, from, to));
+  }
+
+  /** Demo'da Uzum nakladnoylari yo'q — yetkazmalar saytda qo'lda yaratiladi */
+  async getInvoices(_shopId: string): Promise<UzumInvoice[]> {
+    return [];
   }
 
   async getExpenses(shopId: string, from: Date, to: Date): Promise<UzumExpense[]> {
@@ -603,6 +612,7 @@ export class DemoUzumClient implements UzumClient {
                 commission,
                 logistics,
                 status,
+                ...(status === 'canceled' ? { returnCause: CANCEL_BEFORE_RECEIPT_CAUSE } : {}),
               },
             ],
           };
@@ -624,14 +634,18 @@ export class DemoUzumClient implements UzumClient {
               Date.parse(orderedAt) + rng.int(3, 14) * DAY_MS,
               this.today.getTime() + 12 * 3_600_000,
             );
+            const reason = rng.pick(RETURN_REASONS);
+            const returnedAtIso = new Date(returnedAt).toISOString();
+            order.items[0].returnCause = reason;
+            order.items[0].returnedAt = returnedAtIso;
             push(returnsByShop, sku.shopId, {
               id: `demo-ret-${String(orderSeq).padStart(6, '0')}`,
               skuId: sku.id,
               orderCode: order.id,
               qty,
               amount: revenue,
-              reason: rng.pick(RETURN_REASONS),
-              returnedAt: new Date(returnedAt).toISOString(),
+              reason,
+              returnedAt: returnedAtIso,
             });
           }
         }

@@ -24,12 +24,14 @@ import {
   uzumErrorMessage,
   type UzumQuery,
 } from './http.js';
+import { fetchStorefrontReviews } from './storefront.js';
 import type {
   UzumClient,
   UzumClientOptions,
   UzumDeliveryType,
   UzumExpense,
   UzumExpenseCategory,
+  UzumInvoice,
   UzumLoss,
   UzumOrder,
   UzumOrderItem,
@@ -167,7 +169,8 @@ const KEYS = {
   // bo'lmagani uchun har bir variant mahsulotning umumiy rasmini olardi.
   image: ['previewImage', 'image', 'imageUrl', 'photo', 'photoUrl', 'mainImage', 'images'],
   rating: ['rating', 'avgRating', 'ratingValue'],
-  reviewsCount: ['reviewsCount', 'reviewsAmount', 'feedbackCount', 'commentsCount'],
+  // Katalogda `feedbackQuantity` keladi (jonli javobda tekshirilgan)
+  reviewsCount: ['feedbackQuantity', 'reviewsCount', 'reviewsAmount', 'feedbackCount', 'commentsCount'],
   skuList: ['skuList', 'skus', 'skuDtoList', 'variants', 'items', 'skuInfoList'],
 
   skuId: ['skuId', 'id', 'skuID', 'sku_id'],
@@ -252,6 +255,63 @@ function mapOrderStatus(raw: string): string {
   if (s === '') return 'delivered';
   // PACKING, PENDING_DELIVERY, DELIVERING, ACCEPTED_AT_DP, PROCESSING va boshqalar
   return 'processing';
+}
+
+/**
+ * Bekor qilingan pozitsiya — xaridor tovarni olmasdan bekor qilganmi yoki
+ * olgach qaytarganmi. Uzum ikkalasiga ham `status: CANCELED` beradi, farq
+ * `returnCause` da (jonli do'kon ma'lumotida tekshirilgan):
+ *
+ *   "Отменён до получения"              → bekor qilish (topshirilmagan)
+ *   "Не подошёл размер", "Клиент не указал причину",
+ *   "Товара не оказалось в заказе" ...  → qaytarish (topshirilgandan keyin)
+ *
+ * Sabab kelmasa — topshirilgan sana (`dateIssued`) bo'yicha.
+ */
+const CANCEL_BEFORE_RECEIPT = /до\s+получени|before\s+recei|qabul\s+qilishdan\s+oldin/i;
+
+function classifyReturn(returnCause: string, issued: boolean): 'canceled' | 'returned' {
+  if (returnCause) return CANCEL_BEFORE_RECEIPT.test(returnCause) ? 'canceled' : 'returned';
+  return issued ? 'returned' : 'canceled';
+}
+
+/**
+ * Buyurtma holati pozitsiyalardan: hech bo'lmasa bittasi sotilgan bo'lsa —
+ * o'shaning holati; hammasi qaytgan/bekor bo'lsa — shunga qarab. Avval
+ * birinchi kelgan pozitsiya holati olinardi va bitta tovari qaytgan
+ * ikki pozitsiyali buyurtma butunlay "bekor" bo'lib qolardi.
+ */
+function orderStatusFromItems(items: UzumOrderItem[], fallback: string): string {
+  const live = items.filter((i) => i.status !== 'canceled' && i.status !== 'returned');
+  if (live.length > 0) {
+    if (live.some((i) => i.status === 'processing')) return 'processing';
+    if (live.some((i) => i.status === 'new')) return 'new';
+    return live[0].status ?? fallback;
+  }
+  if (items.some((i) => i.status === 'returned')) return 'returned';
+  if (items.length > 0) return 'canceled';
+  return fallback;
+}
+
+/**
+ * Nakladnoy holati → bizdagi yetkazma holati. Aniq tekshirilgani faqat
+ * `ACCEPTED` ("Stokda qabul qilingan"); qolganlari nomiga qarab.
+ * "ACCEPTANCE_IN_PROGRESS" ham ACCEPT so'zini o'z ichiga oladi — shuning
+ * uchun avval to'liq qabul qilinganlari tekshiriladi.
+ */
+function mapInvoiceStatus(raw: string): UzumInvoice['status'] {
+  const s = raw.toUpperCase();
+  if (/CANCEL|REJECT|DECLIN/.test(s)) return 'canceled';
+  if (s === 'ACCEPTED' || /COMPLETE|FINISH|DONE|STOCKED/.test(s)) return 'accepted';
+  if (/ACCEPT|RECEIV|PROGRESS|TRANSIT|DELIVER|SENT|SHIP/.test(s)) return 'in_transit';
+  if (/DRAFT/.test(s)) return 'draft';
+  return 'planned';
+}
+
+/** Uzum ba'zan sanani "26.08.2026" ko'rinishida yuboradi */
+function parseDotDate(value: string): string | null {
+  const m = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  return m ? new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]))).toISOString() : null;
 }
 
 /** Yetkazish sxemasi: FBS/DBS aniq ko'rsatilmasa — FBO */
@@ -659,6 +719,9 @@ export class LiveUzumClient implements UzumClient {
       const status = mapOrderStatus(asString(r.status));
       const orderedAt = asIso(r.date, new Date().toISOString());
       const deliveredAt = asNumber(r.dateIssued) > 0 ? asIso(r.dateIssued, '') : undefined;
+      const returnCause = asString(r.returnCause).trim();
+      // amount = 0 va amountReturns > 0 — pozitsiya sotilmagan: bekor yoki qaytgan
+      const kind = returnedQty > 0 && qty === 0 ? classifyReturn(returnCause, Boolean(deliveredAt)) : null;
 
       const item: UzumOrderItem = {
         skuId: code || productId || orderId,
@@ -668,8 +731,11 @@ export class LiveUzumClient implements UzumClient {
         sellPrice,
         commission,
         logistics,
-        status: returnedQty > 0 && qty === 0 ? 'returned' : status,
+        status: kind ?? status,
         returnedQty,
+        returnCause: returnCause || undefined,
+        // Uzum qaytarish sanasini bermaydi — topshirilgan sana eng yaqin taxmin
+        returnedAt: kind === 'returned' ? (deliveredAt ?? orderedAt) : undefined,
         payout,
         purchasePrice: purchasePrice || undefined,
         productId: productId || undefined,
@@ -761,6 +827,8 @@ export class LiveUzumClient implements UzumClient {
     } catch (err) {
       this.warn(`FBS buyurtmalari (shop ${shopId})`, err);
     }
+
+    for (const order of orders.values()) order.status = orderStatusFromItems(order.items, order.status);
 
     return [...orders.values()].filter((o) => inRange(o.orderedAt, from, to));
   }
@@ -870,48 +938,88 @@ export class LiveUzumClient implements UzumClient {
   // ─────────────── Sharhlar ───────────────
 
   /**
-   * Seller OpenAPI'da sharh endpointi topilmagan (`confidence: guess`).
-   * Yo'l sinab ko'riladi; xato bo'lsa — bo'sh massiv (sinxronizatsiya to'xtamaydi).
+   * Seller OpenAPI'da sharh endpointi YO'Q (35 ta yo'l tekshirilgan). Sharhlar
+   * uzum.uz ochiq API'sidan mahsulot bo'yicha o'qiladi (`storefront.ts`).
+   * Mahsulot id'larini sinxron beradi — faqat katalogda sharhi bor mahsulotlar.
    */
-  async getReviews(shopId: string, from: Date, to: Date): Promise<UzumReview[]> {
+  async getReviews(shopId: string, from: Date, to: Date, productIds: string[] = []): Promise<UzumReview[]> {
+    if (productIds.length === 0) return [];
+    const { reviews, failed } = await fetchStorefrontReviews(productIds, from);
+    if (failed > 0) this.warn(`sharhlar (shop ${shopId})`, new Error(`${failed} ta mahsulot sharhi o‘qilmadi`));
+    // Javobi keyin yozilgan eski sharh ham yangilanishi uchun sana bo'yicha kesilmaydi
+    return reviews.filter((r) => Date.parse(r.publishedAt) <= to.getTime() + 86_400_000);
+  }
+
+  // ─────────────── Yetkazmalar (FBO nakladnoylar) ───────────────
+
+  /**
+   * Uzum omboriga yuborilgan nakladnoylar va ularning tarkibi.
+   * Javob maydonlari jonli kabinetda tekshirilgan:
+   *   id, invoiceNumber, dateCreated ("26.08.2026"), invoiceStatus.value ("ACCEPTED"),
+   *   timeSlotReservation.timeFrom (ms), dateAccepted (ms), stock.title
+   *   tarkib: [].skuForInvoiceDtoList[].{skuTitle, quantityToStock, quantityAccepted, purchasePrice}
+   */
+  async getInvoices(shopId: string): Promise<UzumInvoice[]> {
     let rows: unknown[] = [];
     try {
       rows = await this.http.fetchAllPages(
-        uzumPath('reviews'),
-        { shopIds: shopId },
-        (payload) => pickList(payload, ['reviews', 'feedbacks', 'comments']),
-        { size: UZUM_PAGE_LIMITS.default, retries: 0 },
+        uzumPath('shopInvoices', { shopId }),
+        {},
+        (payload) => pickList(payload, ['invoices', 'invoiceList']),
+        { size: UZUM_PAGE_LIMITS.invoices },
       );
-    } catch {
-      // Endpoint mavjud emas — bu kutilgan holat, ogohlantirish ham chiqarmaymiz
+    } catch (err) {
+      this.warn(`nakladnoylar (shop ${shopId})`, err);
       return [];
     }
 
-    const out: UzumReview[] = [];
-    const fallbackIso = new Date().toISOString();
-
+    const out: UzumInvoice[] = [];
     for (const raw of rows) {
       const r = asRecord(raw);
-      const id = asString(firstOf(r, KEYS.reviewId));
+      const id = asString(r.id);
       if (!id) continue;
 
-      const publishedAt = asIso(firstOf(r, KEYS.reviewDate), fallbackIso);
-      if (!inRange(publishedAt, from, to)) continue;
+      const statusRec = asRecord(r.invoiceStatus);
+      const statusValue = asString(statusRec.value) || asString(r.status);
+      const createdAt = parseDotDate(asString(r.dateCreated)) ?? new Date().toISOString();
+      const slot = asRecord(r.timeSlotReservation);
 
-      const answerText = asString(firstOf(r, KEYS.reviewAnswer));
+      let items: UzumInvoice['items'] = [];
+      try {
+        const products = asArray(
+          await this.http.request(uzumPath('shopInvoiceItems', { shopId }), { query: { invoiceId: id, shopId } }),
+        );
+        items = products.flatMap((p) => {
+          const prod = asRecord(p);
+          const skus = asArray(prod.skuForInvoiceDtoList);
+          const list = skus.length > 0 ? skus : [prod];
+          return list.map((sRaw) => {
+            const sku = asRecord(sRaw);
+            return {
+              skuCode: asString(sku.skuTitle),
+              title: asString(prod.productTitle) || undefined,
+              qty: Math.max(0, Math.round(asNumber(sku.quantityToStock))),
+              accepted: Math.max(0, Math.round(asNumber(sku.quantityAccepted))),
+              purchasePrice: asMoney(sku.purchasePrice) || undefined,
+            };
+          });
+        }).filter((it) => it.skuCode);
+      } catch (err) {
+        this.warn(`nakladnoy tarkibi (${id})`, err);
+      }
+
       out.push({
         id,
-        productId: asString(firstOf(r, KEYS.productId)) || undefined,
-        skuId: asString(firstOf(r, KEYS.skuId)) || undefined,
-        rating: Math.min(5, Math.max(1, Math.round(asNumber(firstOf(r, KEYS.reviewRating), 5)))),
-        text: asString(firstOf(r, KEYS.reviewText)) || undefined,
-        author: asString(firstOf(r, KEYS.reviewAuthor)) || undefined,
-        publishedAt,
-        answered: asBool(firstOf(r, KEYS.answered), answerText.length > 0),
-        answerText: answerText || undefined,
+        number: asString(r.invoiceNumber) || id,
+        status: mapInvoiceStatus(statusValue),
+        statusText: asString(statusRec.text) || asString(r.status) || undefined,
+        createdAt,
+        plannedAt: asNumber(slot.timeFrom) > 0 ? asIso(slot.timeFrom, '') : undefined,
+        acceptedAt: asNumber(r.dateAccepted) > 0 ? asIso(r.dateAccepted, '') : undefined,
+        destination: asString(asRecord(r.stock).title) || undefined,
+        items,
       });
     }
-
     return out;
   }
 

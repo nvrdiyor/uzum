@@ -31,6 +31,7 @@ import {
 } from '@savdoiq/shared';
 import type {
   UzumExpense,
+  UzumInvoice,
   UzumLoss,
   UzumOrder,
   UzumProduct,
@@ -754,6 +755,12 @@ export async function upsertOrders(
         sumLogistics += logistics;
         sumQty += qty;
 
+        const lineStatus = text(it.status) ? mapItemStatus(it.status, itemStatus) : itemStatus;
+        // Qaytarish sanasi faqat haqiqiy qaytarishda: bekor qilingan pozitsiyada u
+        // bo'lsa, voronka va analitika uni "qaytarilgan" deb sanab yuborardi
+        const lineReturnedAt =
+          lineStatus === 'returned' ? (toDate(it.returnedAt) ?? returnedAt ?? deliveredAt ?? orderedAt) : null;
+
         itemCreates.push({
           id: stableId('oi', orderId, index, String(it.skuId)),
           orderId,
@@ -770,8 +777,9 @@ export async function upsertOrders(
           revenue,
           payout,
           netProfit,
-          status: text(it.status) ? mapItemStatus(it.status, itemStatus) : itemStatus,
-          returnedAt,
+          status: lineStatus,
+          returnedAt: lineReturnedAt,
+          returnCause: text(it.returnCause),
           orderedAt,
         });
       });
@@ -937,6 +945,91 @@ const LOSS_STATUSES = new Set(['open', 'claimed', 'compensated', 'rejected']);
  * Marketpleys aybi bilan yo'qolgan/shikastlangan tovarlar.
  * `claimSentAt` va `note` — platformada yuritiladi, import ularga tegmaydi.
  */
+// ─────────────────────────── Yetkazmalar (Uzum nakladnoylari) ───────────────────────────
+
+/**
+ * Uzum omboriga yuborilgan nakladnoylar → `Shipment` (`source: 'uzum'`).
+ * Tabiiy kalit: `Shipment(storeId, uzumInvoiceId)`. Pozitsiyalar har safar
+ * qayta yoziladi — Uzum qabul qilingan miqdorni keyinroq yangilaydi.
+ * Katalogda topilmagan SKU pozitsiyasi o'tkazib yuboriladi (ShipmentItem SKU'siz bo'lmaydi).
+ */
+export async function upsertInvoices(
+  companyId: string,
+  storeId: string,
+  invoices: UzumInvoice[],
+): Promise<ImportResult & { unlinkedItems: number }> {
+  const res = { ...emptyResult(), unlinkedItems: 0 };
+  if (invoices.length === 0) return res;
+
+  const refs = await getSkuRefs(storeId);
+
+  for (const inv of invoices) {
+    const uzumInvoiceId = String(inv.id);
+    const data = {
+      companyId,
+      storeId,
+      code: inv.number,
+      destination: text(inv.destination),
+      status: inv.status,
+      plannedAt: toDate(inv.plannedAt),
+      acceptedAt: toDate(inv.acceptedAt),
+      note: text(inv.statusText),
+      source: 'uzum',
+    };
+
+    const existing = await prisma.shipment.findUnique({
+      where: { storeId_uzumInvoiceId: { storeId, uzumInvoiceId } },
+      select: { id: true },
+    });
+
+    const shipmentId = existing?.id ?? stableId('sh', storeId, uzumInvoiceId);
+    if (existing) {
+      await prisma.shipment.update({ where: { id: shipmentId }, data });
+      res.updated += 1;
+    } else {
+      await prisma.shipment.create({
+        data: {
+          id: shipmentId,
+          uzumInvoiceId,
+          ...data,
+          createdAt: toDate(inv.createdAt, new Date()) ?? new Date(),
+        },
+      });
+      res.created += 1;
+    }
+
+    // Bir xil SKU bir necha qatorda kelsa — birlashtiriladi
+    const bySku = new Map<string, { qty: number; accepted: number }>();
+    for (const it of inv.items) {
+      const ref = refs.get(it.skuCode);
+      if (!ref) {
+        res.unlinkedItems += 1;
+        continue;
+      }
+      const cur = bySku.get(ref.id) ?? { qty: 0, accepted: 0 };
+      cur.qty += Math.max(0, int(it.qty, 0));
+      cur.accepted += Math.max(0, int(it.accepted, 0));
+      bySku.set(ref.id, cur);
+    }
+
+    await prisma.shipmentItem.deleteMany({ where: { shipmentId } });
+    if (bySku.size > 0) {
+      await prisma.shipmentItem.createMany({
+        data: [...bySku.entries()].map(([skuId, v]) => ({
+          id: stableId('si', shipmentId, skuId),
+          shipmentId,
+          skuId,
+          qty: v.qty,
+          accepted: v.accepted,
+          boxes: 0,
+        })),
+      });
+    }
+  }
+
+  return res;
+}
+
 export async function upsertLosses(storeId: string, losses: UzumLoss[]): Promise<ImportResult> {
   const res = emptyResult();
   if (losses.length === 0) return res;

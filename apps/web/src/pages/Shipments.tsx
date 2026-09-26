@@ -74,6 +74,9 @@ registerNamespace('shipments', {
     'status.planned': 'Rejalashtirilgan',
     'status.in_transit': 'Yo‘lda',
     'status.accepted': 'Qabul qilingan',
+    'source.uzum': 'Uzum',
+    'source.uzumTitle': 'Uzum nakladnoyidan avtomatik olingan',
+    'source.readonly': 'Bu yetkazma Uzum nakladnoyidan olingan. Uni Uzum kabinetida o‘zgartiring — bu yerda har sinxronda yangilanadi.',
     'status.canceled': 'Bekor qilingan',
 
     'table.title': 'Yetkazmalar ro‘yxati',
@@ -167,6 +170,9 @@ registerNamespace('shipments', {
     'status.planned': 'Запланировано',
     'status.in_transit': 'В пути',
     'status.accepted': 'Принято',
+    'source.uzum': 'Uzum',
+    'source.uzumTitle': 'Загружено автоматически из накладной Uzum',
+    'source.readonly': 'Поставка загружена из накладной Uzum. Меняйте её в кабинете Uzum — здесь она обновляется при каждой синхронизации.',
     'status.canceled': 'Отменено',
 
     'table.title': 'Список поставок',
@@ -260,6 +266,9 @@ registerNamespace('shipments', {
     'status.planned': 'Planned',
     'status.in_transit': 'In transit',
     'status.accepted': 'Accepted',
+    'source.uzum': 'Uzum',
+    'source.uzumTitle': 'Imported automatically from an Uzum invoice',
+    'source.readonly': 'This shipment comes from an Uzum invoice. Change it in the Uzum cabinet — it refreshes here on every sync.',
     'status.canceled': 'Canceled',
 
     'table.title': 'Shipment list',
@@ -447,6 +456,11 @@ export default function Shipments() {
             <Truck className="h-4 w-4" />
           </span>
           <span className="font-semibold text-ink">{r.code}</span>
+          {r.source === 'uzum' ? (
+            <Badge tone="violet" title={t('source.uzumTitle')}>
+              {t('source.uzum')}
+            </Badge>
+          ) : null}
         </div>
       ),
     },
@@ -651,7 +665,9 @@ export default function Shipments() {
         onClose={() => setDetailId(null)}
         title={detail ? t('detail.title', { code: detail.code }) : ''}
         footer={
-          detail ? (
+          detail?.source === 'uzum' ? (
+            <p className="text-sm text-muted">{t('source.readonly')}</p>
+          ) : detail ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Button
                 variant="ghost"

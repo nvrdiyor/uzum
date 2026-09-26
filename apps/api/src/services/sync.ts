@@ -39,6 +39,7 @@ import {
   upsertLosses,
   upsertOrders,
   upsertProducts,
+  upsertInvoices,
   upsertReturns,
   upsertReviews,
   upsertShops,
@@ -378,6 +379,7 @@ interface SyncRun {
     storage: number;
     expenses: number;
     reviews: number;
+    shipments: number;
   };
 }
 
@@ -391,6 +393,7 @@ const emptyTotals = (): SyncRun['totals'] => ({
   storage: 0,
   expenses: 0,
   reviews: 0,
+  shipments: 0,
 });
 
 const countOf = (r: ImportResult): number => r.created + r.updated;
@@ -566,7 +569,7 @@ async function stepProducts(run: SyncRun, setDetail: (t: string) => void): Promi
   }
 }
 
-/** 4. Qoldiqlar */
+/** 4. Qoldiqlar va Uzum omboriga yetkazmalar (nakladnoylar) */
 async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
   for (const store of run.stores) {
@@ -574,6 +577,14 @@ async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise
     const res = await upsertStocks(store.id, stocks);
     run.totals.stocks += countOf(res);
     setDetail(`${run.totals.stocks} ta qoldiq yozuvi sinxronlandi`);
+
+    // Nakladnoy SKU'larni katalogga bog'laydi — mahsulotlar bosqichidan keyin turishi shart
+    const invoices = await client.getInvoices(store.uzumShopId);
+    const invRes = await upsertInvoices(run.companyId, store.id, invoices);
+    run.totals.shipments += countOf(invRes);
+    if (invRes.unlinkedItems > 0) {
+      log(`job ${run.jobId}: ${invRes.unlinkedItems} ta nakladnoy pozitsiyasi katalogda topilmadi`);
+    }
   }
 }
 
@@ -696,11 +707,28 @@ async function stepReturns(run: SyncRun, setDetail: (t: string) => void): Promis
   }
 }
 
+/**
+ * Oraliq sinxronda sharhlar shu kunlar ichida qayta o'qiladi: sotuvchi eski
+ * sharhga Uzum kabinetida keyinroq javob yozsa ham, javob bu yerda paydo bo'lsin.
+ */
+const REVIEW_REFRESH_DAYS = 30;
+
 /** 8. Sharhlar */
 async function stepReviews(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
+  const since = run.type === 'full' ? run.from : addDays(run.to, -REVIEW_REFRESH_DAYS);
   for (const store of run.stores) {
-    const reviews = await client.getReviews(store.uzumShopId, run.from, run.to);
+    /*
+     * Sharhlar mahsulot bo'yicha o'qiladi — faqat katalogda sharhi yoki reytingi
+     * bor mahsulotlar so'raladi (Uzum `feedbackQuantity` ni beradi). Shunda yuzlab
+     * mahsulotli do'konda ham har sinxronda ortiqcha so'rov ketmaydi.
+     */
+    const products = await prisma.product.findMany({
+      where: { storeId: store.id, uzumProductId: { not: null }, OR: [{ reviewsCount: { gt: 0 } }, { rating: { gt: 0 } }] },
+      select: { uzumProductId: true },
+    });
+    const productIds = products.map((p) => p.uzumProductId).filter((id): id is string => Boolean(id));
+    const reviews = await client.getReviews(store.uzumShopId, since, run.to, productIds);
     const res = await upsertReviews(store.id, reviews);
     run.totals.reviews += countOf(res);
     setDetail(`${run.totals.reviews} ta sharh yig‘ildi`);
@@ -918,6 +946,7 @@ function summaryText(run: SyncRun): string {
     `mahsulot/SKU: ${t.products}`,
     `buyurtmalar: ${t.orders}`,
     `qoldiqlar: ${t.stocks}`,
+    `yetkazmalar: ${t.shipments}`,
     `sharhlar: ${t.reviews}`,
   ].join(' · ');
 }

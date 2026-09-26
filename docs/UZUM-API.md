@@ -181,7 +181,7 @@ Bular Uzum Seller API'da mavjud emas — SavdoIQ ularni boshqa yo'l bilan hisobl
 
 | Bo'lim | SavdoIQ qanday ishlaydi |
 | --- | --- |
-| **Sharhlar (отзывы)** | API'da endpoint yo'q. `getReviews()` bo'sh massiv qaytaradi; demo rejimda namunaviy sharhlar. Kelajakda qo'shilsa — `endpoints.ts` da bitta qator yetarli |
+| **Sharhlar (отзывы)** | Seller API'da endpoint yo'q (2026-09-26 da 35 ta yo'l qayta tekshirildi). Sharhlar **uzum.uz ochiq API'sidan** o'qiladi: `GET https://api.uzum.uz/api/product/{productId}/reviews?amount=20&page=0` (kalitsiz, `apps/api/src/uzum/storefront.ts`). Faqat katalogda `feedbackQuantity > 0` yoki `rating > 0` bo'lgan mahsulotlar so'raladi. **Javob yozish API orqali mumkin emas** — sayt buni ochiq aytadi va Uzum kabinetiga yo'naltiradi |
 | **Yo'qotishlar (потери)** | Alohida endpoint yo'q. `quantityMissing` / `quantityDefected` va qaytarish nakladnoylaridan hisoblanadi |
 | **Pullik saqlash** | `SkuForTable.paidStorageAmount` va `paidStoragePriceItem` orqali |
 | **Reklama xarajatlari** | `GET /v1/finance/expenses` dagi `sources` bo'yicha ajratiladi |
@@ -300,3 +300,28 @@ bazada `source: 'uzum-payout'` bilan alohida saqlanadi.
 Qaytarilgan satrda Uzum `amount: 0` va `amountReturns: N` yuboradi.
 `amount` bo'yicha sanalsa qaytarishlar hamma joyda 0 chiqadi —
 `OrderItem.returnedQty` ustuni aynan shu uchun bor.
+
+### 7.5 Bekor qilish va qaytarish — `returnCause` bilan ajratiladi
+
+`/v1/finance/orders` da ikkalasi ham `status: CANCELED`, `amount: 0`, `amountReturns: N`
+bilan keladi. Farqni `returnCause` beradi (jonli do'kon 130436, 2026-09-26):
+
+| `returnCause` | `dateIssued` | Sotuvchi tilida |
+| --- | --- | --- |
+| `Отменён до получения` | yo'q | **bekor qilish** — xaridor olmasdan bekor qildi |
+| `Не подошёл размер`, `Клиент не указал причину`, `Товара не оказалось в заказе` | bor | **qaytarish** — punktga keldi, olmadi yoki olib qaytardi |
+
+Sabab bo'lmasa — `dateIssued` bo'yicha. `OrderItem.status` = `canceled` | `returned`,
+asl matn `OrderItem.returnCause` da. "Qaytarishlar" sahifasi aynan shulardan quriladi.
+
+> `/v1/shop/{shopId}/return` — xaridor qaytarishi EMAS, Uzum omboridan sotuvchiga
+> qaytarish nakladnoylari. Ilgari sahifa shundan o'qib, 13 ta qaytgan pozitsiyada 0 ko'rsatardi.
+
+### 7.6 Yetkazmalar — FBO nakladnoylar
+
+`GET /v1/shop/{shopId}/invoice` → `id, invoiceNumber, dateCreated ("26.08.2026"),
+invoiceStatus {text, value: "ACCEPTED"}, timeSlotReservation.timeFrom (ms), dateAccepted (ms),
+stock.title, totalToStock, totalAccepted`. Tarkibi — `/invoice/products?invoiceId=…`:
+`[].skuForInvoiceDtoList[].{skuTitle, quantityToStock, quantityAccepted, purchasePrice}`.
+`skuTitle` sotuvchi kodi (`LOOTBOX-LBTMPPNK`) — katalogga shu bilan bog'lanadi.
+Saytda `Shipment(source: 'uzum')` bo'lib saqlanadi va faqat o'qiladi.

@@ -34,6 +34,7 @@ import {
   type LossesResponse,
   type Paginated,
   type Period,
+  type ReturnKind,
   type ReturnRow,
   type ReturnsResponse,
   type ShipmentItemRow,
@@ -46,6 +47,7 @@ import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } 
 import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getSkuCatalog, getStoreIds, getStoreTitles } from '../services/common.js';
 import { notifyCompanyOwners } from '../services/notify.js';
+import { loadReturnLines } from '../services/returns.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -114,8 +116,12 @@ interface ShipmentWithItems {
   plannedAt: Date | null;
   acceptedAt: Date | null;
   note: string | null;
+  source: string;
   items: ShipmentItemWithSku[];
 }
+
+const UZUM_SHIPMENT_READONLY =
+  'Bu yetkazma Uzum nakladnoyidan olingan — uni Uzum kabinetida o‘zgartiring, bu yerda sinxron orqali yangilanadi';
 
 /** Prisma so'rovi uchun umumiy `include` (pozitsiya + SKU ma'lumoti) */
 const SHIPMENT_INCLUDE = {
@@ -154,6 +160,7 @@ function toShipmentRow(s: ShipmentWithItems, withItems: boolean): ShipmentRow {
     unitsCount,
     costValue: round(costValue),
     note: s.note,
+    source: s.source === 'uzum' ? 'uzum' : 'manual',
   };
   if (withItems) row.items = items;
   return row;
@@ -374,6 +381,7 @@ router.patch(
       include: SHIPMENT_INCLUDE,
     });
     if (!existing) throw AppError.notFound('Yetkazma topilmadi');
+    if (existing.source === 'uzum') throw AppError.badRequest(UZUM_SHIPMENT_READONLY);
 
     const current = toShipmentStatus(existing.status);
     const nextStatus = input.status ?? current;
@@ -476,9 +484,10 @@ router.delete(
 
     const existing = await prisma.shipment.findFirst({
       where: { id, companyId: company.id },
-      select: { id: true, code: true, status: true },
+      select: { id: true, code: true, status: true, source: true },
     });
     if (!existing) throw AppError.notFound('Yetkazma topilmadi');
+    if (existing.source === 'uzum') throw AppError.badRequest(UZUM_SHIPMENT_READONLY);
     if (toShipmentStatus(existing.status) === 'accepted')
       throw AppError.badRequest('Qabul qilingan yetkazmani o‘chirib bo‘lmaydi');
 
@@ -782,6 +791,15 @@ router.post(
 
 const NO_REASON = 'Sabab ko‘rsatilmagan';
 
+const RETURN_KINDS: ReturnKind[] = ['returned', 'canceled'];
+
+/** `?kind=` → tur; eski `?status=` ham tushuniladi. Standart — qaytarishlar */
+function asReturnKind(q: Record<string, string | undefined>): ReturnKind | 'all' {
+  const v = q.kind ?? q.status;
+  if (v === 'all') return 'all';
+  return RETURN_KINDS.includes(v as ReturnKind) ? (v as ReturnKind) : 'returned';
+}
+
 router.get(
   '/returns',
   requireFeature('returns_report'),
@@ -790,75 +808,69 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
     const q = req.query as Record<string, string | undefined>;
+    const kind = asReturnKind(q);
 
-    if (storeIds.length === 0) {
-      const empty: ReturnsResponse = {
-        totals: { qty: 0, amount: 0, rate: 0 },
-        byReason: [],
-        daily: [],
-        topRisky: [],
-        rows: paginate<ReturnRow>([], range.page, range.pageSize),
-      };
-      res.json(empty);
-      return;
-    }
-
-    const [returns, catalog, sales] = await Promise.all([
-      prisma.returnRecord.findMany({
-        where: {
-          storeId: { in: storeIds },
-          returnedAt: { gte: range.from, lt: range.toExclusive },
-          ...(q.status && q.status !== 'all' ? { status: q.status } : {}),
-          ...(q.reason && q.reason !== 'all' ? { reason: q.reason } : {}),
-        },
-        orderBy: { returnedAt: range.order === 'asc' ? 'asc' : 'desc' },
-      }),
-      getSkuCatalog(storeIds, true),
+    const [lines, sales] = await Promise.all([
+      loadReturnLines(storeIds, range.from, range.toExclusive),
       aggregateSales(storeIds, range.from, range.toExclusive),
     ]);
 
     let soldUnits = 0;
     for (const agg of sales.values()) soldUnits += agg.units;
 
-    const byReason = new Map<string, number>();
+    // Ikkala tur jamlari — sahifadagi almashtirgich sonlari uchun (qidiruvga bog'liq emas)
+    const counts: ReturnsResponse['counts'] = {
+      returned: { qty: 0, amount: 0 },
+      canceled: { qty: 0, amount: 0 },
+    };
+    for (const l of lines) {
+      counts[l.kind].qty += l.qty;
+      counts[l.kind].amount += l.amount;
+    }
+    counts.returned.amount = round(counts.returned.amount);
+    counts.canceled.amount = round(counts.canceled.amount);
+
     const search = range.search?.toLowerCase();
+    const reasonFilter = q.reason && q.reason !== 'all' ? q.reason : undefined;
+    const byReason = new Map<string, number>();
     let qty = 0;
     let amount = 0;
 
     const rows: ReturnRow[] = [];
-    for (const r of returns) {
-      const info = r.skuId ? catalog.get(r.skuId) : undefined;
+    for (const l of lines) {
+      if (kind !== 'all' && l.kind !== kind) continue;
+      if (reasonFilter && (l.reason ?? NO_REASON) !== reasonFilter) continue;
 
       const row: ReturnRow = {
-        id: r.id,
-        sku: info?.sku ?? null,
-        title: info?.title ?? null,
-        imageUrl: info?.imageUrl ?? null,
-        orderCode: r.orderCode,
-        qty: r.qty,
-        amount: round(r.amount),
-        reason: r.reason,
-        status: r.status,
-        returnedAt: toISODate(r.returnedAt),
+        id: l.id,
+        sku: l.sku,
+        title: l.title,
+        imageUrl: l.imageUrl,
+        orderCode: l.orderCode,
+        qty: l.qty,
+        amount: l.amount,
+        reason: l.reason,
+        status: l.kind,
+        kind: l.kind,
+        returnedAt: toISODate(l.date),
       };
       if (search) {
         const hay = `${row.sku ?? ''} ${row.title ?? ''} ${row.orderCode ?? ''} ${row.reason ?? ''}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
 
-      // Yig'indi va sabablar taqsimoti — faqat ko'rinib turgan satrlar bo'yicha
       qty += row.qty;
       amount += row.amount;
-      const reason = r.reason?.trim() || NO_REASON;
+      const reason = row.reason?.trim() || NO_REASON;
       byReason.set(reason, (byReason.get(reason) ?? 0) + row.qty);
-
       rows.push(row);
     }
 
+    if (range.order === 'asc') rows.reverse();
+
     /**
      * Kunlik seriya va "eng ko'p qaytariladigan" ro'yxati BUTUN davr bo'yicha
-     * hisoblanadi. Ilgari sayt buni faqat jadvalning joriy 25 qatoridan
-     * yasardi — 2-sahifaga o'tilganda grafik butunlay o'zgarib ketardi.
+     * hisoblanadi — jadvalning joriy sahifasiga bog'liq emas.
      */
     const dailyMap = new Map<string, { qty: number; amount: number }>();
     const riskyMap = new Map<
@@ -880,10 +892,12 @@ router.get(
     }
 
     const payload: ReturnsResponse = {
+      kind,
+      counts,
       totals: {
         qty,
         amount: round(amount),
-        // Qaytarish ulushi: qaytgan dona / (sotilgan + qaytgan)
+        // Ulush: shu turdagi dona / (sotilgan + shu turdagi)
         rate: pct(qty, soldUnits + qty),
       },
       daily: [...dailyMap.entries()]

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Coins, Download, Percent, Receipt, Undo2 } from 'lucide-react';
-import { eachDay, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
+import { eachDay, type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
@@ -21,6 +21,7 @@ import {
   ProductCell,
   ProgressBar,
   SearchInput,
+  Segmented,
   StatCard,
   StatGrid,
   toast,
@@ -31,7 +32,7 @@ import {
 registerNamespace('returns', {
   uz: {
     title: 'Qaytarishlar',
-    subtitle: 'Qaytarish sabablari, dinamikasi va eng ko‘p qaytariladigan mahsulotlar',
+    subtitle: 'Qaytarish va bekor qilishlar: sabablari, dinamikasi va eng ko‘p qaytariladigan mahsulotlar',
     'kpi.count': 'Qaytarishlar soni',
     'kpi.countHint': 'Davr uchun jami dona',
     'kpi.amount': 'Qaytarish summasi',
@@ -71,10 +72,45 @@ registerNamespace('returns', {
     'empty.hint': 'Tanlangan davrda qaytarish qayd etilmagan',
     'empty.reasons': 'Sabablar bo‘yicha ma’lumot yo‘q',
     'export.failed': 'Excel faylini yuklab bo‘lmadi',
+    'kind.returned': 'Qaytarishlar',
+    'kind.canceled': 'Bekor qilishlar',
+    'kind.all': 'Hammasi',
+    'kind.returnedHint': 'Tovar punktga keldi: xaridor olmadi yoki oldi-yu qaytardi',
+    'kind.canceledHint': 'Xaridor buyurtma berib, tovarni olmasdan bekor qildi',
+    'kind.allHint': 'Qaytarishlar va bekor qilishlar birga',
+    'col.kind': 'Turi',
+    'kpi.count.canceled': 'Bekor qilishlar soni',
+    'kpi.amount.canceled': 'Bekor qilingan summa',
+    'kpi.amountHint.canceled': 'Sotilmay qolgan tushum',
+    'kpi.rate.canceled': 'Bekor qilish ulushi',
+    'kpi.rateHint.canceled': 'Buyurtmalardagi bekor qilishlar foizi',
+    'kpi.avg.canceled': 'O‘rtacha bekor qilingan qiymat',
+    'kpi.count.all': 'Qaytarish + bekor qilish',
+    'kpi.amount.all': 'Jami summa',
+    'kpi.amountHint.all': 'Sotilmay qolgan va qaytgan tushum',
+    'kpi.rate.all': 'Jami ulush',
+    'kpi.rateHint.all': 'Buyurtmalardan sotilmay qolganlari foizi',
+    'kpi.avg.all': 'O‘rtacha qiymat',
+    'chart.reasonsSub.canceled': 'Bekor qilish sabablarining taqsimoti',
+    'chart.reasonsSub.all': 'Barcha sabablar taqsimoti',
+    'chart.dynamicsSub.canceled': 'Kunlik bekor qilishlar soni',
+    'chart.dynamicsSub.all': 'Kunlik qaytarish va bekor qilishlar',
+    'chart.count.canceled': 'Bekor qilishlar',
+    'chart.count.all': 'Jami',
+    'table.title.canceled': 'Bekor qilishlar ro‘yxati',
+    'table.title.all': 'Qaytarish va bekor qilishlar',
+    'empty.title.canceled': 'Bekor qilishlar yo‘q',
+    'empty.hint.canceled': 'Tanlangan davrda bekor qilish qayd etilmagan',
+    'empty.title.all': 'Qaytarish va bekor qilishlar yo‘q',
+    'empty.hint.all': 'Tanlangan davrda hech narsa qaytmagan va bekor qilinmagan',
+    'reason.cancelBeforeReceipt': 'Qabul qilishdan oldin bekor qilindi',
+    'reason.sizeMismatch': 'O‘lchami to‘g‘ri kelmadi',
+    'reason.noReason': 'Xaridor sabab ko‘rsatmadi',
+    'reason.missingItem': 'Buyurtmada tovar bo‘lmagan',
   },
   ru: {
     title: 'Возвраты',
-    subtitle: 'Причины возвратов, динамика и товары с наибольшим числом возвратов',
+    subtitle: 'Возвраты и отмены: причины, динамика и товары с наибольшим числом возвратов',
     'kpi.count': 'Количество возвратов',
     'kpi.countHint': 'Всего штук за период',
     'kpi.amount': 'Сумма возвратов',
@@ -114,10 +150,45 @@ registerNamespace('returns', {
     'empty.hint': 'За выбранный период возвраты не зафиксированы',
     'empty.reasons': 'Нет данных по причинам',
     'export.failed': 'Не удалось скачать файл Excel',
+    'kind.returned': 'Возвраты',
+    'kind.canceled': 'Отмены',
+    'kind.all': 'Все',
+    'kind.returnedHint': 'Товар пришёл в пункт выдачи: покупатель не забрал или забрал и вернул',
+    'kind.canceledHint': 'Покупатель отменил заказ, не получив товар',
+    'kind.allHint': 'Возвраты и отмены вместе',
+    'col.kind': 'Тип',
+    'kpi.count.canceled': 'Количество отмен',
+    'kpi.amount.canceled': 'Сумма отмен',
+    'kpi.amountHint.canceled': 'Непроданная выручка',
+    'kpi.rate.canceled': 'Доля отмен',
+    'kpi.rateHint.canceled': 'Процент отменённых заказов',
+    'kpi.avg.canceled': 'Средняя стоимость отмены',
+    'kpi.count.all': 'Возвраты + отмены',
+    'kpi.amount.all': 'Общая сумма',
+    'kpi.amountHint.all': 'Непроданная и возвращённая выручка',
+    'kpi.rate.all': 'Общая доля',
+    'kpi.rateHint.all': 'Процент заказов, не ставших продажей',
+    'kpi.avg.all': 'Средняя стоимость',
+    'chart.reasonsSub.canceled': 'Распределение причин отмен',
+    'chart.reasonsSub.all': 'Распределение всех причин',
+    'chart.dynamicsSub.canceled': 'Количество отмен по дням',
+    'chart.dynamicsSub.all': 'Возвраты и отмены по дням',
+    'chart.count.canceled': 'Отмены',
+    'chart.count.all': 'Всего',
+    'table.title.canceled': 'Список отмен',
+    'table.title.all': 'Возвраты и отмены',
+    'empty.title.canceled': 'Отмен нет',
+    'empty.hint.canceled': 'За выбранный период отмены не зафиксированы',
+    'empty.title.all': 'Возвратов и отмен нет',
+    'empty.hint.all': 'За выбранный период ничего не вернули и не отменили',
+    'reason.cancelBeforeReceipt': 'Отменён до получения',
+    'reason.sizeMismatch': 'Не подошёл размер',
+    'reason.noReason': 'Клиент не указал причину',
+    'reason.missingItem': 'Товара не оказалось в заказе',
   },
   en: {
     title: 'Returns',
-    subtitle: 'Return reasons, trends and the products customers send back most',
+    subtitle: 'Returns and cancellations: reasons, trends and the products customers send back most',
     'kpi.count': 'Returned units',
     'kpi.countHint': 'Total units for the period',
     'kpi.amount': 'Returned amount',
@@ -157,6 +228,41 @@ registerNamespace('returns', {
     'empty.hint': 'Nothing was returned in the selected period',
     'empty.reasons': 'No reason data available',
     'export.failed': 'Could not download the Excel file',
+    'kind.returned': 'Returns',
+    'kind.canceled': 'Cancellations',
+    'kind.all': 'All',
+    'kind.returnedHint': 'Reached the pickup point: the buyer didn’t collect it, or collected and returned it',
+    'kind.canceledHint': 'The buyer cancelled the order before receiving it',
+    'kind.allHint': 'Returns and cancellations together',
+    'col.kind': 'Type',
+    'kpi.count.canceled': 'Cancelled units',
+    'kpi.amount.canceled': 'Cancelled amount',
+    'kpi.amountHint.canceled': 'Revenue that never happened',
+    'kpi.rate.canceled': 'Cancellation rate',
+    'kpi.rateHint.canceled': 'Share of orders cancelled',
+    'kpi.avg.canceled': 'Average cancelled value',
+    'kpi.count.all': 'Returns + cancellations',
+    'kpi.amount.all': 'Total amount',
+    'kpi.amountHint.all': 'Unsold and returned revenue',
+    'kpi.rate.all': 'Combined rate',
+    'kpi.rateHint.all': 'Share of orders that didn’t become sales',
+    'kpi.avg.all': 'Average value',
+    'chart.reasonsSub.canceled': 'How cancellation reasons are distributed',
+    'chart.reasonsSub.all': 'All reasons combined',
+    'chart.dynamicsSub.canceled': 'Cancelled units per day',
+    'chart.dynamicsSub.all': 'Returns and cancellations per day',
+    'chart.count.canceled': 'Cancellations',
+    'chart.count.all': 'Total',
+    'table.title.canceled': 'Cancellations',
+    'table.title.all': 'Returns and cancellations',
+    'empty.title.canceled': 'No cancellations',
+    'empty.hint.canceled': 'Nothing was cancelled in the selected period',
+    'empty.title.all': 'No returns or cancellations',
+    'empty.hint.all': 'Nothing was returned or cancelled in the selected period',
+    'reason.cancelBeforeReceipt': 'Cancelled before receipt',
+    'reason.sizeMismatch': 'Size didn’t fit',
+    'reason.noReason': 'Buyer gave no reason',
+    'reason.missingItem': 'Item missing from the order',
   },
 });
 
@@ -181,6 +287,21 @@ const STATUS_TONE: Record<string, Tone> = {
   rejected: 'danger',
 };
 
+/**
+ * Uzum sababni asl (ruscha) matnda yuboradi. Ko'p uchraydiganlari tarjima
+ * qilinadi, qolgani o'zgarishsiz ko'rsatiladi.
+ */
+const REASON_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/до\s+получени/i, 'reason.cancelBeforeReceipt'],
+  [/размер/i, 'reason.sizeMismatch'],
+  [/не\s+указал\s+причин/i, 'reason.noReason'],
+  [/не\s+оказалось/i, 'reason.missingItem'],
+];
+/** Server sababsiz yozuvlarni shu matn bilan guruhlaydi */
+const SERVER_NO_REASON = 'Sabab ko‘rsatilmagan';
+
+type Kind = ReturnKind | 'all';
+
 export default function Returns() {
   const t = useT('returns');
   const f = useFormat();
@@ -189,8 +310,21 @@ export default function Returns() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [kind, setKind] = useState<Kind>('returned');
 
-  const query = useMemo(() => ({ ...q, page, pageSize: 25, search: search || undefined }), [q, page, search]);
+  const query = useMemo(
+    () => ({ ...q, page, pageSize: 25, search: search || undefined, kind }),
+    [q, page, search, kind],
+  );
+
+  /** Turga bog'liq matn: `kpi.count` → `kpi.count.canceled` (qaytarish — asosiy kalit) */
+  const tk = (key: string) => (kind === 'returned' ? t(key) : t(`${key}.${kind}`));
+  const reasonLabel = (raw: string | null | undefined) => {
+    const value = raw?.trim();
+    if (!value || value === SERVER_NO_REASON) return t('reason.unknown');
+    const rule = REASON_RULES.find(([re]) => re.test(value));
+    return rule ? t(rule[1]) : value;
+  };
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['warehouse-returns', query],
@@ -209,7 +343,7 @@ export default function Returns() {
   const donut = useMemo(
     () =>
       reasons.slice(0, 8).map((r, i) => ({
-        name: r.reason || t('reason.unknown'),
+        name: reasonLabel(r.reason),
         value: r.qty,
         color: seriesColor(i),
       })),
@@ -278,13 +412,15 @@ export default function Returns() {
         key: 'reason',
         header: t('col.reason'),
         render: (r) => (
-          <span className="line-clamp-2 max-w-[220px] text-sm text-ink-soft">{r.reason || t('reason.unknown')}</span>
+          <span className="line-clamp-2 max-w-[220px] text-sm text-ink-soft" title={r.reason ?? undefined}>
+            {reasonLabel(r.reason)}
+          </span>
         ),
         sortValue: (r) => r.reason ?? '',
       },
       {
         key: 'status',
-        header: t('col.status'),
+        header: t('col.kind'),
         render: (r) => (
           <Badge tone={STATUS_TONE[r.status] ?? 'muted'} dot>
             {STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
@@ -323,6 +459,18 @@ export default function Returns() {
       />
 
       <FilterBar>
+        <Segmented<Kind>
+          value={kind}
+          onChange={(v) => {
+            setKind(v);
+            setPage(1);
+          }}
+          options={[
+            { value: 'returned', label: t('kind.returned'), count: data?.counts.returned.qty },
+            { value: 'canceled', label: t('kind.canceled'), count: data?.counts.canceled.qty },
+            { value: 'all', label: t('kind.all') },
+          ]}
+        />
         <SearchInput
           className="w-full sm:w-64"
           value={search}
@@ -336,9 +484,10 @@ export default function Returns() {
 
       <PlanGate feature="returns_report">
         <div className="space-y-5">
+          <p className="-mt-1 text-sm text-muted">{t(`kind.${kind}Hint`)}</p>
           <StatGrid>
             <StatCard
-              label={t('kpi.count')}
+              label={tk('kpi.count')}
               value={f.num(totals.qty)}
               hint={t('kpi.countHint')}
               icon={<Undo2 className="h-5 w-5" />}
@@ -346,23 +495,23 @@ export default function Returns() {
               loading={isLoading}
             />
             <StatCard
-              label={t('kpi.amount')}
+              label={tk('kpi.amount')}
               value={f.money(totals.amount)}
-              hint={t('kpi.amountHint')}
+              hint={tk('kpi.amountHint')}
               icon={<Coins className="h-5 w-5" />}
               tone="danger"
               loading={isLoading}
             />
             <StatCard
-              label={t('kpi.rate')}
+              label={tk('kpi.rate')}
               value={f.pct(totals.rate)}
-              hint={t('kpi.rateHint')}
+              hint={tk('kpi.rateHint')}
               icon={<Percent className="h-5 w-5" />}
               tone={totals.rate >= 10 ? 'danger' : 'info'}
               loading={isLoading}
             />
             <StatCard
-              label={t('kpi.avg')}
+              label={tk('kpi.avg')}
               value={f.money(avgValue)}
               hint={t('kpi.avgHint')}
               icon={<Receipt className="h-5 w-5" />}
@@ -378,7 +527,7 @@ export default function Returns() {
           ) : (
             <>
               <div className="grid gap-4 grid-cols-1 xl:grid-cols-3">
-                <ChartCard title={t('chart.reasons')} subtitle={t('chart.reasonsSub')} className="xl:col-span-1">
+                <ChartCard title={t('chart.reasons')} subtitle={tk('chart.reasonsSub')} className="xl:col-span-1">
                   {isLoading ? (
                     <div className="skeleton h-[260px] w-full" />
                   ) : donut.length ? (
@@ -402,7 +551,7 @@ export default function Returns() {
                                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                                   style={{ background: seriesColor(i) }}
                                 />
-                                <span className="truncate">{r.reason || t('reason.unknown')}</span>
+                                <span className="truncate">{reasonLabel(r.reason)}</span>
                               </span>
                               <span className="tnum shrink-0 text-sm font-semibold text-ink">{f.pct(r.share)}</span>
                             </div>
@@ -416,14 +565,14 @@ export default function Returns() {
                   )}
                 </ChartCard>
 
-                <ChartCard title={t('chart.dynamics')} subtitle={t('chart.dynamicsSub')} className="xl:col-span-2">
+                <ChartCard title={t('chart.dynamics')} subtitle={tk('chart.dynamicsSub')} className="xl:col-span-2">
                   {isLoading ? (
                     <div className="skeleton h-[300px] w-full" />
                   ) : (
                     <TrendChart
                       data={daily}
                       xKey="date"
-                      series={[{ key: 'qty', name: t('chart.count') }]}
+                      series={[{ key: 'qty', name: tk('chart.count') }]}
                       showLegend={false}
                       height={300}
                     />
@@ -431,7 +580,7 @@ export default function Returns() {
                 </ChartCard>
               </div>
 
-              {topRisky.length ? (
+              {kind === 'returned' && topRisky.length ? (
                 <Card className="border-warn/30 bg-warn/5 p-5">
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn-ink">
@@ -463,7 +612,7 @@ export default function Returns() {
 
               <Card>
                 <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                  <h3 className="section-title">{t('table.title')}</h3>
+                  <h3 className="section-title">{tk('table.title')}</h3>
                   <p className="text-sm text-muted">
                     {f.num(data?.rows.total ?? 0)} {t('common.rows')}
                   </p>
@@ -474,7 +623,7 @@ export default function Returns() {
                     rows={rows}
                     rowKey={(r) => r.id}
                     loading={isLoading}
-                    empty={<EmptyState icon={<Undo2 className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
+                    empty={<EmptyState icon={<Undo2 className="h-6 w-6" />} title={tk('empty.title')} hint={tk('empty.hint')} />}
                     pagination={
                       data
                         ? {
