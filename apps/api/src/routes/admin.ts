@@ -759,20 +759,51 @@ router.get(
 
 /** Bir chaqiruvda maksimal qabul qiluvchilar soni (Telegram limitlarini hisobga olib) */
 const BROADCAST_LIMIT = 2000;
+/** Bildirishnoma matni bazada va Telegramda shu uzunlikkacha saqlanadi (notifyUser) */
+const BROADCAST_TEXT_MAX = 2000;
 
-const broadcastSchema = z.object({
-  title: z.string().trim().min(2).max(200),
-  body: z.string().trim().max(2000).optional(),
-  link: z.string().trim().max(300).optional(),
-  type: z.enum(['info', 'success', 'warning', 'danger']).default('info'),
-  /** Kimga: barchaga / faqat egalarga / pullik tarifdagilarga / sinovdagilarga / adminlarga */
-  target: z.enum(['all', 'owners', 'paid', 'trial', 'admins']).default('all'),
-  /** false bo'lsa faqat ilova ichida ko'rinadi (Telegramga yuborilmaydi) */
-  telegram: z.coerce.boolean().default(true),
-});
+/** Maxsus guruhlar + har bir tarif (sayt tarif bo'yicha tanlashni beradi) */
+const BROADCAST_GROUPS = ['all', 'owners', 'paid', 'admins'] as const;
+type BroadcastTarget = (typeof BROADCAST_GROUPS)[number] | PlanId;
+const isBroadcastTarget = (v: string): v is BroadcastTarget =>
+  (BROADCAST_GROUPS as readonly string[]).includes(v) || (PLAN_ORDER as string[]).includes(v);
+
+/**
+ * Sayt bitta `text` maydonini yuboradi, eski mijozlar esa `title` + `body`.
+ * Ilgari faqat ikkinchisi qabul qilinardi va saytdan kelgan har bir xabarnoma
+ * "Ma'lumotlar noto'g'ri" bilan rad etilardi (`title` majburiy edi).
+ */
+const broadcastSchema = z
+  .object({
+    text: z.string().trim().max(BROADCAST_TEXT_MAX).optional(),
+    title: z.string().trim().max(200).optional(),
+    body: z.string().trim().max(BROADCAST_TEXT_MAX).optional(),
+    link: z.string().trim().max(300).optional(),
+    type: z.enum(['info', 'success', 'warning', 'danger']).default('info'),
+    target: z
+      .string()
+      .default('all')
+      .refine(isBroadcastTarget, { message: 'Noma’lum qabul qiluvchilar guruhi' }),
+    /** false bo'lsa faqat sayt ichida ko'rinadi (Telegramga yuborilmaydi) */
+    telegram: z.coerce.boolean().default(true),
+  })
+  .refine((v) => Boolean(v.text || v.title), { message: 'Xabar matni bo‘sh', path: ['text'] });
+
+/**
+ * Bitta matndan sarlavha va tana: birinchi qisqa qator — sarlavha (Telegramda
+ * qalin, saytda bildirishnoma nomi), qolgani — matn. Birinchi qator uzun
+ * bo'lsa, sarlavha "SavdoIQ" va butun matn tanaga tushadi.
+ */
+function splitBroadcastText(text: string): { title: string; body?: string } {
+  const [first = '', ...rest] = text.split(/\r?\n/);
+  const head = first.trim();
+  const tail = rest.join('\n').trim();
+  if (head && head.length <= 120) return tail ? { title: head, body: tail } : { title: head };
+  return { title: 'SavdoIQ', body: text };
+}
 
 /** Nishonga qarab foydalanuvchi id'larini yig'adi */
-async function resolveAudience(target: z.infer<typeof broadcastSchema>['target']): Promise<string[]> {
+async function resolveAudience(target: BroadcastTarget): Promise<string[]> {
   if (target === 'admins') {
     const rows = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } });
     return rows.map((r) => r.id);
@@ -791,12 +822,13 @@ async function resolveAudience(target: z.infer<typeof broadcastSchema>['target']
     return [...new Set(rows.map((r) => r.userId))];
   }
 
-  // 'paid' | 'trial' — obuna holatiga qarab
+  // 'paid' — har qanday pullik tarif; aks holda aynan shu tarifdagi AKTIV obunalar
   const subs = await prisma.subscription.findMany({ select: { companyId: true, plan: true, status: true, expiresAt: true } });
   const companyIds = subs
     .filter((s) => {
       const info = planOf(s);
-      return target === 'paid' ? info.active && info.plan !== 'trial' : !info.active || info.plan === 'trial';
+      if (!info.active) return false;
+      return target === 'paid' ? info.plan !== 'trial' : info.plan === target;
     })
     .map((s) => s.companyId);
 
@@ -813,38 +845,48 @@ router.post(
   ah(async (req, res) => {
     const { user: admin } = ctx(req);
     const input = broadcastSchema.parse(req.body ?? {});
+    const target = input.target as BroadcastTarget;
+    const message = input.text ? splitBroadcastText(input.text) : { title: input.title ?? '', body: input.body };
 
-    const audience = (await resolveAudience(input.target)).slice(0, BROADCAST_LIMIT);
+    const audience = (await resolveAudience(target)).slice(0, BROADCAST_LIMIT);
+    if (audience.length === 0) throw AppError.badRequest('Tanlangan guruhda foydalanuvchi yo‘q');
 
-    let sent = 0;
-    for (const userId of audience) {
-      // notifyUser hech qachon throw qilmaydi — bitta xato butun yuborishni to'xtatmaydi
-      await notifyUser(userId, {
-        type: input.type,
-        title: input.title,
-        ...(input.body ? { body: input.body } : {}),
-        ...(input.link ? { link: input.link } : {}),
-        telegram: input.telegram,
-      });
-      sent += 1;
-    }
-
-    await prisma.auditLog.create({
-      data: {
-        userId: admin.id,
-        action: 'admin.broadcast',
-        entity: 'notification',
-        meta: JSON.stringify({ target: input.target, count: sent, title: input.title }),
-      },
-    });
+    /*
+     * Har bir foydalanuvchiga: saytdagi bildirishnoma (qo'ng'iroqcha) + Telegram.
+     * Jo'natish fonda: Telegram'ga ketma-ket yuborish yuzlab foydalanuvchida
+     * daqiqalab cho'ziladi va so'rov proksida uzilib qolardi. notifyUser hech
+     * qachon throw qilmaydi — bitta xato qolganlarini to'xtatmaydi.
+     */
+    void (async () => {
+      let sent = 0;
+      for (const userId of audience) {
+        await notifyUser(userId, {
+          type: input.type,
+          title: message.title,
+          ...(message.body ? { body: message.body } : {}),
+          ...(input.link ? { link: input.link } : {}),
+          telegram: input.telegram,
+        });
+        sent += 1;
+      }
+      await prisma.auditLog
+        .create({
+          data: {
+            userId: admin.id,
+            action: 'admin.broadcast',
+            entity: 'notification',
+            meta: JSON.stringify({ target, count: sent, title: message.title }),
+          },
+        })
+        .catch(() => undefined);
+    })();
 
     res.json({
       ok: true,
-      target: input.target,
+      target,
       recipients: audience.length,
-      sent,
       limited: audience.length >= BROADCAST_LIMIT,
-      message: `${sent} ta foydalanuvchiga yuborildi`,
+      message: `${audience.length} ta foydalanuvchiga yuborilmoqda — saytda va Telegramda`,
     });
   }),
 );

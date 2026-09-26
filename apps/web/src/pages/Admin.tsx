@@ -161,7 +161,7 @@ registerNamespace('admin', {
     'bc.err': 'Yuborib bo‘lmadi',
     'bc.previewTitle': 'Ko‘rinishi',
     'bc.empty': 'Matn kiriting',
-    'bc.tooLong': 'Matn juda uzun (4096 belgigacha)',
+    'bc.tooLong': 'Matn juda uzun (2000 belgigacha)',
   },
   ru: {
     title: 'Администратор',
@@ -277,7 +277,7 @@ registerNamespace('admin', {
     'bc.err': 'Не удалось отправить',
     'bc.previewTitle': 'Предпросмотр',
     'bc.empty': 'Введите текст',
-    'bc.tooLong': 'Текст слишком длинный (до 4096 символов)',
+    'bc.tooLong': 'Текст слишком длинный (до 2000 символов)',
   },
   en: {
     title: 'Admin',
@@ -393,7 +393,7 @@ registerNamespace('admin', {
     'bc.err': 'Could not send',
     'bc.previewTitle': 'Preview',
     'bc.empty': 'Enter a message',
-    'bc.tooLong': 'The text is too long (4096 characters max)',
+    'bc.tooLong': 'The text is too long (2000 characters max)',
   },
 });
 
@@ -1363,9 +1363,9 @@ function BroadcastTab() {
   const [confirm, setConfirm] = useState(false);
 
   const send = useMutation({
-    mutationFn: () => api.post<unknown>('/admin/broadcast', { text: text.trim(), target }),
-    onSuccess: () => {
-      toast.success(t('bc.sent'));
+    mutationFn: () => api.post<{ message?: string }>('/admin/broadcast', { text: text.trim(), target }),
+    onSuccess: (res) => {
+      toast.success(t('bc.sent'), res?.message);
       setConfirm(false);
       setText('');
     },
@@ -1376,7 +1376,8 @@ function BroadcastTab() {
   });
 
   const trimmed = text.trim();
-  const tooLong = trimmed.length > 4096;
+  // Bildirishnoma matni serverda shu uzunlikkacha saqlanadi
+  const tooLong = trimmed.length > 2000;
   const canSend = trimmed.length > 0 && !tooLong;
 
   const targetLabel = useMemo(
