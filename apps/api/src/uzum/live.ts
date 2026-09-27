@@ -734,6 +734,7 @@ export class LiveUzumClient implements UzumClient {
         status: kind ?? status,
         returnedQty,
         returnCause: returnCause || undefined,
+        withdrawn: asMoney(r.withdrawnProfit) || undefined,
         // Uzum qaytarish sanasini bermaydi — topshirilgan sana eng yaqin taxmin
         returnedAt: kind === 'returned' ? (deliveredAt ?? orderedAt) : undefined,
         payout,

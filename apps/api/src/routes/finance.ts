@@ -30,6 +30,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getDailySeries, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
+import { getUzumBalance } from '../services/balance.js';
 import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
 
 const router = Router();
@@ -252,7 +253,7 @@ router.get(
 
     // Kunlik seriya: buyurtmalardan kelgan foydadan qo'lda kiritilgan xarajat,
     // ombor to'lovi va soliq ayriladi — shunda profit = revenue - expenses bo'ladi.
-    const [series, manualRows, feeRows, paidAgg, pendingAgg, allSalesAgg, uzumFeeAgg, storageAllAgg] =
+    const [series, manualRows, feeRows, paidAgg, pendingAgg, uzumBalance] =
       await Promise.all([
       getDailySeries(storeIds, range.period),
       prisma.expense.findMany({
@@ -286,36 +287,8 @@ router.get(
           order: { storeId: { in: storeIds }, status: { in: ['new', 'processing'] } },
         },
       }),
-      /**
-       * Uzum kabinetidagi "Umumiy balans" — davr emas, hisob boshidan beri
-       * yig'ilgan va hali yechib olinmagan pul. Uzumning o'zi shunday hisoblaydi:
-       *
-       *     sotuv summasi − komissiya − barcha xizmat to'lovlari
-       *
-       * Diqqat: `payout` ("yechib olish uchun") har bir dona uchun mijozga
-       * yetkazishni OLDINDAN ayiradi, Uzum esa uni faqat haqiqatda ushlaganda
-       * hisobdan yechadi. Shu sababli balans `payout` dan emas, tushum va
-       * komissiyadan quriladi — aks holda hali ushlanmagan yetkazish puliga
-       * kamayib ko'rinardi.
-       */
-      prisma.orderItem.aggregate({
-        _sum: { revenue: true, commission: true },
-        where: { status: { notIn: ['canceled', 'returned'] }, order: { storeId: { in: storeIds } } },
-      }),
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: {
-          companyId: company.id,
-          // Uzum ushlagan barcha to'lovlar: omborga logistika, reklama va
-          // buyurtma yetkazish to'lovlari (`uzum-payout`) — qaytarilganlari manfiy
-          source: { in: ['uzum', 'uzum-payout'] },
-          ...(range.storeId ? { storeId: range.storeId } : {}),
-        },
-      }),
-      prisma.storageFee.aggregate({
-        _sum: { amount: true },
-        where: { storeId: { in: storeIds } },
-      }),
+      // "Umumiy balans" — hisob boshidan beri, yechib olingan pul ayirilgan (services/balance.ts)
+      getUzumBalance(company.id, storeIds, range.storeId),
     ]);
 
     // To'lov jadvali — Pul kalendari bilan BIR XIL manbadan
@@ -367,12 +340,7 @@ router.get(
       balance: {
         paidOut: round(paidAgg._sum.payout ?? 0),
         pending: round(pendingAgg._sum.payout ?? 0),
-        total: round(
-          (allSalesAgg._sum.revenue ?? 0) -
-            (allSalesAgg._sum.commission ?? 0) -
-            (uzumFeeAgg._sum.amount ?? 0) -
-            (storageAllAgg._sum.amount ?? 0),
-        ),
+        total: uzumBalance.total,
         nextPayoutAt: nextPayoutFromToday(payoutRules.schedule),
         payoutConfirmed: payoutRules.confirmed,
       },

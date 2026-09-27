@@ -429,6 +429,8 @@ model OrderItem {
   otherCost     Float     @default(0)
   revenue       Float     @default(0)
   payout        Float     @default(0)
+  /// Uzum `withdrawnProfit` — shu pozitsiyadan sotuvchiga allaqachon yechib berilgan summa
+  withdrawn     Float     @default(0)
   netProfit     Float     @default(0)
   status        String    @default("delivered")
   returnedAt    DateTime?

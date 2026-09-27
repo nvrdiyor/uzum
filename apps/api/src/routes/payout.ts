@@ -37,6 +37,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
 import { getStoreIds } from '../services/common.js';
+import { getUzumBalance } from '../services/balance.js';
 import {
   PAYOUT_KEYS,
   businessToday,
@@ -100,7 +101,7 @@ router.get(
       select: {
         uzumOrderId: true,
         deliveredAt: true,
-        items: { select: { title: true, payout: true, status: true } },
+        items: { select: { title: true, payout: true, withdrawn: true, status: true } },
       },
       orderBy: { deliveredAt: 'desc' },
     });
@@ -109,9 +110,13 @@ router.get(
 
     for (const o of orders) {
       if (!o.deliveredAt) continue;
-      const amount = round(
-        o.items.filter((i) => EFFECTIVE_STATUSES.includes(i.status)).reduce((s, i) => s + i.payout, 0),
-      );
+      const live = o.items.filter((i) => EFFECTIVE_STATUSES.includes(i.status));
+      /*
+       * Uzum sotuvchiga yechib bergan qism (withdrawnProfit) ayiriladi —
+       * kalendarda faqat hali OLINMAGAN pul turadi. Ilgari sotuvchi 136 000
+       * so'mni erta yechib olgandan keyin ham u "ochilgan" bo'lib turardi.
+       */
+      const amount = round(live.reduce((s, i) => s + i.payout - i.withdrawn, 0));
       if (amount <= 0) continue;
 
       const acceptedAt = parseISODate(toISODate(o.deliveredAt));
@@ -206,7 +211,15 @@ router.get(
       })
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const unlocked = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
+    const unlockedGross = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
+    /*
+     * "Ochilgan" — hozir yechib olish mumkin bo'lgan pul, Uzum kabinetidagi
+     * "…so'mni ertaroq yechib olish mumkin" bilan bir xil ma'noda: balansdan
+     * hali ochilmagan buyurtmalar ayriladi. Xizmat to'lovlari (logistika,
+     * reklama) va yechib olingan pul balansning o'zida ayrilgan.
+     */
+    const balance = await getUzumBalance(company.id, storeIds, range.storeId);
+    const unlocked = balance.available;
     const paidOut = round(rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0));
     const pending = round(rows.filter((r) => !r.unlocked).reduce((s, r) => s + r.amount, 0));
     const next = days.find((d) => !d.unlocked);
@@ -218,7 +231,7 @@ router.get(
      * o'ttiz kunlik xarajat bilan solishtirilsa har safar yolg'on "qarz bor"
      * chiqardi.
      */
-    const owed = round(unlocked + pending);
+    const owed = round(unlockedGross + pending);
 
     // ── Xizmat to'lovlari: Uzum ushlab qoladigan summalar ──
     const chargeRows = await prisma.expense.aggregate({
@@ -333,6 +346,8 @@ router.get(
         paidOut,
         pending,
         charges,
+        withdrawn: balance.withdrawn,
+        balance: balance.total,
         nextDate: next?.date ?? null,
         nextAmount: next?.amount ?? 0,
       },

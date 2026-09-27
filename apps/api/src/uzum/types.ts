@@ -150,6 +150,11 @@ export interface UzumOrderItem {
   returnCause?: string;
   /** Faqat haqiqiy qaytarish uchun (tovar mijozga topshirilgandan keyin) */
   returnedAt?: string;
+  /**
+   * Uzum `withdrawnProfit` — shu pozitsiyadan sotuvchiga yechib berilgan summa.
+   * Erta yechib olishda: yechilgan summa − 2,5% haq (haq alohida xarajat bo'lib keladi).
+   */
+  withdrawn?: number;
 }
 
 /** Buyurtma */

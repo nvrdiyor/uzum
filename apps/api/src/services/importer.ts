@@ -776,6 +776,7 @@ export async function upsertOrders(
           otherCost,
           revenue,
           payout,
+          withdrawn: round(Math.max(0, num(it.withdrawn))),
           netProfit,
           status: lineStatus,
           returnedAt: lineReturnedAt,

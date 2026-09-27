@@ -1269,8 +1269,15 @@ export interface PayoutCalendarResponse {
     confirmed: boolean;
   };
   totals: {
-    /** Ochilgan, lekin hali o'tkazilmagan — jadvaldagi navbatdagi sanani kutmoqda */
+    /**
+     * Hozir yechib olish mumkin: umumiy balans − hali ochilmagan buyurtmalar.
+     * Xizmat to'lovlari va yechib olingan pul ayrilgan, 0 dan kam emas.
+     */
     unlocked: number;
+    /** Hisob boshidan beri sotuvchiga yechib berilgan (Uzum withdrawnProfit) */
+    withdrawn: number;
+    /** Umumiy balans — Moliya va Boshqaruv paneli bilan bir xil */
+    balance: number;
     /** Jadval bo'yicha allaqachon o'tkazilgan summa */
     paidOut: number;
     /** Hali kutilayotgan summa */

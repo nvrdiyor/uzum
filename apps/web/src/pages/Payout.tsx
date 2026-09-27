@@ -53,7 +53,8 @@ registerNamespace('payout', {
     title: 'Pul kalendari',
     subtitle: 'Qaysi summa qaysi kuni yechib olish uchun ochiladi',
     'kpi.unlocked': 'Ochilgan',
-    'kpi.unlockedHint': 'Muddati kelgan — jadvaldagi navbatdagi sanani kutmoqda',
+    'kpi.unlockedHint': 'Yechib olish mumkin: xizmat to‘lovlari ayirilgan',
+    'kpi.unlockedHintWithdrawn': 'Xizmat to‘lovlari va yechib olingan {amount} ayirilgan',
     'kpi.pending': 'Kutilmoqda',
     'kpi.pendingHint': 'Qabul sanasidan {n} kun o‘tishi kerak',
     'kpi.next': 'Eng yaqin ochilish',
@@ -140,7 +141,8 @@ registerNamespace('payout', {
     title: 'Календарь выплат',
     subtitle: 'Какая сумма и когда открывается к выводу',
     'kpi.unlocked': 'Доступно',
-    'kpi.unlockedHint': 'Срок подошёл — ждёт ближайшую дату графика',
+    'kpi.unlockedHint': 'Можно вывести: платежи за услуги вычтены',
+    'kpi.unlockedHintWithdrawn': 'Вычтены платежи за услуги и выведенные {amount}',
     'kpi.pending': 'Ожидает',
     'kpi.pendingHint': 'Нужно {n} дней с даты получения',
     'kpi.next': 'Ближайшее открытие',
@@ -227,7 +229,8 @@ registerNamespace('payout', {
     title: 'Payout calendar',
     subtitle: 'Which amount unlocks for withdrawal, and when',
     'kpi.unlocked': 'Available',
-    'kpi.unlockedHint': 'The hold has passed — waiting for the next scheduled date',
+    'kpi.unlockedHint': 'Available to withdraw: service fees deducted',
+    'kpi.unlockedHintWithdrawn': 'Service fees and {amount} already withdrawn are deducted',
     'kpi.pending': 'Pending',
     'kpi.pendingHint': 'Needs {n} days from the acceptance date',
     'kpi.next': 'Next unlock',
@@ -436,7 +439,11 @@ export default function Payout() {
           <StatCard
             label={t('kpi.unlocked')}
             value={f.money(data?.totals.unlocked ?? 0)}
-            hint={t('kpi.unlockedHint')}
+            hint={
+              (data?.totals.withdrawn ?? 0) > 0
+                ? t('kpi.unlockedHintWithdrawn', { amount: f.money(data?.totals.withdrawn ?? 0) })
+                : t('kpi.unlockedHint')
+            }
             icon={<Wallet className="h-5 w-5" />}
             tone="brand"
             loading={isLoading}
