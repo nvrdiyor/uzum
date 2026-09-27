@@ -24,6 +24,7 @@ import {
   parseISODate,
   round,
   toISODate,
+  todayInBusinessTz,
   type PayoutCalendarResponse,
   type PayoutCheck,
   type PayoutDay,
@@ -107,6 +108,8 @@ router.get(
     });
 
     const rows: PayoutOrder[] = [];
+    const nowTs = Date.now();
+    const holdMs = holdDays * 86_400_000;
 
     for (const o of orders) {
       if (!o.deliveredAt) continue;
@@ -119,9 +122,20 @@ router.get(
       const amount = round(live.reduce((s, i) => s + i.payout - i.withdrawn, 0));
       if (amount <= 0) continue;
 
-      const acceptedAt = parseISODate(toISODate(o.deliveredAt));
-      const unlockAt = addDays(acceptedAt, holdDays);
-      const daysLeft = Math.ceil((unlockAt.getTime() - today.getTime()) / 86_400_000);
+      /*
+       * Ochilish ANIQ SOAT bilan: qabul vaqti + 10 × 24 soat. Ilgari qabul
+       * vaqti UTC sanasiga qirqilardi — Toshkentda 00:00–05:00 orasida
+       * qabul qilingan buyurtma bir kun oldin "ochilgan" bo'lib ko'rinardi.
+       * Buyurtma holatiga (TO_WITHDRAW) tayanilmaydi: demo generatori
+       * yetkazilganni darhol 'delivered' qiladi va hammasi ochilib qolardi.
+       * Live'da `dateIssued` millisekundgacha aniq — natija Uzum bilan bir xil.
+       */
+      const unlockTs = o.deliveredAt.getTime() + holdMs;
+      const isUnlocked = unlockTs <= nowTs;
+      const hoursLeft = isUnlocked ? 0 : Math.ceil((unlockTs - nowTs) / 3_600_000);
+      const daysLeft = Math.ceil(hoursLeft / 24);
+      const acceptedAt = parseISODate(todayInBusinessTz(o.deliveredAt));
+      const unlockAt = parseISODate(todayInBusinessTz(new Date(unlockTs)));
       // Ochilgan pul jadvaldagi navbatdagi sanani kutadi
       const scheduled = nextPayoutDate(unlockAt, schedule);
 
@@ -142,19 +156,22 @@ router.get(
         unlockAt: toISODate(unlockAt),
         payoutAt: toISODate(payoutAt),
         amount,
-        unlocked: daysLeft <= 0,
-        daysLeft: Math.max(0, daysLeft),
+        unlocked: isUnlocked,
+        daysLeft,
+        hoursLeft,
+        unlockTime: new Date(unlockTs).toISOString(),
         paid,
       });
     }
 
     // Kunlar bo'yicha jamlash — kalendarda bir kun bitta qator
-    const byDay = new Map<string, { amount: number; orders: number; paid: number }>();
+    const byDay = new Map<string, { amount: number; orders: number; paid: number; locked: number }>();
     for (const r of rows) {
-      const cur = byDay.get(r.unlockAt) ?? { amount: 0, orders: 0, paid: 0 };
+      const cur = byDay.get(r.unlockAt) ?? { amount: 0, orders: 0, paid: 0, locked: 0 };
       cur.amount += r.amount;
       cur.orders += 1;
       if (r.paid) cur.paid += r.amount;
+      if (!r.unlocked) cur.locked += 1;
       byDay.set(r.unlockAt, cur);
     }
 
@@ -163,7 +180,8 @@ router.get(
         date,
         amount: round(v.amount),
         orders: v.orders,
-        unlocked: parseISODate(date).getTime() <= today.getTime(),
+        // Kun ochilgan — undagi barcha buyurtmalar soati to'lgan bo'lsa
+        unlocked: v.locked === 0,
         /*
          * Shu kuni ochilgan pulning qancha qismi jadval bo'yicha
          * allaqachon o'tkazilgani. Busiz jadval yig'indisi "Ochilgan"
@@ -223,6 +241,12 @@ router.get(
     const paidOut = round(rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0));
     const pending = round(rows.filter((r) => !r.unlocked).reduce((s, r) => s + r.amount, 0));
     const next = days.find((d) => !d.unlocked);
+    // Eng yaqin ochilishning aniq vaqti — kartada soati bilan ko'rsatiladi
+    const nextAt =
+      rows
+        .filter((r) => !r.unlocked)
+        .map((r) => r.unlockTime)
+        .sort()[0] ?? null;
 
     /*
      * Uzum hali o'tkazmagan butun summa. Qarzdorlik tekshiruvi aynan
@@ -349,6 +373,7 @@ router.get(
         withdrawn: balance.withdrawn,
         balance: balance.total,
         nextDate: next?.date ?? null,
+        nextAt,
         nextAmount: next?.amount ?? 0,
       },
       days,

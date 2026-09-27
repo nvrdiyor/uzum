@@ -1194,6 +1194,10 @@ export interface PayoutOrder {
   amount: number;
   unlocked: boolean;
   daysLeft: number;
+  /** Ochilishgacha qolgan soat (ochilgan bo'lsa 0) */
+  hoursLeft: number;
+  /** Ochilishning aniq vaqti (ISO) — qabul vaqti + 10 × 24 soat */
+  unlockTime: string;
   /** Jadvaldagi to'lov sanasi o'tib ketgan — pul allaqachon o'tkazilgan */
   paid: boolean;
 }
@@ -1286,6 +1290,8 @@ export interface PayoutCalendarResponse {
     charges: number;
     /** Eng yaqin ochilish sanasi (ISO) yoki null */
     nextDate: string | null;
+    /** Eng yaqin ochilishning aniq vaqti (ISO) yoki null */
+    nextAt: string | null;
     nextAmount: number;
   };
   /** Kunlar bo'yicha ochilish jadvali */

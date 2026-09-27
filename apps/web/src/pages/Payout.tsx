@@ -82,6 +82,7 @@ registerNamespace('payout', {
     'ord.amount': 'Summa',
     'ord.left': 'Qoldi',
     'ord.days': '{n} kun',
+    'ord.hours': '{n} soat',
     'ord.ready': 'Tayyor',
     'ord.paid': 'To‘langan',
     'inst.title': 'Tezkor yechib olish',
@@ -170,6 +171,7 @@ registerNamespace('payout', {
     'ord.amount': 'Сумма',
     'ord.left': 'Осталось',
     'ord.days': '{n} дн',
+    'ord.hours': '{n} ч',
     'ord.ready': 'Готово',
     'ord.paid': 'Выплачено',
     'inst.title': 'Мгновенный вывод',
@@ -258,6 +260,7 @@ registerNamespace('payout', {
     'ord.amount': 'Amount',
     'ord.left': 'Left',
     'ord.days': '{n} d',
+    'ord.hours': '{n} h',
     'ord.ready': 'Ready',
     'ord.paid': 'Paid out',
     'inst.title': 'Instant withdrawal',
@@ -406,7 +409,9 @@ export default function Payout() {
         ) : r.unlocked ? (
           <Badge tone="brand">{t('ord.ready')}</Badge>
         ) : (
-          <span className="tnum text-warn-ink">{t('ord.days', { n: r.daysLeft })}</span>
+          <span className="tnum text-warn-ink" title={f.dateTime(r.unlockTime)}>
+            {r.hoursLeft < 24 ? t('ord.hours', { n: r.hoursLeft }) : t('ord.days', { n: r.daysLeft })}
+          </span>
         ),
     },
     {
@@ -459,7 +464,13 @@ export default function Payout() {
           <StatCard
             label={t('kpi.next')}
             value={data?.totals.nextDate ? f.money(data.totals.nextAmount) : '—'}
-            hint={data?.totals.nextDate ? f.date(data.totals.nextDate) : undefined}
+            hint={
+              data?.totals.nextAt
+                ? f.dateTime(data.totals.nextAt)
+                : data?.totals.nextDate
+                  ? f.date(data.totals.nextDate)
+                  : undefined
+            }
             icon={<CalendarClock className="h-5 w-5" />}
             tone="info"
             loading={isLoading}
