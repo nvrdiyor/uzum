@@ -1096,7 +1096,19 @@ export class LiveUzumClient implements UzumClient {
       const date = asIso(r.dateService ?? r.dateCreated ?? firstOf(r, KEYS.expenseDate), fallbackIso);
       if (!inRange(date, from, to)) continue;
 
-      const raw$ = asMoney(r.paymentPrice ?? firstOf(r, KEYS.expenseAmount));
+      /*
+       * `paymentPrice` — BIR DONA narxi, `amount` — soni: 6 donali buyurtma
+       * logistikasi "5 750 × 6" bo'lib keladi. Ilgari faqat narx olinardi va
+       * ko'p donali buyurtmalar bir donadek hisoblanardi — jonli do'konda
+       * xizmat to'lovlari 506 170 chiqdi, Uzumda 540 170 (farq 34 000), shu
+       * sabab balans ham, "Yechib olish mumkin" ham Uzumdagidan ko'p edi.
+       * `paymentPrice` bo'lmasa `amount` summa ma'nosida (eski format).
+       */
+      const unitPrice = r.paymentPrice !== undefined && r.paymentPrice !== null ? asMoney(r.paymentPrice) : null;
+      const raw$ =
+        unitPrice !== null
+          ? unitPrice * Math.max(1, Math.round(asNumber(r.amount)))
+          : asMoney(firstOf(r, KEYS.expenseAmount));
       if (raw$ === 0) continue;
 
       // Qaytarilgan to'lov — xarajatni kamaytiradi
