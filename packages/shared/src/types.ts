@@ -802,6 +802,10 @@ export interface BatchItemRow extends BatchItemInput {
   total: number;
   /** total ÷ qty; soni kiritilmagan bo'lsa null */
   unitCost: number | null;
+  /** Qo'shimcha xarajatning shu qatorga kg ulushi bo'yicha tushgan qismi, so'm */
+  extraShare: number;
+  /** (total + extraShare) ÷ qty; soni yoki (xarajat bo'lsa) kg kiritilmagan bo'lsa null */
+  unitCostFull: number | null;
 }
 
 export interface BatchTotals {
@@ -812,6 +816,8 @@ export interface BatchTotals {
   goodsUzs: number;
   cargoUzs: number;
   extra: number;
+  /** Qo'shimcha xarajat ÷ jami kg; kg kiritilmagan bo'lsa 0 */
+  extraPerKg: number;
   total: number;
 }
 

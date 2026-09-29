@@ -217,19 +217,52 @@ export function maxPddPrice(maxCost: number, cargoCost: number, rate: number): n
 }
 
 /**
+ * Summani og'irlikka mutanosib butun so'mlarga bo'lish (eng katta qoldiq
+ * usuli): har bir ulush butun son, yig'indisi esa aynan `amount`.
+ * Og'irligi 0 bo'lgan qatorga ulush tushmaydi.
+ */
+function splitByWeight(amount: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((a, w) => a + w, 0);
+  if (!(amount > 0) || !(sum > 0)) return weights.map(() => 0);
+  const exact = weights.map((w) => (amount * w) / sum);
+  const shares = exact.map((e) => Math.floor(e));
+  let left = amount - shares.reduce((a, s) => a + s, 0);
+  const order = exact.map((e, i) => ({ i, rem: e - shares[i] })).sort((a, b) => b.rem - a.rem);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    shares[i] += 1;
+    left -= 1;
+  }
+  return shares;
+}
+
+export interface BatchRowCalc {
+  priceUzs: number;
+  total: number;
+  unitCost: number | null;
+  extraShare: number;
+  unitCostFull: number | null;
+}
+
+/**
  * Xarid partiyasi hisobi. Har bir qatorning so'mdagi narxi alohida
  * yaxlitlanadi va jamlar aynan shu yaxlitlangan qatorlardan yig'iladi —
  * jadvaldagi ustun yig'indisi pastdagi jami bilan har doim bir xil chiqadi.
  *
  * `priceCny` — qatordagi barcha donalarning jami narxi, shuning uchun 1 dona
- * tannarxi = (tovar + kargo) ÷ soni. Partiyaning qo'shimcha xarajati bunga
- * kirmaydi — u qatorlarga bo'linmaydi.
+ * tannarxi = (tovar + kargo) ÷ soni.
+ *
+ * Qo'shimcha xarajat (bojxona, yo'l haqi...) qatorlarga KG ulushiga qarab
+ * bo'linadi: og'irroq tovar ko'proq xarajat ko'taradi. Xarajat bilan 1 dona =
+ * (tovar + kargo + kg ulushi) ÷ soni. Xarajat bor-u, qatorning kg'i
+ * kiritilmagan bo'lsa bu ko'rsatkich hisoblanmaydi (null) — ulushsiz son
+ * tannarxni kamaytirib ko'rsatardi.
  */
 export function calcBatch(
   rate: number,
   extra: number,
   items: ReadonlyArray<Pick<BatchItemInput, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>>,
-): { rows: { priceUzs: number; total: number; unitCost: number | null }[]; totals: BatchTotals } {
+): { rows: BatchRowCalc[]; totals: BatchTotals } {
   const r = Math.max(0, rate || 0);
   let qty = 0;
   let weightKg = 0;
@@ -237,7 +270,7 @@ export function calcBatch(
   let goodsUzs = 0;
   let cargoUzs = 0;
 
-  const rows = items.map((it) => {
+  const base = items.map((it) => {
     const n = Math.max(0, Math.floor(it.qty || 0));
     const cny = Math.max(0, it.priceCny || 0);
     const cargo = Math.round(Math.max(0, it.cargoCost || 0));
@@ -248,12 +281,18 @@ export function calcBatch(
     priceCny += cny;
     goodsUzs += priceUzs;
     cargoUzs += cargo;
-    return { priceUzs, total, unitCost: n > 0 ? Math.round(total / n) : null };
+    return { n, priceUzs, total, unitCost: n > 0 ? Math.round(total / n) : null };
   });
 
   const ex = Math.round(Math.max(0, extra || 0));
+  const kgs = items.map((it) => Math.max(0, it.weightKg || 0));
+  const shares = splitByWeight(ex, kgs);
   return {
-    rows,
+    rows: base.map(({ n, ...row }, i) => ({
+      ...row,
+      extraShare: shares[i],
+      unitCostFull: n > 0 && (ex === 0 || kgs[i] > 0) ? Math.round((row.total + shares[i]) / n) : null,
+    })),
     totals: {
       items: items.length,
       qty,
@@ -262,6 +301,7 @@ export function calcBatch(
       goodsUzs,
       cargoUzs,
       extra: ex,
+      extraPerKg: weightKg > 0 ? Math.round(ex / weightKg) : 0,
       total: goodsUzs + cargoUzs + ex,
     },
   };

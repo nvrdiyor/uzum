@@ -26,6 +26,9 @@ const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('cost_price'));
 
 const MAX_BATCHES = 500;
+
+const STALE_BATCH =
+  'Partiya boshqa joyda o‘zgargan (boshqa oyna yoki qurilma). O‘zgarishlar ustidan yozilmasligi uchun saqlanmadi — sahifani yangilang.';
 const MAX_CARGO_NAMES = 50;
 
 interface BatchRecord {
@@ -95,6 +98,8 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       priceUzs: rows[i].priceUzs,
       total: rows[i].total,
       unitCost: rows[i].unitCost,
+      extraShare: rows[i].extraShare,
+      unitCostFull: rows[i].unitCostFull,
     })),
     cargoNames: used.map((u) => u.cargoName).sort((a, b) => a.localeCompare(b)),
   };
@@ -167,16 +172,27 @@ router.put(
     const exists = await prisma.purchaseBatch.findFirst({ where: { id, companyId: company.id }, select: { id: true } });
     if (!exists) throw AppError.notFound('Partiya topilmadi');
 
-    await prisma.$transaction([
-      prisma.purchaseBatch.update({
-        where: { id },
-        data: { name: body.name, rate: body.rate, extra: body.extra },
-      }),
-      prisma.purchaseBatchItem.deleteMany({ where: { batchId: id } }),
-      prisma.purchaseBatchItem.createMany({
+    const expected = body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt) : null;
+    if (!expected || Number.isNaN(expected.getTime())) throw AppError.conflict(STALE_BATCH);
+
+    /*
+     * Versiya sharti yozuv bilan BITTA tranzaksiyada: "tekshir, keyin yoz"
+     * orasida boshqa oyna saqlab ulgursa ham ustidan yozilmaydi. Butun
+     * partiya almashtirilgani uchun eski oyna yangi qatorlarni o'chirib
+     * yuborishi mumkin edi — aynan shunday bir qator yo'qolgan.
+     */
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.purchaseBatch.updateMany({
+        where: { id, companyId: company.id, updatedAt: expected },
+        data: { name: body.name, rate: body.rate, extra: body.extra, updatedAt: new Date() },
+      });
+      if (updated.count === 0) throw AppError.conflict(STALE_BATCH);
+
+      await tx.purchaseBatchItem.deleteMany({ where: { batchId: id } });
+      await tx.purchaseBatchItem.createMany({
         data: body.items.map((it, position) => ({ ...it, batchId: id, position })),
-      }),
-    ]);
+      });
+    });
 
     res.json(await loadDetail(company.id, id));
   }),

@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -22,7 +23,10 @@ import {
   Plane,
   Plus,
   Receipt,
+  RefreshCw,
+  Trash2,
   Truck,
+  Undo2,
   Wallet,
   X,
 } from 'lucide-react';
@@ -69,7 +73,10 @@ interface Draft {
   rows: Row[];
 }
 
-type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict';
+
+/** O'chirilgan qatorni qaytarish mumkin bo'lgan vaqt */
+const UNDO_MS = 5_000;
 
 const SAVE_DELAY_MS = 700;
 const NEW_CARGO = '__new__';
@@ -251,9 +258,27 @@ function NewCargoModal({
   );
 }
 
-function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+function SaveIndicator({
+  state,
+  onRetry,
+  onReload,
+}: {
+  state: SaveState;
+  onRetry: () => void;
+  onReload: () => void;
+}) {
   const t = useT('batches');
   if (state === 'idle') return null;
+  if (state === 'conflict')
+    return (
+      <span className="flex items-center gap-2 text-sm font-medium text-danger-ink">
+        <AlertTriangle className="h-4 w-4" />
+        {t('save.conflict')}
+        <Button variant="outline" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onReload}>
+          {t('save.reload')}
+        </Button>
+      </span>
+    );
   if (state === 'error')
     return (
       <span className="flex items-center gap-2 text-sm font-medium text-danger-ink">
@@ -318,7 +343,10 @@ function BatchDetail({ id }: { id: string }) {
   // Serverdan kelgan partiya faqat bir marta formaga o'tadi — keyingi
   // saqlash javoblari yozayotgan foydalanuvchining kursorini buzmasligi kerak
   useEffect(() => {
-    if (data && !draft && !isFetching) setDraft(toDraft(data));
+    if (data && !draft && !isFetching) {
+      serverVersion.current = data.updatedAt;
+      setDraft(toDraft(data));
+    }
   }, [data, draft, isFetching]);
 
   // ── Avtomatik saqlash ──
@@ -328,13 +356,21 @@ function BatchDetail({ id }: { id: string }) {
   const savedVersion = useRef(0);
   const chain = useRef<Promise<void>>(Promise.resolve());
   const lastName = useRef('');
+  /**
+   * Sahifa ko'rgan server versiyasi. Saqlashda yuboriladi: partiya boshqa
+   * oynada o'zgargan bo'lsa server rad etadi — eski holat yangisini
+   * ustidan yozib, qatorlarni o'chirib yubormaydi.
+   */
+  const serverVersion = useRef<string | null>(null);
+  /** Konflikt bo'ldi — sahifa yangilanmaguncha qayta saqlanmaydi */
+  const conflicted = useRef(false);
   if (data && !lastName.current) lastName.current = data.name;
 
   const flush = useCallback(() => {
     chain.current = chain.current.then(async () => {
       const d = draftRef.current;
       const v = version.current;
-      if (!d || v === savedVersion.current || !(d.rate > 0)) return;
+      if (!d || v === savedVersion.current || !(d.rate > 0) || conflicted.current) return;
       setSaveState('saving');
       try {
         const name = d.name.trim() || lastName.current;
@@ -343,13 +379,21 @@ function BatchDetail({ id }: { id: string }) {
           rate: d.rate,
           extra: d.extra,
           items: d.rows.filter((r) => !isBlank(r)).map(({ key: _key, ...item }) => item),
+          expectedUpdatedAt: serverVersion.current ?? undefined,
         });
+        serverVersion.current = saved.updatedAt;
         lastName.current = saved.name;
         savedVersion.current = v;
         qc.setQueryData(['batch', d.id], saved);
         void qc.invalidateQueries({ queryKey: ['batches'] });
         setSaveState(version.current === v ? 'saved' : 'pending');
       } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          conflicted.current = true;
+          setSaveState('conflict');
+          toast.error(t('save.conflict'), err.message);
+          return;
+        }
         setSaveState('error');
         if (err instanceof ApiError) toast.error(t('save.error'), err.message);
       }
@@ -367,7 +411,8 @@ function BatchDetail({ id }: { id: string }) {
   // Sahifadan chiqishda kutilayotgan o'zgarish yo'qolmasin
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
-      if (version.current !== savedVersion.current) e.preventDefault();
+      // Konfliktda saqlab bo'lmaydi — "Yangilash" bosilganda ogohlantirish chiqmasin
+      if (version.current !== savedVersion.current && !conflicted.current) e.preventDefault();
     };
     window.addEventListener('beforeunload', onUnload);
     return () => {
@@ -398,11 +443,41 @@ function BatchDetail({ id }: { id: string }) {
     }
     edit((d) => ({ ...d, rows: [...d.rows, blankRow(d.rows[d.rows.length - 1])] }));
   };
-  const removeRow = (key: string) =>
+  /*
+   * O'chirilgan qator 5 soniya davomida qaytariladi. Avtomatik saqlash
+   * o'chirishni darhol yozadi, "Qaytarish" esa qatorni o'sha joyiga qo'yib
+   * yana saqlaydi — sahifadan chiqib ketilsa ham holat to'g'ri qoladi.
+   */
+  const [undo, setUndo] = useState<{ row: Row; index: number; stamp: number } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const timer = window.setTimeout(() => setUndo(null), UNDO_MS);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+
+  const removeRow = (key: string) => {
+    const rows = draftRef.current?.rows ?? [];
+    const index = rows.findIndex((r) => r.key === key);
+    const removed = index >= 0 ? rows[index] : undefined;
     edit((d) => {
-      const rows = d.rows.filter((r) => r.key !== key);
-      return { ...d, rows: rows.length ? rows : [blankRow(d.rows[0])] };
+      const rest = d.rows.filter((r) => r.key !== key);
+      return { ...d, rows: rest.length ? rest : [blankRow(d.rows[0])] };
     });
+    // Bo'sh qatorni qaytarishning ma'nosi yo'q
+    if (removed && !isBlank(removed)) setUndo({ row: removed, index, stamp: Date.now() });
+  };
+
+  const undoRemove = () => {
+    if (!undo) return;
+    const { row, index } = undo;
+    edit((d) => {
+      // Oxirgi qator o'chirilganda o'rniga qo'yilgan bo'sh qator olib tashlanadi
+      const rows = d.rows.length === 1 && isBlank(d.rows[0]) ? [] : [...d.rows];
+      rows.splice(Math.min(index, rows.length), 0, row);
+      return { ...d, rows };
+    });
+    setUndo(null);
+  };
 
   // ── Klaviatura: Enter — pastga, oxirgi qatorda yangi qator ──
   const tableRef = useRef<HTMLTableElement>(null);
@@ -517,7 +592,9 @@ function BatchDetail({ id }: { id: string }) {
         title={draft.name.trim() || lastName.current}
         description={t('subtitle')}
         badge={readonly ? <Badge tone="muted">{t('readonly')}</Badge> : undefined}
-        actions={<SaveIndicator state={saveState} onRetry={() => void flush()} />}
+        actions={
+          <SaveIndicator state={saveState} onRetry={() => void flush()} onReload={() => window.location.reload()} />
+        }
       />
 
       <PlanGate feature="cost_price">
@@ -618,7 +695,13 @@ function BatchDetail({ id }: { id: string }) {
             <StatCard
               label={t('kpi.extra')}
               value={<span className="whitespace-nowrap">{f.num(calc.totals.extra)}</span>}
-              hint={t('f.extraHint')}
+              hint={
+                calc.totals.extra > 0
+                  ? calc.totals.weightKg > 0
+                    ? t('kpi.extraPerKg', { sum: f.num(calc.totals.extraPerKg) })
+                    : t('kpi.extraNoKg')
+                  : t('f.extraHint')
+              }
               icon={<Receipt className="h-5 w-5" />}
               tone="danger"
             />
@@ -638,7 +721,7 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1360px] border-collapse text-sm">
+              <table ref={tableRef} className="w-full min-w-[1480px] border-collapse text-sm">
                 <colgroup>
                   <col className="w-11" />
                   <col />
@@ -652,6 +735,7 @@ function BatchDetail({ id }: { id: string }) {
                   <col className="w-[112px]" />
                   <col className="w-[124px]" />
                   <col className="w-[116px]" />
+                  <col className="w-[128px]" />
                   <col className="w-11" />
                 </colgroup>
                 <thead>
@@ -671,6 +755,9 @@ function BatchDetail({ id }: { id: string }) {
                     <th className={cn(th, 'text-right')}>{t('th.total')}</th>
                     <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
                       {t('th.unit')}
+                    </th>
+                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint')}>
+                      {t('th.unitFull')}
                     </th>
                     <th className={th} />
                   </tr>
@@ -806,8 +893,28 @@ function BatchDetail({ id }: { id: string }) {
                         <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-bold text-ink">
                           {res.total ? f.num(res.total) : '—'}
                         </td>
-                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-semibold text-brand-ink">
+                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-semibold text-ink">
                           {res.unitCost !== null && res.total ? f.num(res.unitCost) : '—'}
+                        </td>
+                        <td
+                          className="tnum border-l border-line/60 bg-brand/5 px-3 py-2.5 text-right font-bold text-brand-ink"
+                          title={
+                            !res.total || !r.qty
+                              ? undefined
+                              : res.unitCostFull === null
+                                ? t('row.noKg')
+                                : calc.totals.extra > 0
+                                  ? t('row.extraShare', { kg: kgText(r.weightKg), sum: f.num(res.extraShare) })
+                                  : undefined
+                          }
+                        >
+                          {!res.total || !r.qty ? (
+                            '—'
+                          ) : res.unitCostFull === null ? (
+                            <span className="text-xs font-medium text-warn-ink">{t('row.noKgShort')}</span>
+                          ) : (
+                            f.num(res.unitCostFull)
+                          )}
                         </td>
                         <td className="px-1 text-center">
                           {canEdit ? (
@@ -843,7 +950,7 @@ function BatchDetail({ id }: { id: string }) {
                     <td className="tnum px-3 py-3 text-right text-brand-ink">
                       {f.num(calc.totals.goodsUzs + calc.totals.cargoUzs)}
                     </td>
-                    <td colSpan={2} />
+                    <td colSpan={3} />
                   </tr>
                 </tfoot>
               </table>
@@ -870,6 +977,39 @@ function BatchDetail({ id }: { id: string }) {
           </Card>
         </div>
       </PlanGate>
+
+      {/* Tashqi div joylashuv uchun: framer-motion transform'ni o'zi yozadi va -translate-x ni bosib ketardi */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        <AnimatePresence>
+          {undo ? (
+            <motion.div
+              key={undo.stamp}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.2 }}
+              role="status"
+              className="pointer-events-auto w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-pop"
+            >
+              <div className="flex items-center gap-3 px-4 py-3">
+                <Trash2 className="h-4 w-4 shrink-0 text-muted" />
+                <p className="min-w-0 flex-1 truncate text-sm text-ink">
+                  {t('undo.removed', { name: undo.row.name.trim() || t('ph.name') })}
+                </p>
+                <Button size="sm" variant="soft" icon={<Undo2 className="h-3.5 w-3.5" />} onClick={undoRemove}>
+                  {t('undo.restore')}
+                </Button>
+              </div>
+              <motion.div
+                className="h-0.5 bg-brand"
+                initial={{ width: '100%' }}
+                animate={{ width: '0%' }}
+                transition={{ duration: UNDO_MS / 1000, ease: 'linear' }}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
 
       <NewCargoModal
         open={cargoFor !== null}

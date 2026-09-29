@@ -146,6 +146,13 @@ export const batchUpdateSchema = z.object({
   rate: z.coerce.number().positive().max(1_000_000),
   extra: z.coerce.number().min(0).max(10_000_000_000).default(0),
   items: z.array(batchItemSchema).max(BATCH_MAX_ITEMS),
+  /**
+   * Sahifa yuklagan versiya (`updatedAt`). Partiya o'shandan beri boshqa
+   * joyda o'zgargan bo'lsa saqlash rad etiladi — eski oyna yangi holatni
+   * ustidan yozib, qatorlarni o'chirib yubormasin. Bo'lmasa ham rad etiladi
+   * (eski sayt versiyasi yuborgan so'rov).
+   */
+  expectedUpdatedAt: z.string().optional(),
 });
 
 export const settingsSchema = z.object({
