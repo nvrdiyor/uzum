@@ -135,6 +135,14 @@ export const batchItemSchema = z.object({
   cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
 });
 
+/** Qo'shimcha xarajat tafsilotidagi qatorlar chegarasi */
+export const BATCH_MAX_EXTRAS = 50;
+
+export const batchExtraSchema = z.object({
+  name: z.string().trim().max(120).default(''),
+  amount: z.coerce.number().min(0).max(10_000_000_000).default(0),
+});
+
 export const batchCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
   /** Berilmasa — Markaziy bank kursi */
@@ -146,6 +154,11 @@ export const batchUpdateSchema = z.object({
   rate: z.coerce.number().positive().max(1_000_000),
   extra: z.coerce.number().min(0).max(10_000_000_000).default(0),
   items: z.array(batchItemSchema).max(BATCH_MAX_ITEMS),
+  /**
+   * Qo'shimcha xarajat tafsiloti. Berilsa to'liq almashtiriladi va bo'sh
+   * bo'lmasa `extra` shu qatorlar yig'indisidan olinadi; berilmasa tegilmaydi.
+   */
+  extras: z.array(batchExtraSchema).max(BATCH_MAX_EXTRAS).optional(),
   /**
    * Sahifa yuklagan versiya (`updatedAt`). Partiya o'shandan beri boshqa
    * joyda o'zgargan bo'lsa saqlash rad etiladi — eski oyna yangi holatni

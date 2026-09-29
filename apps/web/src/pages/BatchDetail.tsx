@@ -20,6 +20,7 @@ import {
   CircleDollarSign,
   Landmark,
   Loader2,
+  NotebookPen,
   Plane,
   Plus,
   Receipt,
@@ -31,10 +32,12 @@ import {
   X,
 } from 'lucide-react';
 import {
+  BATCH_MAX_EXTRAS,
   BATCH_MAX_ITEMS,
   calcBatch,
   type BatchDelivery,
   type BatchDetail as BatchDetailData,
+  type BatchExtraInput,
   type BatchItemInput,
   type BatchRate,
 } from '@savdoiq/shared';
@@ -65,11 +68,17 @@ interface Row extends BatchItemInput {
   key: string;
 }
 
+interface ExtraRow extends BatchExtraInput {
+  key: string;
+}
+
 interface Draft {
   id: string;
   name: string;
   rate: number;
+  /** Tafsilot bo'lsa — uning yig'indisi, bo'lmasa qo'lda kiritilgan summa */
   extra: number;
+  extras: ExtraRow[];
   rows: Row[];
 }
 
@@ -100,6 +109,9 @@ function blankRow(prev?: Row): Row {
   };
 }
 
+const isBlankExtra = (e: ExtraRow) => !e.name.trim() && !e.amount;
+const sumExtras = (list: readonly ExtraRow[]) => Math.round(list.reduce((a, e) => a + (e.amount || 0), 0));
+
 /** Hech narsa yozilmagan qator saqlanmaydi (kargo va yetkazish oldingi qatordan meros) */
 const isBlank = (r: Row) =>
   !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
@@ -116,7 +128,14 @@ function toDraft(d: BatchDetailData): Draft {
     weightKg,
     cargoCost,
   }));
-  return { id: d.id, name: d.name, rate: d.rate, extra: d.extra, rows: rows.length ? rows : [blankRow()] };
+  return {
+    id: d.id,
+    name: d.name,
+    rate: d.rate,
+    extra: d.extra,
+    extras: d.extras.map((e) => ({ key: newKey(), name: e.name, amount: e.amount })),
+    rows: rows.length ? rows : [blankRow()],
+  };
 }
 
 // ─────────────────────────── Kataklar ───────────────────────────
@@ -189,6 +208,140 @@ function NumCell({
       onKeyDown={onKeyDown}
       className={cn(className ?? CELL_INPUT, 'tnum text-right')}
     />
+  );
+}
+
+/**
+ * Qo'shimcha xarajat tafsiloti: har bir to'lov izohi bilan alohida qator.
+ * O'zgarishlar darhol qoralamaga yoziladi va jadval kabi o'zi saqlanadi.
+ */
+function ExtrasModal({
+  open,
+  onClose,
+  extras,
+  readonly,
+  onChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  extras: ExtraRow[];
+  readonly: boolean;
+  onChange: (fn: (list: ExtraRow[]) => ExtraRow[]) => void;
+}) {
+  const t = useT('batches');
+  const f = useFormat();
+  const listRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<string | null>(null);
+
+  const focusCell = (cell: string) =>
+    listRef.current?.querySelector<HTMLInputElement>(`[data-cell="${cell}"]`)?.focus();
+
+  // Ochilganda birinchi bo'sh izohga (bo'lmasa birinchisiga) fokus
+  useEffect(() => {
+    if (!open || readonly) return;
+    const timer = window.setTimeout(() => {
+      const inputs = [...(listRef.current?.querySelectorAll<HTMLInputElement>('input[data-cell$=":name"]') ?? [])];
+      (inputs.find((el) => !el.value) ?? inputs[0])?.focus();
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [open, readonly]);
+
+  // Yangi qator chizilgach unga fokus
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    focusCell(pendingFocus.current);
+    pendingFocus.current = null;
+  });
+
+  const patch = (key: string, p: Partial<BatchExtraInput>) =>
+    onChange((list) => list.map((e) => (e.key === key ? { ...e, ...p } : e)));
+  const add = () => {
+    const key = newKey();
+    pendingFocus.current = `${key}:name`;
+    onChange((list) => [...list, { key, name: '', amount: 0 }]);
+  };
+  const remove = (key: string) => onChange((list) => list.filter((e) => e.key !== key));
+  const canAdd = !readonly && extras.length < BATCH_MAX_EXTRAS;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('extras.title')}
+      description={t('extras.hint')}
+      size="md"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted">
+            {t('extras.total')}:{' '}
+            <b className="tnum text-base text-ink">
+              {f.num(sumExtras(extras))} {t('sum')}
+            </b>
+          </span>
+          <Button onClick={onClose}>{t('extras.done')}</Button>
+        </div>
+      }
+    >
+      <div ref={listRef} className="space-y-2">
+        {extras.map((e, i) => (
+          <div key={e.key} className="flex items-center gap-2">
+            <span className="tnum w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+            <Input
+              data-cell={`${e.key}:name`}
+              value={e.name}
+              maxLength={120}
+              disabled={readonly}
+              placeholder={t('extras.namePh')}
+              onChange={(ev) => patch(e.key, { name: ev.target.value })}
+              onKeyDown={(ev) => {
+                if (ev.key !== 'Enter') return;
+                ev.preventDefault();
+                focusCell(`${e.key}:amount`);
+              }}
+              className="min-w-0 flex-1"
+            />
+            <div className="relative w-36 shrink-0 sm:w-44">
+              <NumCell
+                cell={`${e.key}:amount`}
+                value={e.amount}
+                integer
+                disabled={readonly}
+                onChange={(amount) => patch(e.key, { amount })}
+                onKeyDown={(ev) => {
+                  if (ev.key !== 'Enter') return;
+                  ev.preventDefault();
+                  const next = extras[i + 1];
+                  if (next) focusCell(`${next.key}:name`);
+                  else if (canAdd) add();
+                }}
+                className="input pr-12"
+              />
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-muted">
+                {t('sum')}
+              </span>
+            </div>
+            {readonly ? null : (
+              <button
+                type="button"
+                title={t('extras.remove')}
+                aria-label={t('extras.remove')}
+                onClick={() => remove(e.key)}
+                className="focusable shrink-0 rounded-md p-1.5 text-muted hover:text-danger"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ))}
+        {canAdd ? (
+          <div className="pl-7 pt-1">
+            <Button variant="soft" size="sm" icon={<Plus className="h-4 w-4" />} onClick={add}>
+              {t('extras.add')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </Modal>
   );
 }
 
@@ -337,6 +490,7 @@ function BatchDetail({ id }: { id: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [addedCargo, setAddedCargo] = useState<string[]>([]);
   const [cargoFor, setCargoFor] = useState<string | null>(null);
+  const [extrasOpen, setExtrasOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [rateLoading, setRateLoading] = useState(false);
 
@@ -378,6 +532,7 @@ function BatchDetail({ id }: { id: string }) {
           name,
           rate: d.rate,
           extra: d.extra,
+          extras: d.extras.filter((e) => !isBlankExtra(e)).map((e) => ({ name: e.name.trim(), amount: e.amount })),
           items: d.rows.filter((r) => !isBlank(r)).map(({ key: _key, ...item }) => item),
           expectedUpdatedAt: serverVersion.current ?? undefined,
         });
@@ -431,6 +586,27 @@ function BatchDetail({ id }: { id: string }) {
     },
     [canEdit],
   );
+
+  /** Tafsilot o'zgarsa jami xarajat doim uning yig'indisi bo'ladi */
+  const setExtras = (fn: (list: ExtraRow[]) => ExtraRow[]) =>
+    edit((d) => {
+      const extras = fn(d.extras);
+      return { ...d, extras, extra: sumExtras(extras) };
+    });
+
+  const openExtras = () => {
+    const d = draftRef.current;
+    // Tafsilot hali yo'q — oldin yozilgan summa birinchi qatorga o'tadi, izohini yozish qoladi
+    if (d && canEdit && d.extras.length === 0)
+      setExtras(() => [{ key: newKey(), name: '', amount: d.extra }]);
+    setExtrasOpen(true);
+  };
+
+  const closeExtras = () => {
+    setExtrasOpen(false);
+    if (draftRef.current?.extras.some(isBlankExtra))
+      edit((d) => ({ ...d, extras: d.extras.filter((e) => !isBlankExtra(e)) }));
+  };
 
   const patchRow = (key: string, p: Partial<BatchItemInput>) =>
     edit((d) => ({ ...d, rows: d.rows.map((r) => (r.key === key ? { ...r, ...p } : r)) }));
@@ -539,6 +715,7 @@ function BatchDetail({ id }: { id: string }) {
 
   const notFound = isError && error instanceof ApiError && error.status === 404;
   const readonly = !canEdit;
+  const filledExtras = draft?.extras.filter((e) => !isBlankExtra(e)) ?? [];
 
   const back = (
     <Link to="/batches" className="focusable mb-3 inline-flex items-center gap-1.5 rounded-lg text-sm text-muted hover:text-ink">
@@ -646,19 +823,49 @@ function BatchDetail({ id }: { id: string }) {
             <div className="min-w-0">
               <span className="label">{t('f.extra')}</span>
               <div className="relative">
-                <NumCell
-                  cell="extra"
-                  value={draft.extra}
-                  integer
-                  disabled={readonly}
-                  onChange={(extra) => edit((d) => ({ ...d, extra }))}
-                  className="input pr-12"
-                />
+                {filledExtras.length ? (
+                  // Tafsilot bor — summa undan hisoblanadi, bosilsa tafsilot ochiladi
+                  <button
+                    type="button"
+                    title={t('extras.edit')}
+                    onClick={openExtras}
+                    className="input tnum pr-12 text-right"
+                  >
+                    {f.num(draft.extra)}
+                  </button>
+                ) : (
+                  <NumCell
+                    cell="extra"
+                    value={draft.extra}
+                    integer
+                    disabled={readonly}
+                    onChange={(extra) => edit((d) => ({ ...d, extra }))}
+                    className="input pr-12"
+                  />
+                )}
                 <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-muted">
                   {t('sum')}
                 </span>
               </div>
-              <span className="mt-1 block text-xs text-muted">{t('f.extraHint')}</span>
+              {filledExtras.length || canEdit ? (
+                <button
+                  type="button"
+                  onClick={openExtras}
+                  className="focusable mt-1 flex max-w-full items-center gap-1.5 rounded text-left text-xs font-medium text-brand-ink hover:underline"
+                >
+                  <NotebookPen className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    {filledExtras.length
+                      ? t('extras.summary', {
+                          n: filledExtras.length,
+                          names: filledExtras.map((e) => e.name.trim() || t('extras.noName')).join(', '),
+                        })
+                      : t('extras.open')}
+                  </span>
+                </button>
+              ) : (
+                <span className="mt-1 block text-xs text-muted">{t('f.extraHint')}</span>
+              )}
             </div>
           </Card>
 
@@ -1010,6 +1217,14 @@ function BatchDetail({ id }: { id: string }) {
           ) : null}
         </AnimatePresence>
       </div>
+
+      <ExtrasModal
+        open={extrasOpen}
+        onClose={closeExtras}
+        extras={draft.extras}
+        readonly={readonly}
+        onChange={setExtras}
+      />
 
       <NewCargoModal
         open={cargoFor !== null}

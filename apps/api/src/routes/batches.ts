@@ -71,7 +71,7 @@ function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>): BatchSum
 async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
   const batch = await prisma.purchaseBatch.findFirst({
     where: { id, companyId },
-    include: { items: { orderBy: { position: 'asc' } } },
+    include: { items: { orderBy: { position: 'asc' } }, extras: { orderBy: { position: 'asc' } } },
   });
   if (!batch) throw AppError.notFound('Partiya topilmadi');
 
@@ -101,6 +101,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       extraShare: rows[i].extraShare,
       unitCostFull: rows[i].unitCostFull,
     })),
+    extras: batch.extras.map((e) => ({ name: e.name, amount: e.amount })),
     cargoNames: used.map((u) => u.cargoName).sort((a, b) => a.localeCompare(b)),
   };
 }
@@ -175,6 +176,10 @@ router.put(
     const expected = body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt) : null;
     if (!expected || Number.isNaN(expected.getTime())) throw AppError.conflict(STALE_BATCH);
 
+    // Tafsilot bor bo'lsa jami xarajat undan olinadi — ikkalasi hech qachon farq qilmaydi
+    const extras = body.extras?.filter((e) => e.name || e.amount > 0);
+    const extra = extras?.length ? Math.round(extras.reduce((a, e) => a + e.amount, 0)) : body.extra;
+
     /*
      * Versiya sharti yozuv bilan BITTA tranzaksiyada: "tekshir, keyin yoz"
      * orasida boshqa oyna saqlab ulgursa ham ustidan yozilmaydi. Butun
@@ -184,7 +189,7 @@ router.put(
     await prisma.$transaction(async (tx) => {
       const updated = await tx.purchaseBatch.updateMany({
         where: { id, companyId: company.id, updatedAt: expected },
-        data: { name: body.name, rate: body.rate, extra: body.extra, updatedAt: new Date() },
+        data: { name: body.name, rate: body.rate, extra, updatedAt: new Date() },
       });
       if (updated.count === 0) throw AppError.conflict(STALE_BATCH);
 
@@ -192,6 +197,13 @@ router.put(
       await tx.purchaseBatchItem.createMany({
         data: body.items.map((it, position) => ({ ...it, batchId: id, position })),
       });
+
+      if (extras) {
+        await tx.purchaseBatchExtra.deleteMany({ where: { batchId: id } });
+        await tx.purchaseBatchExtra.createMany({
+          data: extras.map((e, position) => ({ ...e, batchId: id, position })),
+        });
+      }
     });
 
     res.json(await loadDetail(company.id, id));

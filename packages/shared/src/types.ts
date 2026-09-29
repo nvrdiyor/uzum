@@ -794,6 +794,14 @@ export interface BatchItemInput {
   cargoCost: number;
 }
 
+/** Qo'shimcha xarajatning bitta qatori */
+export interface BatchExtraInput {
+  /** Izoh: nima uchun to'langan (bojxona, yo'l haqi...) */
+  name: string;
+  /** so'm */
+  amount: number;
+}
+
 export interface BatchItemRow extends BatchItemInput {
   id: string;
   /** priceCny × kurs, so'm */
@@ -833,6 +841,8 @@ export interface BatchSummary {
 
 export interface BatchDetail extends BatchSummary {
   items: BatchItemRow[];
+  /** Qo'shimcha xarajat tafsiloti; bo'sh bo'lsa `extra` qo'lda kiritilgan */
+  extras: BatchExtraInput[];
   /** Kompaniyaning boshqa partiyalarida ishlatilgan kargo nomlari — tanlash uchun */
   cargoNames: string[];
 }

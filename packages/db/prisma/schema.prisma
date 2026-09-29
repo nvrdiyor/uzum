@@ -726,10 +726,26 @@ model PurchaseBatch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   items   PurchaseBatchItem[]
+  extras  PurchaseBatchExtra[]
 
   @@index([companyId, createdAt])
+}
+
+/// Qo'shimcha xarajat tafsiloti (bojxona, yo'l haqi...). Yig'indisi PurchaseBatch.extra ga yoziladi
+model PurchaseBatchExtra {
+  id       String @id @default(cuid())
+  batchId  String
+  position Int    @default(0)
+  /// Izoh: nima uchun to'langan
+  name     String @default("")
+  /// so'm
+  amount   Float  @default(0)
+
+  batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, position])
 }
 
 model PurchaseBatchItem {
