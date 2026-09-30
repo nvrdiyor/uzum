@@ -36,6 +36,7 @@ import { ChartCard, DonutChart, LinesChart, TrendChart, CHART_COLORS } from '@/c
 import { FilterBar } from '@/components/filters';
 import { InlineCostInput } from '@/components/products/InlineCostInput';
 import { MissingCostBanner } from '@/components/products/MissingCostBanner';
+import { ProductVisibilityButton } from '@/components/products/VisibilityButton';
 import {
   STATE_STYLE,
   normalizeProductDetail,
@@ -61,6 +62,7 @@ registerNamespace('productDetail', {
     'state.need_order': 'Buyurtma kerak',
     'state.out': 'Qoldiqsiz',
     'state.archived': 'Arxiv',
+    'state.hidden': 'O‘chirilgan',
     'kpi.revenue': 'Tushum',
     'kpi.profit': 'Sof foyda',
     'kpi.roi': 'ROI',
@@ -153,6 +155,7 @@ registerNamespace('productDetail', {
     'state.need_order': 'Нужен заказ',
     'state.out': 'Без остатка',
     'state.archived': 'Архив',
+    'state.hidden': 'Удалён',
     'kpi.revenue': 'Выручка',
     'kpi.profit': 'Чистая прибыль',
     'kpi.roi': 'ROI',
@@ -245,6 +248,7 @@ registerNamespace('productDetail', {
     'state.need_order': 'Reorder',
     'state.out': 'Out of stock',
     'state.archived': 'Archived',
+    'state.hidden': 'Deleted',
     'kpi.revenue': 'Revenue',
     'kpi.profit': 'Net profit',
     'kpi.roi': 'ROI',
@@ -572,13 +576,16 @@ export default function ProductDetail() {
           </span>
         }
         actions={
-          product.rating > 0 ? (
-            <Badge tone="warn">
-              <Star className="h-3.5 w-3.5" />
-              <span className="tnum">{f.num(product.rating, 1)}</span>
-              <span className="opacity-80">· {t('info.reviews', { n: f.num(product.reviewsCount) })}</span>
-            </Badge>
-          ) : undefined
+          <span className="flex flex-wrap items-center gap-2">
+            {product.rating > 0 ? (
+              <Badge tone="warn">
+                <Star className="h-3.5 w-3.5" />
+                <span className="tnum">{f.num(product.rating, 1)}</span>
+                <span className="opacity-80">· {t('info.reviews', { n: f.num(product.reviewsCount) })}</span>
+              </Badge>
+            ) : null}
+            <ProductVisibilityButton product={product} variant="button" />
+          </span>
         }
       />
 

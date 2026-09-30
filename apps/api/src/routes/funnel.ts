@@ -212,6 +212,8 @@ router.get(
     const rows: FunnelProductRow[] = [];
     for (const [skuId, b] of cur.bySku) {
       const info = catalog.get(skuId);
+      // Katalogda yo'q — o'chirilgan tovar
+      if (!info) continue;
       const p = prev.bySku.get(skuId) ?? emptyBucket();
 
       rows.push({

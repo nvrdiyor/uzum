@@ -534,6 +534,8 @@ router.get(
 
     // Top mahsulotlar (tushum bo'yicha 8 ta)
     const topProducts: TopProductRow[] = [...cur.bySku.entries()]
+      // Katalogda yo'q — o'chirilgan tovar
+      .filter(([skuId]) => catalog.has(skuId))
       .map(([skuId, agg]) => {
         const info = catalog.get(skuId);
         return {
@@ -559,6 +561,7 @@ router.get(
     let stockFbs = 0;
     for (const [skuId, st] of stocks) {
       const info = catalog.get(skuId);
+      if (!info) continue;
       stockUnits += st.total;
       stockFbo += st.fbo;
       stockFbs += st.fbs;

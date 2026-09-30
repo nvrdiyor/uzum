@@ -246,6 +246,8 @@ router.get(
     const skus = await prisma.sku.findMany({
       where: {
         storeId: { in: storeIds },
+        // SavdoIQ'da o'chirilgan arxiv tovar
+        NOT: { archived: true, product: { hidden: true } },
         ...(search ? { OR: [{ sku: { contains: search } }, { title: { contains: search } }] } : {}),
       },
       select: {

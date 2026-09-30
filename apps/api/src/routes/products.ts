@@ -163,7 +163,13 @@ interface ProductRecord {
   status: string;
   rating: number;
   reviewsCount: number;
+  hidden: boolean;
   skus: ProductSkuRecord[];
+}
+
+/** Barcha SKU'lari arxivda yoki Uzum mahsulotni o'zi arxiv deb bergan */
+function isArchivedProduct(p: { status: string; skus: ReadonlyArray<{ archived: boolean }> }): boolean {
+  return (p.skus.length > 0 && p.skus.every((s) => s.archived)) || /arch/i.test(p.status);
 }
 
 interface CardContext {
@@ -190,6 +196,7 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
       status: true,
       rating: true,
       reviewsCount: true,
+      hidden: true,
       skus: {
         select: {
           id: true,
@@ -329,6 +336,8 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     stockOwn,
     daysLeft: avgTotal > 0 ? Math.round(stockTotal / avgTotal) : null,
     needOrder,
+    // Faqat arxivdagi tovar yashirinadi: Uzum'da qayta faollashsa o'zi ko'rinadi
+    hidden: p.hidden && isArchivedProduct(p),
     skus,
   };
 }
@@ -395,8 +404,8 @@ const PRODUCT_SORT: Record<string, (p: ProductCard) => SortValue> = {
  * ikkalasi ham qabul qilinadi, aks holda "Qoldiqsiz" tugmasi bosilganda
  * server jimgina `all` ga tushib, hech narsa filtrlanmasdi.
  */
-type ProductFilter = 'all' | 'active' | 'archived' | 'need_order' | 'no_stock' | 'out';
-const PRODUCT_FILTERS: ProductFilter[] = ['all', 'active', 'archived', 'need_order', 'no_stock', 'out'];
+type ProductFilter = 'all' | 'active' | 'archived' | 'need_order' | 'no_stock' | 'out' | 'hidden';
+const PRODUCT_FILTERS: ProductFilter[] = ['all', 'active', 'archived', 'need_order', 'no_stock', 'out', 'hidden'];
 
 router.get(
   '/',
@@ -434,6 +443,10 @@ router.get(
       );
     }
 
+    // O'chirilganlar faqat o'z bo'limida — boshqa hamma ro'yxatdan (tannarx ham shundan oladi) chiqadi
+    const hiddenCount = cards.filter((c) => c.hidden).length;
+    cards = cards.filter((c) => (filter === 'hidden' ? c.hidden : !c.hidden));
+
     if (filter === 'active') cards = cards.filter((c) => c.status !== 'archived');
     else if (filter === 'archived') cards = cards.filter((c) => c.status === 'archived');
     else if (filter === 'need_order') cards = cards.filter((c) => c.needOrder > 0);
@@ -460,6 +473,7 @@ router.get(
         inStock,
         needOrder,
         storageCostPerDay: await storageCostPerDay(storeIds, stocks, volumeBySku),
+        hidden: hiddenCount,
       },
       items: paginate(cards, range.page, range.pageSize),
     };
@@ -941,6 +955,51 @@ export interface ProductDetailResponse {
   unitInput: UnitCalcInput;
   unit: UnitCalcResult;
 }
+
+// ─────────────────────────── O'chirish / qaytarish ───────────────────────────
+
+/**
+ * Uzum kabinetida tovarni o'chirib bo'lmaydi — faqat arxivlanadi. Xato
+ * yaratilgan yoki eskirgan kartochka esa ro'yxatlarda va tannarx
+ * jadvalida xalaqit beradi. Sotuvchi uni SavdoIQ'da "o'chiradi": tovar
+ * "O'chirilganlar" bo'limiga o'tadi va istalgan payt qaytariladi. Sotuv
+ * tarixi (hisobotlar, tushum) o'zgarmaydi. Faqat arxivdagi tovar uchun.
+ */
+async function findOwnProduct(companyId: string, id: string) {
+  const storeIds = await getStoreIds(companyId);
+  const product = await prisma.product.findFirst({
+    where: { id, storeId: { in: storeIds } },
+    select: { id: true, title: true, status: true, skus: { select: { archived: true } } },
+  });
+  if (!product) throw AppError.notFound('Mahsulot topilmadi');
+  return product;
+}
+
+router.post(
+  '/:id/hide',
+  requireFeature('products_assortment'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const product = await findOwnProduct(company.id, String(req.params.id));
+    if (!isArchivedProduct(product))
+      throw AppError.badRequest('Faqat Uzum’da arxivga olingan tovarni o‘chirish mumkin');
+    await prisma.product.update({ where: { id: product.id }, data: { hidden: true, hiddenAt: new Date() } });
+    res.json({ ok: true, id: product.id, hidden: true });
+  }),
+);
+
+router.post(
+  '/:id/restore',
+  requireFeature('products_assortment'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const product = await findOwnProduct(company.id, String(req.params.id));
+    await prisma.product.update({ where: { id: product.id }, data: { hidden: false, hiddenAt: null } });
+    res.json({ ok: true, id: product.id, hidden: false });
+  }),
+);
 
 /** Oxirgi `DETAIL_DAYS` kunning ISO sanalari (bugun oxirgi) */
 function lastDays(days: number): string[] {

@@ -6,6 +6,7 @@ import { ProgressBar } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { STATE_STYLE, avgPurchasePrice, coverTone, productState, totalStock } from './types';
+import { ProductVisibilityButton } from './VisibilityButton';
 
 /** Mahsulot kartochkasi — "kartochka" ko'rinishi uchun */
 export function ProductTile({ product, coverDays }: { product: ProductCard; coverDays: number }) {
@@ -186,13 +187,16 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
           <span className="tnum truncate text-2xs text-muted" title={product.uzumProductId ?? product.id}>
             ID: {product.uzumProductId ?? product.id}
           </span>
-          <Link
-            to={`/products/${product.id}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-brand-ink transition-colors hover:bg-brand/10"
-          >
-            {t('card.details')}
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          <span className="flex shrink-0 items-center gap-1">
+            <ProductVisibilityButton product={product} />
+            <Link
+              to={`/products/${product.id}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-brand-ink transition-colors hover:bg-brand/10"
+            >
+              {t('card.details')}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </span>
         </div>
       </div>
     </motion.div>

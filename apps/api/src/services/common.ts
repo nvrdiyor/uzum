@@ -70,11 +70,22 @@ export async function getStoreTitles(companyId: string): Promise<Map<string, str
   return new Map(stores.map((s) => [s.id, s.title]));
 }
 
-/** SKU katalogi (mahsulot va do'kon ma'lumotlari bilan) */
+/**
+ * SKU katalogi (mahsulot va do'kon ma'lumotlari bilan).
+ *
+ * Sotuvchi SavdoIQ'da "o'chirgan" arxiv tovar (Product.hidden) `includeArchived`
+ * bilan ham qaytmaydi: u reytinglar, qoldiq, marja, reja va eksport
+ * ro'yxatlariga aralashmaydi. Buyurtma va to'lovlar esa haqiqiy pul harakati —
+ * ular katalogdan emas, o'z yozuvidan nom oladi va jami summalarda qoladi.
+ */
 export async function getSkuCatalog(storeIds: string[], includeArchived = false): Promise<Map<string, SkuInfo>> {
   if (storeIds.length === 0) return new Map();
   const skus = await prisma.sku.findMany({
-    where: { storeId: { in: storeIds }, ...(includeArchived ? {} : { archived: false }) },
+    where: {
+      storeId: { in: storeIds },
+      NOT: { archived: true, product: { hidden: true } },
+      ...(includeArchived ? {} : { archived: false }),
+    },
     include: {
       product: { select: { id: true, title: true, category: true, imageUrl: true } },
       store: { select: { id: true, title: true } },

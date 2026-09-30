@@ -74,10 +74,12 @@ registerNamespace('products', {
     'filter.need_order': 'Buyurtma kerak',
     'filter.out': 'Qoldiqsiz',
     'filter.archived': 'Arxiv',
+    'filter.hidden': 'O‘chirilganlar',
     'state.active': 'Sotuvda',
     'state.need_order': 'Buyurtma kerak',
     'state.out': 'Qoldiqsiz',
     'state.archived': 'Arxiv',
+    'state.hidden': 'O‘chirilgan',
     'view.cards': 'Kartochka',
     'view.table': 'Jadval',
     'sort.revenue': 'Tushum bo‘yicha',
@@ -146,10 +148,12 @@ registerNamespace('products', {
     'filter.need_order': 'Нужен заказ',
     'filter.out': 'Без остатка',
     'filter.archived': 'Архив',
+    'filter.hidden': 'Удалённые',
     'state.active': 'В продаже',
     'state.need_order': 'Нужен заказ',
     'state.out': 'Без остатка',
     'state.archived': 'Архив',
+    'state.hidden': 'Удалён',
     'view.cards': 'Карточки',
     'view.table': 'Таблица',
     'sort.revenue': 'По выручке',
@@ -218,10 +222,12 @@ registerNamespace('products', {
     'filter.need_order': 'Reorder',
     'filter.out': 'Out of stock',
     'filter.archived': 'Archived',
+    'filter.hidden': 'Deleted',
     'state.active': 'On sale',
     'state.need_order': 'Reorder',
     'state.out': 'Out of stock',
     'state.archived': 'Archived',
+    'state.hidden': 'Deleted',
     'view.cards': 'Cards',
     'view.table': 'Table',
     'sort.revenue': 'By revenue',
@@ -601,7 +607,11 @@ export default function Products() {
                       setFilter(v);
                       setPage(1);
                     }}
-                    options={PRODUCT_FILTERS.map((s) => ({ value: s, label: t(`filter.${s}`) }))}
+                    options={PRODUCT_FILTERS.filter((s) => s !== 'hidden' || filter === 'hidden' || (data?.totals.hidden ?? 0) > 0).map((s) => ({
+                      value: s,
+                      label: t(`filter.${s}`),
+                      count: s === 'hidden' ? data?.totals.hidden : undefined,
+                    }))}
                   />
                 </div>
                 <SearchInput

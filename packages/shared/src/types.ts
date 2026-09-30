@@ -473,6 +473,8 @@ export interface ProductCard {
   stockOwn: number;
   daysLeft: number | null;
   needOrder: number;
+  /** Arxivdagi tovar SavdoIQ'da o'chirilgan — ro'yxatlarda va tannarxda ko'rinmaydi */
+  hidden: boolean;
   skus: ProductCardSku[];
 }
 
@@ -483,6 +485,8 @@ export interface ProductsResponse {
     inStock: number;
     needOrder: number;
     storageCostPerDay: number;
+    /** O'chirilgan (yashirilgan) tovarlar soni — qidiruv hisobga olingan */
+    hidden: number;
   };
   items: Paginated<ProductCard>;
 }

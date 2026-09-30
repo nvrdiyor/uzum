@@ -289,6 +289,10 @@ model Product {
   status        String   @default("active")
   rating        Float    @default(0)
   reviewsCount  Int      @default(0)
+  /// Sotuvchi SavdoIQ'da "o'chirgan" (Uzum'da faqat arxivlash mumkin). Faqat
+  /// arxivdagi tovarda amal qiladi — Uzum'da qayta faollashsa ro'yxatga qaytadi
+  hidden        Boolean  @default(false)
+  hiddenAt      DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

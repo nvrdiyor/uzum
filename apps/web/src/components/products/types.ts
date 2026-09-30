@@ -11,7 +11,7 @@ export const COVER_OPTIONS = ['7', '14', '30', '60', '90'] as const;
 export type CoverDays = (typeof COVER_OPTIONS)[number];
 
 /** Ro'yxat filtri (query: filter=) */
-export const PRODUCT_FILTERS = ['all', 'active', 'need_order', 'out', 'archived'] as const;
+export const PRODUCT_FILTERS = ['all', 'active', 'need_order', 'out', 'archived', 'hidden'] as const;
 export type ProductFilter = (typeof PRODUCT_FILTERS)[number];
 
 export type ProductView = 'cards' | 'table';
@@ -20,15 +20,20 @@ export const PRODUCT_SORTS = ['revenue', 'profit', 'sold', 'daysLeft', 'margin',
 export type ProductSort = (typeof PRODUCT_SORTS)[number];
 
 /** Kartochkada ko'rsatiladigan hosilaviy holat */
-export type ProductState = 'active' | 'need_order' | 'out' | 'archived';
+export type ProductState = 'active' | 'need_order' | 'out' | 'archived' | 'hidden';
 
 export function totalStock(p: Pick<ProductCard, 'stockFbo' | 'stockFbs' | 'stockOwn'>): number {
   return (p.stockFbo ?? 0) + (p.stockFbs ?? 0) + (p.stockOwn ?? 0);
 }
 
+export function isArchivedStatus(status: string | null | undefined): boolean {
+  const raw = (status ?? '').toLowerCase();
+  return raw.includes('arch') || raw.includes('arxiv') || raw.includes('архив');
+}
+
 export function productState(p: ProductCard): ProductState {
-  const raw = (p.status ?? '').toLowerCase();
-  if (raw.includes('arch') || raw.includes('arxiv') || raw.includes('архив')) return 'archived';
+  if (p.hidden) return 'hidden';
+  if (isArchivedStatus(p.status)) return 'archived';
   if (totalStock(p) <= 0) return 'out';
   if ((p.needOrder ?? 0) > 0) return 'need_order';
   return 'active';
@@ -40,6 +45,7 @@ export const STATE_STYLE: Record<ProductState, { chip: string; dot: string; text
   need_order: { chip: 'bg-warn/10 text-warn-ink', dot: 'bg-warn', text: 'text-warn-ink' },
   out: { chip: 'bg-danger/10 text-danger-ink', dot: 'bg-danger', text: 'text-danger-ink' },
   archived: { chip: 'bg-surface-3 text-muted', dot: 'bg-muted', text: 'text-muted' },
+  hidden: { chip: 'bg-danger/10 text-danger-ink', dot: 'bg-danger', text: 'text-muted' },
 };
 
 /** "Necha kunga yetadi" chizig'i uchun rang */

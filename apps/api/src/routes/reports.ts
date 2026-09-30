@@ -477,6 +477,8 @@ router.get(
 
     // ── Top mahsulotlar (tushum bo'yicha 10 ta) ──
     const topProducts: TopProductRow[] = [...snap.bySku.entries()]
+      // Katalogda yo'q — o'chirilgan tovar
+      .filter(([skuId]) => catalog.has(skuId))
       .map(([skuId, agg]) => {
         const info: SkuInfo | undefined = catalog.get(skuId);
         return {
@@ -498,7 +500,7 @@ router.get(
     // ── Kategoriyalar ulushi ──
     const byCategory = new Map<string, number>();
     for (const [skuId, agg] of snap.bySku) {
-      if (agg.revenue <= 0) continue;
+      if (agg.revenue <= 0 || !catalog.has(skuId)) continue;
       const name = catalog.get(skuId)?.category?.trim() || UNKNOWN_CATEGORY;
       byCategory.set(name, (byCategory.get(name) ?? 0) + agg.revenue);
     }
@@ -513,7 +515,8 @@ router.get(
     let fbsAmount = 0;
     for (const [skuId, st] of stocks) {
       const info = catalog.get(skuId);
-      const unitCost = (info?.purchasePrice ?? 0) + (info?.extraCost ?? 0);
+      if (!info) continue;
+      const unitCost = info.purchasePrice + info.extraCost;
       fbo += st.fbo;
       fbs += st.fbs;
       fboAmount += st.fbo * unitCost;

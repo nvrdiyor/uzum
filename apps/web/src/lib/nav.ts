@@ -54,37 +54,37 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, primary: true },
       { to: '/sales', labelKey: 'nav.sales', icon: TrendingUp, feature: 'sales_analytics', primary: true },
-      { to: '/payout', labelKey: 'nav.payout', icon: CalendarClock, feature: 'unit_economics', badge: 'new' },
-      { to: '/funnel', labelKey: 'nav.funnel', icon: Filter, feature: 'sales_analytics', badge: 'new' },
+      { to: '/payout', labelKey: 'nav.payout', icon: CalendarClock, feature: 'unit_economics' },
+      { to: '/funnel', labelKey: 'nav.funnel', icon: Filter, feature: 'sales_analytics' },
       { to: '/sales-stock', labelKey: 'nav.salesStock', icon: ShoppingCart, feature: 'stocks_fbo_fbs' },
       { to: '/reports', labelKey: 'nav.reports', icon: FileBarChart, feature: 'monthly_reports' },
-      { to: '/planner', labelKey: 'nav.planner', icon: Sparkles, feature: 'planner', badge: 'new' },
+      { to: '/planner', labelKey: 'nav.planner', icon: Sparkles, feature: 'planner' },
     ],
   },
   {
     titleKey: 'group.product',
     items: [
       { to: '/products', labelKey: 'nav.products', icon: Package, feature: 'products_assortment', primary: true },
-      { to: '/sku-health', labelKey: 'nav.skuHealth', icon: HeartPulse, feature: 'sku_health', badge: 'new' },
+      { to: '/sku-health', labelKey: 'nav.skuHealth', icon: HeartPulse, feature: 'sku_health' },
       { to: '/abc', labelKey: 'nav.abc', icon: PieChart, feature: 'abc_analysis' },
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
-      { to: '/batches', labelKey: 'nav.batches', icon: Boxes, feature: 'cost_price', badge: 'new' },
-      { to: '/mxik', labelKey: 'nav.mxik', icon: ScanBarcode, badge: 'new' },
+      { to: '/batches', labelKey: 'nav.batches', icon: Boxes, feature: 'cost_price' },
+      { to: '/mxik', labelKey: 'nav.mxik', icon: ScanBarcode },
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
     ],
   },
   {
     titleKey: 'group.marketing',
     items: [
-      { to: '/promos', labelKey: 'nav.promos', icon: Megaphone, feature: 'promos', badge: 'new' },
+      { to: '/promos', labelKey: 'nav.promos', icon: Megaphone, feature: 'promos' },
     ],
   },
   {
     titleKey: 'group.warehouse',
     items: [
       { to: '/stocks', labelKey: 'nav.stocks', icon: Layers, feature: 'stocks_fbo_fbs' },
-      { to: '/warehouse', labelKey: 'nav.warehouse', icon: Warehouse, feature: 'warehouse', badge: 'new' },
-      { to: '/shipments', labelKey: 'nav.shipments', icon: Truck, feature: 'shipments', badge: 'new' },
+      { to: '/warehouse', labelKey: 'nav.warehouse', icon: Warehouse, feature: 'warehouse' },
+      { to: '/shipments', labelKey: 'nav.shipments', icon: Truck, feature: 'shipments' },
       { to: '/losses', labelKey: 'nav.losses', icon: PackageX, feature: 'losses_report' },
       { to: '/returns', labelKey: 'nav.returns', icon: Undo2, feature: 'returns_report' },
       { to: '/storage', labelKey: 'nav.storage', icon: Archive, feature: 'paid_storage' },
@@ -94,7 +94,7 @@ export const NAV: NavGroup[] = [
     titleKey: 'group.finance',
     items: [
       { to: '/finance', labelKey: 'nav.finance', icon: Wallet, feature: 'unit_economics', primary: true },
-      { to: '/unit-economics', labelKey: 'nav.unitEconomics', icon: Scale, feature: 'unit_economics', badge: 'new' },
+      { to: '/unit-economics', labelKey: 'nav.unitEconomics', icon: Scale, feature: 'unit_economics' },
       { to: '/expenses', labelKey: 'nav.expenses', icon: Receipt, feature: 'expenses' },
       { to: '/calculator', labelKey: 'nav.calculator', icon: Calculator, feature: 'unit_calculator' },
       {
@@ -102,7 +102,6 @@ export const NAV: NavGroup[] = [
         labelKey: 'nav.importCalculator',
         icon: Ship,
         feature: 'unit_calculator',
-        badge: 'new',
       },
     ],
   },
