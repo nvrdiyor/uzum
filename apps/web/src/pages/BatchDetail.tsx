@@ -17,18 +17,15 @@ import {
   Boxes,
   Check,
   ChevronDown,
-  CircleDollarSign,
   Landmark,
   Loader2,
   NotebookPen,
   Plane,
   Plus,
-  Receipt,
   RefreshCw,
   Trash2,
   Truck,
   Undo2,
-  Wallet,
   X,
 } from 'lucide-react';
 import {
@@ -57,8 +54,6 @@ import {
   PlanGate,
   Skeleton,
   SkeletonRows,
-  StatCard,
-  StatGrid,
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
@@ -136,6 +131,50 @@ function toDraft(d: BatchDetailData): Draft {
     extras: d.extras.map((e) => ({ key: newKey(), name: e.name, amount: e.amount })),
     rows: rows.length ? rows : [blankRow()],
   };
+}
+
+// ─────────────────────────── Jamlar ───────────────────────────
+
+/** Tannarx tenglamasining bitta hadi */
+function SumTerm({
+  label,
+  value,
+  hint,
+  dot,
+  strong,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  dot: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 text-[13px] font-medium text-muted">
+        <span className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />
+        <span className="truncate">{label}</span>
+      </div>
+      <p
+        className={cn(
+          'tnum mt-2 whitespace-nowrap leading-none tracking-[-0.02em]',
+          strong ? 'font-title text-[26px] font-semibold text-brand-ink' : 'font-display text-[22px] font-bold text-ink',
+        )}
+      >
+        {value}
+      </p>
+      {hint ? <p className="mt-2 text-xs leading-snug text-muted">{hint}</p> : null}
+    </div>
+  );
+}
+
+/** Tenglama belgisi (+ =) — faqat keng ekranda, torda hadlar ustma-ust turadi */
+function SumOp({ children }: { children: string }) {
+  return (
+    <span aria-hidden className="hidden pt-6 text-xl font-light text-muted lg:block">
+      {children}
+    </span>
+  );
 }
 
 // ─────────────────────────── Kataklar ───────────────────────────
@@ -869,61 +908,82 @@ function BatchDetail({ id }: { id: string }) {
             </div>
           </Card>
 
-          {/* ── Jamlar ── */}
-          <StatGrid>
-            <StatCard
-              label={t('kpi.cny')}
-              value={<span className="whitespace-nowrap">{f.num(calc.totals.priceCny, 2)} ¥</span>}
-              icon={<CircleDollarSign className="h-5 w-5" />}
-              tone="info"
-            />
-            <StatCard
-              label={t('kpi.goods')}
-              value={<span className="whitespace-nowrap">{f.num(calc.totals.goodsUzs)}</span>}
-              hint={t('kpi.goodsHint', { cny: f.num(calc.totals.priceCny, 2), rate: f.num(draft.rate, 2) })}
-              icon={<Wallet className="h-5 w-5" />}
-              tone="violet"
-            />
-            <StatCard
-              label={t('kpi.cargo')}
-              value={<span className="whitespace-nowrap">{f.num(calc.totals.cargoUzs)}</span>}
-              hint={
-                calc.totals.weightKg > 0
-                  ? t('kpi.cargoHintKg', {
-                      avia: f.num(cargoSplit.avia),
-                      avto: f.num(cargoSplit.avto),
-                      kg: kgText(calc.totals.weightKg),
-                    })
-                  : t('kpi.cargoHint', { avia: f.num(cargoSplit.avia), avto: f.num(cargoSplit.avto) })
-              }
-              icon={<Truck className="h-5 w-5" />}
-              tone="warn"
-            />
-            <StatCard
-              label={t('kpi.extra')}
-              value={<span className="whitespace-nowrap">{f.num(calc.totals.extra)}</span>}
-              hint={
-                calc.totals.extra > 0
-                  ? calc.totals.weightKg > 0
-                    ? t('kpi.extraPerKg', { sum: f.num(calc.totals.extraPerKg) })
-                    : t('kpi.extraNoKg')
-                  : t('f.extraHint')
-              }
-              icon={<Receipt className="h-5 w-5" />}
-              tone="danger"
-            />
-            <StatCard
-              label={t('kpi.total')}
-              value={<span className="whitespace-nowrap text-brand-ink">{f.num(calc.totals.total)}</span>}
-              hint={
-                calc.totals.qty > 0
-                  ? t('kpi.totalHintQty', { n: filledCount, qty: f.num(calc.totals.qty) })
-                  : t('kpi.totalHint', { n: filledCount })
-              }
-              icon={<Boxes className="h-5 w-5" />}
-              tone="brand"
-            />
-          </StatGrid>
+          {/*
+            ── Jamlar: tannarx qanday yig'ildi ──
+            Ilgari beshta alohida kartochka edi va o'rta ekranda uch qatorga
+            tushib, jadvalni pastga surardi. Partiyaning mohiyati — tenglama:
+            tovarlar + cargo + qo'shimcha = umumiy. Shu bir qatorda.
+          */}
+          <Card className="p-5 sm:p-6">
+            <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.2fr)] lg:items-start">
+              <SumTerm
+                dot="bg-info"
+                label={t('kpi.goods')}
+                value={f.num(calc.totals.goodsUzs)}
+                hint={t('kpi.goodsHint', { cny: f.num(calc.totals.priceCny, 2), rate: f.num(draft.rate, 2) })}
+              />
+              <SumOp>+</SumOp>
+              <SumTerm
+                dot="bg-warn"
+                label={t('kpi.cargo')}
+                value={f.num(calc.totals.cargoUzs)}
+                hint={
+                  calc.totals.weightKg > 0
+                    ? t('kpi.cargoHintKg', {
+                        avia: f.num(cargoSplit.avia),
+                        avto: f.num(cargoSplit.avto),
+                        kg: kgText(calc.totals.weightKg),
+                      })
+                    : t('kpi.cargoHint', { avia: f.num(cargoSplit.avia), avto: f.num(cargoSplit.avto) })
+                }
+              />
+              <SumOp>+</SumOp>
+              <SumTerm
+                dot="bg-[rgb(var(--c-slate))]"
+                label={t('kpi.extra')}
+                value={f.num(calc.totals.extra)}
+                hint={
+                  calc.totals.extra > 0
+                    ? calc.totals.weightKg > 0
+                      ? t('kpi.extraPerKg', { sum: f.num(calc.totals.extraPerKg) })
+                      : t('kpi.extraNoKg')
+                    : t('f.extraHint')
+                }
+              />
+              <SumOp>=</SumOp>
+              <SumTerm
+                strong
+                dot="bg-brand"
+                label={t('kpi.total')}
+                value={f.num(calc.totals.total)}
+                hint={
+                  calc.totals.qty > 0
+                    ? t('kpi.totalHintQty', { n: filledCount, qty: f.num(calc.totals.qty) })
+                    : t('kpi.totalHint', { n: filledCount })
+                }
+              />
+            </div>
+
+            {calc.totals.total > 0 ? (
+              <div aria-hidden className="mt-6 flex h-2.5 w-full gap-1">
+                {(
+                  [
+                    [calc.totals.goodsUzs, 'bg-info'],
+                    [calc.totals.cargoUzs, 'bg-warn'],
+                    [calc.totals.extra, 'bg-[rgb(var(--c-slate))]'],
+                  ] as const
+                )
+                  .filter(([v]) => v > 0)
+                  .map(([v, fill], i) => (
+                    <div
+                      key={fill}
+                      className={cn('h-full min-w-[6px] origin-left animate-grow-x rounded-full', fill)}
+                      style={{ flex: `${v / calc.totals.total} 1 0%`, animationDelay: `${100 + i * 120}ms` }}
+                    />
+                  ))}
+              </div>
+            ) : null}
+          </Card>
 
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">

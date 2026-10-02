@@ -144,7 +144,7 @@ export function UzumSection() {
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       {/* ── Chap: kabinetlar va sinxronizatsiya ── */}
       <div className="space-y-4 xl:col-span-2">
         <Card>

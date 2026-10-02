@@ -3,11 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Check,
-  CircleDollarSign,
-  Coins,
   CornerDownLeft,
-  Layers,
-  Percent,
   RotateCcw,
   Save,
   Tags,
@@ -19,7 +15,6 @@ import {
   Badge,
   Button,
   Card,
-  CardBody,
   CardHeader,
   DataTable,
   EmptyState,
@@ -32,8 +27,7 @@ import {
   SearchInput,
   Segmented,
   Select,
-  StatCard,
-  StatGrid,
+  Skeleton,
   toast,
   type Column,
 } from '@/components/ui';
@@ -80,6 +74,7 @@ registerNamespace('costPrice', {
     'filter.missing': 'Tannarxsiz',
     'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
 
+    'cov.label': 'Tannarxi kiritilgan SKU',
     'bulk.title': 'Tanlanganlarga qo‘llash',
     'bulk.subtitle': 'Bir xil qiymatni belgilangan qatorlarga birdan yozing',
     'bulk.field': 'Maydon',
@@ -151,6 +146,7 @@ registerNamespace('costPrice', {
     'filter.missing': 'Без себестоимости',
     'search.placeholder': 'Поиск по названию или SKU',
 
+    'cov.label': 'SKU с себестоимостью',
     'bulk.title': 'Применить к выбранным',
     'bulk.subtitle': 'Запишите одно значение сразу во все отмеченные строки',
     'bulk.field': 'Поле',
@@ -222,6 +218,7 @@ registerNamespace('costPrice', {
     'filter.missing': 'Without cost',
     'search.placeholder': 'Search by name or SKU',
 
+    'cov.label': 'SKUs with cost price',
     'bulk.title': 'Apply to selected',
     'bulk.subtitle': 'Write one value into every checked row at once',
     'bulk.field': 'Field',
@@ -733,121 +730,76 @@ export default function CostPrice() {
           </Card>
         ) : (
           <div className="space-y-5">
-            {/* ── Tannarxsiz SKU haqida ogohlantirish ── */}
-            {!products.isLoading && hasProducts ? (
-              missingNow > 0 ? (
-                <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-warn/30 bg-warn/10 p-4 sm:p-5">
-                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-sm font-bold text-ink">{t('warn.title', { n: missingNow })}</p>
-                    <p className="mt-1 text-sm text-ink-soft">{t('warn.body')}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setFilter('missing');
-                      setPage(1);
-                    }}
-                  >
-                    {t('warn.action')}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-brand/25 bg-brand/10 p-4 sm:p-5">
-                  <Check className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-sm font-bold text-ink">{t('warn.ok')}</p>
-                    <p className="mt-1 text-sm text-ink-soft">{t('warn.okBody')}</p>
-                  </div>
-                </div>
-              )
-            ) : null}
-
-            {/* ── KPI ── */}
-            <StatGrid>
-              <StatCard
-                label={t('kpi.skus')}
-                value={f.num(allRows.length)}
-                hint={t('kpi.skusHint')}
-                icon={<Layers className="h-5 w-5" />}
-                loading={products.isLoading}
-              />
-              <StatCard
-                label={t('kpi.missing')}
-                value={f.num(missingNow)}
-                hint={t('kpi.missingHint')}
-                icon={<CircleDollarSign className="h-5 w-5" />}
-                tone={missingNow > 0 ? 'warn' : 'brand'}
-                loading={products.isLoading}
-              />
-              <StatCard
-                label={t('kpi.margin')}
-                value={f.pct(avgMargin)}
-                hint={t('kpi.marginHint')}
-                icon={<Percent className="h-5 w-5" />}
-                tone="info"
-                loading={products.isLoading}
-              />
-              <StatCard
-                label={t('kpi.dirty')}
-                value={f.num(dirtyCount)}
-                hint={t('kpi.dirtyHint')}
-                icon={<Coins className="h-5 w-5" />}
-                tone={dirtyCount > 0 ? 'violet' : 'brand'}
-                loading={products.isLoading}
-              />
-            </StatGrid>
-
-            {/* ── Ommaviy qo'llash ── */}
-            <Card>
-              <CardHeader
-                icon={<Coins className="h-4 w-4" />}
-                title={t('bulk.title')}
-                subtitle={t('bulk.subtitle')}
-                actions={
-                  selected.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <Badge tone="brand">{t('bulk.selected', { n: selected.length })}</Badge>
-                      <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-                        {t('bulk.clear')}
-                      </Button>
+            {/*
+              Qamrov qatori. Ilgari jadvaldan oldin uch blok turardi (xabar,
+              to'rtta kartochka, doim ochiq ommaviy panel) va jadval ekran
+              pastiga tushib qolardi. Bu sahifaning ishi — kiritish, shuning
+              uchun yuqorida faqat bitta savolga javob: hammasi kiritildimi?
+            */}
+            {products.isLoading ? (
+              <Skeleton className="h-[132px] w-full rounded-2xl" />
+            ) : hasProducts ? (
+              <Card className="p-5 sm:p-6">
+                <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+                  <div className="min-w-[240px] flex-1">
+                    <p className="eyebrow-lg">{t('cov.label')}</p>
+                    <p className="tnum mt-1.5 font-display text-[26px] font-bold leading-none tracking-[-0.02em] text-ink">
+                      {f.num(allRows.length - missingNow)}
+                      <span className="ml-1.5 text-base font-semibold text-muted">/ {f.num(allRows.length)}</span>
+                    </p>
+                    <div className="mt-3.5 h-2 w-full max-w-xl overflow-hidden rounded-full bg-surface-3">
+                      <div
+                        className={cn(
+                          'h-full origin-left animate-grow-x rounded-full',
+                          missingNow > 0 ? 'bg-warn' : 'bg-brand',
+                        )}
+                        style={{ width: `${((allRows.length - missingNow) / allRows.length) * 100}%` }}
+                      />
                     </div>
-                  ) : null
-                }
-              />
-              <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <span className="label">{t('bulk.field')}</span>
-                  <Select value={bulkField} onChange={(e) => setBulkField(e.target.value as BulkField)}>
-                    <option value="cost">{t('bulk.cost')}</option>
-                    <option value="extra">{t('bulk.extra')}</option>
-                  </Select>
+                    <p className="mt-2.5 flex items-start gap-1.5 text-sm text-muted">
+                      {missingNow > 0 ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn-ink" />
+                      ) : (
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                      )}
+                      <span>
+                        {missingNow > 0 ? `${t('warn.title', { n: missingNow })}. ${t('warn.body')}` : t('warn.okBody')}
+                      </span>
+                    </p>
+                  </div>
+
+                  <dl className="flex flex-wrap items-end gap-x-10 gap-y-4">
+                    <div>
+                      <dt className="eyebrow-lg">{t('kpi.margin')}</dt>
+                      <dd className="tnum mt-1.5 font-display text-[22px] font-bold leading-none text-ink">{f.pct(avgMargin)}</dd>
+                    </div>
+                    <div>
+                      <dt className="eyebrow-lg">{t('kpi.dirty')}</dt>
+                      <dd
+                        className={cn(
+                          'tnum mt-1.5 font-display text-[22px] font-bold leading-none',
+                          dirtyCount > 0 ? 'text-warn-ink' : 'text-ink',
+                        )}
+                      >
+                        {f.num(dirtyCount)}
+                      </dd>
+                    </div>
+                    {missingNow > 0 && filter !== 'missing' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setFilter('missing');
+                          setPage(1);
+                        }}
+                      >
+                        {t('warn.action')}
+                      </Button>
+                    ) : null}
+                  </dl>
                 </div>
-                <div>
-                  <span className="label">{t('bulk.value')}</span>
-                  <CostInput
-                    value={bulkValue}
-                    onChange={setBulkValue}
-                    onEnter={applyToSelected}
-                    ariaLabel={t('bulk.value')}
-                    placeholder="0"
-                    className="h-[42px] px-3.5 text-left"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    icon={<CornerDownLeft className="h-4 w-4" />}
-                    disabled={selected.length === 0}
-                    onClick={applyToSelected}
-                  >
-                    {t('bulk.apply')}
-                  </Button>
-                </div>
-              </CardBody>
-            </Card>
+              </Card>
+            ) : null}
 
             {/* ── Jadval ── */}
             <Card className="overflow-hidden">
@@ -882,6 +834,7 @@ export default function CostPrice() {
                   placeholder={t('search.placeholder')}
                 />
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted sm:ml-auto sm:justify-end">
+                  {selected.length === 0 ? <span>{t('bulk.subtitle')}</span> : null}
                   <span className="inline-flex items-center gap-1.5">
                     <CornerDownLeft className="h-3.5 w-3.5" />
                     {t('hint.enter')}
@@ -891,6 +844,38 @@ export default function CostPrice() {
                   ) : null}
                 </div>
               </div>
+
+              {selected.length > 0 ? (
+                <div className="mx-5 mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-brand/30 bg-brand/[0.06] p-3">
+                  <div className="flex items-center gap-1.5 self-center">
+                    <Badge tone="brand">{t('bulk.selected', { n: selected.length })}</Badge>
+                    <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
+                      {t('bulk.clear')}
+                    </Button>
+                  </div>
+                  <div className="w-full sm:w-40">
+                    <span className="label">{t('bulk.field')}</span>
+                    <Select value={bulkField} onChange={(e) => setBulkField(e.target.value as BulkField)}>
+                      <option value="cost">{t('bulk.cost')}</option>
+                      <option value="extra">{t('bulk.extra')}</option>
+                    </Select>
+                  </div>
+                  <div className="w-full sm:w-40">
+                    <span className="label">{t('bulk.value')}</span>
+                    <CostInput
+                      value={bulkValue}
+                      onChange={setBulkValue}
+                      onEnter={applyToSelected}
+                      ariaLabel={t('bulk.value')}
+                      placeholder="0"
+                      className="h-[42px] px-3.5 text-left"
+                    />
+                  </div>
+                  <Button icon={<CornerDownLeft className="h-4 w-4" />} onClick={applyToSelected}>
+                    {t('bulk.apply')}
+                  </Button>
+                </div>
+              ) : null}
 
               <div className={cn('mt-3', products.isFetching && !products.isLoading && 'opacity-70')}>
                 <DataTable<CostRow>
@@ -934,7 +919,7 @@ export default function CostPrice() {
 
             {/* ── Saqlash paneli ── */}
             {dirtyCount > 0 ? (
-              <div className="sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand/35 bg-surface p-3.5 shadow-pop">
+              <div className="sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/35 bg-surface p-3.5 shadow-pop">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
                     <Save className="h-4 w-4" />

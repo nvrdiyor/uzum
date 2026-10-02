@@ -60,7 +60,8 @@ export function CardHeader({
           {subtitle ? <p className="mt-0.5 text-sm text-muted">{subtitle}</p> : null}
         </div>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {/* max-w-full + flex-wrap: tor ekranda tugma va belgilar qatorga bo'linadi, kartochkadan chiqmaydi */}
+      {actions ? <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -351,7 +352,8 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <div className={cn('inline-flex w-max items-center gap-1 rounded-xl border border-line bg-surface-2 p-1', className)}>
+    // max-w-full + gorizontal aylantirish: tablar telefon ekranidan keng bo'lsa sahifani surmaydi
+    <div className={cn('no-scrollbar inline-flex w-max max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-line bg-surface-2 p-1', className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (

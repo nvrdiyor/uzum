@@ -12,9 +12,10 @@
  * yo'q, shuning uchun ular boshqa kartochkalar bilan doim mos keladi.
  * Rang ma'no bildiradi: binafsha — Uzum'niki, firuza — sizniki.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { DashboardResponse } from '@savdoiq/shared';
 import { Amount, Delta } from '@/components/ui';
+import { useCountUp } from '@/hooks/useCountUp';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -62,40 +63,6 @@ registerNamespace('moneyFlow', {
     bar: 'Where revenue went',
   },
 });
-
-const reducedMotion = () =>
-  typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-
-/**
- * Raqamni oldingi qiymatidan yangisiga 0,9 soniyada "sanab" o'tkazadi.
- * Faqat shu blok qayta chiziladi; harakat kamaytirilgan bo'lsa darhol yozadi.
- */
-function useCountUp(target: number, ms = 900): number {
-  const [value, setValue] = useState(() => (reducedMotion() ? target : 0));
-  const shown = useRef(value);
-
-  useEffect(() => {
-    if (reducedMotion()) {
-      shown.current = target;
-      setValue(target);
-      return;
-    }
-    const from = shown.current;
-    const start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / ms);
-      const eased = 1 - (1 - p) ** 3;
-      shown.current = from + (target - from) * eased;
-      setValue(shown.current);
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, ms]);
-
-  return value;
-}
 
 interface Segment {
   key: 'uzum' | 'cost' | 'mine';

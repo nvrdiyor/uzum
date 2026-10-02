@@ -155,7 +155,7 @@ export function AppearanceSection() {
           <Select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
             {LANGS.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.flag} {l.label}
+                {l.label}
               </option>
             ))}
           </Select>

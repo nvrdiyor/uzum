@@ -103,7 +103,7 @@ export function ProfileSection() {
         </div>
 
         {/* ── Faqat o'qish uchun maydonlar ── */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <ReadonlyField
             label={t('profile.name')}
             value={fullName || t('profile.none')}
@@ -140,7 +140,7 @@ export function ProfileSection() {
               <Select value={lang} onChange={(e) => onLang(e.target.value as Lang)} disabled={save.isPending}>
                 {LANGS.map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.flag} {l.label}
+                    {l.label}
                   </option>
                 ))}
               </Select>

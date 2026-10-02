@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
-  Clock,
   HelpCircle,
   Receipt,
   Settings2,
@@ -27,7 +26,9 @@ import { useSession } from '@/store/session';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { BarsChart, ChartCard, CHART_COLORS } from '@/components/charts';
+import { PayoutHero } from '@/components/finance/PayoutHero';
 import {
+  Amount,
   Badge,
   Button,
   Card,
@@ -41,8 +42,6 @@ import {
   PageHeader,
   PlanGate,
   Select,
-  StatCard,
-  StatGrid,
   Toggle,
   toast,
   type Column,
@@ -52,6 +51,8 @@ registerNamespace('payout', {
   uz: {
     title: 'Pul kalendari',
     subtitle: 'Qaysi summa qaysi kuni yechib olish uchun ochiladi',
+    'hero.available': 'Yechib olish mumkin',
+    'hero.noNext': 'Yaqin kunlarda ochiladigan buyurtma yo‘q',
     'kpi.unlocked': 'Ochilgan',
     'kpi.unlockedHint': 'Yechib olish mumkin: xizmat to‘lovlari ayirilgan',
     'kpi.unlockedHintWithdrawn': 'Xizmat to‘lovlari va yechib olingan {amount} ayirilgan',
@@ -141,6 +142,8 @@ registerNamespace('payout', {
   ru: {
     title: 'Календарь выплат',
     subtitle: 'Какая сумма и когда открывается к выводу',
+    'hero.available': 'Можно вывести',
+    'hero.noNext': 'В ближайшие дни ничего не открывается',
     'kpi.unlocked': 'Доступно',
     'kpi.unlockedHint': 'Можно вывести: платежи за услуги вычтены',
     'kpi.unlockedHintWithdrawn': 'Вычтены платежи за услуги и выведенные {amount}',
@@ -230,6 +233,8 @@ registerNamespace('payout', {
   en: {
     title: 'Payout calendar',
     subtitle: 'Which amount unlocks for withdrawal, and when',
+    'hero.available': 'Available to withdraw',
+    'hero.noNext': 'Nothing unlocks in the coming days',
     'kpi.unlocked': 'Available',
     'kpi.unlockedHint': 'Available to withdraw: service fees deducted',
     'kpi.unlockedHintWithdrawn': 'Service fees and {amount} already withdrawn are deducted',
@@ -440,50 +445,8 @@ export default function Payout() {
       <PageHeader icon={<CalendarClock className="h-5 w-5" />} title={t('title')} description={t('subtitle')} />
 
       <PlanGate feature="unit_economics">
-        <StatGrid>
-          <StatCard
-            label={t('kpi.unlocked')}
-            value={f.money(data?.totals.unlocked ?? 0)}
-            hint={
-              (data?.totals.withdrawn ?? 0) > 0
-                ? t('kpi.unlockedHintWithdrawn', { amount: f.money(data?.totals.withdrawn ?? 0) })
-                : t('kpi.unlockedHint')
-            }
-            icon={<Wallet className="h-5 w-5" />}
-            tone="brand"
-            loading={isLoading}
-          />
-          <StatCard
-            label={t('kpi.pending')}
-            value={f.money(data?.totals.pending ?? 0)}
-            hint={t('kpi.pendingHint', { n: hold })}
-            icon={<Clock className="h-5 w-5" />}
-            tone="warn"
-            loading={isLoading}
-          />
-          <StatCard
-            label={t('kpi.next')}
-            value={data?.totals.nextDate ? f.money(data.totals.nextAmount) : '—'}
-            hint={
-              data?.totals.nextAt
-                ? f.dateTime(data.totals.nextAt)
-                : data?.totals.nextDate
-                  ? f.date(data.totals.nextDate)
-                  : undefined
-            }
-            icon={<CalendarClock className="h-5 w-5" />}
-            tone="info"
-            loading={isLoading}
-          />
-          <StatCard
-            label={t('kpi.charges')}
-            value={f.money(data?.totals.charges ?? 0)}
-            hint={t('kpi.chargesHint')}
-            icon={<Receipt className="h-5 w-5" />}
-            tone="danger"
-            loading={isLoading}
-          />
-        </StatGrid>
+        {/* To'rtta kartochka o'rniga bitta bosh blok: tayyor pul, eng yaqin ochilish, qulfdagi pul */}
+        <PayoutHero totals={data?.totals} hold={hold} loading={isLoading} />
 
         {data && data.instant.checks.length > 0 ? (
           <InstantCard instant={data.instant} hold={hold} fee={data.rules.earlyFeePct} />
@@ -682,8 +645,8 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
   return (
     <li
       className={cn(
-        'flex items-center gap-3.5 rounded-2xl border p-3.5 transition-colors sm:gap-4',
-        first ? 'border-brand/30 bg-brand/5' : 'border-line bg-surface-2',
+        'flex items-center gap-3.5 rounded-xl border p-3.5 transition-colors sm:gap-4',
+        first ? 'border-brand/30 bg-brand/[0.06]' : 'border-line bg-surface-2',
       )}
     >
       {/* Sana belgisi */}
@@ -693,8 +656,8 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
           first ? 'bg-brand text-on-brand' : 'bg-surface-3 text-ink',
         )}
       >
-        <span className="tnum font-display text-xl font-extrabold leading-none">{day}</span>
-        <span className="mt-0.5 text-2xs uppercase tracking-wide opacity-80">{month}</span>
+        <span className="tnum font-display text-xl font-bold leading-none">{day}</span>
+        <span className="mt-0.5 text-2xs font-medium opacity-80">{month}</span>
         <span className="tnum text-2xs leading-none opacity-50">{d.getUTCFullYear()}</span>
       </div>
 
@@ -717,8 +680,8 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
       </div>
 
       <div className="shrink-0 text-right">
-        <p className={cn('tnum font-display text-lg font-extrabold', first ? 'text-brand-ink' : 'text-ink')}>
-          {f.money(row.net)}
+        <p className={cn('tnum font-display text-lg font-bold tracking-[-0.01em]', first ? 'text-brand-ink' : 'text-ink')}>
+          <Amount value={f.money(row.net)} />
         </p>
         {/* Haq ushlansa, asl summa ham ko'rsatiladi */}
         {row.net !== row.amount ? (
@@ -950,7 +913,7 @@ function InstantCard({
         }
       />
       <CardBody>
-        <ul className="space-y-2.5">
+        <ul className="grid gap-x-8 gap-y-3 lg:grid-cols-2">
           {instant.checks.map((c) => (
             <CheckRow key={c.key} check={c} />
           ))}
