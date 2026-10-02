@@ -27,7 +27,7 @@ function MobileNav() {
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-y-0 left-0 w-[280px] border-r border-line bg-surface"
+            className="absolute inset-y-0 left-0 w-[280px] border-r border-line bg-bg-soft"
           >
             <SidebarContent onNavigate={() => setOpen(false)} />
           </motion.aside>

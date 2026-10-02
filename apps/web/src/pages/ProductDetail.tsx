@@ -803,7 +803,7 @@ function SegmentedTabs({
             type="button"
             onClick={() => onChange(tabId)}
             className={cn(
-              'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-all duration-200',
+              'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-[background-color,color,box-shadow] duration-150',
               active ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink',
             )}
           >
@@ -827,9 +827,9 @@ function SalesTab({ data }: { data: ProductDetailResponse | undefined }) {
           data={series as unknown as Record<string, unknown>[]}
           height={320}
           series={[
-            { key: 'revenue', name: t('sales.revenue'), money: true, color: CHART_COLORS.brand },
-            { key: 'profit', name: t('sales.profit'), money: true, color: CHART_COLORS.violet },
-            { key: 'units', name: t('sales.units'), color: CHART_COLORS.info },
+            { key: 'revenue', name: t('sales.revenue'), money: true, color: CHART_COLORS.info },
+            { key: 'profit', name: t('sales.profit'), money: true, color: CHART_COLORS.brand },
+            { key: 'units', name: t('sales.units'), color: CHART_COLORS.warn },
           ]}
         />
       )}
@@ -1033,7 +1033,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
                   {review.text ? <p className="mt-2 text-sm text-ink-soft">{review.text}</p> : null}
                   {review.answered && review.answerText ? (
                     <div className="mt-2.5 rounded-lg border border-line bg-surface p-2.5">
-                      <p className="text-2xs font-semibold uppercase tracking-wide text-brand-ink">
+                      <p className="text-xs font-semibold text-brand-ink">
                         {t('reviews.answerLabel')}
                       </p>
                       <p className="mt-0.5 text-xs text-ink-soft">{review.answerText}</p>

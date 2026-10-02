@@ -1,6 +1,6 @@
 import { Children, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { Delta, Skeleton, Sparkline } from './primitives';
+import { Amount, Delta, Skeleton, Sparkline } from './primitives';
 
 export interface StatCardProps {
   label: ReactNode;
@@ -19,12 +19,13 @@ export interface StatCardProps {
   footer?: ReactNode;
 }
 
-const TONE_BG = {
-  brand: 'bg-brand/10 text-brand-ink',
-  info: 'bg-info/10 text-info-ink',
-  warn: 'bg-warn/10 text-warn-ink',
-  danger: 'bg-danger/10 text-danger-ink',
-  violet: 'bg-violet/10 text-violet-ink',
+/** Yorliq yonidagi kichik belgi — rang ma'no bildiradi, katta plitka emas */
+const TONE_ICON = {
+  brand: 'bg-brand/12 text-brand-ink',
+  info: 'bg-info/12 text-info-ink',
+  warn: 'bg-warn/12 text-warn-ink',
+  danger: 'bg-danger/12 text-danger-ink',
+  violet: 'bg-violet/12 text-violet-ink',
 } as const;
 
 export function StatCard({
@@ -46,32 +47,36 @@ export function StatCard({
       className={cn(
         // flex-col + pastdagi mt-auto: qatordagi barcha kartochkalarda
         // o'zgarish chipi va sparkline bir sathda turadi
-        'card card-hover group relative flex flex-col overflow-hidden p-5',
+        'card card-hover relative flex flex-col overflow-hidden p-5',
         onClick && 'cursor-pointer',
         className,
       )}
       onClick={onClick}
     >
-      {/* yumshoq fon nuri */}
-      <div
-        className={cn(
-          'pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100',
-          tone === 'brand' && 'bg-brand/20',
-          tone === 'info' && 'bg-info/20',
-          tone === 'warn' && 'bg-warn/20',
-          tone === 'danger' && 'bg-danger/20',
-          tone === 'violet' && 'bg-violet/20',
-        )}
-      />
-
+      {/*
+        Hover'dagi blur nuri olib tashlandi: blur-2xl har kadrda qayta
+        chizilib, kuchsiz kompyuterda sahifani qotirardi.
+      */}
       <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate eyebrow-lg">{label}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            {icon ? (
+              <span
+                className={cn(
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md [&_svg]:h-3.5 [&_svg]:w-3.5',
+                  TONE_ICON[tone],
+                )}
+              >
+                {icon}
+              </span>
+            ) : null}
+            <p className="truncate eyebrow-lg">{label}</p>
+          </div>
           {loading ? (
             <Skeleton className="mt-3 h-8 w-32" />
           ) : (
-            <p className="tnum mt-2 font-display text-[26px] font-extrabold leading-tight tracking-tight text-ink">
-              {value}
+            <p className="tnum mt-3 font-display text-[26px] font-bold leading-[1.15] tracking-[-0.02em] text-ink">
+              {typeof value === 'string' ? <Amount value={value} /> : value}
             </p>
           )}
           {/* min-h: bir va ikki qatorli izohlar qatordagi kartochkalarni siljitmasin */}
@@ -85,11 +90,6 @@ export function StatCard({
             )
           ) : null}
         </div>
-        {icon ? (
-          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', TONE_BG[tone])}>
-            {icon}
-          </div>
-        ) : null}
       </div>
 
       {/* mt-auto — izoh uzunligi turlicha bo'lsa ham pastki blok bir sathda turadi */}

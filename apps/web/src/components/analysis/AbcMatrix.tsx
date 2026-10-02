@@ -86,7 +86,7 @@ export function AbcMatrix({
                   onClick={() => onSelect({ abc, xyz })}
                   title={`${abc}${xyz} · ${labels.abcHint[abc]} / ${labels.xyzHint[xyz]}`}
                   className={cn(
-                    'group relative flex min-h-[72px] flex-col items-center justify-center rounded-xl border p-2 text-center transition-all duration-200 ease-spring',
+                    'group relative flex min-h-[72px] flex-col items-center justify-center rounded-xl border p-2 text-center transition-[border-color,box-shadow,transform] duration-200 ease-spring',
                     isActive ? 'border-line-strong ring-2 ring-brand/50' : 'border-line',
                     disabled ? 'cursor-default opacity-60' : 'hover:-translate-y-0.5 hover:border-line-strong',
                   )}

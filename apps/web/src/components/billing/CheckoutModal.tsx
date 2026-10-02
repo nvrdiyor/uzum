@@ -193,7 +193,7 @@ export function CheckoutModal({
                     type="button"
                     onClick={() => setProvider(p.value)}
                     className={cn(
-                      'flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-200 ease-spring',
+                      'flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-[background-color,border-color,box-shadow] duration-200 ease-spring',
                       active
                         ? 'border-brand/50 bg-brand/10 shadow-glow'
                         : 'border-line bg-surface-2 hover:border-line-strong',
@@ -296,7 +296,7 @@ function ManualInstructions({ invoice, onCopy }: { invoice: InvoiceRow; onCopy: 
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('pay.invoice')}</p>
+        <p className="text-xs font-semibold text-brand-ink">{t('pay.invoice')}</p>
         <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">{f.money(invoice.amount)}</p>
         <p className="mt-1 text-xs text-muted">
           {t('pay.invoiceNo')}: <span className="font-mono text-ink-soft">{invoice.id.slice(0, 10).toUpperCase()}</span>

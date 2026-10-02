@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, CheckCircle2, Info, ShieldAlert, Sparkles } from 'lucide-react';
 import type { Insight } from '@savdoiq/shared';
@@ -55,8 +54,8 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
         </Card>
       ) : (
         <div className="no-scrollbar -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0">
-          {items.map((ins, i) => (
-            <InsightCard key={ins.id} insight={ins} index={i} />
+          {items.map((ins) => (
+            <InsightCard key={ins.id} insight={ins} />
           ))}
         </div>
       )}
@@ -64,16 +63,13 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
   );
 }
 
-function InsightCard({ insight, index }: { insight: Insight; index: number }) {
+function InsightCard({ insight }: { insight: Insight }) {
   const t = useT('dashboard');
   const tone = LEVEL_TONE[insight.level] ?? LEVEL_TONE.info;
   const Icon = LEVEL_ICON[insight.level] ?? Info;
 
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.04, ease: [0.22, 1, 0.36, 1] }}
+    <article
       className={cn(
         'relative w-[86%] min-w-[268px] shrink-0 snap-start overflow-hidden rounded-2xl border p-4 md:w-auto md:min-w-0',
         tone.bg,
@@ -88,9 +84,6 @@ function InsightCard({ insight, index }: { insight: Insight; index: number }) {
           <p className="font-display text-sm font-bold leading-snug text-ink">{insight.title}</p>
           <p className="mt-1 text-xs leading-relaxed text-ink-soft">{insight.body}</p>
           <div className="mt-2.5 flex flex-wrap items-center gap-3">
-            {insight.metric ? (
-              <span className={cn('tnum text-xs font-semibold', tone.text)}>{insight.metric}</span>
-            ) : null}
             {insight.link ? (
               <Link
                 to={insight.link}
@@ -103,6 +96,6 @@ function InsightCard({ insight, index }: { insight: Insight; index: number }) {
           </div>
         </div>
       </div>
-    </motion.article>
+    </article>
   );
 }

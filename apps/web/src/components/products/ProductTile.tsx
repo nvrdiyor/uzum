@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { ArrowRight, ImageOff, Star } from 'lucide-react';
 import type { ProductCard } from '@savdoiq/shared';
 import { ProgressBar } from '@/components/ui';
@@ -22,11 +21,12 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
   const cost = avgPurchasePrice(product.skus);
 
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="card card-hover group flex flex-col overflow-hidden"
-    >
+    /*
+      Ko'tarilish oddiy CSS transform bilan: ilgari framer-motion har bir
+      kartochkaga JS kuzatuvchi qo'yardi va 40 ta kartochkali ro'yxatda
+      sichqon yurganda kadr tushardi.
+    */
+    <div className="card card-hover group flex flex-col overflow-hidden transition-[transform,border-color] duration-200 ease-spring hover:-translate-y-1">
       {/* Rasm */}
       <div className="relative aspect-square overflow-hidden bg-surface-2">
         {product.imageUrl ? (
@@ -53,7 +53,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
           <span
             className={cn(
-              'chip min-w-0 border border-line bg-surface/90 backdrop-blur',
+              'chip min-w-0 border border-line bg-surface/95',
               style.text,
             )}
           >
@@ -62,7 +62,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
           </span>
 
           {product.rating > 0 ? (
-            <span className="chip shrink-0 border border-line bg-surface/90 text-ink backdrop-blur">
+            <span className="chip shrink-0 border border-line bg-surface/95 text-ink">
               <Star className="h-3 w-3 text-warn" />
               <span className="tnum">{f.num(product.rating, 1)}</span>
               <span className="text-muted">· {f.num(product.reviewsCount)}</span>
@@ -199,7 +199,7 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
           </span>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

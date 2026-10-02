@@ -195,7 +195,7 @@ export default function Login() {
             {t('side.eyebrow')}
           </span>
 
-          <h1 className="text-balance mt-5 max-w-lg font-display text-[38px] font-extrabold leading-[1.1] tracking-tight text-ink xl:text-[44px]">
+          <h1 className="text-balance mt-5 max-w-lg font-title text-[32px] font-semibold leading-[1.12] tracking-[-0.03em] text-ink xl:text-[38px]">
             {t('side.title')}
           </h1>
           <p className="text-balance mt-4 max-w-md text-base leading-relaxed text-muted">{t('side.subtitle')}</p>
@@ -220,7 +220,7 @@ export default function Login() {
           className="w-full max-w-[440px] justify-self-center lg:justify-self-end"
         >
           <Card className="p-5 sm:p-7">
-            <h2 className="font-display text-xl font-extrabold tracking-tight text-ink sm:text-2xl">
+            <h2 className="font-title text-lg font-semibold tracking-[-0.02em] text-ink sm:text-xl">
               {t('card.title')}
             </h2>
             <p className="mt-1.5 text-sm text-muted">{t('card.subtitle')}</p>

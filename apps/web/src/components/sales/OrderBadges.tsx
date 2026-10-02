@@ -52,10 +52,11 @@ export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
   returned: 'violet',
 };
 
+// Rang ma'nosi butun saytda bir xil: binafsha — Uzum (FBO = Uzum ombori), firuza — sotuvchining o'zi
 export const DELIVERY_TONE: Record<DeliveryType, Tone> = {
-  FBO: 'brand',
-  FBS: 'info',
-  DBS: 'violet',
+  FBO: 'violet',
+  FBS: 'brand',
+  DBS: 'info',
 };
 
 export const ORDER_STATUSES: OrderStatus[] = ['new', 'processing', 'delivered', 'canceled', 'returned'];

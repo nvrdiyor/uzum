@@ -73,8 +73,8 @@ export function AbcGroupCard({
       )}
     >
       <div
-        className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full opacity-40 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
-        style={{ background: `rgb(var(${ABC_CSS_VAR[group]}) / 0.35)` }}
+        className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 opacity-60"
+        style={{ background: `radial-gradient(closest-side, rgb(var(${ABC_CSS_VAR[group]}) / 0.22), transparent)` }}
       />
 
       <div className="relative flex items-start gap-4">

@@ -531,7 +531,7 @@ export default function Landing() {
                   initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.06, ease: EASE }}
-                  className="text-balance mt-6 font-display text-[38px] font-extrabold leading-[1.06] tracking-tight text-ink sm:text-[52px] xl:text-[58px]"
+                  className="text-balance mt-6 font-title text-[32px] font-semibold leading-[1.1] tracking-[-0.03em] text-ink sm:text-[44px] xl:text-[50px]"
                 >
                   {t('hero.title')}
                 </motion.h1>
@@ -708,7 +708,7 @@ export default function Landing() {
               />
               <div className="relative mx-auto max-w-2xl">
                 <LandingLogo className="justify-center" />
-                <h2 className="text-balance mt-7 font-display text-[28px] font-extrabold leading-[1.15] tracking-tight text-ink sm:text-[40px]">
+                <h2 className="text-balance mt-7 font-title text-[24px] font-semibold leading-[1.18] tracking-[-0.02em] text-ink sm:text-[34px]">
                   {t('cta.title')}
                 </h2>
                 <p className="text-balance mx-auto mt-4 max-w-lg text-base leading-relaxed text-muted">

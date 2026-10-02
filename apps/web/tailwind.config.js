@@ -35,8 +35,11 @@ export default {
         'violet-ink': withAlpha('--c-violet-ink'),
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        display: ['Manrope', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Onest', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        // Kartochka sarlavhalari va KPI raqamlari — o'sha Onest, qalinroq
+        display: ['Onest', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Faqat sahifa sarlavhasi va asosiy pul raqami — keng, geometrik, logoga hamohang
+        title: ['Unbounded', 'Onest', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         // Faqat logo yozuvi uchun (SavdoIQ)
         logo: ['Righteous', 'Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
@@ -45,14 +48,16 @@ export default {
         '2xs': ['0.6875rem', { lineHeight: '1rem', letterSpacing: '0.02em' }],
       },
       borderRadius: {
-        xl: '0.875rem',
+        lg: '0.625rem',
+        xl: '0.75rem',
         '2xl': '1.125rem',
         '3xl': '1.5rem',
       },
       boxShadow: {
         // Soya rangi mavzuga qarab o'zgaradi (index.css dagi --c-shadow)
-        card: '0 1px 2px rgb(var(--c-shadow) / var(--sh-1)), 0 8px 24px -12px rgb(var(--c-shadow) / var(--sh-2))',
-        pop: '0 8px 40px -12px rgb(var(--c-shadow) / calc(var(--sh-2) + 0.1))',
+        // Yuqori chetdagi ingichka yorug'lik qorong'ida kartochkani fondan ajratadi (soya u yerda ko'rinmaydi)
+        card: 'inset 0 1px 0 rgb(255 255 255 / var(--hl-a)), 0 1px 2px rgb(var(--c-shadow) / var(--sh-1)), 0 12px 32px -18px rgb(var(--c-shadow) / var(--sh-2))',
+        pop: 'inset 0 1px 0 rgb(255 255 255 / var(--hl-a)), 0 18px 48px -16px rgb(var(--c-shadow) / calc(var(--sh-2) + 0.12))',
         glow: '0 0 0 1px rgb(var(--c-brand) / 0.35), 0 8px 30px -10px rgb(var(--c-brand) / 0.35)',
       },
       backgroundImage: {
@@ -69,6 +74,10 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        'grow-x': {
+          '0%': { transform: 'scaleX(0)' },
+          '100%': { transform: 'scaleX(1)' },
+        },
         'pulse-ring': {
           '0%': { transform: 'scale(0.9)', opacity: '0.7' },
           '70%': { transform: 'scale(1.25)', opacity: '0' },
@@ -77,6 +86,8 @@ export default {
       },
       animation: {
         'fade-up': 'fade-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
+        // Pul oqimi lentasi: segmentlar chapdan o'sib chiqadi (faqat transform — qotmaydi)
+        'grow-x': 'grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both',
         shimmer: 'shimmer 1.6s infinite',
         'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },

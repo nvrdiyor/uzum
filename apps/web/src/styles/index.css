@@ -3,21 +3,26 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────
-   SavdoIQ dizayn tizimi
+   SavdoIQ dizayn tizimi — "Samarqand kechasi" / "Toshkent tongi"
    Yorug' (light) — asosiy holat, qorong'i (dark) — .dark klassi
    Ranglar RGB uchligi ko'rinishida (tailwind alpha bilan ishlashi uchun)
+
+   Rang MA'NO bildiradi, bezak emas:
+     firuza (brand)  — sotuvchiniki: foyda, tushgan pul
+     binafsha (violet) — Uzum oladigan qism (Uzum'ning o'z rangi)
+     za'faron (warn) — kutilayotgan, hali kelmagan pul va ogohlantirish
    ───────────────────────────────────────────────────────────── */
 :root {
-  --c-bg: 247 248 250;
-  --c-bg-soft: 241 243 246;
+  --c-bg: 243 245 249;
+  --c-bg-soft: 236 240 246;
   --c-surface: 255 255 255;
-  --c-surface-2: 246 248 250;
-  --c-surface-3: 238 241 245;
-  --c-border: 226 230 236;
-  --c-border-strong: 205 211 220;
-  --c-text: 16 21 30;
-  --c-text-soft: 55 65 81;
-  --c-muted: 95 105 120;
+  --c-surface-2: 246 248 251;
+  --c-surface-3: 236 240 246;
+  --c-border: 225 230 239;
+  --c-border-strong: 202 210 224;
+  --c-text: 14 21 38;
+  --c-text-soft: 52 62 86;
+  --c-muted: 92 103 130;
 
   --c-brand: 0 168 118;
   --c-brand-2: 20 199 158;
@@ -34,7 +39,8 @@
   --c-warn: 166 98 0;
   --c-danger: 205 38 45;
   --c-info: 29 99 214;
-  --c-violet: 109 74 240;
+  /* Uzum binafshasi (#7000FF ga yaqin) — "Uzum oladigan qism" */
+  --c-violet: 112 40 245;
 
   /*
    * Grafik seriyalari uchun qo'shimcha ranglar. Ilgari ular TypeScript da
@@ -78,7 +84,7 @@
   --c-warn-ink: 124 72 0;
   --c-danger-ink: 158 26 32;
   --c-info-ink: 21 74 165;
-  --c-violet-ink: 79 50 190;
+  --c-violet-ink: 86 22 196;
 
   /*
    * ABC matritsasi katakchasining bo'yoq kuchi. Qorong'ida bo'yoq fonni
@@ -94,43 +100,47 @@
    * ham to'g'ri ko'rinmaydi. Skeleton yarqirashi ham shunday: oq yorug'lik
    * yorug' fonda umuman sezilmaydi.
    */
-  --c-shadow: 15 20 32;
-  --sh-1: 0.05;
-  --sh-2: 0.13;
+  --c-shadow: 20 30 60;
+  --sh-1: 0.04;
+  --sh-2: 0.12;
+  /* Kartochka yuqori chetidagi yorug'lik — yorug' fonda kerak emas */
+  --hl-a: 0;
   --c-sheen: 12 18 28;
   --sheen-a: 0.06;
 
-  --sq-radius: 16px;
-  --sq-sidebar: 264px;
+  --sq-radius: 18px;
+  --sq-sidebar: 256px;
   --sq-rail: 76px;
   --sq-topbar: 64px;
   color-scheme: light;
 }
 
 .dark {
-  --c-bg: 15 17 21;
-  --c-bg-soft: 18 21 26;
-  --c-surface: 23 26 33;
-  --c-surface-2: 29 33 41;
-  --c-surface-3: 36 41 51;
-  --c-border: 42 47 58;
-  --c-border-strong: 59 66 80;
+  /* Lojuvard tun — Samarqand gumbazlari ostidagi ko'k qora, sof qora emas */
+  --c-bg: 11 17 30;
+  --c-bg-soft: 14 21 36;
+  --c-surface: 18 26 43;
+  --c-surface-2: 24 33 54;
+  --c-surface-3: 32 43 69;
+  --c-border: 35 46 74;
+  --c-border-strong: 52 65 99;
   /* Qorong'i fonda matn oqqa yaqin bo'lishi kerak — jadval qatorlari
      va ikkilamchi yozuvlar juda xira ko'rinmasin */
-  --c-text: 240 243 248;
-  --c-text-soft: 214 220 230;
-  --c-muted: 165 175 192;
+  --c-text: 238 242 250;
+  --c-text-soft: 204 212 231;
+  --c-muted: 148 160 189;
 
-  --c-brand: 16 208 148;
-  --c-brand-2: 60 226 190;
-  --c-brand-soft: 14 45 38;
-  --c-brand-ink: 133 246 213;
+  /* Firuza — logo yashili bilan bir oila */
+  --c-brand: 30 214 160;
+  --c-brand-2: 91 231 196;
+  --c-brand-soft: 13 46 48;
+  --c-brand-ink: 138 245 213;
   --c-on-brand: 6 24 18;
 
   --c-warn: 255 176 32;
   --c-danger: 255 99 104;
   --c-info: 122 170 255;
-  --c-violet: 155 128 255;
+  --c-violet: 160 120 255;
 
   /* Qorong'ida grafik chiziqlari ochroq bo'lishi kerak */
   --c-teal: 45 212 191;
@@ -153,16 +163,17 @@
   --c-warn-ink: 255 200 110;
   --c-danger-ink: 255 150 154;
   --c-info-ink: 172 202 255;
-  --c-violet-ink: 196 178 255;
+  --c-violet-ink: 201 182 255;
 
   /* Qorong'ida bo'yoq fonni OCHADI — kuchli bo'yoqda oq yozuv 4,09:1 edi */
   --abc-tint-base: 0.07;
   --abc-tint-span: 0.16;
 
   /* Qorong'ida soya qora va kuchliroq, yarqirash esa oq bo'lishi kerak */
-  --c-shadow: 0 0 0;
-  --sh-1: 0.32;
-  --sh-2: 0.6;
+  --c-shadow: 2 6 16;
+  --sh-1: 0.35;
+  --sh-2: 0.65;
+  --hl-a: 0.035;
   --c-sheen: 255 255 255;
   --sheen-a: 0.07;
   color-scheme: dark;
@@ -180,7 +191,8 @@ body,
 
 body {
   @apply bg-bg text-ink font-sans antialiased;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  /* Inter'ga xos stilistik to'plamlar (cv02, ss01) Onest'da boshqa harflarni almashtirardi */
+  font-kerning: normal;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -225,8 +237,12 @@ body {
     @apply min-w-0 rounded-2xl border border-line bg-surface shadow-card;
   }
 
+  /*
+   * Faqat chegara rangi o'zgaradi. Ilgari soya va blur ham animatsiya
+   * qilinardi — 20+ kartochkali sahifada sichqon yurganda kadr tushib qolardi.
+   */
   .card-hover {
-    @apply transition-all duration-300 ease-spring hover:border-line-strong hover:shadow-pop;
+    @apply transition-colors duration-200 hover:border-line-strong;
   }
 
   .panel {
@@ -263,13 +279,13 @@ body {
 
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
-      transition-all duration-200 ease-spring focus-visible:outline-none focus-visible:ring-2
+      transition-[background-color,border-color,color,filter,transform] duration-150 ease-spring focus-visible:outline-none focus-visible:ring-2
       focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg
       disabled:pointer-events-none disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-brand text-on-brand shadow-[0_6px_20px_-8px_rgb(var(--c-brand)/0.9)] hover:brightness-110 active:scale-[0.98];
+    @apply btn bg-brand text-on-brand shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_6px_18px_-10px_rgb(var(--c-brand)/0.9)] hover:brightness-105 active:translate-y-px;
   }
 
   .btn-ghost {
@@ -299,7 +315,7 @@ body {
    * o'lcham, uch xil qalinlik uchrardi.
    */
   .eyebrow {
-    @apply text-2xs font-bold uppercase tracking-wider text-muted;
+    @apply text-2xs font-semibold text-muted;
   }
 
   /*
@@ -308,7 +324,7 @@ body {
    * uchun uch xil qalinlik va ikki xil harf oralig'i yozilgan edi.
    */
   .eyebrow-lg {
-    @apply text-xs font-semibold uppercase tracking-wide text-muted;
+    @apply text-[13px] font-medium leading-5 text-muted;
   }
 
   /* Klaviatura bilan yurish uchun — yon menyu va havolalar jim qolmasin */
@@ -316,8 +332,9 @@ body {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60;
   }
 
+  /* Qattiq fon — har aylantirishda blur qayta hisoblanmasin */
   .table-head {
-    @apply sticky top-0 z-10 bg-surface-2/95 text-2xs font-bold uppercase tracking-wider text-ink-soft backdrop-blur;
+    @apply sticky top-0 z-10 bg-surface-2 text-xs font-semibold text-muted;
   }
 
   .skeleton {
@@ -335,7 +352,7 @@ body {
   }
 
   .section-title {
-    @apply font-display text-lg font-bold tracking-tight text-ink;
+    @apply font-display text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink;
   }
 
   .hairline {

@@ -69,7 +69,7 @@ export function CurrentPlanCard({
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted">{t('current.eyebrow')}</p>
+            <p className="text-xs font-medium text-muted">{t('current.eyebrow')}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2.5">
               <h2 className="font-display text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{planName}</h2>
               {subscription ? (

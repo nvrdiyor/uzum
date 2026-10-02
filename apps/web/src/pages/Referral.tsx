@@ -376,7 +376,7 @@ export default function Referral() {
             <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-10">
               {/* Kod */}
               <div className="min-w-0">
-                <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted">{t('hero.eyebrow')}</p>
+                <p className="text-xs font-medium text-muted">{t('hero.eyebrow')}</p>
 
                 {referral.isLoading ? (
                   <Skeleton className="mt-3 h-14 w-64" />
@@ -522,7 +522,7 @@ export default function Referral() {
                       <span className="tnum font-display text-base font-extrabold text-brand-ink">{n}</span>
                     </div>
                     <div className="md:mt-4">
-                      <p className="text-2xs font-bold uppercase tracking-[0.14em] text-muted">
+                      <p className="text-xs font-semibold text-muted">
                         {t('how.step')} {n}
                       </p>
                       <h3 className="mt-1 font-display text-base font-bold tracking-tight text-ink">
@@ -597,7 +597,7 @@ export default function Referral() {
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4 text-center">
-            <p className="text-2xs font-semibold uppercase tracking-wider text-brand-ink">{t('wd.amount')}</p>
+            <p className="text-xs font-semibold text-brand-ink">{t('wd.amount')}</p>
             <p className="tnum mt-1 font-display text-3xl font-extrabold tracking-tight text-ink">{f.money(pending)}</p>
           </div>
 

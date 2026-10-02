@@ -1,7 +1,21 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
+import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { Button, EmptyState, SkeletonRows } from './primitives';
+
+registerNamespace('table', {
+  uz: { more: 'Yana {n} ta ko‘rsatish', shown: '{shown} / {total} qator' },
+  ru: { more: 'Показать ещё {n}', shown: '{shown} из {total} строк' },
+  en: { more: 'Show {n} more', shown: '{shown} of {total} rows' },
+});
+
+/**
+ * Sahifalash berilmagan jadvalda bir martada chiziladigan qatorlar.
+ * Pul kalendari 2 016 qatorni (30 mingdan ortiq element) birdaniga chizardi —
+ * sahifa ochilishi ham, aylantirish ham sekinlashardi.
+ */
+const ROWS_STEP = 100;
 
 export interface Column<T> {
   key: string;
@@ -86,9 +100,15 @@ export function DataTable<T>({
   className,
   stickyFirstColumn,
 }: DataTableProps<T>) {
+  const t = useT('table');
+  const f = useFormat();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [limit, setLimit] = useState(ROWS_STEP);
   const { ref: scrollRef, edges } = useEdgeScroll();
+
+  // Ro'yxat almashsa (filtr, davr) yana boshidan 100 ta
+  useEffect(() => setLimit(ROWS_STEP), [rows]);
 
   const sorted = useMemo(() => {
     if (!localSort || !sortKey) return rows;
@@ -105,6 +125,11 @@ export function DataTable<T>({
     });
     return copy;
   }, [rows, sortKey, sortDir, columns, localSort]);
+
+  // Saralash butun ro'yxat bo'yicha, chizish esa bosqichma-bosqich
+  // Chegaradan ozgina oshsa (masalan 121 qator) "yana 21 ta" tugmasi o'rniga hammasi chiziladi
+  const visible = pagination || sorted.length <= limit + ROWS_STEP / 2 ? sorted : sorted.slice(0, limit);
+  const hidden = sorted.length - visible.length;
 
   // Gorizontal chekinish kartochka paddingiga (px-5) teng — chap chiziq yagona
   const cellPad = density === 'compact' ? 'px-5 py-2' : 'px-5 py-3';
@@ -174,7 +199,7 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, i) => (
+            {visible.map((row, i) => (
               <tr
                 key={rowKey(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -222,6 +247,22 @@ export function DataTable<T>({
           ) : null}
         </table>
       </div>
+
+      {hidden > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3">
+          <p className="tnum text-xs text-muted">
+            {t('shown', { shown: f.num(visible.length), total: f.num(sorted.length) })}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<ChevronDown className="h-3.5 w-3.5" />}
+            onClick={() => setLimit((n) => n + ROWS_STEP * 2)}
+          >
+            {t('more', { n: f.num(Math.min(hidden, ROWS_STEP * 2)) })}
+          </Button>
+        </div>
+      ) : null}
 
       {pagination && pagination.pages > 1 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">

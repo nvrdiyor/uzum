@@ -106,7 +106,7 @@ export function AppearanceSection() {
                   type="button"
                   onClick={() => setTheme(o.id)}
                   className={cn(
-                    'group rounded-2xl border p-3 text-left transition-all duration-200 ease-spring',
+                    'group rounded-2xl border p-3 text-left transition-[border-color,box-shadow,background-color] duration-200 ease-spring',
                     on ? 'border-brand shadow-glow' : 'border-line hover:border-line-strong',
                   )}
                 >

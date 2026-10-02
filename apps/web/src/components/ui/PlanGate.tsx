@@ -51,7 +51,7 @@ export function PlanGate({
       <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
         <div
           className={cn(
-            'w-full max-w-sm rounded-2xl border border-line bg-surface/95 p-6 text-center shadow-pop backdrop-blur',
+            'w-full max-w-sm rounded-2xl border border-line bg-surface p-6 text-center shadow-pop',
             compact && 'max-w-xs p-5',
           )}
         >

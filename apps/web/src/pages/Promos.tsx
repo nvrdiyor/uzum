@@ -327,7 +327,7 @@ function PromoCard({ promo, active, onClick }: { promo: PromoRow; active: boolea
       type="button"
       onClick={onClick}
       className={cn(
-        'card card-hover p-4 text-left transition-all',
+        'card card-hover p-4 text-left',
         active && 'border-line-strong ring-2 ring-brand/40',
       )}
     >
@@ -348,7 +348,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'br
     tone === 'brand' ? 'text-brand-ink' : tone === 'violet' ? 'text-violet-ink' : tone === 'warn' ? 'text-warn-ink' : 'text-ink';
   return (
     <div className="min-w-0 rounded-lg bg-surface-2 px-2.5 py-2">
-      <p className="truncate uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate text-muted">{label}</p>
       <p className={cn('tnum mt-0.5 text-sm font-bold', color)}>{value}</p>
     </div>
   );

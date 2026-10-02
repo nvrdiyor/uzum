@@ -77,7 +77,7 @@ export function SectionHead({
       {eyebrow ? (
         <span className="chip bg-brand/10 text-brand-ink ring-1 ring-inset ring-brand/20">{eyebrow}</span>
       ) : null}
-      <h2 className="text-balance mt-4 font-display text-[28px] font-extrabold leading-[1.15] tracking-tight text-ink sm:text-[38px]">
+      <h2 className="text-balance mt-4 font-title text-[24px] font-semibold leading-[1.18] tracking-[-0.02em] text-ink sm:text-[32px]">
         {title}
       </h2>
       {subtitle ? <p className="text-balance mt-3.5 text-base leading-relaxed text-muted">{subtitle}</p> : null}

@@ -322,9 +322,9 @@ export default function Finance() {
 
   const chartSeries: SeriesDef[] = useMemo(
     () => [
-      { key: 'revenue', name: t('series.revenue'), money: true, color: CHART_COLORS.brand },
+      { key: 'revenue', name: t('series.revenue'), money: true, color: CHART_COLORS.info },
       { key: 'expenses', name: t('series.expenses'), money: true, color: CHART_COLORS.danger },
-      { key: 'profit', name: t('series.profit'), money: true, color: CHART_COLORS.violet },
+      { key: 'profit', name: t('series.profit'), money: true, color: CHART_COLORS.brand },
     ],
     [t],
   );

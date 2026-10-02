@@ -636,8 +636,8 @@ export default function Reports() {
                 <TrendChart
                   data={dailyData}
                   series={[
-                    { key: 'revenue', name: t('daily.revenue'), money: true, color: CHART_COLORS.brand },
-                    { key: 'profit', name: t('daily.profit'), money: true, color: CHART_COLORS.violet },
+                    { key: 'revenue', name: t('daily.revenue'), money: true, color: CHART_COLORS.info },
+                    { key: 'profit', name: t('daily.profit'), money: true, color: CHART_COLORS.brand },
                   ]}
                   height={300}
                 />
@@ -669,8 +669,8 @@ export default function Reports() {
                   xKey="month"
                   showLegend
                   series={[
-                    { key: 'revenue', name: t('compare.revenue'), money: true, color: CHART_COLORS.brand },
-                    { key: 'profit', name: t('compare.profit'), money: true, color: CHART_COLORS.violet },
+                    { key: 'revenue', name: t('compare.revenue'), money: true, color: CHART_COLORS.info },
+                    { key: 'profit', name: t('compare.profit'), money: true, color: CHART_COLORS.brand },
                   ]}
                   height={300}
                 />

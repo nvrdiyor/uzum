@@ -228,10 +228,11 @@ const PAGE_SIZE = 25;
 /** Dushanbadan boshlab ko'rsatamiz (JS getDay: 0 = yakshanba) */
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
+// Rang ma'nosi butun saytda bir xil: binafsha — Uzum (FBO = Uzum ombori), firuza — sotuvchining o'zi
 const DELIVERY_COLOR: Record<DeliveryType, string> = {
-  FBO: CHART_COLORS.brand,
-  FBS: CHART_COLORS.info,
-  DBS: CHART_COLORS.violet,
+  FBO: CHART_COLORS.violet,
+  FBS: CHART_COLORS.brand,
+  DBS: CHART_COLORS.info,
 };
 
 export default function Sales() {

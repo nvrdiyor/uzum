@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, Globe, LogOut, Menu, Moon, Settings, Sun, User as UserIcon, Zap } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, Globe, LogOut, Menu, Moon, Settings, Sun, User as UserIcon, Zap } from 'lucide-react';
 import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { useLangStore, useT, type Lang } from '@/i18n';
 import { PeriodPicker, StoreSwitcher } from '@/components/filters';
 import { Avatar } from '@/components/ui';
-import { findNavItem } from '@/lib/nav';
+import { NAV, findNavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
@@ -37,14 +37,14 @@ function LangMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-line-strong"
+        className="flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
       >
-        <span className="text-base leading-none">{current.flag}</span>
+        <Globe className="h-4 w-4 text-muted" />
         <span className="hidden sm:inline">{current.label}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 text-muted transition-transform', open && 'rotate-180')} />
       </button>
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-44 rounded-2xl border border-line bg-surface p-1.5 shadow-pop">
+        <div className="absolute right-0 top-11 z-50 w-44 rounded-xl border border-line bg-surface p-1.5 shadow-pop">
           {LANGS.map((l) => (
             <button
               key={l.id}
@@ -57,7 +57,7 @@ function LangMenu() {
                 l.id === lang ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
               )}
             >
-              <span className="text-base">{l.flag}</span>
+              <span className="w-6 text-2xs font-semibold uppercase text-muted">{l.id}</span>
               {l.label}
             </button>
           ))}
@@ -81,7 +81,7 @@ function ProfileMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface pl-1.5 pr-3 transition-colors hover:border-line-strong"
+        className="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 transition-colors hover:bg-surface-2"
       >
         <Avatar src={me?.user.photoUrl} name={name} size={28} />
         <span className="hidden max-w-[130px] truncate text-sm font-semibold text-ink md:inline">{name}</span>
@@ -89,7 +89,7 @@ function ProfileMenu() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-2xl border border-line bg-surface shadow-pop">
+        <div className="absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-pop">
           <div className="border-b border-line p-4">
             <div className="flex items-center gap-3">
               <Avatar src={me?.user.photoUrl} name={name} size={40} />
@@ -148,23 +148,31 @@ export function Topbar() {
   const toggleTheme = useUi((s) => s.toggleTheme);
   const unread = useSession((s) => s.me?.unreadNotifications ?? 0);
   const item = findNavItem(location.pathname);
+  const group = item ? NAV.find((g) => g.items.includes(item)) : undefined;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur-xl">
-      <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+    <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/80 backdrop-blur-md">
+      <div className="flex h-16 items-center gap-2 px-4 sm:px-6">
         <button
           onClick={() => setMobileNav(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-line text-muted lg:hidden"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:hidden"
           aria-label="Menyu"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="hidden min-w-0 flex-1 md:block">
-          <p className="truncate font-display text-base font-bold text-ink">{item ? t(item.labelKey) : 'SavdoIQ'}</p>
+        {/* Sahifa yo'li — katta sarlavha sahifaning o'zida turadi */}
+        <div className="hidden min-w-0 flex-1 items-center gap-1.5 text-sm md:flex">
+          {group ? (
+            <>
+              <span className="shrink-0 text-muted">{t(group.titleKey)}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted/60" />
+            </>
+          ) : null}
+          <span className="truncate font-semibold text-ink">{item ? t(item.labelKey) : 'SavdoIQ'}</span>
         </div>
 
-        <div className="flex flex-1 items-center justify-end gap-2 md:flex-none">
+        <div className="flex flex-1 items-center justify-end gap-1.5 md:flex-none">
           <StoreSwitcher className="hidden sm:block" />
           <PeriodPicker />
           {/* Til tanlash telefonda yashiriladi — Sozlamalarda ham bor */}
@@ -172,9 +180,11 @@ export function Topbar() {
             <LangMenu />
           </span>
 
+          <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
+
           <button
             onClick={toggleTheme}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-muted transition-colors hover:text-ink"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink"
             aria-label={theme === 'dark' ? t('theme.light') : t('theme.dark')}
           >
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -182,11 +192,11 @@ export function Topbar() {
 
           <Link
             to="/settings#notifications"
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-muted transition-colors hover:text-ink"
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <Bell className="h-4 w-4" />
             {unread > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-2xs font-bold text-white">
+              <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-2xs font-bold text-white ring-2 ring-bg">
                 {unread > 9 ? '9+' : unread}
               </span>
             ) : null}

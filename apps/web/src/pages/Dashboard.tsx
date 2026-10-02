@@ -2,9 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Coins,
   LayoutDashboard,
-  PiggyBank,
   RefreshCw,
   Rocket,
   ShoppingCart,
@@ -30,8 +28,8 @@ import {
   Segmented,
   Skeleton,
   StatCard,
-  StatGrid,
 } from '@/components/ui';
+import { MoneyFlow } from '@/components/dashboard/MoneyFlow';
 import { InsightsBlock } from '@/components/dashboard/InsightsBlock';
 import { MarginRoiCard, PayoutsCard, StockValueCard } from '@/components/dashboard/SummaryRow';
 import { ExpensesCard } from '@/components/dashboard/ExpensesCard';
@@ -446,8 +444,8 @@ export default function Dashboard() {
   }, [data?.topProducts]);
 
   const chartSeries: SeriesDef[] = useMemo(() => {
-    const revenue: SeriesDef = { key: 'revenue', name: t('metric.revenue'), money: true, color: CHART_COLORS.brand };
-    const profit: SeriesDef = { key: 'profit', name: t('metric.profit'), money: true, color: CHART_COLORS.violet };
+    const revenue: SeriesDef = { key: 'revenue', name: t('metric.revenue'), money: true, color: CHART_COLORS.info };
+    const profit: SeriesDef = { key: 'profit', name: t('metric.profit'), money: true, color: CHART_COLORS.brand };
     if (metric === 'revenue') return [revenue, profit];
     if (metric === 'profit') return [profit];
     if (metric === 'orders') return [{ key: 'orders', name: t('metric.orders'), color: CHART_COLORS.info }];
@@ -475,11 +473,14 @@ export default function Dashboard() {
         {header}
         <FilterBar />
         <div className="space-y-5">
-          <StatGrid>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-[136px] w-full" />
-            ))}
-          </StatGrid>
+          {/* Pul oqimi joylashuvi bilan bir xil — ma'lumot kelganda sahifa sakramasin */}
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Skeleton className="h-[320px] w-full rounded-2xl xl:col-span-2" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <Skeleton className="h-[152px] w-full rounded-2xl" />
+              <Skeleton className="h-[152px] w-full rounded-2xl" />
+            </div>
+          </div>
           <div className="grid gap-4 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-[260px] w-full" />
@@ -573,25 +574,14 @@ export default function Dashboard() {
           </Card>
         ) : null}
 
-        {/* 1. KPI qatori */}
-        <StatGrid>
-          <StatCard
-            label={t('kpi.revenue')}
-            value={f.money(data.revenue.value, data.currency)}
-            delta={data.revenue.deltaPct}
-            hint={t('kpi.revenueHint', { v: f.compact(data.payout.value) })}
-            icon={<Coins className="h-5 w-5" />}
-            spark={sparks.revenue}
-            tone="brand"
-          />
-          <StatCard
-            label={t('kpi.profit')}
-            value={f.money(data.netProfit.value, data.currency)}
-            delta={data.netProfit.deltaPct}
-            hint={t('kpi.profitHint', { v: f.pct(data.margin.value) })}
-            icon={<PiggyBank className="h-5 w-5" />}
-            spark={sparks.profit}
-            tone="violet"
+        {/*
+          1. Pul oqimi — sahifaning yagona katta bloki. Tushum va sof foyda
+          shu yerda; o'ngda faqat ular bilan takrorlanmaydigan ikki ko'rsatkich.
+        */}
+        <div className="grid gap-4 xl:grid-cols-3">
+          <MoneyFlow
+            className="xl:col-span-2"
+            data={data}
             footer={
               (data.expenses.periodOnly ?? 0) > 0 ? (
                 <span title={t('kpi.operatingHint')}>
@@ -602,6 +592,7 @@ export default function Dashboard() {
               ) : undefined
             }
           />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
           <StatCard
             label={t('kpi.orders')}
             value={f.num(data.ordersCount.value)}
@@ -620,7 +611,8 @@ export default function Dashboard() {
             spark={sparks.avgCheck}
             tone="warn"
           />
-        </StatGrid>
+          </div>
+        </div>
 
         {/* 2. To'lovlar / marja va ROI / qoldiq qiymati */}
         <div className="grid gap-4 lg:grid-cols-3">

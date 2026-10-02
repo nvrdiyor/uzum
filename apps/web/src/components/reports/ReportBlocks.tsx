@@ -242,10 +242,11 @@ export function CategoriesCard({ rows }: { rows: MonthlyReportResponse['categori
 
 // ─────────────────────────── Yetkazib berish turlari ───────────────────────────
 
+// Rang ma'nosi butun saytda bir xil: binafsha — Uzum (FBO = Uzum ombori), firuza — sotuvchining o'zi
 const DELIVERY_TONE: Record<DeliveryType, { text: string; bg: string; bar: 'brand' | 'info' | 'violet' }> = {
-  FBO: { text: 'text-brand-ink', bg: 'bg-brand/10', bar: 'brand' },
-  FBS: { text: 'text-info-ink', bg: 'bg-info/10', bar: 'info' },
-  DBS: { text: 'text-violet-ink', bg: 'bg-violet/10', bar: 'violet' },
+  FBO: { text: 'text-violet-ink', bg: 'bg-violet/10', bar: 'violet' },
+  FBS: { text: 'text-brand-ink', bg: 'bg-brand/10', bar: 'brand' },
+  DBS: { text: 'text-info-ink', bg: 'bg-info/10', bar: 'info' },
 };
 
 export function DeliveryTypesCard({ rows }: { rows: MonthlyReportResponse['deliveryTypes'] }) {
@@ -371,21 +372,21 @@ export function WarehouseCard({ warehouse }: { warehouse: MonthlyReportResponse[
       <CardHeader icon={<Boxes className="h-4 w-4" />} title={t('warehouse.title')} subtitle={t('warehouse.subtitle')} />
       <CardBody className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-brand/25 bg-brand/10 p-4">
-            <p className="text-2xs font-bold uppercase tracking-wider text-brand-ink">FBO</p>
+          <div className="rounded-xl border border-violet/25 bg-violet/[0.08] p-4">
+            <p className="text-xs font-semibold text-violet-ink">FBO</p>
             <p className="tnum mt-1.5 font-display text-xl font-extrabold text-ink">{f.num(warehouse.fbo)}</p>
             <p className="text-2xs text-muted">{t('warehouse.units')}</p>
             <p className="tnum mt-2 text-sm font-semibold text-ink-soft">{f.money(warehouse.fboAmount)}</p>
           </div>
-          <div className="rounded-2xl border border-info/25 bg-info/10 p-4">
-            <p className="text-2xs font-bold uppercase tracking-wider text-info">FBS</p>
+          <div className="rounded-xl border border-brand/25 bg-brand/[0.08] p-4">
+            <p className="text-xs font-semibold text-brand-ink">FBS</p>
             <p className="tnum mt-1.5 font-display text-xl font-extrabold text-ink">{f.num(warehouse.fbs)}</p>
             <p className="text-2xs text-muted">{t('warehouse.units')}</p>
             <p className="tnum mt-2 text-sm font-semibold text-ink-soft">{f.money(warehouse.fbsAmount)}</p>
           </div>
         </div>
 
-        <ProgressBar value={fboShare} tone="brand" />
+        <ProgressBar value={fboShare} tone="violet" />
 
         <div className="flex items-center justify-between rounded-xl bg-surface-2 px-3.5 py-3">
           <span className="min-w-0">

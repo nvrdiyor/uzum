@@ -3,6 +3,27 @@ import { useT } from '@/i18n';
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// ─────────────────────────── Amount ───────────────────────────
+
+/** Formatlangan summaning oxiridagi pul birligi (f.money shunday yozadi) */
+const CURRENCY_TAIL = /^(.*\d)(\s+)(so[‘'’ʻ]m|сум|UZS|USD|\$)$/u;
+
+/**
+ * "74 920 500 so‘m" → raqam to'liq, "so‘m" kichikroq va xira.
+ * Ko'zga birinchi raqam tashlanadi; birlik har kartochkada takrorlangani
+ * uchun uni katta yozish shovqin edi. Birlik topilmasa matn o'zgarmaydi.
+ */
+export function Amount({ value, className }: { value: string; className?: string }) {
+  const m = CURRENCY_TAIL.exec(value);
+  if (!m) return <span className={className}>{value}</span>;
+  return (
+    <span className={className}>
+      {m[1]}
+      <span className="ml-1 font-sans text-[0.55em] font-semibold tracking-normal text-muted">{m[3]}</span>
+    </span>
+  );
+}
+
 // ─────────────────────────── Card ───────────────────────────
 
 export function Card({ className, children, hover, ...rest }: HTMLAttributes<HTMLDivElement> & { hover?: boolean }) {
@@ -30,7 +51,7 @@ export function CardHeader({
     <div className={cn('card-head flex flex-wrap items-start justify-between gap-3 px-5 pt-5', className)}>
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-soft [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </div>
         ) : null}
@@ -340,7 +361,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             className={cn(
               // shrink-0 + nowrap: tor ekranda tugmalar sinmaydi, qator suriladi
-              'shrink-0 whitespace-nowrap rounded-lg font-semibold transition-all duration-200',
+              'shrink-0 whitespace-nowrap rounded-lg font-semibold transition-[background-color,color,box-shadow] duration-150',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
               active ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink',
             )}

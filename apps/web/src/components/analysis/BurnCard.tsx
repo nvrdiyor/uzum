@@ -36,8 +36,10 @@ export function BurnCard({
         className,
       )}
     >
-      <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-danger/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 left-10 h-48 w-48 rounded-full bg-warn/10 blur-3xl" />
+      <div
+        className="pointer-events-none absolute -right-20 -top-24 h-72 w-72"
+        style={{ background: 'radial-gradient(closest-side, rgb(var(--c-danger) / 0.16), transparent)' }}
+      />
 
       <div className="relative flex flex-wrap items-start justify-between gap-5">
         <div className="min-w-0">
@@ -45,7 +47,7 @@ export function BurnCard({
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-danger/10 text-danger-ink">
               <Flame className="h-4 w-4" />
             </span>
-            <p className="font-display text-sm font-extrabold uppercase tracking-wide text-danger">{title}</p>
+            <p className="font-display text-sm font-bold text-danger-ink">{title}</p>
           </div>
 
           <p className="tnum mt-3 font-display text-[34px] font-extrabold leading-none tracking-tight text-ink sm:text-[42px]">
@@ -56,11 +58,11 @@ export function BurnCard({
         </div>
 
         <div className="flex shrink-0 gap-3">
-          <div className="rounded-xl border border-line bg-surface/70 px-4 py-3 backdrop-blur">
+          <div className="rounded-xl border border-line bg-surface/90 px-4 py-3">
             <p className="eyebrow">{monthLabel}</p>
             <p className="tnum mt-1 font-display text-base font-extrabold text-ink">{f.compact(perMonth)}</p>
           </div>
-          <div className="rounded-xl border border-line bg-surface/70 px-4 py-3 backdrop-blur">
+          <div className="rounded-xl border border-line bg-surface/90 px-4 py-3">
             <p className="eyebrow">{yearLabel}</p>
             <p className="tnum mt-1 flex items-center gap-1 font-display text-base font-extrabold text-danger">
               <TrendingDown className="h-3.5 w-3.5" />

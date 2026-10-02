@@ -71,7 +71,7 @@ export function PeriodPicker({ className }: { className?: string }) {
     <div className={cn('relative', className)} ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:border-line-strong"
+        className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-2"
       >
         <Calendar className="h-4 w-4 text-muted" />
         <span className="hidden max-w-[190px] truncate sm:inline">{label}</span>
@@ -79,7 +79,7 @@ export function PeriodPicker({ className }: { className?: string }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-[300px] rounded-2xl border border-line bg-surface p-3 shadow-pop">
+        <div className="absolute right-0 top-11 z-50 w-[300px] rounded-xl border border-line bg-surface p-3 shadow-pop">
           <div className="grid grid-cols-2 gap-1.5">
             {PRESETS.map((p) => {
               const locked = presetSpan(p) > historyDays;
@@ -174,7 +174,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
     <div className={cn('relative', className)} ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 max-w-[220px] items-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:border-line-strong"
+        className="flex h-9 max-w-[220px] items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-2"
       >
         <Store className="h-4 w-4 shrink-0 text-muted" />
         <span className="truncate">{label}</span>
@@ -182,7 +182,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-12 z-50 max-h-[320px] w-[260px] overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 shadow-pop">
+        <div className="absolute right-0 top-11 z-50 max-h-[320px] w-[260px] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-pop">
           <button
             onClick={() => {
               setStoreId('all');

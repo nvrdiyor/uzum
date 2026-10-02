@@ -53,7 +53,7 @@ export function PlanCard({
     >
       <div
         className={cn(
-          'card relative flex h-full flex-col p-6 transition-all duration-300 ease-spring',
+          'card relative flex h-full flex-col p-6 transition-[border-color,box-shadow,transform] duration-300 ease-spring',
           isCurrent
             ? 'border-brand/55 shadow-glow'
             : featured
