@@ -191,13 +191,15 @@ export async function getPayoutRules(companyId: string, now = new Date()): Promi
 }
 
 /**
- * Eng yaqin to'lov sanasi (ISO) — BUGUN ham hisobga olinadi.
+ * Eng yaqin KELGUSI to'lov sanasi (ISO) — ERTADAN boshlab.
  *
- * Moliya sahifasidagi "Keyingi to'lov" shu yerdan oladi. Ilgari hisob
- * ertadan boshlanardi: to'lov kunining o'zida Moliya keyingi sanani,
- * Pul kalendari esa "bugun tushadi" deb ko'rsatib, bir-biriga zid
- * tushardi — aynan shu funksiya bartaraf etishi kerak bo'lgan holat.
+ * Uzum to'lovni jadval kunining BOSHIDA (00:00) o'tkazadi (07.10.2026 da
+ * jonli do'konda tekshirilgan), ya'ni to'lov kunining o'zida u allaqachon
+ * o'tgan bo'ladi. Moliya sahifasidagi "Keyingi to'lov" va Pul kalendari
+ * shu bitta qoidadan foydalanadi — bir-biriga zid tushmaydi.
  */
 export function nextPayoutFromToday(schedule: Schedule | PayoutMode, now = new Date()): string {
-  return toISODate(nextPayoutDate(businessToday(now), schedule));
+  const tomorrow = businessToday(now);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  return toISODate(nextPayoutDate(tomorrow, schedule));
 }

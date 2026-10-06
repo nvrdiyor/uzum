@@ -17,6 +17,7 @@ import {
   type PayoutDay,
   type PayoutMode,
   type PayoutOrder,
+  type PayoutHistoryRow,
   type PayoutPlanDay,
   type PayoutRulesRequest,
 } from '@savdoiq/shared';
@@ -102,7 +103,7 @@ registerNamespace('payout', {
     'empty.title': 'Hali qabul qilingan buyurtma yo‘q',
     'empty.hint': 'Xaridor tovarni qabul qilgach, shu yerda ochilish sanasi ko‘rinadi',
     'plan.title': 'To‘lov jadvali',
-    'plan.subtitle': 'Pul haqiqatda qaysi kuni hisobingizga tushadi',
+    'plan.subtitle': 'Keyingi to‘lovlar: Uzum pulni jadval kunining boshida, soat 00:00 da o‘tkazadi',
     'plan.date': 'To‘lov sanasi',
     'plan.amount': 'Summa',
     'plan.net': 'Qo‘lga tegadi',
@@ -115,8 +116,21 @@ registerNamespace('payout', {
     'plan.today': 'Bugun tushadi',
     'plan.inDays': '{n} kundan keyin',
     'plan.deducted': 'Buyurtmalar {gross}, Uzum ushlagan xizmat to‘lovlari −{v}',
-    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi. Eng yaqin to‘lov balans bo‘yicha: xizmat to‘lovlari (logistika, reklama, saqlash) ayirilgan. Keyingi sanalar taxminiy — Uzum ungacha ushlaydigan to‘lovlar hali ma’lum emas.',
-    'plan.paid': 'Jadval bo‘yicha allaqachon o‘tkazilgan: {v}',
+    'plan.hint': 'To‘lov = shu kungacha ochilgan buyurtmalar (sotuv − komissiya) minus Uzum ushlagan xizmat to‘lovlari. Summalar taxminiy: Uzum to‘lov kunigacha ushlaydigan yangi to‘lovlar va yo‘ldagi buyurtmalar hali hisobga kirmagan.',
+    'plan.until': '{date} gacha qabul qilingan buyurtmalar',
+    'plan.none': 'Hozircha bu sanaga ochiladigan buyurtma yo‘q',
+    'plan.estimate': 'Taxminan',
+    'hist.title': 'To‘lovlar tarixi',
+    'hist.subtitle': 'Uzum hisobingizga o‘tkazgan pul',
+    'hist.scheduled': 'Jadval bo‘yicha',
+    'hist.early': 'Erta yechish',
+    'hist.earlier': 'Oldingi to‘lovlar (jami)',
+    'hist.fee': 'so‘ralgan {gross}, haq {fee}',
+    'hist.total': 'Jami yechib olingan',
+    'hist.empty': 'Hali to‘lov bo‘lmagan',
+    'hist.note': 'Uzum API’da to‘lovlar tarixi yo‘q — ro‘yxat yechib olingan summa o‘zgarishidan tuziladi.',
+    'kpi.transit': 'Yo‘lda',
+    'kpi.transitHint': 'Xaridorga yetmagan — qabul qilingach 10 kun sanaladi',
     'plan.switchHere': 'Yangi jadval',
     'plan.empty': 'Oldinda turgan to‘lov yo‘q',
     'plan.emptyHint': 'Yangi buyurtma qabul qilingach, bu yerda to‘lov sanasi paydo bo‘ladi',
@@ -194,7 +208,7 @@ registerNamespace('payout', {
     'empty.title': 'Пока нет полученных заказов',
     'empty.hint': 'Когда покупатель получит товар, здесь появится дата открытия',
     'plan.title': 'График выплат',
-    'plan.subtitle': 'Когда деньги реально поступят на счёт',
+    'plan.subtitle': 'Ближайшие выплаты: Uzum переводит деньги в начале дня графика, в 00:00',
     'plan.date': 'Дата выплаты',
     'plan.amount': 'Сумма',
     'plan.net': 'К получению',
@@ -207,8 +221,21 @@ registerNamespace('payout', {
     'plan.today': 'Поступит сегодня',
     'plan.inDays': 'Через {n} дн',
     'plan.deducted': 'Заказы {gross}, удержано Uzum за услуги −{v}',
-    'plan.hint': 'Открытые деньги ждут ближайшую дату графика. Ближайшая выплата считается по балансу: платежи за услуги (логистика, реклама, хранение) вычтены. Следующие даты ориентировочные — будущие удержания Uzum ещё неизвестны.',
-    'plan.paid': 'Уже перечислено по графику: {v}',
+    'plan.hint': 'Выплата = открытые к этой дате заказы (продажа − комиссия) минус удержанные Uzum платежи за услуги. Суммы ориентировочные: новые удержания до дня выплаты и заказы в пути ещё не учтены.',
+    'plan.until': 'Заказы, полученные до {date}',
+    'plan.none': 'Пока нет заказов, которые откроются к этой дате',
+    'plan.estimate': 'Примерно',
+    'hist.title': 'История выплат',
+    'hist.subtitle': 'Деньги, которые Uzum перевёл на ваш счёт',
+    'hist.scheduled': 'По графику',
+    'hist.early': 'Досрочный вывод',
+    'hist.earlier': 'Предыдущие выплаты (всего)',
+    'hist.fee': 'запрошено {gross}, комиссия {fee}',
+    'hist.total': 'Всего выведено',
+    'hist.empty': 'Выплат ещё не было',
+    'hist.note': 'В API Uzum нет истории выплат — список строится по изменению выведенной суммы.',
+    'kpi.transit': 'В пути',
+    'kpi.transitHint': 'Не дошли до покупателя — после получения отсчитываются 10 дней',
     'plan.switchHere': 'Новый график',
     'plan.empty': 'Предстоящих выплат нет',
     'plan.emptyHint': 'Когда покупатель получит новый заказ, здесь появится дата выплаты',
@@ -286,7 +313,7 @@ registerNamespace('payout', {
     'empty.title': 'No accepted orders yet',
     'empty.hint': 'Once a buyer accepts a delivery, its unlock date appears here',
     'plan.title': 'Payout schedule',
-    'plan.subtitle': 'When the money actually reaches your account',
+    'plan.subtitle': 'Upcoming payouts: Uzum transfers at the start of the schedule day, 00:00',
     'plan.date': 'Payout date',
     'plan.amount': 'Amount',
     'plan.net': 'You receive',
@@ -299,8 +326,21 @@ registerNamespace('payout', {
     'plan.today': 'Arrives today',
     'plan.inDays': 'In {n} days',
     'plan.deducted': 'Orders {gross}, service fees held by Uzum −{v}',
-    'plan.hint': 'Unlocked money waits for the next scheduled date. The nearest payout follows the balance: service fees (logistics, ads, storage) are deducted. Later dates are estimates — fees Uzum will hold by then are not known yet.',
-    'plan.paid': 'Already transferred on schedule: {v}',
+    'plan.hint': 'Payout = orders unlocked by that date (sale − commission) minus service fees held by Uzum. Amounts are estimates: fees charged before the payout day and orders in transit are not included yet.',
+    'plan.until': 'Orders accepted through {date}',
+    'plan.none': 'No orders unlock for this date yet',
+    'plan.estimate': 'Approx.',
+    'hist.title': 'Payout history',
+    'hist.subtitle': 'Money Uzum has transferred to your account',
+    'hist.scheduled': 'Scheduled',
+    'hist.early': 'Early withdrawal',
+    'hist.earlier': 'Earlier payouts (total)',
+    'hist.fee': 'requested {gross}, fee {fee}',
+    'hist.total': 'Total withdrawn',
+    'hist.empty': 'No payouts yet',
+    'hist.note': 'Uzum API has no payout history — this list is built from changes in the withdrawn total.',
+    'kpi.transit': 'In transit',
+    'kpi.transitHint': 'Not delivered yet — the 10-day hold starts on acceptance',
     'plan.switchHere': 'New schedule',
     'plan.empty': 'No upcoming payouts',
     'plan.emptyHint': 'Once a new order is accepted, its payout date appears here',
@@ -548,14 +588,13 @@ export default function Payout() {
 
               <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">
                 {t('plan.hint')}
-                {data.totals.paidOut > 0 ? (
-                  <> {t('plan.paid', { v: f.money(data.totals.paidOut) })}</>
-                ) : null}
                 {!data.rules.confirmed ? <> {t('plan.assumed')}</> : null}
               </p>
             </CardBody>
           </Card>
         ) : null}
+
+        {data ? <HistoryCard rows={data.history ?? []} total={data.totals.paidOut} /> : null}
 
         {data && data.days.length > 0 ? (
           <ChartCard
@@ -627,6 +666,69 @@ export default function Payout() {
 }
 
 /**
+ * To'lovlar tarixi — Uzum haqiqatda o'tkazgan pul.
+ * Erta yechishda kabinet so'ralgan summani ko'rsatadi (136 000), balansdan
+ * esa haqdan keyingisi chiqadi (132 600) — ikkalasi ham yoziladi.
+ */
+function HistoryCard({ rows, total }: { rows: PayoutHistoryRow[]; total: number }) {
+  const t = useT('payout');
+  const f = useFormat();
+
+  return (
+    <Card className="mt-5">
+      <CardHeader
+        icon={<Receipt className="h-4 w-4" />}
+        title={t('hist.title')}
+        subtitle={t('hist.subtitle')}
+        actions={
+          total > 0 ? (
+            <div className="text-right">
+              <p className="eyebrow">{t('hist.total')}</p>
+              <p className="tnum font-display text-base font-bold text-ink">
+                <Amount value={f.money(total)} />
+              </p>
+            </div>
+          ) : undefined
+        }
+      />
+      <CardBody>
+        {rows.length > 0 ? (
+          <ul className="divide-y divide-line">
+            {rows.map((r, i) => (
+              <li key={`${r.date}-${r.kind}-${i}`} className="flex items-center gap-3.5 py-3 first:pt-0 last:pb-0">
+                <span
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                    r.kind === 'early' ? 'bg-warn/12 text-warn-ink' : 'bg-brand/12 text-brand-ink',
+                  )}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="tnum text-sm font-semibold text-ink">
+                    {r.kind === 'earlier' ? t('hist.earlier') : f.date(r.date)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {r.kind === 'earlier' ? f.date(r.date) : t(`hist.${r.kind}`)}
+                    {r.fee > 0 ? <> · {t('hist.fee', { gross: f.money(r.amount + r.fee), fee: f.money(r.fee) })}</> : null}
+                  </p>
+                </div>
+                <p className="tnum shrink-0 font-display text-base font-bold text-ink">
+                  <Amount value={f.money(r.amount)} />
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-2 text-sm text-muted">{t('hist.empty')}</p>
+        )}
+        <p className="mt-3.5 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('hist.note')}</p>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
  * To'lov kuni — sana chapda yirik belgi, summa o'ngda.
  * Eng yaqin to'lov ajratib ko'rsatiladi: sotuvchi birinchi navbatda
  * "eng yaqini qachon va qancha" degan savolga javob izlaydi.
@@ -668,10 +770,16 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
         <p className="text-sm font-semibold text-ink">
           {daysLeft === 0 ? t('plan.today') : t('plan.inDays', { n: daysLeft })}
         </p>
-        <p className="mt-0.5 text-xs text-muted">
-          {t('plan.orders')}: <span className="tnum">{f.num(row.orders)}</span>
-          {row.feePct > 0 ? <> · {t('plan.fee', { n: f.dec(row.feePct, 1) })}</> : null}
-        </p>
+        {row.orders > 0 || row.amount > 0 ? (
+          <p className="mt-0.5 text-xs text-muted">
+            {t('plan.orders')}: <span className="tnum">{f.num(row.orders)}</span>
+            {row.feePct > 0 ? <> · {t('plan.fee', { n: f.dec(row.feePct, 1) })}</> : null}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted">{t('plan.none')}</p>
+        )}
+        {/* Kabinetdagi "… gacha yig'ilgan jami pul" — qaysi buyurtmalar kirishini aytadi */}
+        <p className="tnum mt-0.5 text-xs text-muted">{t('plan.until', { date: f.date(row.acceptedUntil) })}</p>
         {/* Uzum balansdan ushlagan xizmat to'lovlari — nega buyurtmalar yig'indisidan kam ekanini tushuntiradi */}
         {row.deducted > 0 ? (
           <p className="tnum mt-0.5 text-xs text-muted">
@@ -696,7 +804,7 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
         {row.net !== row.amount ? (
           <p className="tnum mt-0.5 text-2xs text-muted line-through">{f.money(row.amount)}</p>
         ) : (
-          <p className="mt-0.5 eyebrow">{t('plan.net')}</p>
+          <p className="mt-0.5 eyebrow">{t('plan.estimate')}</p>
         )}
       </div>
     </li>

@@ -34,6 +34,7 @@ import { decryptSecret } from '../lib/crypto.js';
 import { createUzumClient } from '../uzum/client.js';
 import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
+import { recordPayout } from './payout-history.js';
 import {
   upsertExpenses,
   upsertLosses,
@@ -685,6 +686,8 @@ async function stepFinance(run: SyncRun, setDetail: (t: string) => void): Promis
     ]);
     const expRes = await upsertExpenses(run.companyId, store.id, expenses);
     const feeRes = await upsertStorageFees(store.id, fees);
+    // Buyurtmalar shu paytgacha yozilgan — yechib olingan summa oshgan bo'lsa to'lovlar tarixiga tushadi
+    await recordPayout(run.companyId, store.id);
     run.totals.expenses += countOf(expRes);
     run.totals.storage += countOf(feeRes);
     setDetail(`Xarajatlar: ${run.totals.expenses} · saqlash: ${run.totals.storage}`);

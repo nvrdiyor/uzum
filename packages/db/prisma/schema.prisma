@@ -182,6 +182,7 @@ model Store {
   storageFees StorageFee[]
   expenses    Expense[]
   shipments   Shipment[]
+  payouts     PayoutRecord[]
 
   @@unique([companyId, uzumShopId])
   @@index([companyId])
@@ -580,6 +581,26 @@ model Expense {
   store   Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   @@index([companyId, date])
+}
+
+/// Uzum sotuvchiga o'tkazgan pul (jadval bo'yicha yoki erta yechish).
+/// API'da to'lovlar tarixi yo'q — sinxron `withdrawnProfit` yig'indisi oshganda yozadi.
+model PayoutRecord {
+  id        String   @id @default(cuid())
+  storeId   String
+  /// To'lov kuni (savdo mintaqasi bo'yicha)
+  date      DateTime
+  /// Balansdan chiqqan summa — `withdrawnProfit` o'sishi, so'm
+  amount    Float
+  /// Erta yechish haqi (ma'lum bo'lsa), so'm
+  fee       Float    @default(0)
+  /// scheduled — jadval bo'yicha · early — erta yechish · earlier — tarix yuritilishidan oldingi jami
+  kind      String   @default("scheduled")
+  createdAt DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, date])
 }
 
 // ─────────────────────────── Sharhlar & bildirishnomalar ───────────────────────────

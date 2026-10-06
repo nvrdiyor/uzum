@@ -1229,17 +1229,28 @@ export interface PayoutOrder {
   hoursLeft: number;
   /** Ochilishning aniq vaqti (ISO) — qabul vaqti + 10 × 24 soat */
   unlockTime: string;
-  /** Jadvaldagi to'lov sanasi o'tib ketgan — pul allaqachon o'tkazilgan */
+  /** Uzum bu buyurtma pulini to'liq yechib bergan (`withdrawnProfit`) */
   paid: boolean;
+}
+
+/** Uzum o'tkazgan bitta to'lov */
+export interface PayoutHistoryRow {
+  date: string;
+  /** Balansdan chiqqan summa (erta yechishda — haqdan keyingi) */
+  amount: number;
+  /** Erta yechish haqi; jadval to'lovida 0 */
+  fee: number;
+  /** scheduled — jadval bo'yicha · early — erta yechish · earlier — tarix yuritilishidan oldingi jami */
+  kind: 'scheduled' | 'early' | 'earlier';
 }
 
 /** Jadval bo'yicha bitta to'lov kuni */
 export interface PayoutPlanDay {
   date: string;
   /**
-   * Shu sanada o'tkaziladigan summa (jadval haqidan oldin). Birinchi sana
-   * BALANSDAN olinadi: hozir yechib olish mumkin bo'lgan pul + shu sanagacha
-   * ochiladigan buyurtmalar — Uzum ushlagan xizmat to'lovlari ayirilgan.
+   * Shu sanada o'tkaziladigan summa (jadval haqidan oldin): balansdan
+   * yo'ldagi va shu sana 00:00 gacha ochilmaydigan buyurtmalar, hamda oldingi
+   * sanalarda beriladigan pul ayirilgani. Xizmat to'lovlari balansda ayirilgan.
    */
   amount: number;
   /** Shu sanaga to'g'ri keladigan buyurtmalar yig'indisi (sotuv − komissiya), ushlanmalarsiz */
@@ -1249,6 +1260,12 @@ export interface PayoutPlanDay {
   orders: number;
   /** Jadval haqi ayirilgandan keyin qo'lga tegadigan summa */
   net: number;
+  /**
+   * Shu sanagacha (shu kun ham) QABUL QILINGAN buyurtmalar to'lovga kiradi —
+   * kabinetdagi "… gacha yig'ilgan jami pul". To'lov 00:00 da o'tadi, shuning
+   * uchun bu to'lov kunidan (kutish kunlari + 1) kun oldin.
+   */
+  acceptedUntil: string;
   /** Shu sanada kuchda bo'lgan jadval — o'zgarish rejalashtirilgan bo'lsa farq qiladi */
   mode: PayoutMode;
   /** Shu sanadagi jadval haqi, % */
@@ -1322,10 +1339,12 @@ export interface PayoutCalendarResponse {
     withdrawn: number;
     /** Umumiy balans — Moliya va Boshqaruv paneli bilan bir xil */
     balance: number;
-    /** Jadval bo'yicha allaqachon o'tkazilgan summa */
+    /** Uzum hozirgacha yechib bergan jami summa (`withdrawn` bilan bir xil) */
     paidOut: number;
-    /** Hali kutilayotgan summa */
+    /** Qabul qilingan, lekin 10 kunlik kutish tugamagan buyurtmalar */
     pending: number;
+    /** Hali xaridorga yetmagan buyurtmalar: balansda bor, kutish boshlanmagan */
+    inTransit: number;
     /** Davr ichidagi xizmat to'lovlari (logistika, reklama, saqlash) */
     charges: number;
     /** Eng yaqin ochilish sanasi (ISO) yoki null */
@@ -1336,8 +1355,10 @@ export interface PayoutCalendarResponse {
   };
   /** Kunlar bo'yicha ochilish jadvali */
   days: PayoutDay[];
-  /** Jadval bo'yicha pul tushadigan kunlar */
+  /** Jadval bo'yicha KELGUSI to'lov kunlari (kamida uchta) */
   plan: PayoutPlanDay[];
+  /** Uzum o'tkazgan to'lovlar — eng yangisi birinchi */
+  history: PayoutHistoryRow[];
   /** Har bir buyurtma alohida */
   orders: PayoutOrder[];
   /** Tezkor yechib olish mezonlari */

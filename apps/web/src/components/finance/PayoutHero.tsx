@@ -22,8 +22,9 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
   const unlocked = Math.max(0, totals?.unlocked ?? 0);
   const pending = Math.max(0, totals?.pending ?? 0);
   const charges = Math.max(0, totals?.charges ?? 0);
+  const inTransit = Math.max(0, totals?.inTransit ?? 0);
   const withdrawn = totals?.withdrawn ?? 0;
-  const base = unlocked + pending;
+  const base = unlocked + pending + inTransit;
   const shown = useCountUp(unlocked);
 
   if (loading || !totals) {
@@ -32,7 +33,8 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
         <Skeleton className="h-4 w-36" />
         <Skeleton className="mt-3 h-11 w-72 max-w-full" />
         <Skeleton className="mt-10 h-3.5 w-full" />
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -44,6 +46,8 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
   const segments = [
     { key: 'unlocked', amount: unlocked, fill: 'bg-brand' },
     { key: 'pending', amount: pending, fill: 'bg-warn' },
+    // Yo'ldagilar ham balansda bor — uchalasi qo'shilsa kabinetdagi "Umumiy balans" chiqadi
+    { key: 'transit', amount: inTransit, fill: 'bg-[rgb(var(--c-slate))]' },
   ].filter((s) => s.amount > 0);
 
   const legend = [
@@ -55,6 +59,13 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
       hint: withdrawn > 0 ? t('kpi.unlockedHintWithdrawn', { amount: f.money(withdrawn) }) : t('kpi.unlockedHint'),
     },
     { key: 'pending', dot: 'bg-warn', label: t('kpi.pending'), amount: pending, hint: t('kpi.pendingHint', { n: hold }) },
+    {
+      key: 'transit',
+      dot: 'bg-[rgb(var(--c-slate))]',
+      label: t('kpi.transit'),
+      amount: inTransit,
+      hint: t('kpi.transitHint'),
+    },
     { key: 'charges', dot: 'bg-danger', label: t('kpi.charges'), amount: charges, hint: t('kpi.chargesHint') },
   ];
 
@@ -88,7 +99,7 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
       <div className="mt-8">
         <div
           role="img"
-          aria-label={`${t('kpi.unlocked')} ${f.money(unlocked)}, ${t('kpi.pending')} ${f.money(pending)}`}
+          aria-label={`${t('kpi.unlocked')} ${f.money(unlocked)}, ${t('kpi.pending')} ${f.money(pending)}, ${t('kpi.transit')} ${f.money(inTransit)}`}
           className="flex h-3.5 w-full gap-1"
         >
           {segments.map((s, i) => (
@@ -101,7 +112,7 @@ export function PayoutHero({ totals, hold, loading }: { totals?: Totals; hold: n
           {base <= 0 ? <div className="h-full flex-1 rounded-full bg-surface-3" /> : null}
         </div>
 
-        <ul className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-3">
+        <ul className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
           {legend.map((l) => (
             <li key={l.key} className="min-w-0">
               <div className="flex items-center gap-2 text-[13px] font-medium text-ink-soft">

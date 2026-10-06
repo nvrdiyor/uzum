@@ -9,9 +9,10 @@
  * ochiladi. Kabinetdagi "Umumiy balans" va "Yechib olish mumkin" orasidagi
  * farq aynan shundan.
  *
- * Bir buyurtma uchun ochiladigan summa — kabinetdagi "Yechib olish uchun"
- * ustuni: `tushum − komissiya − logistika`. Bu bizdagi `OrderItem.payout`
- * bilan AYNAN mos tushadi (jonli kabinetda uchta buyurtmada tekshirilgan).
+ * Bir buyurtmadan ochiladigan summa — `sotuv − komissiya`. Yetkazish haqi
+ * va boshqa xizmat to'lovlarini Uzum balansdan alohida ushlaydi; to'lov kuni
+ * 00:00 da ochilgan puldan shu to'lovlar ayirilib o'tkaziladi (07.10.2026
+ * to'lovida so'mgacha tekshirilgan: 1 535 900 − 892 170 − 132 600 = 511 130).
  *
  * DIQQAT: bu hisob Uzum shartlari asosida QURILGAN, Uzumdan olinmagan.
  * Yakuniy raqam har doim kabinetda. Shuning uchun qoidalar sozlamada
@@ -39,6 +40,7 @@ import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } 
 import { resolveRange } from '../lib/period.js';
 import { getStoreIds } from '../services/common.js';
 import { getUzumBalance } from '../services/balance.js';
+import { listPayoutHistory } from '../services/payout-history.js';
 import {
   PAYOUT_KEYS,
   businessToday,
@@ -79,30 +81,30 @@ router.get(
     const { mode, holdDays, earlyFeePct, scheduleFeePct, payoutDays, schedule, confirmed } = rules;
 
     const today = businessToday();
-    /*
-     * Jadval TASDIQLANMAGAN bo'lsa hech qanday pulni "o'tkazilgan" deb
-     * belgilamaymiz. Sana standart jadval TAXMINIDAN chiqadi, taxminga
-     * tayanib "bu pul allaqachon keldi" deyish — sotuvchiga bo'lmagan
-     * narsani aytish. Bunday holda o'tib ketgan sana oldinga suriladi:
-     * ro'yxatda eskirgan kun turmaydi, lekin yolg'on da'vo ham qilinmaydi.
-     */
-    const firstUpcoming = nextPayoutDate(today, schedule);
+    const tomorrow = addDays(today, 1);
 
     /*
-     * Faqat QABUL QILINGAN buyurtmalar soatni boshlaydi. `deliveredAt` —
-     * kabinetdagi "Qabul sanasi"; u bo'sh bo'lsa tovar hali xaridorga
-     * yetib bormagan va hisob boshlanmagan.
+     * UZUM QOIDASI (jonli do'konda 07.10.2026 to'lovida tekshirilgan, so'mgacha mos):
+     *
+     *   to'lov = to'lov kuni 00:00 gacha OCHILGAN buyurtmalarning (sotuv − komissiya)
+     *            − Uzum ushlagan BARCHA xizmat to'lovlari − ilgari yechib olingan
+     *
+     * Bundan uch narsa kelib chiqadi:
+     *  1. To'lov kuni BOSHLANISHIDA (00:00) o'tadi. O'sha kuni kunduzi ochilgan
+     *     buyurtma keyingi sanaga qoladi — kabinet ham "21-oktabr to'lanadi:
+     *     10.10 gacha yig'ilgan pul" deydi.
+     *  2. Buyurtmadan ochiladigan summa — sotuv minus komissiya. Yetkazish haqi
+     *     xizmat to'lovlari ichida alohida ushlanadi (balansda bor), shuning
+     *     uchun `payout` (logistika ayirilgan) ishlatilsa u ikki marta ayrilardi.
+     *  3. To'langan-to'lanmaganini Uzumning o'zi aytadi (`withdrawnProfit`).
+     *     Ilgari "sana o'tdi — demak to'langan" deb taxmin qilinardi.
      */
     const orders = await prisma.order.findMany({
-      where: {
-        storeId: { in: storeIds },
-        deliveredAt: { not: null },
-        status: { in: EFFECTIVE_STATUSES },
-      },
+      where: { storeId: { in: storeIds }, status: { in: EFFECTIVE_STATUSES } },
       select: {
         uzumOrderId: true,
         deliveredAt: true,
-        items: { select: { title: true, payout: true, withdrawn: true, status: true } },
+        items: { select: { title: true, revenue: true, commission: true, withdrawn: true, status: true } },
       },
       orderBy: { deliveredAt: 'desc' },
     });
@@ -110,25 +112,31 @@ router.get(
     const rows: PayoutOrder[] = [];
     const nowTs = Date.now();
     const holdMs = holdDays * 86_400_000;
+    /** Hali xaridorga yetmagan buyurtmalar: balansda bor, lekin 10 kunlik soat boshlanmagan */
+    let inTransit = 0;
 
     for (const o of orders) {
-      if (!o.deliveredAt) continue;
       const live = o.items.filter((i) => EFFECTIVE_STATUSES.includes(i.status));
-      /*
-       * Uzum sotuvchiga yechib bergan qism (withdrawnProfit) ayiriladi —
-       * kalendarda faqat hali OLINMAGAN pul turadi. Ilgari sotuvchi 136 000
-       * so'mni erta yechib olgandan keyin ham u "ochilgan" bo'lib turardi.
-       */
-      const amount = round(live.reduce((s, i) => s + i.payout - i.withdrawn, 0));
-      if (amount <= 0) continue;
+      const full = round(live.reduce((sum, i) => sum + i.revenue - i.commission, 0));
+      const rest = round(full - live.reduce((sum, i) => sum + i.withdrawn, 0));
+      if (full <= 0) continue;
 
       /*
-       * Ochilish ANIQ SOAT bilan: qabul vaqti + 10 × 24 soat. Ilgari qabul
-       * vaqti UTC sanasiga qirqilardi — Toshkentda 00:00–05:00 orasida
-       * qabul qilingan buyurtma bir kun oldin "ochilgan" bo'lib ko'rinardi.
-       * Buyurtma holatiga (TO_WITHDRAW) tayanilmaydi: demo generatori
-       * yetkazilganni darhol 'delivered' qiladi va hammasi ochilib qolardi.
-       * Live'da `dateIssued` millisekundgacha aniq — natija Uzum bilan bir xil.
+       * Faqat QABUL QILINGAN buyurtma soatni boshlaydi. `deliveredAt` —
+       * kabinetdagi "Qabul sanasi"; u bo'sh bo'lsa tovar hali yo'lda.
+       */
+      if (!o.deliveredAt) {
+        inTransit += Math.max(0, rest);
+        continue;
+      }
+
+      // Uzum to'liq yechib bergan — kalendarda "to'langan" bo'lib qoladi
+      const paid = rest < 1;
+
+      /*
+       * Ochilish ANIQ SOAT bilan: qabul vaqti + 10 × 24 soat (live'da
+       * `dateIssued` millisekundgacha aniq). Buyurtma holatiga tayanilmaydi:
+       * demo generatori yetkazilganni darhol 'delivered' qiladi.
        */
       const unlockTs = o.deliveredAt.getTime() + holdMs;
       const isUnlocked = unlockTs <= nowTs;
@@ -136,18 +144,14 @@ router.get(
       const daysLeft = Math.ceil(hoursLeft / 24);
       const acceptedAt = parseISODate(todayInBusinessTz(o.deliveredAt));
       const unlockAt = parseISODate(todayInBusinessTz(new Date(unlockTs)));
-      // Ochilgan pul jadvaldagi navbatdagi sanani kutadi
-      const scheduled = nextPayoutDate(unlockAt, schedule);
 
       /*
-       * To'lov sanasi o'tib ketgan bo'lsa, o'sha pul allaqachon
-       * o'tkazilgan. Ilgari bunday satr ro'yxatda qolib ketardi va
-       * sahifa kechagi sanani "bugun tushadi" deb ko'rsatardi.
+       * To'lov sanasi — ochilgan kundan KEYINGI birinchi jadval kuni: to'lov
+       * 00:00 da o'tadi, kun ichida ochilgan pul unga ulgurmaydi. To'lanmay
+       * qolgan eski pul esa eng yaqin kelgusi sanaga o'tadi.
        */
-      const past = scheduled.getTime() < today.getTime();
-      const paid = confirmed && past;
-      // Tasdiqlanmagan jadvalda o'tib ketgan sana oldinga suriladi
-      const payoutAt = past && !paid ? firstUpcoming : scheduled;
+      const earliest = addDays(unlockAt, 1);
+      const payoutAt = nextPayoutDate(!paid && earliest.getTime() < tomorrow.getTime() ? tomorrow : earliest, schedule);
 
       rows.push({
         uzumOrderId: o.uzumOrderId,
@@ -155,7 +159,8 @@ router.get(
         acceptedAt: toISODate(acceptedAt),
         unlockAt: toISODate(unlockAt),
         payoutAt: toISODate(payoutAt),
-        amount,
+        // To'lanmagan qismi; to'liq to'langan bo'lsa — buyurtmaning butun summasi
+        amount: paid ? full : rest,
         unlocked: isUnlocked,
         daysLeft,
         hoursLeft,
@@ -163,6 +168,7 @@ router.get(
         paid,
       });
     }
+    inTransit = round(inTransit);
 
     // Kunlar bo'yicha jamlash — kalendarda bir kun bitta qator
     const byDay = new Map<string, { amount: number; orders: number; paid: number; locked: number }>();
@@ -182,25 +188,13 @@ router.get(
         orders: v.orders,
         // Kun ochilgan — undagi barcha buyurtmalar soati to'lgan bo'lsa
         unlocked: v.locked === 0,
-        /*
-         * Shu kuni ochilgan pulning qancha qismi jadval bo'yicha
-         * allaqachon o'tkazilgani. Busiz jadval yig'indisi "Ochilgan"
-         * ko‘rsatkichidan katta chiqib, ikkovi zid tushardi.
-         */
+        // Shu kuni ochilgan pulning Uzum allaqachon yechib bergan qismi
         paid: round(v.paid),
       }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((x, y) => x.date.localeCompare(y.date));
 
-    // Jadval bo'yicha to'lov kunlari — faqat oldinda turganlari
-    const byPlan = new Map<string, { amount: number; orders: number }>();
-    for (const r of rows) {
-      if (r.paid) continue;
-      const cur = byPlan.get(r.payoutAt) ?? { amount: 0, orders: 0 };
-      cur.amount += r.amount;
-      cur.orders += 1;
-      byPlan.set(r.payoutAt, cur);
-    }
-    const unlockedGross = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
+    const unpaid = rows.filter((r) => !r.paid);
+    const unlockedGross = round(unpaid.filter((r) => r.unlocked).reduce((sum, r) => sum + r.amount, 0));
     /*
      * "Ochilgan" — hozir yechib olish mumkin bo'lgan pul, Uzum kabinetidagi
      * "…so'mni ertaroq yechib olish mumkin" bilan bir xil ma'noda: balansdan
@@ -211,62 +205,57 @@ router.get(
     const unlocked = balance.available;
 
     /*
-     * JADVAL BALANSGA BOG'LANADI.
+     * KELGUSI TO'LOVLAR. Har bir sana uchun:
      *
-     * Buyurtmalar yig'indisi — sotuv minus komissiya. Lekin Uzum balansdan
-     * xizmat to'lovlarini ham ushlaydi (omborga logistika, reklama, saqlash),
-     * va to'lov kuni aynan balansda YECHIB OLISH MUMKIN bo'lgan pul o'tadi.
-     * Ilgari jadval yig'indini o'zini ko'rsatardi: yuqorida "yechib olish
-     * mumkin 675 630" turgan paytda ertangi to'lov 1 332 295 deb chiqardi.
+     *   o'sha kungacha yig'iladigan pul = balans − yo'ldagilar − shu sana va
+     *                                     undan keyin ochiladigan buyurtmalar
      *
-     * Ochilgan-u to'lanmagan buyurtmalarning hammasi eng yaqin to'lov
-     * sanasiga tushadi, shuning uchun farq (`shortfall`) o'sha sanadan
-     * ayriladi. Ushlanma undan ham katta bo'lsa, qolgani keyingi sanaga
-     * o'tadi — Uzum ham qarzni keyin ochiladigan puldan ushlaydi.
-     * Balans kattaroq chiqsa (masalan, "to'langan" deb hisoblangan pul hali
-     * hisobda tursa), ortiqchasi eng yaqin sanaga qo'shiladi.
+     * To'lov — shu yig'indidan oldingi sanalarda berilganini ayirgani.
+     * Yig'indi manfiy bo'lsa (xizmat to'lovlari ochilgan puldan ko'p) to'lov 0
+     * bo'ladi va qarz keyingi sanaga o'tadi — Uzum ham shunday ushlaydi.
+     * Kamida uchta sana ko'rsatiladi: yaqin to'lov o'tgach ro'yxat o'zi suriladi.
      */
-    const firstKey = toISODate(firstUpcoming);
-    const availableRaw = round(balance.total - balance.locked);
-    let carry = round(availableRaw - unlockedGross);
-    if (carry > 0 && !byPlan.has(firstKey)) byPlan.set(firstKey, { amount: 0, orders: 0 });
+    const planDates: Date[] = [];
+    const lastRowDate = unpaid.reduce((max, r) => (r.payoutAt > max ? r.payoutAt : max), '');
+    for (let d = nextPayoutDate(tomorrow, schedule); planDates.length < 8; d = nextPayoutDate(addDays(d, 1), schedule)) {
+      if (planDates.length >= 3 && toISODate(d) > lastRowDate) break;
+      planDates.push(d);
+    }
 
-    const planDays: PayoutPlanDay[] = [...byPlan.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, v]) => {
-        /*
-         * Haq BITTA emas: jadval o'rtada almashsa, 7-oktyabr hali eski
-         * jadval (0%), 14-oktyabr esa yangisi (1%) bo'yicha to'lanadi.
-         */
-        const rowMode = modeOn(parseISODate(date), schedule);
-        const feePct = SCHEDULE_FEE[rowMode];
-        const gross = round(v.amount);
-        const amount = Math.max(0, round(gross + carry));
-        // Ushlanma shu sanadagi summadan katta bo'lsa — qolgani keyingisiga
-        carry = round(gross + carry - amount);
-        return {
-          date,
-          amount,
-          gross,
-          deducted: Math.max(0, round(gross - amount)),
-          orders: v.orders,
-          mode: rowMode,
-          feePct,
-          // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
-          net: round(amount * (1 - feePct / 100)),
-          /*
-           * Qolgan kun SERVERDA sanaladi. Brauzerda sanalganda UTC yarim
-           * tuni mijozning mahalliy vaqti bilan solishtirilib, Toshkentda
-           * 00:00–05:00 orasida bir kunga adashardi.
-           */
-          daysLeft: Math.max(
-            0,
-            Math.round((parseISODate(date).getTime() - today.getTime()) / 86_400_000),
-          ),
-        };
-      });
-    const paidOut = round(rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0));
-    const pending = round(rows.filter((r) => !r.unlocked).reduce((s, r) => s + r.amount, 0));
+    let paidSoFar = 0;
+    const planDays: PayoutPlanDay[] = planDates.map((d) => {
+      const date = toISODate(d);
+      const mine = unpaid.filter((r) => r.payoutAt === date);
+      const gross = round(mine.reduce((sum, r) => sum + r.amount, 0));
+      const lockedAfter = unpaid.filter((r) => r.unlockAt >= date).reduce((sum, r) => sum + r.amount, 0);
+      const collected = balance.total - inTransit - lockedAfter;
+      const amount = Math.max(0, round(collected - paidSoFar));
+      paidSoFar += amount;
+
+      /*
+       * Haq BITTA emas: jadval o'rtada almashsa, eski sana eski jadval,
+       * keyingisi yangisi bo'yicha to'lanadi.
+       */
+      const rowMode = modeOn(d, schedule);
+      const feePct = SCHEDULE_FEE[rowMode];
+      return {
+        date,
+        amount,
+        gross,
+        deducted: Math.max(0, round(gross - amount)),
+        orders: mine.length,
+        mode: rowMode,
+        feePct,
+        // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
+        net: round(amount * (1 - feePct / 100)),
+        // Shu sanagacha qabul qilingan buyurtmalar kiradi (kabinetdagi "… gacha yig'ilgan pul")
+        acceptedUntil: toISODate(addDays(d, -(holdDays + 1))),
+        // Qolgan kun SERVERDA sanaladi (brauzerda vaqt mintaqasi adashtiradi)
+        daysLeft: Math.max(0, Math.round((d.getTime() - today.getTime()) / 86_400_000)),
+      };
+    });
+
+    const pending = round(unpaid.filter((r) => !r.unlocked).reduce((sum, r) => sum + r.amount, 0));
     const next = days.find((d) => !d.unlocked);
     // Eng yaqin ochilishning aniq vaqti — kartada soati bilan ko'rsatiladi
     const nextAt =
@@ -274,6 +263,9 @@ router.get(
         .filter((r) => !r.unlocked)
         .map((r) => r.unlockTime)
         .sort()[0] ?? null;
+
+    // Uzum o'tkazgan to'lovlar — sinxron `withdrawnProfit` o'sishidan yozib boradi
+    const history = await listPayoutHistory(storeIds);
 
     /*
      * Uzum hali o'tkazmagan butun summa. Qarzdorlik tekshiruvi aynan
@@ -394,8 +386,9 @@ router.get(
       },
       totals: {
         unlocked,
-        paidOut,
+        paidOut: balance.withdrawn,
         pending,
+        inTransit,
         charges,
         withdrawn: balance.withdrawn,
         balance: balance.total,
@@ -405,6 +398,7 @@ router.get(
       },
       days,
       plan: planDays,
+      history,
       orders: rows.sort((a, b) => a.unlockAt.localeCompare(b.unlockAt)),
       instant: { eligible, checks },
     };
