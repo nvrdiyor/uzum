@@ -1231,6 +1231,13 @@ export interface PayoutOrder {
   unlockTime: string;
   /** Uzum bu buyurtma pulini to'liq yechib bergan (`withdrawnProfit`) */
   paid: boolean;
+  /**
+   * Ochilgan, lekin puli Uzum ushlagan xizmat to'lovlariga ketgan — bu
+   * buyurtmadan endi pul kelmaydi. Uzum to'lovni eng eski buyurtmalarga
+   * yozadi, xizmat to'lovlari esa balansdan olinadi; qolgan eng eski
+   * ochilgan buyurtmalar shu to'lovlar hisobiga yopiladi.
+   */
+  coveredByFees: boolean;
 }
 
 /** Uzum o'tkazgan bitta to'lov */

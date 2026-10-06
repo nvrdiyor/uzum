@@ -87,6 +87,7 @@ registerNamespace('payout', {
     'ord.hours': '{n} soat',
     'ord.ready': 'Tayyor',
     'ord.paid': 'To‘langan',
+    'ord.fees': 'Xizmat to‘loviga ketdi',
     'inst.title': 'Tezkor yechib olish',
     'inst.subtitle': 'Uzum shartlari bo‘yicha — {n} kunni kutmasdan yechish mumkinmi',
     'inst.yes': 'Shartlar bajarilgan',
@@ -192,6 +193,7 @@ registerNamespace('payout', {
     'ord.hours': '{n} ч',
     'ord.ready': 'Готово',
     'ord.paid': 'Выплачено',
+    'ord.fees': 'Ушло на услуги',
     'inst.title': 'Мгновенный вывод',
     'inst.subtitle': 'По условиям Uzum — можно ли вывести не дожидаясь {n} дней',
     'inst.yes': 'Условия выполнены',
@@ -297,6 +299,7 @@ registerNamespace('payout', {
     'ord.hours': '{n} h',
     'ord.ready': 'Ready',
     'ord.paid': 'Paid out',
+    'ord.fees': 'Used for service fees',
     'inst.title': 'Instant withdrawal',
     'inst.subtitle': 'Per Uzum terms — can you withdraw without waiting {n} days',
     'inst.yes': 'Conditions met',
@@ -454,6 +457,8 @@ export default function Payout() {
       render: (r) =>
         r.paid ? (
           <Badge tone="muted">{t('ord.paid')}</Badge>
+        ) : r.coveredByFees ? (
+          <Badge tone="muted">{t('ord.fees')}</Badge>
         ) : r.unlocked ? (
           <Badge tone="brand">{t('ord.ready')}</Badge>
         ) : (

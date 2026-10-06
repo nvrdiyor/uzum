@@ -166,6 +166,7 @@ router.get(
         hoursLeft,
         unlockTime: new Date(unlockTs).toISOString(),
         paid,
+        coveredByFees: false,
       });
     }
     inTransit = round(inTransit);
@@ -203,6 +204,34 @@ router.get(
      */
     const balance = await getUzumBalance(company.id, storeIds, range.storeId);
     const unlocked = balance.available;
+    const pending = round(unpaid.filter((r) => !r.unlocked).reduce((sum, r) => sum + r.amount, 0));
+
+    /*
+     * XIZMAT TO'LOVLARIGA KETGAN BUYURTMALAR.
+     *
+     * Ochilgan buyurtmalar yig'indisi yechib olish mumkin bo'lgan puldan
+     * katta bo'lsa, farqni Uzum xizmat to'lovlari (logistika, reklama) uchun
+     * ushlagan. Uzum to'lovni eng eski buyurtmalarga yozgani kabi, bu farq
+     * ham eng eski ochilgan buyurtmalardan boshlab yopiladi. Aks holda ular
+     * abadiy "tayyor" bo'lib turardi va har safar keyingi to'lov sanasiga
+     * ko'chib, uning buyurtmalar sonini shishirardi (07.10 dan keyin 15 ta
+     * o'rniga 35 ta ko'rinardi).
+     */
+    const availableNow = balance.total - inTransit - pending;
+    let toCover = Math.max(0, unlockedGross - Math.max(0, availableNow));
+    for (const r of unpaid.filter((x) => x.unlocked).sort((x, y) => x.unlockTime.localeCompare(y.unlockTime))) {
+      if (toCover < 1) break;
+      if (r.amount <= toCover + 0.5) {
+        toCover -= r.amount;
+        r.coveredByFees = true;
+      } else {
+        // Qisman qoplangan buyurtmadan faqat qolgani kutiladi
+        r.amount = round(r.amount - toCover);
+        toCover = 0;
+      }
+    }
+    /** Hali pul kelishi kutilayotgan buyurtmalar */
+    const open = unpaid.filter((r) => !r.coveredByFees);
 
     /*
      * KELGUSI TO'LOVLAR. Har bir sana uchun:
@@ -216,7 +245,7 @@ router.get(
      * Kamida uchta sana ko'rsatiladi: yaqin to'lov o'tgach ro'yxat o'zi suriladi.
      */
     const planDates: Date[] = [];
-    const lastRowDate = unpaid.reduce((max, r) => (r.payoutAt > max ? r.payoutAt : max), '');
+    const lastRowDate = open.reduce((max, r) => (r.payoutAt > max ? r.payoutAt : max), '');
     for (let d = nextPayoutDate(tomorrow, schedule); planDates.length < 8; d = nextPayoutDate(addDays(d, 1), schedule)) {
       if (planDates.length >= 3 && toISODate(d) > lastRowDate) break;
       planDates.push(d);
@@ -225,9 +254,9 @@ router.get(
     let paidSoFar = 0;
     const planDays: PayoutPlanDay[] = planDates.map((d) => {
       const date = toISODate(d);
-      const mine = unpaid.filter((r) => r.payoutAt === date);
+      const mine = open.filter((r) => r.payoutAt === date);
       const gross = round(mine.reduce((sum, r) => sum + r.amount, 0));
-      const lockedAfter = unpaid.filter((r) => r.unlockAt >= date).reduce((sum, r) => sum + r.amount, 0);
+      const lockedAfter = open.filter((r) => r.unlockAt >= date).reduce((sum, r) => sum + r.amount, 0);
       const collected = balance.total - inTransit - lockedAfter;
       const amount = Math.max(0, round(collected - paidSoFar));
       paidSoFar += amount;
@@ -255,7 +284,6 @@ router.get(
       };
     });
 
-    const pending = round(unpaid.filter((r) => !r.unlocked).reduce((sum, r) => sum + r.amount, 0));
     const next = days.find((d) => !d.unlocked);
     // Eng yaqin ochilishning aniq vaqti — kartada soati bilan ko'rsatiladi
     const nextAt =
