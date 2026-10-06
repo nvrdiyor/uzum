@@ -1225,7 +1225,16 @@ export interface PayoutOrder {
 /** Jadval bo'yicha bitta to'lov kuni */
 export interface PayoutPlanDay {
   date: string;
+  /**
+   * Shu sanada o'tkaziladigan summa (jadval haqidan oldin). Birinchi sana
+   * BALANSDAN olinadi: hozir yechib olish mumkin bo'lgan pul + shu sanagacha
+   * ochiladigan buyurtmalar — Uzum ushlagan xizmat to'lovlari ayirilgan.
+   */
   amount: number;
+  /** Shu sanaga to'g'ri keladigan buyurtmalar yig'indisi (sotuv − komissiya), ushlanmalarsiz */
+  gross: number;
+  /** Uzum balansdan ushlab qolgani uchun shu to'lovdan kamaygan summa (xizmat to'lovlari); 0 — yo'q */
+  deducted: number;
   orders: number;
   /** Jadval haqi ayirilgandan keyin qo'lga tegadigan summa */
   net: number;

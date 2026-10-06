@@ -200,7 +200,39 @@ router.get(
       cur.orders += 1;
       byPlan.set(r.payoutAt, cur);
     }
+    const unlockedGross = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
+    /*
+     * "Ochilgan" — hozir yechib olish mumkin bo'lgan pul, Uzum kabinetidagi
+     * "…so'mni ertaroq yechib olish mumkin" bilan bir xil ma'noda: balansdan
+     * hali ochilmagan buyurtmalar ayriladi. Xizmat to'lovlari (logistika,
+     * reklama) va yechib olingan pul balansning o'zida ayrilgan.
+     */
+    const balance = await getUzumBalance(company.id, storeIds, range.storeId);
+    const unlocked = balance.available;
+
+    /*
+     * JADVAL BALANSGA BOG'LANADI.
+     *
+     * Buyurtmalar yig'indisi — sotuv minus komissiya. Lekin Uzum balansdan
+     * xizmat to'lovlarini ham ushlaydi (omborga logistika, reklama, saqlash),
+     * va to'lov kuni aynan balansda YECHIB OLISH MUMKIN bo'lgan pul o'tadi.
+     * Ilgari jadval yig'indini o'zini ko'rsatardi: yuqorida "yechib olish
+     * mumkin 675 630" turgan paytda ertangi to'lov 1 332 295 deb chiqardi.
+     *
+     * Ochilgan-u to'lanmagan buyurtmalarning hammasi eng yaqin to'lov
+     * sanasiga tushadi, shuning uchun farq (`shortfall`) o'sha sanadan
+     * ayriladi. Ushlanma undan ham katta bo'lsa, qolgani keyingi sanaga
+     * o'tadi — Uzum ham qarzni keyin ochiladigan puldan ushlaydi.
+     * Balans kattaroq chiqsa (masalan, "to'langan" deb hisoblangan pul hali
+     * hisobda tursa), ortiqchasi eng yaqin sanaga qo'shiladi.
+     */
+    const firstKey = toISODate(firstUpcoming);
+    const availableRaw = round(balance.total - balance.locked);
+    let carry = round(availableRaw - unlockedGross);
+    if (carry > 0 && !byPlan.has(firstKey)) byPlan.set(firstKey, { amount: 0, orders: 0 });
+
     const planDays: PayoutPlanDay[] = [...byPlan.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, v]) => {
         /*
          * Haq BITTA emas: jadval o'rtada almashsa, 7-oktyabr hali eski
@@ -208,14 +240,20 @@ router.get(
          */
         const rowMode = modeOn(parseISODate(date), schedule);
         const feePct = SCHEDULE_FEE[rowMode];
+        const gross = round(v.amount);
+        const amount = Math.max(0, round(gross + carry));
+        // Ushlanma shu sanadagi summadan katta bo'lsa — qolgani keyingisiga
+        carry = round(gross + carry - amount);
         return {
           date,
-          amount: round(v.amount),
+          amount,
+          gross,
+          deducted: Math.max(0, round(gross - amount)),
           orders: v.orders,
           mode: rowMode,
           feePct,
           // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
-          net: round(v.amount * (1 - feePct / 100)),
+          net: round(amount * (1 - feePct / 100)),
           /*
            * Qolgan kun SERVERDA sanaladi. Brauzerda sanalganda UTC yarim
            * tuni mijozning mahalliy vaqti bilan solishtirilib, Toshkentda
@@ -226,18 +264,7 @@ router.get(
             Math.round((parseISODate(date).getTime() - today.getTime()) / 86_400_000),
           ),
         };
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    const unlockedGross = round(rows.filter((r) => r.unlocked && !r.paid).reduce((s, r) => s + r.amount, 0));
-    /*
-     * "Ochilgan" — hozir yechib olish mumkin bo'lgan pul, Uzum kabinetidagi
-     * "…so'mni ertaroq yechib olish mumkin" bilan bir xil ma'noda: balansdan
-     * hali ochilmagan buyurtmalar ayriladi. Xizmat to'lovlari (logistika,
-     * reklama) va yechib olingan pul balansning o'zida ayrilgan.
-     */
-    const balance = await getUzumBalance(company.id, storeIds, range.storeId);
-    const unlocked = balance.available;
+      });
     const paidOut = round(rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0));
     const pending = round(rows.filter((r) => !r.unlocked).reduce((s, r) => s + r.amount, 0));
     const next = days.find((d) => !d.unlocked);

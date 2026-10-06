@@ -114,7 +114,8 @@ registerNamespace('payout', {
     'plan.fee': 'Jadval haqi {n}%',
     'plan.today': 'Bugun tushadi',
     'plan.inDays': '{n} kundan keyin',
-    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi.',
+    'plan.deducted': 'Buyurtmalar {gross}, Uzum ushlagan xizmat to‘lovlari −{v}',
+    'plan.hint': 'Ochilgan pul jadvaldagi navbatdagi sanani kutadi. Eng yaqin to‘lov balans bo‘yicha: xizmat to‘lovlari (logistika, reklama, saqlash) ayirilgan. Keyingi sanalar taxminiy — Uzum ungacha ushlaydigan to‘lovlar hali ma’lum emas.',
     'plan.paid': 'Jadval bo‘yicha allaqachon o‘tkazilgan: {v}',
     'plan.switchHere': 'Yangi jadval',
     'plan.empty': 'Oldinda turgan to‘lov yo‘q',
@@ -205,7 +206,8 @@ registerNamespace('payout', {
     'plan.fee': 'Комиссия графика {n}%',
     'plan.today': 'Поступит сегодня',
     'plan.inDays': 'Через {n} дн',
-    'plan.hint': 'Открытые деньги ждут ближайшую дату графика.',
+    'plan.deducted': 'Заказы {gross}, удержано Uzum за услуги −{v}',
+    'plan.hint': 'Открытые деньги ждут ближайшую дату графика. Ближайшая выплата считается по балансу: платежи за услуги (логистика, реклама, хранение) вычтены. Следующие даты ориентировочные — будущие удержания Uzum ещё неизвестны.',
     'plan.paid': 'Уже перечислено по графику: {v}',
     'plan.switchHere': 'Новый график',
     'plan.empty': 'Предстоящих выплат нет',
@@ -296,7 +298,8 @@ registerNamespace('payout', {
     'plan.fee': 'Schedule fee {n}%',
     'plan.today': 'Arrives today',
     'plan.inDays': 'In {n} days',
-    'plan.hint': 'Unlocked money waits for the next scheduled date.',
+    'plan.deducted': 'Orders {gross}, service fees held by Uzum −{v}',
+    'plan.hint': 'Unlocked money waits for the next scheduled date. The nearest payout follows the balance: service fees (logistics, ads, storage) are deducted. Later dates are estimates — fees Uzum will hold by then are not known yet.',
     'plan.paid': 'Already transferred on schedule: {v}',
     'plan.switchHere': 'New schedule',
     'plan.empty': 'No upcoming payouts',
@@ -669,6 +672,12 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
           {t('plan.orders')}: <span className="tnum">{f.num(row.orders)}</span>
           {row.feePct > 0 ? <> · {t('plan.fee', { n: f.dec(row.feePct, 1) })}</> : null}
         </p>
+        {/* Uzum balansdan ushlagan xizmat to'lovlari — nega buyurtmalar yig'indisidan kam ekanini tushuntiradi */}
+        {row.deducted > 0 ? (
+          <p className="tnum mt-0.5 text-xs text-muted">
+            {t('plan.deducted', { gross: f.money(row.gross), v: f.money(row.deducted) })}
+          </p>
+        ) : null}
         {/* Shu satrdan boshlab yangi jadval ishlaydi */}
         {switched ? (
           <p className="mt-1">
