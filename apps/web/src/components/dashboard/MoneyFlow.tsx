@@ -4,9 +4,11 @@
  * Sotuvchi har kuni bitta savolga javob izlaydi: shuncha sotdim, qo'limda
  * qancha qoldi? Tushum bitta lentada uchga bo'linadi:
  *
- *   Uzum oldi        = tushum − Uzum to'lovi (komissiya va yetkazish)
- *   Tannarx va soliq = Uzum to'lovi − sof foyda (tovar narxi, qo'shimcha, soliq)
- *   Sizga qoldi      = sof foyda
+ *   Uzum oldi        = komissiya, mijozga yetkazish VA Uzum ushlagan davr
+ *                      to'lovlari (omborga logistika, reklama, saqlash)
+ *   Tannarx va soliq = tovar narxi, qo'shimcha xarajat, soliq (va sotuvchining
+ *                      o'zi kiritgan xarajatlar)
+ *   Sizga qoldi      = sof foyda — hamma xarajatdan keyin
  *
  * Uchala raqam serverdagi tayyor ko'rsatkichlarning ayirmasi — yangi hisob
  * yo'q, shuning uchun ular boshqa kartochkalar bilan doim mos keladi.
@@ -27,7 +29,7 @@ registerNamespace('moneyFlow', {
     kept: 'Tushumning {pct} i sizda qoldi',
     lost: 'Bu davrda xarajat tushumdan oshdi',
     uzum: 'Uzum oldi',
-    uzumHint: 'komissiya va yetkazish',
+    uzumHint: 'komissiya, yetkazish, omborga logistika, reklama',
     cost: 'Tannarx va soliq',
     costHint: 'tovar narxi, qo‘shimcha xarajat, soliq',
     mine: 'Sizga qoldi',
@@ -41,7 +43,7 @@ registerNamespace('moneyFlow', {
     kept: 'У вас осталось {pct} выручки',
     lost: 'За период расходы превысили выручку',
     uzum: 'Взял Uzum',
-    uzumHint: 'комиссия и доставка',
+    uzumHint: 'комиссия, доставка, логистика на склад, реклама',
     cost: 'Себестоимость и налог',
     costHint: 'закупка, доп. расходы, налог',
     mine: 'Осталось вам',
@@ -55,7 +57,7 @@ registerNamespace('moneyFlow', {
     kept: 'You kept {pct} of revenue',
     lost: 'Costs exceeded revenue this period',
     uzum: 'Uzum took',
-    uzumHint: 'commission and delivery',
+    uzumHint: 'commission, delivery, inbound logistics, ads',
     cost: 'Cost and tax',
     costHint: 'purchase, extra costs, tax',
     mine: 'You kept',
@@ -91,9 +93,16 @@ export function MoneyFlow({
   const profit = data.netProfit.value;
   const loss = profit < 0;
 
-  const uzum = revenue - payout;
+  /*
+   * Davr xarajatlarining Uzum ushlagan qismi "Uzum oldi"ga qo'shiladi;
+   * sotuvchining o'z xarajatlari (ish haqi, boshqa) tannarx tomonida qoladi.
+   * Uch bo'lak yig'indisi doim tushumga teng.
+   */
+  const periodOnly = Math.max(0, data.expenses.periodOnly ?? 0);
+  const ownExpenses = Math.min(periodOnly, Math.max(0, data.expenses.other ?? 0));
+  const uzum = Math.min(revenue, revenue - payout + (periodOnly - ownExpenses));
   const mine = Math.max(0, profit);
-  const cost = Math.max(0, payout - mine);
+  const cost = Math.max(0, revenue - uzum - mine);
   const base = uzum + cost + mine;
 
   const segments: Segment[] = (

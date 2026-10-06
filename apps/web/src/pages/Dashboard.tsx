@@ -47,9 +47,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'To‘lovga: {v}',
     'kpi.profit': 'Sof foyda',
     'kpi.profitHint': 'Marja {v}',
-    'kpi.operating': 'Davr xarajatlaridan keyin: {v}',
+    'kpi.operating': 'Sotilgan tovarlar bo‘yicha foyda {item}, undan davr xarajatlari {exp} ayirilgan',
     'kpi.operatingHint':
-      'Sof foyda — sotilgan tovarlar bo‘yicha (komissiya va mijozga yetkazish ayrilgan). Omborga logistika, reklama va saqlash esa davr xarajati sifatida alohida hisoblanadi.',
+      'Sof foyda hamma xarajatdan keyin hisoblanadi: komissiya, yetkazish, tannarx, soliq, omborga logistika, reklama va saqlash.',
     'kpi.orders': 'Buyurtmalar',
     'kpi.ordersHint': '{v} dona sotildi',
     'kpi.avgCheck': 'O‘rtacha chek',
@@ -152,9 +152,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'К выплате: {v}',
     'kpi.profit': 'Чистая прибыль',
     'kpi.profitHint': 'Маржа {v}',
-    'kpi.operating': 'После расходов периода: {v}',
+    'kpi.operating': 'Прибыль по проданным товарам {item}, из неё вычтены расходы периода {exp}',
     'kpi.operatingHint':
-      'Чистая прибыль — по проданным товарам (комиссия и доставка вычтены). Логистика на склад, реклама и хранение считаются расходами периода.',
+      'Чистая прибыль считается после всех расходов: комиссия, доставка, себестоимость, налог, логистика на склад, реклама и хранение.',
     'kpi.orders': 'Заказы',
     'kpi.ordersHint': 'Продано {v} шт.',
     'kpi.avgCheck': 'Средний чек',
@@ -257,9 +257,9 @@ registerNamespace('dashboard', {
     'kpi.revenueHint': 'Payout: {v}',
     'kpi.profit': 'Net profit',
     'kpi.profitHint': 'Margin {v}',
-    'kpi.operating': 'After period expenses: {v}',
+    'kpi.operating': 'Profit on sold goods {item}, less period expenses {exp}',
     'kpi.operatingHint':
-      'Net profit is per sold item (commission and delivery already deducted). Inbound logistics, ads and storage are counted as period expenses.',
+      'Net profit is after every cost: commission, delivery, cost price, tax, inbound logistics, ads and storage.',
     'kpi.orders': 'Orders',
     'kpi.ordersHint': '{v} units sold',
     'kpi.avgCheck': 'Average check',
@@ -586,7 +586,8 @@ export default function Dashboard() {
               (data.expenses.periodOnly ?? 0) > 0 ? (
                 <span title={t('kpi.operatingHint')}>
                   {t('kpi.operating', {
-                    v: f.money(data.netProfit.value - (data.expenses.periodOnly ?? 0), data.currency),
+                    item: f.money(data.itemProfit ?? data.netProfit.value, data.currency),
+                    exp: f.money(data.expenses.periodOnly ?? 0, data.currency),
                   })}
                 </span>
               ) : undefined

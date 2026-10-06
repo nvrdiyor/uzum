@@ -21,6 +21,7 @@ import {
   safeDiv,
   toISODate,
   type DashboardResponse,
+  type ExpenseCategory,
   type Insight,
   type MetricValue,
   type Period,
@@ -439,6 +440,12 @@ function buildInsights(inp: InsightInput): Insight[] {
 
 // ─────────────────────────── GET /analytics/dashboard ───────────────────────────
 
+/** Buyurtmaga bog'lanmaydigan, davrga tegishli xarajat kategoriyalari */
+const PERIOD_CATEGORIES = ['logistics', 'marketing', 'storage', 'other', 'salary'] as const;
+
+const periodOnlyOf = (e: Record<ExpenseCategory, number>): number =>
+  PERIOD_CATEGORIES.reduce((sum, key) => sum + (e[key] ?? 0), 0);
+
 router.get(
   '/dashboard',
   ah(async (req, res) => {
@@ -449,7 +456,7 @@ router.get(
     const prevFrom = parseISODate(range.previous.from);
     const prevToExclusive = addDays(parseISODate(range.previous.to), 1);
 
-    const [cur, prev, catalog, stocks, avgDaily, lastSale, series, exp, taxRate, storeTitles] = await Promise.all([
+    const [cur, prev, catalog, stocks, avgDaily, lastSale, rawSeries, exp, prevExp, periodRows, taxRate, storeTitles] = await Promise.all([
       collectTotals(storeIds, range.from, range.toExclusive),
       collectTotals(storeIds, prevFrom, prevToExclusive),
       getSkuCatalog(storeIds, true),
@@ -458,6 +465,18 @@ router.get(
       getLastSaleDates(storeIds),
       getDailySeries(storeIds, range.period),
       getExpenses(company.id, range.from, range.toExclusive, range.storeId),
+      getExpenses(company.id, prevFrom, prevToExclusive, range.storeId),
+      // Davr xarajatlari kunma-kun — grafikdagi foyda chizig'i ham ularni ayirsin
+      prisma.expense.findMany({
+        where: {
+          companyId: company.id,
+          date: { gte: range.from, lt: range.toExclusive },
+          source: { not: 'uzum-payout' },
+          category: { in: [...PERIOD_CATEGORIES] },
+          ...(range.storeId ? { storeId: range.storeId } : {}),
+        },
+        select: { date: true, amount: true },
+      }),
       getTaxRate(company.id),
       getStoreTitles(company.id),
     ]);
@@ -486,11 +505,32 @@ router.get(
       }),
     ]);
 
+    /*
+     * SOF FOYDA — hamma xarajatdan keyin.
+     *
+     * Buyurtma pozitsiyasidagi foyda (payout − tannarx − soliq) davr
+     * xarajatlarini bilmaydi: omborga logistika, reklama va saqlashni Uzum
+     * alohida ushlaydi, ularni bitta buyurtmaga bog'lab bo'lmaydi. Ilgari
+     * panel aynan shu "tovarlar bo'yicha" raqamni Sof foyda deb ko'rsatardi:
+     * sotuvchi 1 481 078 ko'rardi, hisobiga esa 372 ming kam tushardi.
+     * Endi sof foyda, marja va ROI davr xarajatlaridan keyin hisoblanadi.
+     */
+    const curPeriodOnly = periodOnlyOf(exp);
+    const curNet = cur.netProfit - curPeriodOnly;
+    const prevNet = prev.netProfit - periodOnlyOf(prevExp);
+
+    const expenseByDay = new Map<string, number>();
+    for (const r of periodRows) {
+      const key = toISODate(r.date);
+      expenseByDay.set(key, (expenseByDay.get(key) ?? 0) + r.amount);
+    }
+    const series = rawSeries.map((p) => ({ ...p, profit: round(p.profit - (expenseByDay.get(p.date) ?? 0)) }));
+
     // Ko'rsatkichlar
-    const curMargin = pct(cur.netProfit, cur.revenue);
-    const prevMargin = pct(prev.netProfit, prev.revenue);
-    const curRoi = pct(cur.netProfit, cur.cogs);
-    const prevRoi = pct(prev.netProfit, prev.cogs);
+    const curMargin = pct(curNet, cur.revenue);
+    const prevMargin = pct(prevNet, prev.revenue);
+    const curRoi = pct(curNet, cur.cogs);
+    const prevRoi = pct(prevNet, prev.cogs);
     const curAvgCheck = safeDiv(cur.revenue, cur.ordersActive);
     const prevAvgCheck = safeDiv(prev.revenue, prev.ordersActive);
     // Sotib olish darajasi: yetkazilgan / (yetkazilgan + qaytarilgan + bekor qilingan)
@@ -516,8 +556,8 @@ router.get(
       // Ish haqi va boshqa xarajatlar bitta ustunda
       other: round(exp.other + exp.salary),
       total: 0,
-      // Sof foydaga kirmagan davr xarajatlari (Expense jadvalidan)
-      periodOnly: round(exp.logistics + exp.marketing + exp.storage + exp.other + exp.salary),
+      // Davr xarajatlari (Expense jadvalidan) — sof foydadan ayrilgan
+      periodOnly: round(curPeriodOnly),
     };
     expenses.total =
       expenses.commission + expenses.logistics + expenses.marketing + expenses.storage + expenses.tax + expenses.other;
@@ -595,7 +635,8 @@ router.get(
       currency: company.currency,
       revenue: revenueMetric,
       payout: metric(cur.payout, prev.payout),
-      netProfit: metric(cur.netProfit, prev.netProfit),
+      netProfit: metric(curNet, prevNet),
+      itemProfit: round(cur.netProfit),
       margin: metric(curMargin, prevMargin, 2),
       roi: metric(curRoi, prevRoi, 2),
       ordersCount: metric(cur.ordersTotal, prev.ordersTotal),

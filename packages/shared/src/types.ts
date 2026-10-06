@@ -187,7 +187,18 @@ export interface DashboardResponse {
   currency: string;
   revenue: MetricValue;
   payout: MetricValue;
+  /**
+   * Sof foyda — BARCHA xarajatdan keyin: komissiya, mijozga yetkazish, tannarx,
+   * soliq VA davr xarajatlari (omborga logistika, reklama, saqlash, sotuvchining
+   * o'z xarajatlari). Marja va ROI ham shundan hisoblanadi.
+   */
   netProfit: MetricValue;
+  /**
+   * Sotilgan tovarlar bo'yicha foyda — davr xarajatlaridan OLDIN
+   * (`netProfit + expenses.periodOnly`). Buyurtma va mahsulot darajasidagi
+   * foyda shu ma'noda: davr xarajatini alohida buyurtmaga bog'lab bo'lmaydi.
+   */
+  itemProfit: number;
   margin: MetricValue;
   roi: MetricValue;
   ordersCount: MetricValue;
@@ -215,9 +226,9 @@ export interface DashboardResponse {
     other: number;
     total: number;
     /**
-     * Sof foydaga KIRMAGAN davr xarajatlari (omborga logistika, reklama, saqlash, boshqa).
-     * Komissiya va mijozga yetkazish Uzumning "yechib olish uchun" summasida
-     * allaqachon ayrilgani uchun bu yerga kirmaydi.
+     * Davr xarajatlari (omborga logistika, reklama, saqlash, boshqa) —
+     * `itemProfit` dan ayirilib `netProfit` chiqadi. Komissiya va mijozga
+     * yetkazish buyurtmaning o'zida ayrilgani uchun bu yerga kirmaydi.
      */
     periodOnly: number;
   };
