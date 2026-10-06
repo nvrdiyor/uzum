@@ -104,7 +104,7 @@ router.get(
       select: {
         uzumOrderId: true,
         deliveredAt: true,
-        items: { select: { title: true, revenue: true, commission: true, withdrawn: true, status: true } },
+        items: { select: { title: true, revenue: true, commission: true, payout: true, withdrawn: true, status: true } },
       },
       orderBy: { deliveredAt: 'desc' },
     });
@@ -114,6 +114,9 @@ router.get(
     const holdMs = holdDays * 86_400_000;
     /** Hali xaridorga yetmagan buyurtmalar: balansda bor, lekin 10 kunlik soat boshlanmagan */
     let inTransit = 0;
+    /** O'shalardan qo'lga tegadigan summa — yetkazish haqi ham ayirilgan (kabinetdagi "Yechib olish uchun") */
+    let transitPayout = 0;
+    let transitOrders = 0;
 
     for (const o of orders) {
       const live = o.items.filter((i) => EFFECTIVE_STATUSES.includes(i.status));
@@ -127,6 +130,8 @@ router.get(
        */
       if (!o.deliveredAt) {
         inTransit += Math.max(0, rest);
+        transitPayout += Math.max(0, live.reduce((sum, i) => sum + i.payout - i.withdrawn, 0));
+        transitOrders += 1;
         continue;
       }
 
@@ -251,9 +256,22 @@ router.get(
       planDates.push(d);
     }
 
+    /*
+     * Yo'ldagi buyurtmalar qabul qilinmaguncha qaysi to'lovga tushishi
+     * noma'lum. Lekin sotuvchi ularni sotilgan deb ko'radi, jadvalda umuman
+     * bo'lmasa "nega kam" degan savol tug'iladi. Shuning uchun ular qabul
+     * muddati hali o'tmagan eng yaqin sanada SHARTLI ko'rsatiladi —
+     * asosiy summaga qo'shilmaydi, chunki bekor bo'lishi ham mumkin.
+     */
+    const todayKey = toISODate(today);
+    let transitShown = false;
+
     let paidSoFar = 0;
     const planDays: PayoutPlanDay[] = planDates.map((d) => {
       const date = toISODate(d);
+      const acceptedUntil = toISODate(addDays(d, -(holdDays + 1)));
+      const takesTransit = !transitShown && transitOrders > 0 && acceptedUntil >= todayKey;
+      if (takesTransit) transitShown = true;
       const mine = open.filter((r) => r.payoutAt === date);
       const gross = round(mine.reduce((sum, r) => sum + r.amount, 0));
       const lockedAfter = open.filter((r) => r.unlockAt >= date).reduce((sum, r) => sum + r.amount, 0);
@@ -278,7 +296,9 @@ router.get(
         // Jadval haqi ayirilgandan keyin qo'lga tegadigan summa
         net: round(amount * (1 - feePct / 100)),
         // Shu sanagacha qabul qilingan buyurtmalar kiradi (kabinetdagi "… gacha yig'ilgan pul")
-        acceptedUntil: toISODate(addDays(d, -(holdDays + 1))),
+        acceptedUntil,
+        transitOrders: takesTransit ? transitOrders : 0,
+        transitAmount: takesTransit ? round(transitPayout) : 0,
         // Qolgan kun SERVERDA sanaladi (brauzerda vaqt mintaqasi adashtiradi)
         daysLeft: Math.max(0, Math.round((d.getTime() - today.getTime()) / 86_400_000)),
       };

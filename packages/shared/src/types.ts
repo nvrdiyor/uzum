@@ -1268,6 +1268,18 @@ export interface PayoutPlanDay {
   /** Jadval haqi ayirilgandan keyin qo'lga tegadigan summa */
   net: number;
   /**
+   * Yo'ldagi (hali qabul qilinmagan) buyurtmalar: `acceptedUntil` gacha qabul
+   * qilinsa shu to'lovga qo'shiladi. Faqat qabul muddati hali o'tmagan eng
+   * yaqin sanada to'ldiriladi, qolganlarida 0. `amount` ga KIRMAYDI — shartli pul.
+   */
+  transitOrders: number;
+  /**
+   * O'sha buyurtmalardan kutilayotgan summa: sotuv − komissiya − yetkazish haqi
+   * (kabinetdagi "Yechib olish uchun"). Yetkazish haqini Uzum qabul kuni
+   * ushlaydi, shuning uchun u hali balansda ayirilmagan — bu yerda ayiriladi.
+   */
+  transitAmount: number;
+  /**
    * Shu sanagacha (shu kun ham) QABUL QILINGAN buyurtmalar to'lovga kiradi —
    * kabinetdagi "… gacha yig'ilgan jami pul". To'lov 00:00 da o'tadi, shuning
    * uchun bu to'lov kunidan (kutish kunlari + 1) kun oldin.

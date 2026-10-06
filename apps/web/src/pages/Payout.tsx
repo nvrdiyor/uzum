@@ -120,6 +120,8 @@ registerNamespace('payout', {
     'plan.hint': 'To‘lov = shu kungacha ochilgan buyurtmalar (sotuv − komissiya) minus Uzum ushlagan xizmat to‘lovlari. Summalar taxminiy: Uzum to‘lov kunigacha ushlaydigan yangi to‘lovlar va yo‘ldagi buyurtmalar hali hisobga kirmagan.',
     'plan.until': '{date} gacha qabul qilingan buyurtmalar',
     'plan.none': 'Hozircha bu sanaga ochiladigan buyurtma yo‘q',
+    'plan.transit': 'Yo‘lda yana {n} ta buyurtma (≈{v}): {date} gacha qabul qilinsa shu to‘lovga qo‘shiladi',
+    'plan.transitPlus': '+ ≈{v} yo‘ldagilardan',
     'plan.estimate': 'Taxminan',
     'hist.title': 'To‘lovlar tarixi',
     'hist.subtitle': 'Uzum hisobingizga o‘tkazgan pul',
@@ -226,6 +228,8 @@ registerNamespace('payout', {
     'plan.hint': 'Выплата = открытые к этой дате заказы (продажа − комиссия) минус удержанные Uzum платежи за услуги. Суммы ориентировочные: новые удержания до дня выплаты и заказы в пути ещё не учтены.',
     'plan.until': 'Заказы, полученные до {date}',
     'plan.none': 'Пока нет заказов, которые откроются к этой дате',
+    'plan.transit': 'В пути ещё {n} заказ(ов) (≈{v}): если их получат до {date}, они войдут в эту выплату',
+    'plan.transitPlus': '+ ≈{v} из заказов в пути',
     'plan.estimate': 'Примерно',
     'hist.title': 'История выплат',
     'hist.subtitle': 'Деньги, которые Uzum перевёл на ваш счёт',
@@ -332,6 +336,8 @@ registerNamespace('payout', {
     'plan.hint': 'Payout = orders unlocked by that date (sale − commission) minus service fees held by Uzum. Amounts are estimates: fees charged before the payout day and orders in transit are not included yet.',
     'plan.until': 'Orders accepted through {date}',
     'plan.none': 'No orders unlock for this date yet',
+    'plan.transit': '{n} more order(s) in transit (≈{v}): they join this payout if accepted by {date}',
+    'plan.transitPlus': '+ ≈{v} from orders in transit',
     'plan.estimate': 'Approx.',
     'hist.title': 'Payout history',
     'hist.subtitle': 'Money Uzum has transferred to your account',
@@ -785,6 +791,16 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
         )}
         {/* Kabinetdagi "… gacha yig'ilgan jami pul" — qaysi buyurtmalar kirishini aytadi */}
         <p className="tnum mt-0.5 text-xs text-muted">{t('plan.until', { date: f.date(row.acceptedUntil) })}</p>
+        {/* Yo'ldagilar: sotilgan, lekin xaridor hali olmagan — shartli, asosiy summaga kirmaydi */}
+        {row.transitOrders > 0 ? (
+          <p className="tnum mt-1 text-xs text-warn-ink">
+            {t('plan.transit', {
+              n: f.num(row.transitOrders),
+              v: f.money(row.transitAmount),
+              date: f.date(row.acceptedUntil),
+            })}
+          </p>
+        ) : null}
         {/* Uzum balansdan ushlagan xizmat to'lovlari — nega buyurtmalar yig'indisidan kam ekanini tushuntiradi */}
         {row.deducted > 0 ? (
           <p className="tnum mt-0.5 text-xs text-muted">
@@ -811,6 +827,11 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
         ) : (
           <p className="mt-0.5 eyebrow">{t('plan.estimate')}</p>
         )}
+        {row.transitAmount > 0 ? (
+          <p className="tnum mt-1 text-xs font-semibold text-warn-ink">
+            {t('plan.transitPlus', { v: f.money(Math.round(row.transitAmount * (1 - row.feePct / 100))) })}
+          </p>
+        ) : null}
       </div>
     </li>
   );
