@@ -95,6 +95,7 @@ registerNamespace('payout', {
     'inst.maybe': 'To‘liq aytib bo‘lmaydi',
     'inst.maybeHint': 'Bizga ko‘rinadigan shartlar bajarilgan, lekin ikkitasini faqat Uzum biladi',
     'inst.fee': 'Xizmat haqi {n}%',
+    'inst.feeFree': 'Xizmat haqi 0% · {date} gacha',
     'chk.no_debt': 'Marketpleys oldida qarzdorlik yo‘q',
     'chk.not_blocked': 'Hisob bloklanmagan',
     'chk.age_60d': 'Platformada 2 oydan ortiq',
@@ -203,6 +204,7 @@ registerNamespace('payout', {
     'inst.maybe': 'Точно сказать нельзя',
     'inst.maybeHint': 'Видимые нам условия выполнены, но два известны только Uzum',
     'inst.fee': 'Комиссия {n}%',
+    'inst.feeFree': 'Комиссия 0% · до {date}',
     'chk.no_debt': 'Нет задолженности перед маркетплейсом',
     'chk.not_blocked': 'Аккаунт не заблокирован',
     'chk.age_60d': 'На платформе более 2 месяцев',
@@ -311,6 +313,7 @@ registerNamespace('payout', {
     'inst.maybe': 'Cannot say for sure',
     'inst.maybeHint': 'What we can see is fine, but two conditions are known only to Uzum',
     'inst.fee': 'Fee {n}%',
+    'inst.feeFree': 'Fee 0% · until {date}',
     'chk.no_debt': 'No debt to the marketplace',
     'chk.not_blocked': 'Account not blocked',
     'chk.age_60d': 'More than 2 months on the platform',
@@ -503,7 +506,12 @@ export default function Payout() {
         <PayoutHero totals={data?.totals} hold={hold} loading={isLoading} />
 
         {data && data.instant.checks.length > 0 ? (
-          <InstantCard instant={data.instant} hold={hold} fee={data.rules.earlyFeePct} />
+          <InstantCard
+            instant={data.instant}
+            hold={hold}
+            fee={data.rules.earlyFeePct}
+            freeUntil={data.rules.earlyFeeFreeUntil ?? null}
+          />
         ) : null}
 
         {data ? (
@@ -1028,10 +1036,13 @@ function InstantCard({
   instant,
   hold,
   fee,
+  freeUntil,
 }: {
   instant: PayoutCalendarResponse['instant'];
   hold: number;
   fee: number;
+  /** Erta yechish shu sanagacha bepul (ISO) — Uzum aksiyasi */
+  freeUntil: string | null;
 }) {
   const t = useT('payout');
   const f = useFormat();
@@ -1048,7 +1059,11 @@ function InstantCard({
         subtitle={t('inst.subtitle', { n: hold })}
         actions={
           <div className="flex items-center gap-2">
-            <Badge tone="muted">{t('inst.fee', { n: f.dec(fee, 1) })}</Badge>
+            {freeUntil ? (
+              <Badge tone="brand">{t('inst.feeFree', { date: f.date(freeUntil) })}</Badge>
+            ) : (
+              <Badge tone="muted">{t('inst.fee', { n: f.dec(fee, 1) })}</Badge>
+            )}
             <Badge tone={tone} dot>
               {label}
             </Badge>

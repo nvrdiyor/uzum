@@ -1323,8 +1323,10 @@ export interface PayoutCalendarResponse {
   /** Qoidalar — sozlamalardan olinadi, Uzum shartlari o'zgarsa moslanadi */
   rules: {
     holdDays: number;
-    /** Erta (tezkor) yechib olish uchun xizmat haqi, % */
+    /** Bugun amal qiladigan erta (tezkor) yechib olish haqi, % — bepul davrda 0 */
     earlyFeePct: number;
+    /** Erta yechish shu sanagacha bepul (ISO), aks holda null */
+    earlyFeeFreeUntil: string | null;
     /** BUGUN kuchda turgan to'lov jadvali */
     mode: PayoutMode;
     /** Shu jadval uchun xizmat haqi, % */

@@ -1295,6 +1295,72 @@ export async function relinkOrphanItems(storeId: string): Promise<number> {
 export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'logistics', 'other'];
 
 /**
+ * Buyurtma logistikasini Uzum HAQIQATDA ushlagan summaga keltiradi.
+ *
+ * Moliyaviy pozitsiyadagi `logisticDeliveryFee` — nominal tarif: aksiya
+ * paytida ham 5 250 bo'lib keladi, "Yechib olish uchun" esa shu tarif
+ * ayirilgan holda (50 800). Haqiqiy ushlanma xarajatlar ro'yxatida, buyurtma
+ * raqami bilan: 2026-yil oktabrida u 0 edi. Nominal qiymatga tayanilsa har
+ * buyurtmada foyda 5 250 so'mga kam, "Uzum oldi" esa ko'p chiqardi.
+ *
+ * Faqat xarajat satri KELGAN buyurtmalar tuzatiladi (ya'ni qabul qilingan);
+ * yo'ldagilarida nominal qiymat qoladi va qabul kuni o'zi to'g'rilanadi.
+ * Har sinxronda buyurtmalar qayta yozilgach chaqiriladi — o'zgarish bo'lmasa
+ * hech narsa yozmaydi. Aksiya tugasa, satr yana summa bilan keladi va
+ * hisob o'zi qaytadi: hech narsa qo'lda sozlanmaydi.
+ */
+export async function applyActualLogistics(storeId: string, expenses: UzumExpense[]): Promise<number> {
+  const actual = new Map<string, number>();
+  for (const e of expenses) {
+    if (!e.deliveryOrderId) continue;
+    actual.set(e.deliveryOrderId, (actual.get(e.deliveryOrderId) ?? 0) + num(e.amount));
+  }
+  if (actual.size === 0) return 0;
+
+  const orders = await prisma.order.findMany({
+    where: { storeId, uzumOrderId: { in: [...actual.keys()] } },
+    select: {
+      id: true,
+      uzumOrderId: true,
+      items: { select: { id: true, qty: true, logistics: true, payout: true, netProfit: true, status: true } },
+    },
+  });
+
+  let changed = 0;
+  for (const order of orders) {
+    const live = order.items.filter((i) => i.status !== 'canceled' && i.status !== 'returned');
+    if (live.length === 0 || !order.uzumOrderId) continue;
+
+    const target = Math.max(0, round(actual.get(order.uzumOrderId) ?? 0));
+    const current = round(live.reduce((sum, i) => sum + i.logistics, 0));
+    if (Math.abs(current - target) < 1) continue;
+
+    // Ulush — eski logistika bo'yicha, u 0 bo'lsa dona soni bo'yicha; qoldiq oxirgi pozitsiyaga
+    const qtySum = live.reduce((sum, i) => sum + i.qty, 0) || live.length;
+    let left = target;
+    const updates = live.map((it, index) => {
+      const share =
+        index === live.length - 1
+          ? left
+          : round(current > 0 ? (target * it.logistics) / current : (target * it.qty) / qtySum);
+      left = round(left - share);
+      // payout = tushum − komissiya − logistika: logistika kamaysa shuncha ko'payadi
+      const delta = round(it.logistics - share);
+      return prisma.orderItem.update({
+        where: { id: it.id },
+        data: { logistics: share, payout: round(it.payout + delta), netProfit: round(it.netProfit + delta) },
+      });
+    });
+    await prisma.$transaction([
+      ...updates,
+      prisma.order.update({ where: { id: order.id }, data: { logistics: target } }),
+    ]);
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
  * Kunlik xarajatlar. Tabiiy kalit: kompaniya + do'kon + kun + kategoriya.
  * Bir kunda bir kategoriya bo'yicha bir nechta yozuv kelsa — summalar qo'shiladi.
  * Qo'lda kiritilgan xarajatlar (`source: 'manual'`) alohida id'ga ega, ustidan yozilmaydi.

@@ -1109,7 +1109,16 @@ export class LiveUzumClient implements UzumClient {
         unitPrice !== null
           ? unitPrice * Math.max(1, Math.round(asNumber(r.amount)))
           : asMoney(firstOf(r, KEYS.expenseAmount));
-      if (raw$ === 0) continue;
+      /*
+       * Yetkazish haqi qaysi buyurtmaniki. Faqat `logistics-volume` (mijozga
+       * yetkazish): `return-logistics-volume` qaytarish yo'li — u boshqa hisob.
+       */
+      const deliveryOrderId = /^logistics-volume$/i.test(code)
+        ? orderRef.replace(/\D/g, '') || (/(?:buyurtma|заказ|order)\s*(?:№|#|no\.?)?\s*(\d{6,})/i.exec(name)?.[1] ?? '')
+        : '';
+
+      // Nol summali satr tashlanadi — yetkazish haqidan tashqari: u "ushlanmadi" degan fakt
+      if (raw$ === 0 && !deliveryOrderId) continue;
 
       // Qaytarilgan to'lov — xarajatni kamaytiradi
       const amount = kind === 'INCOME' ? -Math.abs(raw$) : Math.abs(raw$);
@@ -1120,6 +1129,7 @@ export class LiveUzumClient implements UzumClient {
         amount,
         note: name || source || undefined,
         inPayout,
+        ...(deliveryOrderId ? { deliveryOrderId } : {}),
       });
     }
 

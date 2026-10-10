@@ -36,6 +36,7 @@ import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
 import {
+  applyActualLogistics,
   upsertExpenses,
   upsertLosses,
   upsertOrders,
@@ -686,6 +687,8 @@ async function stepFinance(run: SyncRun, setDetail: (t: string) => void): Promis
     ]);
     const expRes = await upsertExpenses(run.companyId, store.id, expenses);
     const feeRes = await upsertStorageFees(store.id, fees);
+    // Buyurtma logistikasi — nominal tarif emas, Uzum haqiqatda ushlagani (aksiyada 0)
+    await applyActualLogistics(store.id, expenses);
     // Buyurtmalar shu paytgacha yozilgan — yechib olingan summa oshgan bo'lsa to'lovlar tarixiga tushadi
     await recordPayout(run.companyId, store.id, earlyFeeFrom(expenses));
     run.totals.expenses += countOf(expRes);

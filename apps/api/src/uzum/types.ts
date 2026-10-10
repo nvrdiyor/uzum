@@ -264,6 +264,14 @@ export interface UzumExpense {
    * balansni topish uchun kerak (Uzum uni balansdan ushlab qoladi).
    */
   inPayout?: boolean;
+  /**
+   * Mijozga YETKAZISH haqi (`logistics-volume`) qaysi buyurtma uchun
+   * ushlangani — Uzum buyurtma raqami. Buyurtma pozitsiyasidagi
+   * `logisticDeliveryFee` nominal tarif, haqiqiy ushlanma esa shu satr:
+   * aksiya paytida Uzum uni 0 qilib yuboradi (2026-yil oktabr), pozitsiyada
+   * esa baribir 5 250 turadi. Nol summali satr ham shu sabab saqlanadi.
+   */
+  deliveryOrderId?: string;
 }
 
 // ─────────────────────────── Klient shartnomasi ───────────────────────────

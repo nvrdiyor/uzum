@@ -266,6 +266,24 @@ router.get(
     const todayKey = toISODate(today);
     let transitShown = false;
 
+    /*
+     * Yo'ldagi buyurtmadan qancha kelishi yetkazish haqiga bog'liq, uni esa
+     * Uzum qabul kuni ushlaydi. Oxirgi qabul qilingan buyurtmalarda u 0
+     * bo'lgan bo'lsa (aksiya), yo'ldagilar uchun ham ayirilmaydi; birinchi
+     * pullik yetkazish kelishi bilan taxmin o'zi nominal tarifga qaytadi.
+     */
+    const lastDelivery = await prisma.expense.findFirst({
+      where: {
+        storeId: { in: storeIds },
+        source: 'uzum-payout',
+        category: 'logistics',
+        date: { gte: addDays(today, -14) },
+      },
+      orderBy: { date: 'desc' },
+      select: { amount: true },
+    });
+    const deliveryFreeNow = lastDelivery !== null && Math.abs(lastDelivery.amount) < 1;
+
     let paidSoFar = 0;
     const planDays: PayoutPlanDay[] = planDates.map((d) => {
       const date = toISODate(d);
@@ -298,7 +316,7 @@ router.get(
         // Shu sanagacha qabul qilingan buyurtmalar kiradi (kabinetdagi "… gacha yig'ilgan pul")
         acceptedUntil,
         transitOrders: takesTransit ? transitOrders : 0,
-        transitAmount: takesTransit ? round(transitPayout) : 0,
+        transitAmount: takesTransit ? round(deliveryFreeNow ? inTransit : transitPayout) : 0,
         // Qolgan kun SERVERDA sanaladi (brauzerda vaqt mintaqasi adashtiradi)
         daysLeft: Math.max(0, Math.round((d.getTime() - today.getTime()) / 86_400_000)),
       };
@@ -425,6 +443,7 @@ router.get(
       rules: {
         holdDays,
         earlyFeePct,
+        earlyFeeFreeUntil: rules.earlyFeeFreeUntil,
         mode,
         scheduleFeePct,
         payoutDays,
@@ -538,6 +557,7 @@ router.patch(
     res.json({
       holdDays: rules.holdDays,
       earlyFeePct: rules.earlyFeePct,
+      earlyFeeFreeUntil: rules.earlyFeeFreeUntil,
       mode: rules.mode,
       scheduleFeePct: rules.scheduleFeePct,
       payoutDays: rules.payoutDays,

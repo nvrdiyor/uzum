@@ -52,6 +52,12 @@ export const PAYOUT_KEYS = {
   mode: 'payout:mode',
   holdDays: 'payout:holdDays',
   earlyFee: 'payout:earlyFeePct',
+  /**
+   * Shu sanagacha (shu kun ham) erta yechish BEPUL (ISO). Uzum vaqti-vaqti
+   * bilan haqni olib tashlaydi (2026-yil oktabr oxirigacha 0%); sana o'tgach
+   * odatdagi foiz o'zi qaytadi — hech kim qayta sozlashi shart emas.
+   */
+  earlyFreeUntil: 'payout:earlyFeeFreeUntil',
   /** Kelajakda kuchga kiradigan jadval */
   modeNext: 'payout:modeNext',
   /** U kuchga kiradigan sana (ISO) */
@@ -132,7 +138,10 @@ export interface PayoutRules {
   nextMode: PayoutMode | null;
   nextFrom: string | null;
   holdDays: number;
+  /** BUGUN amal qiladigan erta yechish haqi — bepul davrda 0 */
   earlyFeePct: number;
+  /** Erta yechish shu sanagacha bepul (ISO); bepul davr yo'q yoki o'tgan bo'lsa null */
+  earlyFeeFreeUntil: string | null;
   scheduleFeePct: number;
   payoutDays: number[];
   /** Sotuvchi jadvalni tasdiqlaganmi yoki standart olinganmi */
@@ -177,12 +186,16 @@ export async function getPayoutRules(companyId: string, now = new Date()): Promi
   const mode = modeOn(today, schedule);
   const pending = schedule.nextFrom && schedule.nextFrom.getTime() > today.getTime();
 
+  const freeUntil = asISODate(map.get(PAYOUT_KEYS.earlyFreeUntil));
+  const earlyFree = Boolean(freeUntil && today.getTime() <= freeUntil.getTime());
+
   return {
     mode,
     nextMode: pending ? schedule.nextMode : null,
     nextFrom: pending && schedule.nextFrom ? toISODate(schedule.nextFrom) : null,
     holdDays: num(PAYOUT_KEYS.holdDays, DEFAULT_HOLD_DAYS),
-    earlyFeePct: num(PAYOUT_KEYS.earlyFee, DEFAULT_EARLY_FEE_PCT),
+    earlyFeePct: earlyFree ? 0 : num(PAYOUT_KEYS.earlyFee, DEFAULT_EARLY_FEE_PCT),
+    earlyFeeFreeUntil: earlyFree && freeUntil ? toISODate(freeUntil) : null,
     scheduleFeePct: SCHEDULE_FEE[mode],
     payoutDays: SCHEDULE_DAYS[mode],
     confirmed: Boolean(map.get(PAYOUT_KEYS.confirmedAt)),
