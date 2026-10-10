@@ -20,8 +20,34 @@ import { businessToday, getPayoutRules, nextPayoutDate } from './payout-schedule
 const SCHEDULED_GRACE_DAYS = 2;
 const HISTORY_LIMIT = 60;
 
-/** Do'kon bo'yicha yechib olingan jami summa oshgan bo'lsa — yangi to'lovni yozadi */
-export async function recordPayout(companyId: string, storeId: string, now = new Date()): Promise<void> {
+/** Uzum xarajatlar ro'yxatidagi erta yechish haqi ("Shoshilinch yechib olish") */
+const EARLY_FEE_RE = /shoshilinch|досрочн|срочн\S*\s+вывод|early\s+withdraw/i;
+
+/**
+ * Oxirgi ikki kunda Uzum HAQIQATDA ushlagan erta yechish haqi.
+ *
+ * Haq foizdan TAXMIN qilinmaydi: Uzum uni o'zgartirib turadi (2026-yil
+ * oktabrida erta yechish 0% edi), taxmin esa tarixga bo'lmagan to'lovni
+ * yozardi — 487 645 yechilganda "so'ralgan 500 149, haq 12 504" chiqqan.
+ * Faqat xarajatlar ro'yxatida kelgan to'lov hisobga olinadi; bo'lmasa haq 0.
+ */
+export function earlyFeeFrom(
+  expenses: ReadonlyArray<{ date: string; amount: number; note?: string }>,
+  now = new Date(),
+): number {
+  const since = toISODate(addDays(businessToday(now), -1));
+  return round(
+    expenses
+      .filter((e) => e.amount > 0 && e.date >= since && EARLY_FEE_RE.test(e.note ?? ''))
+      .reduce((sum, e) => sum + e.amount, 0),
+  );
+}
+
+/**
+ * Do'kon bo'yicha yechib olingan jami summa oshgan bo'lsa — yangi to'lovni yozadi.
+ * `earlyFee` — shu sinxronda Uzumdan kelgan erta yechish haqi (`earlyFeeFrom`).
+ */
+export async function recordPayout(companyId: string, storeId: string, earlyFee = 0, now = new Date()): Promise<void> {
   const [items, recorded, last] = await Promise.all([
     prisma.orderItem.aggregate({
       _sum: { withdrawn: true },
@@ -69,10 +95,15 @@ export async function recordPayout(companyId: string, storeId: string, now = new
 
   /*
    * Erta yechish: pozitsiyalarga haqdan KEYINGI summa yoziladi (136 000
-   * so'ralganda 132 600), haq esa xizmat to'lovi bo'lib keladi.
+   * so'ralganda 132 600), haq esa xizmat to'lovi bo'lib keladi. Shu haq
+   * oxirgi kunlardagi boshqa erta yechishga allaqachon yozilgan bo'lsa,
+   * ikkinchi marta yozilmaydi.
    */
-  const pct = Math.min(99, Math.max(0, rules.earlyFeePct));
-  const fee = round(delta / (1 - pct / 100) - delta);
+  const used = await prisma.payoutRecord.aggregate({
+    _sum: { fee: true },
+    where: { storeId, kind: 'early', date: { gte: addDays(today, -1) } },
+  });
+  const fee = Math.max(0, round(earlyFee - (used._sum.fee ?? 0)));
   await prisma.payoutRecord.create({ data: { storeId, date: today, amount: delta, fee, kind: 'early' } });
 }
 
