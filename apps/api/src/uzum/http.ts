@@ -39,6 +39,8 @@ export type UzumErrorCode =
   | 'forbidden'
   | 'not_found'
   | 'rate_limited'
+  /** Uzum tarmog'i (API'gacha yetmasdan) so'rovni rad etdi — kalitga aloqasi yo'q */
+  | 'blocked'
   | 'server_error'
   | 'timeout'
   | 'network'
@@ -177,6 +179,25 @@ export class UzumApiError extends Error {
   }
 }
 
+/**
+ * Xato kalitning aybi emasmi — ya'ni o'zi o'tib ketadigan nosozlikmi.
+ *
+ * Bunday xatoda kabinet "yaroqsiz" deb belgilanmasligi kerak: aks holda
+ * rejali sinxron butunlay to'xtaydi va Uzum tiklangandan keyin ham sotuvchi
+ * kalitni qayta kiritmaguncha hech narsa yangilanmaydi (2026-10-11 da aynan
+ * shunday bo'lgan: Uzum serverimiz manzilini rad eta boshladi, tizim esa
+ * buni "kalit noto'g'ri" deb qabul qildi).
+ */
+export function isTemporaryUzumError(err: UzumApiError): boolean {
+  return (
+    err.code === 'blocked' ||
+    err.code === 'network' ||
+    err.code === 'timeout' ||
+    err.code === 'server_error' ||
+    err.code === 'rate_limited'
+  );
+}
+
 /** Ixtiyoriy xatoni `UzumApiError` ga keltiradi */
 export function toUzumApiError(err: unknown): UzumApiError {
   if (err instanceof UzumApiError) return err;
@@ -201,6 +222,8 @@ export function uzumErrorMessage(err: UzumApiError): string {
       return 'Uzum API bu manzilni topmadi (endpoint o‘zgargan bo‘lishi mumkin)';
     case 'rate_limited':
       return 'Uzum API so‘rovlar chegarasiga yetdi — birozdan so‘ng qayta urinib ko‘ring';
+    case 'blocked':
+      return 'Uzum tarmog‘i serverimiz so‘rovlarini rad etyapti — bu kalitingizga bog‘liq emas';
     case 'timeout':
       return 'Uzum API javob bermadi (vaqt tugadi) — keyinroq urinib ko‘ring';
     case 'network':
@@ -399,7 +422,13 @@ export class UzumHttp {
         lastError = toUzumApiError(err);
 
         // Token formati: avval prefikssiz, 401/403 bo'lsa bir marta `Bearer` bilan sinaymiz
-        if ((lastError.status === 401 || lastError.status === 403) && !this.useBearer && !this.bearerTried) {
+        // Tarmoq to'sig'ida (HTML 403) token formati aybdor emas — qayta sinash foydasiz
+        if (
+          lastError.code !== 'blocked' &&
+          (lastError.status === 401 || lastError.status === 403) &&
+          !this.useBearer &&
+          !this.bearerTried
+        ) {
           this.bearerTried = true;
           this.useBearer = true;
           continue;
@@ -503,6 +532,23 @@ export class UzumHttp {
         response.status === 429 ? parseRetryAfter(response.headers.get('retry-after')) : null;
       // 429 — butun klient biroz pauza qiladi (boshqa so'rovlar ham kutadi)
       if (response.status === 429) this.limiter.pause(retryAfterMs ?? 2_000);
+
+      /*
+       * Uzum API xatoni doim JSON bilan aytadi (`{"errors":[{"code":"forbidden-001"…`).
+       * 400/403 bilan HTML sahifa kelsa — so'rov API'gacha yetmagan: uni Uzum
+       * tarmog'i (Cloudflare ortidagi kirish nuqtasi) rad etgan. Jonli holat:
+       * serverimiz manzilidan hatto ochiq hujjat sahifasi ham "Error 400" HTML
+       * qaytargan, boshqa tarmoqdan esa o'sha so'rov o'tgan. Bu "parametrlar
+       * noto'g'ri" ham, "kalit yaroqsiz" ham emas.
+       */
+      if ((response.status === 400 || response.status === 403) && looksLikeHtml(text, response.headers.get('content-type'))) {
+        throw new UzumApiError({
+          status: response.status,
+          code: 'blocked',
+          message: `Uzum tarmog‘i so‘rovni rad etdi (HTTP ${response.status}, HTML javob)`,
+          retryable: false,
+        });
+      }
       throw UzumApiError.fromStatus(
         response.status,
         errorMessageFromBody(body, response.status),
@@ -521,6 +567,12 @@ export class UzumHttp {
     const jitter = Math.floor(base * 0.25 * Math.random());
     return Math.max(retryAfterMs ?? 0, base + jitter);
   }
+}
+
+/** Javob JSON emas, HTML sahifami (tarmoq darajasidagi rad etish belgisi) */
+function looksLikeHtml(text: string, contentType: string | null): boolean {
+  if (contentType && /text\/html/i.test(contentType)) return true;
+  return /^\s*<(!doctype|html)\b/i.test(text);
 }
 
 /** JSON'ni xavfsiz o'qish (bo'sh yoki buzuq tana ham xato tashlamaydi) */

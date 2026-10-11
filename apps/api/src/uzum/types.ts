@@ -299,8 +299,12 @@ export interface UzumExpense {
  * sinxronizatsiya bosqichi qulab tushmasligi uchun.
  */
 export interface UzumClient {
-  /** API kalitni tekshirish (sinxronizatsiyaning `auth` bosqichi) */
-  verify(): Promise<{ ok: boolean; message?: string }>;
+  /**
+   * API kalitni tekshirish (sinxronizatsiyaning `auth` bosqichi).
+   * `temporary` — tekshiruv o'tmadi, lekin sabab kalitda emas (aloqa uzilgan,
+   * Uzum javob bermayapti yoki so'rovni tarmoq darajasida rad etyapti).
+   */
+  verify(): Promise<{ ok: boolean; message?: string; temporary?: boolean }>;
   getShops(): Promise<UzumShop[]>;
   getProducts(shopId: string): Promise<UzumProduct[]>;
   getStocks(shopId: string): Promise<UzumStock[]>;

@@ -518,7 +518,13 @@ async function stepAuth(run: SyncRun, setDetail: (t: string) => void): Promise<v
 
   const client = createUzumClient({ apiKey, apiSecret, seed: account.id });
   const check = await client.verify();
-  if (!check.ok) throw new UzumAuthError(check.message ?? 'Uzum API kaliti qabul qilinmadi');
+  if (!check.ok) {
+    const message = check.message ?? 'Uzum API kaliti qabul qilinmadi';
+    // Aloqa uzilishi yoki Uzum to'sig'i kalitning aybi emas: kabinet faol qoladi,
+    // keyingi rejali sinxron o'zi qayta urinadi. Faqat haqiqiy rad etish — "yaroqsiz".
+    if (check.temporary) throw new Error(message);
+    throw new UzumAuthError(message);
+  }
 
   run.client = client;
   setDetail('API kalit tasdiqlandi');
@@ -1188,23 +1194,36 @@ async function failJob(job: SyncJob, run: SyncRun | null, err: unknown): Promise
     },
   });
 
+  const keyRejected = err instanceof UzumAuthError;
+  /*
+   * Vaqtinchalik nosozlikda kabinet faol qoladi va sinxron har oraliqda qayta
+   * urinadi — xabar esa faqat BIRINCHI marta yuboriladi. Aks holda Uzum bir
+   * necha soat javob bermasa, sotuvchiga har 15 daqiqada bir xil xabar borardi.
+   */
+  let repeated = false;
   if (accountId) {
     try {
+      const before = await prisma.uzumAccount.findUnique({ where: { id: accountId }, select: { lastError: true } });
+      repeated = before?.lastError === message;
       await prisma.uzumAccount.update({
         where: { id: accountId },
-        data: { lastError: message, ...(err instanceof UzumAuthError ? { status: 'invalid' } : {}) },
+        data: { lastError: message, ...(keyRejected ? { status: 'invalid' } : {}) },
       });
     } catch {
       // Kabinet o'chirilgan bo'lishi mumkin
     }
   }
 
-  await notifyCompanyOwners(job.companyId, {
-    type: 'danger',
-    title: 'Sinxronizatsiya bajarilmadi',
-    body: `${message}. API kalitni tekshirib, qayta urinib ko‘ring.`,
-    link: '/settings',
-  });
+  if (keyRejected || !repeated) {
+    await notifyCompanyOwners(job.companyId, {
+      type: 'danger',
+      title: 'Sinxronizatsiya bajarilmadi',
+      body: keyRejected
+        ? `${message}. API kalitni tekshirib, qayta urinib ko‘ring.`
+        : `${message}. Hech narsa qilish shart emas — aloqa tiklanganda sinxron o‘zi davom etadi.`,
+      link: '/settings',
+    });
+  }
 
   log(`job ${jobId} muvaffaqiyatsiz: ${message}`);
 }
