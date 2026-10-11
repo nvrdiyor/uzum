@@ -149,6 +149,11 @@ export const batchCreateSchema = z.object({
   rate: z.coerce.number().positive().max(1_000_000).optional(),
 });
 
+/** Partiyalar ro'yxatining yangi tartibi — yuqoridan pastga id'lar */
+export const batchOrderSchema = z.object({
+  ids: z.array(z.string().min(1).max(64)).min(1).max(500),
+});
+
 export const batchUpdateSchema = z.object({
   name: z.string().trim().min(1).max(80),
   rate: z.coerce.number().positive().max(1_000_000),

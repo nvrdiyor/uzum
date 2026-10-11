@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { prisma } from '@savdoiq/db';
 import {
   batchCreateSchema,
+  batchOrderSchema,
   batchUpdateSchema,
   calcBatch,
   type BatchDelivery,
@@ -122,7 +123,8 @@ router.get(
     const { company } = companyCtx(req);
     const rows = await prisma.purchaseBatch.findMany({
       where: { companyId: company.id },
-      orderBy: { createdAt: 'desc' },
+      // Sotuvchi belgilagan tartib; teng bo'lsa (hech qachon tartiblanmagan) yangisi yuqorida
+      orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
       take: MAX_BATCHES,
       include: { items: { select: { priceCny: true, cargoCost: true, qty: true, weightKg: true } } },
     });
@@ -144,8 +146,10 @@ router.post(
       throw AppError.badRequest(`Partiyalar soni chegarasi — ${MAX_BATCHES} ta. Eskilarini o‘chiring.`);
 
     const rate = body.rate ?? Math.round((await getRate('CNY')).rate * 100) / 100;
+    // Yangi partiya ro'yxat tepasida chiqadi — qo'lda tartiblangan bo'lsa ham
+    const top = await prisma.purchaseBatch.aggregate({ _min: { position: true }, where: { companyId: company.id } });
     const created = await prisma.purchaseBatch.create({
-      data: { companyId: company.id, name: body.name, rate },
+      data: { companyId: company.id, name: body.name, rate, position: (top._min.position ?? 0) - 1 },
     });
 
     res.status(201).json(await loadDetail(company.id, created.id));
@@ -158,6 +162,40 @@ router.get(
   ah(async (req, res) => {
     const { company } = companyCtx(req);
     res.json(await loadDetail(company.id, String(req.params.id)));
+  }),
+);
+
+/**
+ * PUT /order — partiyalar ro'yxatining tartibi.
+ * `/:id` dan OLDIN e'lon qilinishi shart, aks holda "order" partiya id'si deb olinadi.
+ *
+ * `updatedAt` ATAYLAB o'zgartirilmaydi: u partiya mazmunining versiyasi
+ * (ochiq jadval shu bo'yicha "boshqa joyda o'zgargan" deb tekshiradi) —
+ * ro'yxatdagi o'rin almashgani mazmunni o'zgartirmaydi.
+ */
+router.put(
+  '/order',
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const { ids } = batchOrderSchema.parse(req.body ?? {});
+
+    const own = await prisma.purchaseBatch.findMany({
+      where: { companyId: company.id },
+      select: { id: true, updatedAt: true },
+    });
+    const byId = new Map(own.map((b) => [b.id, b.updatedAt]));
+    const unique = [...new Set(ids)];
+    if (unique.some((id) => !byId.has(id))) throw AppError.badRequest('Ro‘yxatda begona yoki o‘chirilgan partiya bor');
+
+    // Ro'yxatga kirmay qolganlar (boshqa oynada qo'shilgan) oxiriga, hozirgi tartibida
+    const rest = own.map((b) => b.id).filter((id) => !unique.includes(id));
+    await prisma.$transaction(
+      [...unique, ...rest].map((id, position) =>
+        prisma.purchaseBatch.update({ where: { id }, data: { position, updatedAt: byId.get(id) } }),
+      ),
+    );
+    res.json({ ok: true });
   }),
 );
 

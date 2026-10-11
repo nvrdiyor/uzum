@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { Boxes, ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
 import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary } from '@savdoiq/shared';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { useSession } from '@/store/session';
 import {
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
 import { cn } from '@/lib/utils';
+import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
 function CreateModal({ open, onClose: close, nextNo }: { open: boolean; onClose: () => void; nextNo: number }) {
   const t = useT('batches');
@@ -169,6 +170,39 @@ export default function Batches() {
 
   const rows = data?.items ?? [];
 
+  /*
+   * Ro'yxat tartibi. Yangi tartib darhol ekranda ko'rinadi (so'rov kutilmaydi),
+   * server rad etsa — eski tartib qaytadi va sabab aytiladi.
+   */
+  const qc = useQueryClient();
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) => api.put<unknown>('/batches/order', { ids }),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: ['batches'] });
+      const prev = qc.getQueryData<BatchListResponse>(['batches']);
+      if (prev) {
+        const byId = new Map(prev.items.map((b) => [b.id, b]));
+        const items = ids.map((id) => byId.get(id)).filter((b): b is BatchSummary => Boolean(b));
+        qc.setQueryData<BatchListResponse>(['batches'], { ...prev, items });
+      }
+      return { prev };
+    },
+    onError: (err, _ids, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['batches'], ctx.prev);
+      toast.error(t('order.error'), err instanceof ApiError ? err.message : undefined);
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: ['batches'] }),
+  });
+
+  const move = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= rows.length) return;
+    const ids = rows.map((b) => b.id);
+    const [id] = ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    reorder.mutate(ids);
+  };
+  const drag = useDragReorder(move);
+
   return (
     <>
       <PageHeader
@@ -210,27 +244,54 @@ export default function Batches() {
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr>
-                    <th className="table-head border-b border-line px-5 py-3 text-left">{t('col.name')}</th>
+                    {canEdit ? <th className="table-head w-10 border-b border-line" /> : null}
+                    <th className={cn('table-head border-b border-line py-3 text-left', canEdit ? 'pl-1 pr-5' : 'px-5')}>
+                      {t('col.name')}
+                    </th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.items')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cny')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.goods')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cargo')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.total')}</th>
-                    <th className="table-head w-24 border-b border-line px-4 py-3" />
+                    <th className={cn('table-head border-b border-line px-4 py-3', canEdit ? 'w-40' : 'w-24')} />
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((b) => (
+                  {rows.map((b, i) => (
                     <tr
                       key={b.id}
                       tabIndex={0}
+                      {...(canEdit ? drag.rowProps(i) : {})}
                       onClick={() => navigate(`/batches/${b.id}`)}
                       onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
                         if (e.key === 'Enter') navigate(`/batches/${b.id}`);
+                        // Alt+↑/↓ — partiyani ro'yxatda ko'chirish
+                        if (canEdit && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                          e.preventDefault();
+                          move(i, e.key === 'ArrowUp' ? i - 1 : i + 1);
+                        }
                       }}
-                      className="focusable group cursor-pointer border-b border-line/70 transition-colors last:border-0 hover:bg-surface-2/60"
+                      className={cn(
+                        'focusable group cursor-pointer border-b border-line/70 transition-colors last:border-0 hover:bg-surface-2/60',
+                        drag.dragging === i && 'opacity-50',
+                        dropLine(drag.dropPosition(i)),
+                      )}
                     >
-                      <td className="px-5 py-3.5">
+                      {canEdit ? (
+                        <td className="py-3.5 pl-3 pr-0">
+                          {/* Tutqich: sudrab tartibni o'zgartirish. Bosish partiyani ochib yubormasin */}
+                          <span
+                            {...drag.handleProps(i)}
+                            title={t('row.drag')}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex h-8 w-7 cursor-grab items-center justify-center rounded-md text-muted/60 transition-colors hover:bg-surface-3 hover:text-ink active:cursor-grabbing"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                        </td>
+                      ) : null}
+                      <td className={cn('py-3.5', canEdit ? 'pl-1 pr-5' : 'px-5')}>
                         <p className="font-semibold text-ink">{b.name}</p>
                         <p className="mt-0.5 whitespace-nowrap text-xs text-muted">
                           {f.date(b.createdAt)} · 1 ¥ = {f.num(b.rate, 2)}
@@ -243,6 +304,32 @@ export default function Batches() {
                       <td className="tnum px-4 py-3.5 text-right font-bold text-ink">{f.num(b.totals.total)}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-1">
+                          {canEdit ? (
+                            <>
+                              <IconButton
+                                label={t('row.moveUp')}
+                                disabled={i === 0}
+                                className="h-8 w-8 border-0 bg-transparent opacity-60 disabled:pointer-events-none disabled:opacity-20 group-hover:opacity-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  move(i, i - 1);
+                                }}
+                              >
+                                <ChevronUp className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton
+                                label={t('row.moveDown')}
+                                disabled={i === rows.length - 1}
+                                className="h-8 w-8 border-0 bg-transparent opacity-60 disabled:pointer-events-none disabled:opacity-20 group-hover:opacity-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  move(i, i + 1);
+                                }}
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                              </IconButton>
+                            </>
+                          ) : null}
                           {canEdit ? (
                             <IconButton
                               label={t('delete.title')}

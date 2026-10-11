@@ -17,6 +17,8 @@ import {
   Boxes,
   Check,
   ChevronDown,
+  ChevronUp,
+  GripVertical,
   Landmark,
   Loader2,
   NotebookPen,
@@ -57,6 +59,7 @@ import {
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
+import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
 interface Row extends BatchItemInput {
   /** Faqat React uchun — serverga yuborilmaydi */
@@ -658,6 +661,25 @@ function BatchDetail({ id }: { id: string }) {
     }
     edit((d) => ({ ...d, rows: [...d.rows, blankRow(d.rows[d.rows.length - 1])] }));
   };
+
+  /*
+   * Qator tartibi. Butun partiya bitta PUT bilan saqlanadi va qator o'rni
+   * massivdagi tartibidan olinadi — shuning uchun ko'chirish oddiy tahrir:
+   * avtomatik saqlash uni ham yozadi. `focusCol` berilsa (klaviatura bilan
+   * ko'chirilganda) fokus o'sha katakda qator bilan birga ketadi.
+   */
+  const moveRow = (from: number, to: number, focusCol?: string) => {
+    const count = draftRef.current?.rows.length ?? 0;
+    if (from === to || from < 0 || to < 0 || from >= count || to >= count) return;
+    if (focusCol) pendingFocus.current = `${to}:${focusCol}`;
+    edit((d) => {
+      const rows = [...d.rows];
+      const [row] = rows.splice(from, 1);
+      rows.splice(to, 0, row);
+      return { ...d, rows };
+    });
+  };
+  const drag = useDragReorder(moveRow);
   /*
    * O'chirilgan qator 5 soniya davomida qaytariladi. Avtomatik saqlash
    * o'chirishni darhol yozadi, "Qaytarish" esa qatorni o'sha joyiga qo'yib
@@ -701,6 +723,12 @@ function BatchDetail({ id }: { id: string }) {
     tableRef.current?.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
 
   const onCellKey = (rowIdx: number, col: string) => (e: KeyboardEvent<HTMLElement>) => {
+    // Alt+↑/↓ — qatorni ko'chirish; fokus o'sha katakda qoladi
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && canEdit) {
+      e.preventDefault();
+      moveRow(rowIdx, e.key === 'ArrowUp' ? rowIdx - 1 : rowIdx + 1, col);
+      return;
+    }
     if (e.key !== 'Enter' || e.nativeEvent.isComposing || !draft) return;
     e.preventDefault();
     const next = e.shiftKey ? rowIdx - 1 : rowIdx + 1;
@@ -988,7 +1016,7 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1480px] border-collapse text-sm">
+              <table ref={tableRef} className="w-full min-w-[1530px] border-collapse text-sm">
                 <colgroup>
                   <col className="w-11" />
                   <col />
@@ -1003,7 +1031,7 @@ function BatchDetail({ id }: { id: string }) {
                   <col className="w-[124px]" />
                   <col className="w-[116px]" />
                   <col className="w-[128px]" />
-                  <col className="w-11" />
+                  <col className="w-[92px]" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1033,8 +1061,30 @@ function BatchDetail({ id }: { id: string }) {
                   {draft.rows.map((r, i) => {
                     const res = calc.rows[i];
                     return (
-                      <tr key={r.key} className="group border-b border-line/70">
-                        <td className="tnum px-2 py-2.5 text-center text-muted">{i + 1}</td>
+                      <tr
+                        key={r.key}
+                        {...(canEdit ? drag.rowProps(i) : {})}
+                        className={cn(
+                          'group border-b border-line/70',
+                          drag.dragging === i && 'opacity-50',
+                          dropLine(drag.dropPosition(i)),
+                        )}
+                      >
+                        <td className="px-1 py-2.5 text-center text-muted">
+                          {canEdit ? (
+                            // Raqam — tutqich: ustiga kelganda belgi chiqadi, sudralsa qator ko'chadi
+                            <span
+                              {...drag.handleProps(i)}
+                              title={t('row.drag')}
+                              className="relative mx-auto flex h-7 w-7 cursor-grab items-center justify-center rounded-md hover:bg-surface-3 active:cursor-grabbing"
+                            >
+                              <span className="tnum transition-opacity group-hover:opacity-0">{i + 1}</span>
+                              <GripVertical className="absolute h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                            </span>
+                          ) : (
+                            <span className="tnum">{i + 1}</span>
+                          )}
+                        </td>
                         <td className={EDITABLE_TD}>
                           <input
                             data-cell={`${i}:name`}
@@ -1185,15 +1235,38 @@ function BatchDetail({ id }: { id: string }) {
                         </td>
                         <td className="px-1 text-center">
                           {canEdit ? (
-                            <button
-                              type="button"
-                              title={t('row.delete')}
-                              aria-label={t('row.delete')}
-                              onClick={() => removeRow(r.key)}
-                              className="focusable rounded-md p-1.5 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                            // Sensorli ekranda hover yo'q — tugmalar doim ko'rinadi (sudrash u yerda ishlamaydi)
+                            <span className="flex items-center justify-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+                              <button
+                                type="button"
+                                title={t('row.moveUp')}
+                                aria-label={t('row.moveUp')}
+                                disabled={i === 0}
+                                onClick={() => moveRow(i, i - 1)}
+                                className="focusable rounded-md p-1 text-muted hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+                              >
+                                <ChevronUp className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                title={t('row.moveDown')}
+                                aria-label={t('row.moveDown')}
+                                disabled={i === draft.rows.length - 1}
+                                onClick={() => moveRow(i, i + 1)}
+                                className="focusable rounded-md p-1 text-muted hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                title={t('row.delete')}
+                                aria-label={t('row.delete')}
+                                onClick={() => removeRow(r.key)}
+                                className="focusable rounded-md p-1 text-muted hover:text-danger"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </span>
                           ) : null}
                         </td>
                       </tr>
