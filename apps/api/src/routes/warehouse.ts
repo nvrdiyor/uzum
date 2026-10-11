@@ -6,8 +6,9 @@
  *  POST   /shipments          → yangi yetkazma (qoralama)
  *  PATCH  /shipments/:id      → tahrirlash / holatni o'zgartirish
  *  DELETE /shipments/:id      → o'chirish (qabul qilingani o'chirilmaydi)
- *  GET    /losses             → LossesResponse (yo'qotishlar)
+ *  GET    /losses             → LossesResponse (yo'qotishlar + tovar balansi)
  *  POST   /losses/:id/claim   → da'vo yuborilgan deb belgilash
+ *  PATCH  /losses/:id         → holat: da'vo / kompensatsiya / rad etildi / qayta ochish
  *  GET    /losses/claim-draft → { text } — Uzum qo'llab-quvvatlashiga da'vo matni
  *  GET    /returns            → ReturnsResponse (sabablar taqsimoti bilan)
  *  GET    /storage            → StorageResponse (pullik saqlash)
@@ -30,6 +31,8 @@ import {
   safeDiv,
   shipmentSchema,
   toISODate,
+  type LossEvidence,
+  type LossKind,
   type LossRow,
   type LossesResponse,
   type Paginated,
@@ -48,6 +51,7 @@ import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getSkuCatalog, getStoreIds, getStoreTitles } from '../services/common.js';
 import { notifyCompanyOwners } from '../services/notify.js';
 import { loadReturnLines } from '../services/returns.js';
+import { AUTO_LOSS_SOURCES, getBalanceSummary } from '../services/stock-balance.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -517,6 +521,14 @@ const LOSS_TYPE_LABEL: Record<LossRow['type'], string> = {
   not_delivered: 'Yetib kelmagan',
 };
 
+/** SavdoIQ o'zi aniqlagan yozuvlar turi — da'vo matnida */
+const LOSS_KIND_LABEL: Record<LossKind, string> = {
+  balance: 'Hisobda yo‘q',
+  counter: 'Yo‘qolgan',
+  defect: 'Brak',
+  shortage: 'Qabulda kam',
+};
+
 interface DbLoss {
   id: string;
   skuId: string | null;
@@ -527,9 +539,32 @@ interface DbLoss {
   compensated: number;
   status: string;
   happenedAt: Date;
+  source: string;
+  details: string | null;
+  note: string | null;
 }
 
-/** Yo'qotish yozuvlarini olish uchun umumiy filtr */
+/** SavdoIQ aniqlagan yozuvda — turi; Uzum/namuna yozuvida null */
+const toLossKind = (source: string): LossKind | null =>
+  (AUTO_LOSS_SOURCES as readonly string[]).includes(source) ? (source as LossKind) : null;
+
+function parseEvidence(details: string | null): LossEvidence | null {
+  if (!details) return null;
+  try {
+    const parsed: unknown = JSON.parse(details);
+    return parsed && typeof parsed === 'object' ? (parsed as LossEvidence) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Yo'qotish yozuvlarini olish uchun umumiy filtr.
+ *
+ * Hal bo'lmagan yozuv (ochiq yoki da'vo yuborilgan) DAVRDAN QAT'I NAZAR
+ * ko'rinadi: yo'qolgan tovar — hozirgi muammo, o'tgan oyning hisoboti emas.
+ * Davr faqat yopilgan (qoplangan / rad etilgan) yozuvlarni saralaydi.
+ */
 function lossWhere(
   storeIds: string[],
   from: Date,
@@ -541,7 +576,7 @@ function lossWhere(
     q.status && q.status !== 'all' && (LOSS_STATUSES as string[]).includes(q.status) ? q.status : undefined;
   return {
     storeId: { in: storeIds },
-    happenedAt: { gte: from, lt: toExclusive },
+    OR: [{ happenedAt: { gte: from, lt: toExclusive } }, { status: { in: ['open', 'claimed'] } }],
     ...(scheme ? { scheme } : {}),
     ...(status ? { status } : {}),
   };
@@ -555,13 +590,46 @@ function toLossRow(l: DbLoss, catalog: Map<string, { sku: string; title: string;
     title: info?.title ?? null,
     imageUrl: info?.imageUrl ?? null,
     type: toLossType(l.type),
+    kind: toLossKind(l.source),
     scheme: l.scheme === 'FBS' ? 'FBS' : 'FBO',
     qty: l.qty,
     amount: round(l.amount),
     compensated: round(l.compensated),
     status: toLossStatus(l.status),
     happenedAt: toISODate(l.happenedAt),
+    evidence: parseEvidence(l.details),
+    note: l.note,
   };
+}
+
+/** Da'vo matni uchun: yozuv ostidagi dalil satrlari */
+function evidenceLines(r: LossRow): string[] {
+  const e = r.evidence;
+  if (!e) return [];
+  const n = (v: number | undefined): string => formatNumber(v ?? 0, 'uz');
+  const lines: string[] = [];
+
+  if (r.kind === 'balance') {
+    const terms = [`qabul qilingan ${n(e.accepted)}`, `sotilgan ${n(e.sold)}`];
+    if (e.returnedToSeller) terms.push(`sotuvchiga qaytarilgan ${n(e.returnedToSeller)}`);
+    terms.push(`omborda ${n(e.onHand)}`);
+    if (e.held) terms.push(`omborda sotuvdan tashqari ${n(e.held)}`);
+    if (e.inReturn) terms.push(`qaytishi kutilmoqda ${n(e.inReturn)}`);
+    lines.push(`   Hisob: ${terms.join(', ')} — ${n(r.qty)} dona hisobda yo‘q.`);
+    for (const rm of e.removals ?? []) {
+      lines.push(`   ${formatDate(rm.date, 'uz')} kuni qoldiq buyurtmasiz ${n(rm.qty)} donaga kamaygan.`);
+    }
+    for (const s of e.suspects ?? []) {
+      const what = s.kind === 'returned' ? 'qaytarilgan' : 'bekor qilingan';
+      const cause = s.cause ? ` («${s.cause}»)` : '';
+      lines.push(`   Buyurtma №${s.orderId} (${formatDate(s.date, 'uz')}) ${what}${cause} — tovar omborga qaytmagan.`);
+    }
+  } else if (r.kind === 'shortage') {
+    lines.push(
+      `   Nakladnoy №${e.invoice ?? '—'}: yuborilgan ${n(e.sent)}, qabul qilingan ${n(e.accepted)} — ${n(r.qty)} dona kam.`,
+    );
+  }
+  return lines;
 }
 
 /** GET /losses — yo'qotishlar ro'yxati */
@@ -576,6 +644,7 @@ router.get(
 
     if (storeIds.length === 0) {
       const empty: LossesResponse = {
+        balance: await getBalanceSummary([]),
         totals: { skuCount: 0, qty: 0, amount: 0, compensated: 0 },
         claims: {
           receivedAmount: 0,
@@ -591,12 +660,13 @@ router.get(
       return;
     }
 
-    const [losses, catalog] = await Promise.all([
+    const [losses, catalog, balance] = await Promise.all([
       prisma.lossRecord.findMany({
         where: lossWhere(storeIds, range.from, range.toExclusive, q),
         orderBy: { happenedAt: range.order === 'asc' ? 'asc' : 'desc' },
       }),
       getSkuCatalog(storeIds, true),
+      getBalanceSummary(storeIds),
     ]);
 
     const search = range.search?.toLowerCase();
@@ -617,6 +687,7 @@ router.get(
     }
 
     const payload: LossesResponse = {
+      balance,
       totals: { skuCount: skuIds.size, qty, amount: round(amount), compensated: round(compensated) },
       claims: (() => {
         // Da'vo jamilari butun davr bo'yicha — jadval sahifasiga bog'liq emas
@@ -668,13 +739,22 @@ router.get(
     const draftStatus =
       q.status && q.status !== 'all' && (LOSS_STATUSES as string[]).includes(q.status) ? q.status : null;
 
+    // Sotuvchi qatorlarni belgilagan bo'lsa — faqat o'shalar (davr va holatdan qat'i nazar)
+    const ids = (q.ids ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 200);
+
     const [losses, catalog, storeTitles] = await Promise.all([
       storeIds.length
         ? prisma.lossRecord.findMany({
-            where: {
-              ...lossWhere(storeIds, range.from, range.toExclusive, q),
-              status: draftStatus ?? { in: ['open', 'claimed'] },
-            },
+            where: ids.length
+              ? { storeId: { in: storeIds }, id: { in: ids } }
+              : {
+                  ...lossWhere(storeIds, range.from, range.toExclusive, q),
+                  status: draftStatus ?? { in: ['open', 'claimed'] },
+                },
             orderBy: { happenedAt: 'asc' },
           })
         : Promise.resolve([]),
@@ -696,7 +776,7 @@ router.get(
       r.sku ?? '—',
       formatDate(r.happenedAt, 'uz'),
       r.scheme,
-      LOSS_TYPE_LABEL[r.type],
+      r.kind ? LOSS_KIND_LABEL[r.kind] : LOSS_TYPE_LABEL[r.type],
       formatNumber(r.qty, 'uz'),
       formatNumber(r.amount, 'uz'),
     ]);
@@ -710,6 +790,12 @@ router.get(
       rows.length > 0
         ? [renderLine(header), widths.map((w) => '-'.repeat(w)).join('  '), ...body.map(renderLine)].join('\n')
         : 'Tanlangan davrda qoplanmagan yo‘qotish topilmadi.';
+
+    // Har bir pozitsiya uchun dalil: raqam qayerdan chiqqani va buyurtma raqamlari
+    const proof = rows.flatMap((r, i) => {
+      const lines = evidenceLines(r);
+      return lines.length ? [`${i + 1}. ${r.sku ?? '—'}`, ...lines] : [];
+    });
 
     const text = [
       'Uzum Market qo‘llab-quvvatlash xizmatiga',
@@ -725,6 +811,7 @@ router.get(
       '',
       table,
       '',
+      ...(proof.length ? ['Asos:', ...proof, ''] : []),
       `Jami: ${formatNumber(rows.length, 'uz')} ta pozitsiya, ${formatNumber(totalQty, 'uz')} dona, ${formatNumber(
         round(totalAmount),
         'uz',
@@ -784,6 +871,55 @@ router.post(
     });
 
     res.json(row);
+  }),
+);
+
+const lossPatchSchema = z.object({
+  status: z.enum(['open', 'claimed', 'compensated', 'rejected']),
+  /** Uzum to'lab bergan summa — faqat `compensated` uchun */
+  compensated: z.coerce.number().min(0).max(1e12).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * PATCH /losses/:id — yozuv holati.
+ *
+ * Uzum da'vo javobini API orqali bermaydi, shuning uchun natijani sotuvchi
+ * o'zi belgilaydi: da'vo yuborildi → kompensatsiya olindi (summasi bilan)
+ * yoki rad etildi. Xato belgilansa — qayta ochish mumkin.
+ */
+router.patch(
+  '/losses/:id',
+  requireFeature('losses_report'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const input = lossPatchSchema.parse(req.body ?? {});
+    const storeIds = await getStoreIds(company.id);
+
+    const existing = await prisma.lossRecord.findFirst({
+      where: { id: String(req.params.id), storeId: { in: storeIds } },
+    });
+    if (!existing) throw AppError.notFound('Yo‘qotish yozuvi topilmadi');
+
+    const compensated = input.status === 'compensated' ? round(input.compensated ?? existing.amount) : 0;
+    if (input.status === 'compensated' && compensated <= 0) {
+      throw AppError.badRequest('Kompensatsiya summasini kiriting');
+    }
+
+    const updated = await prisma.lossRecord.update({
+      where: { id: existing.id },
+      data: {
+        status: input.status,
+        compensated,
+        // Da'vo sanasi birinchi marta belgilanganda yoziladi; qayta ochilsa o'chadi
+        claimSentAt: input.status === 'open' ? null : (existing.claimSentAt ?? new Date()),
+        ...(input.note !== undefined ? { note: input.note || null } : {}),
+      },
+    });
+
+    const catalog = await getSkuCatalog(storeIds, true);
+    res.json(toLossRow(updated, catalog));
   }),
 );
 

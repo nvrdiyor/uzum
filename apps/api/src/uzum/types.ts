@@ -94,6 +94,15 @@ export interface UzumSku {
   qtyDefected?: number;
   /** Yo'qolgan dona */
   qtyMissing?: number;
+  /**
+   * Uzumda turgan, lekin sotuvda bo'lmagan dona: quantityAdditional +
+   * quantityOnPhotoStudio + quantityArchived + quantityPending.
+   */
+  qtyElsewhere?: number;
+  /** Uzumning umrbod hisoblagichi: sotilgan dona (yo'ldagilari bilan) */
+  qtySold?: number;
+  /** Uzumning umrbod hisoblagichi: bekor qilingan va qaytarilgan dona */
+  qtyReturned?: number;
 }
 
 /** Mahsulot kartochkasi (bir nechta SKU bilan) */
@@ -176,7 +185,11 @@ export interface UzumOrder {
 
 // ─────────────────────────── Qaytarish / yo'qotish ───────────────────────────
 
-/** Mijoz qaytarishi */
+/**
+ * Qaytarish nakladnoyi pozitsiyasi — Uzum omboridan SOTUVCHIGA qaytarilgan
+ * tovar (xaridor qaytarishi EMAS: u `finance/orders` dagi `amountReturns`).
+ * Demo rejimda eski ma'no (mijoz qaytarishi) saqlangan, `status` bo'lmaydi.
+ */
 export interface UzumReturn {
   id: string;
   skuId: string;
@@ -185,6 +198,10 @@ export interface UzumReturn {
   amount: number;
   reason?: string;
   returnedAt: string;
+  /** pending — yig'ilmoqda, completed — sotuvchiga topshirilgan, canceled — bekor qilingan */
+  status?: 'pending' | 'completed' | 'canceled';
+  /** Uzum turi: DEFECTED (brak) | RETURN (oddiy) | FBS */
+  kind?: string;
 }
 
 /** Uzum omboriga yetkazma (FBO nakladnoy) pozitsiyasi */

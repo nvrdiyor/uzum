@@ -26,13 +26,16 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
+import { BalanceTab } from '@/components/losses/BalanceTab';
 import { ClaimDraftModal } from '@/components/losses/ClaimDraftModal';
 import { CompensationsTab } from '@/components/losses/CompensationsTab';
+import { LOSS_KIND_TONE, LOSS_STATUS_TONE, LossDetailModal } from '@/components/losses/LossDetailModal';
+import '@/components/losses/texts';
 
 registerNamespace('losses', {
   uz: {
     title: 'Yo‘qotilgan tovarlar',
-    subtitle: 'Ombordagi yo‘qotishlar, shikastlanishlar va Uzum kompensatsiyalari',
+    subtitle: 'Uzum omborida hisobda yo‘q tovar, brak va kompensatsiyalar',
     'tab.losses': 'Yo‘qotishlar hisoboti',
     'tab.comp': 'Kompensatsiyalar hisoboti',
     'kpi.skus': 'Yo‘qotishli SKU',
@@ -40,7 +43,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Yo‘qotishlar soni',
     'kpi.qtyHint': 'Jami dona',
     'kpi.amount': 'Qaytarish summasi',
-    'kpi.amountHint': 'Uzumdan talab qilinadigan summa',
+    'kpi.amountHint': 'Tannarx bo‘yicha — Uzumdan talab qilinadi',
     'kpi.compensated': 'Kompensatsiya olingan',
     'kpi.compHint': 'Qaytarish summasining {pct} qismi',
     'filter.scheme': 'Sxema',
@@ -102,7 +105,7 @@ registerNamespace('losses', {
   },
   ru: {
     title: 'Потерянные товары',
-    subtitle: 'Потери на складе, повреждения и компенсации Uzum',
+    subtitle: 'Товар, которого нет в учёте на складе Uzum, брак и компенсации',
     'tab.losses': 'Отчёт по потерям',
     'tab.comp': 'Отчёт по компенсациям',
     'kpi.skus': 'SKU с потерями',
@@ -110,7 +113,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Количество потерь',
     'kpi.qtyHint': 'Всего штук',
     'kpi.amount': 'Сумма к возврату',
-    'kpi.amountHint': 'Сумма требований к Uzum',
+    'kpi.amountHint': 'По себестоимости — к требованию с Uzum',
     'kpi.compensated': 'Получено компенсаций',
     'kpi.compHint': '{pct} от суммы требований',
     'filter.scheme': 'Схема',
@@ -172,7 +175,7 @@ registerNamespace('losses', {
   },
   en: {
     title: 'Lost items',
-    subtitle: 'Warehouse losses, damages and Uzum compensations',
+    subtitle: 'Items unaccounted for at the Uzum warehouse, defects and compensations',
     'tab.losses': 'Losses report',
     'tab.comp': 'Compensations report',
     'kpi.skus': 'SKUs with losses',
@@ -180,7 +183,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Lost units',
     'kpi.qtyHint': 'Units in total',
     'kpi.amount': 'Claimable amount',
-    'kpi.amountHint': 'Amount to claim from Uzum',
+    'kpi.amountHint': 'At cost — claimable from Uzum',
     'kpi.compensated': 'Compensated',
     'kpi.compHint': '{pct} of the claimable amount',
     'filter.scheme': 'Scheme',
@@ -242,16 +245,9 @@ registerNamespace('losses', {
   },
 });
 
-type Tab = 'losses' | 'comp';
+type Tab = 'losses' | 'balance' | 'comp';
 type SchemeFilter = 'all' | 'FBO' | 'FBS';
 type StatusFilter = 'all' | LossRow['status'];
-
-const STATUS_TONE: Record<LossRow['status'], Tone> = {
-  open: 'warn',
-  claimed: 'info',
-  compensated: 'brand',
-  rejected: 'danger',
-};
 
 const TYPE_TONE: Record<LossRow['type'], Tone> = {
   lost: 'danger',
@@ -272,6 +268,7 @@ export default function Losses() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
   const [claimOpen, setClaimOpen] = useState(false);
+  const [detail, setDetail] = useState<LossRow | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const query = useMemo(
@@ -346,8 +343,13 @@ export default function Losses() {
       {
         key: 'type',
         header: t('col.type'),
-        render: (r) => <Badge tone={TYPE_TONE[r.type]}>{t(`type.${r.type}`)}</Badge>,
-        sortValue: (r) => r.type,
+        render: (r) =>
+          r.kind ? (
+            <Badge tone={LOSS_KIND_TONE[r.kind]}>{t(`kind.${r.kind}`)}</Badge>
+          ) : (
+            <Badge tone={TYPE_TONE[r.type]}>{t(`type.${r.type}`)}</Badge>
+          ),
+        sortValue: (r) => r.kind ?? r.type,
       },
       {
         key: 'scheme',
@@ -388,7 +390,7 @@ export default function Losses() {
         key: 'status',
         header: t('col.status'),
         render: (r) => (
-          <Badge tone={STATUS_TONE[r.status]} dot>
+          <Badge tone={LOSS_STATUS_TONE[r.status]} dot>
             {t(`status.${r.status}`)}
           </Badge>
         ),
@@ -419,19 +421,21 @@ export default function Losses() {
         description={t('subtitle')}
         badge={<PreviewBadge feature="losses_report" />}
         actions={
-          <>
-            <Button
-              variant="outline"
-              icon={<Download className="h-4 w-4" />}
-              loading={exporting}
-              onClick={onExport}
-            >
-              Excel
-            </Button>
-            <Button icon={<FileText className="h-4 w-4" />} onClick={() => setClaimOpen(true)}>
-              {selected.length ? t('btn.claimN', { n: selected.length }) : t('btn.claim')}
-            </Button>
-          </>
+          tab === 'balance' ? undefined : (
+            <>
+              <Button
+                variant="outline"
+                icon={<Download className="h-4 w-4" />}
+                loading={exporting}
+                onClick={onExport}
+              >
+                Excel
+              </Button>
+              <Button icon={<FileText className="h-4 w-4" />} onClick={() => setClaimOpen(true)}>
+                {selected.length ? t('btn.claimN', { n: selected.length }) : t('btn.claim')}
+              </Button>
+            </>
+          )
         }
       >
         <Segmented<Tab>
@@ -439,22 +443,25 @@ export default function Losses() {
           onChange={setTab}
           options={[
             { value: 'losses', label: t('tab.losses') },
+            { value: 'balance', label: t('tab.balance') },
             { value: 'comp', label: t('tab.comp') },
           ]}
         />
       </PageHeader>
 
       <FilterBar>
-        <Segmented<SchemeFilter>
-          size="sm"
-          value={scheme}
-          onChange={resetPage(setScheme)}
-          options={[
-            { value: 'all', label: t('scheme.all') },
-            { value: 'FBO', label: 'FBO' },
-            { value: 'FBS', label: 'FBS' },
-          ]}
-        />
+        {tab !== 'balance' ? (
+          <Segmented<SchemeFilter>
+            size="sm"
+            value={scheme}
+            onChange={resetPage(setScheme)}
+            options={[
+              { value: 'all', label: t('scheme.all') },
+              { value: 'FBO', label: 'FBO' },
+              { value: 'FBS', label: 'FBS' },
+            ]}
+          />
+        ) : null}
         {tab === 'losses' ? (
           <Select
             className="h-10 w-auto py-0"
@@ -484,51 +491,58 @@ export default function Losses() {
 
       <PlanGate feature="losses_report">
         <div className="space-y-5">
-          <StatGrid>
-            <StatCard
-              label={t('kpi.skus')}
-              value={f.num(totals.skuCount)}
-              hint={t('kpi.skusHint')}
-              icon={<Boxes className="h-5 w-5" />}
-              tone="info"
-              loading={isLoading}
-            />
-            <StatCard
-              label={t('kpi.qty')}
-              value={f.num(totals.qty)}
-              hint={t('kpi.qtyHint')}
-              icon={<Hash className="h-5 w-5" />}
-              tone="warn"
-              loading={isLoading}
-            />
-            <StatCard
-              label={t('kpi.amount')}
-              value={f.money(totals.amount)}
-              hint={t('kpi.amountHint')}
-              icon={<Coins className="h-5 w-5" />}
-              tone="danger"
-              loading={isLoading}
-            />
-            <StatCard
-              label={t('kpi.compensated')}
-              value={f.money(totals.compensated)}
-              hint={t('kpi.compHint', { pct: f.pct(coverPct) })}
-              icon={<ShieldCheck className="h-5 w-5" />}
-              tone="brand"
-              loading={isLoading}
-            />
-          </StatGrid>
+          {tab === 'balance' ? null : (
+            <StatGrid>
+              <StatCard
+                label={t('kpi.skus')}
+                value={f.num(totals.skuCount)}
+                hint={t('kpi.skusHint')}
+                icon={<Boxes className="h-5 w-5" />}
+                tone="info"
+                loading={isLoading}
+              />
+              <StatCard
+                label={t('kpi.qty')}
+                value={f.num(totals.qty)}
+                hint={t('kpi.qtyHint')}
+                icon={<Hash className="h-5 w-5" />}
+                tone="warn"
+                loading={isLoading}
+              />
+              <StatCard
+                label={t('kpi.amount')}
+                value={f.money(totals.amount)}
+                hint={t('kpi.amountHint')}
+                icon={<Coins className="h-5 w-5" />}
+                tone="danger"
+                loading={isLoading}
+              />
+              <StatCard
+                label={t('kpi.compensated')}
+                value={f.money(totals.compensated)}
+                hint={t('kpi.compHint', { pct: f.pct(coverPct) })}
+                icon={<ShieldCheck className="h-5 w-5" />}
+                tone="brand"
+                loading={isLoading}
+              />
+            </StatGrid>
+          )}
 
           {isError ? (
             <Card>
               <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
             </Card>
+          ) : tab === 'balance' ? (
+            <BalanceTab balance={data?.balance} loading={isLoading} />
           ) : tab === 'comp' ? (
             <CompensationsTab rows={rows} loading={isLoading} claims={data?.claims} />
           ) : (
             <Card>
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                <h3 className="section-title">{t('table.title')}</h3>
+                <div>
+                  <h3 className="section-title">{t('table.title')}</h3>
+                  <p className="mt-0.5 text-sm text-muted">{t('table.note')}</p>
+                </div>
                 <p className="text-sm text-muted">
                   {f.num(data?.rows.total ?? 0)} {t('common.rows')}
                 </p>
@@ -539,6 +553,7 @@ export default function Losses() {
                   rows={rows}
                   rowKey={(r) => r.id}
                   loading={isLoading}
+                  onRowClick={setDetail}
                   empty={<EmptyState icon={<PackageX className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
                   pagination={
                     data
@@ -572,6 +587,7 @@ export default function Losses() {
       </PlanGate>
 
       <ClaimDraftModal open={claimOpen} onClose={() => setClaimOpen(false)} ids={selected} query={query} />
+      <LossDetailModal row={detail} onClose={() => setDetail(null)} />
     </>
   );
 }

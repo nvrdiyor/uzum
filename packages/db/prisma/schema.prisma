@@ -345,8 +345,15 @@ model Sku {
   returnedPct   Float    @default(0)
   /** Uzum omborida yaroqsiz (brak) deb belgilangan dona */
   qtyDefected   Int      @default(0)
-  /** Uzum omborida yo'qolgan dona */
+  /** Uzum omborida yo'qolgan dona (Uzum hujjatida "eskirgan" — amalda doim 0) */
   qtyMissing    Int      @default(0)
+  /// Uzumda turgan, lekin sotuvda bo'lmagan dona: qo'shimcha ombor, fotostudiya,
+  /// arxiv, ishlov kutayotgan. Tovar balansida "yo'qolgan" deb sanalmasligi uchun.
+  qtyElsewhere  Int      @default(0)
+  /// Uzumning umrbod hisoblagichlari (quantitySold / quantityReturned) —
+  /// bizdagi buyurtmalar tarixi to'liqmi, shu bilan tekshiriladi.
+  uzumSold      Int      @default(0)
+  uzumReturned  Int      @default(0)
 
   /**
    * MXIK — Mahsulot va Xizmatlar Identifikatsiya Kodi.
@@ -523,12 +530,23 @@ model LossRecord {
   happenedAt  DateTime
   claimSentAt DateTime?
   note        String?
+  /// Yozuv qayerdan: uzum — Uzum/namuna ma'lumoti; qolganlari SavdoIQ o'zi
+  /// aniqlagan: balance (tovar balansida hisobda yo'q), counter (Uzum
+  /// "yo'qolgan" hisoblagichi), defect (brak), shortage (qabulda kam chiqqan),
+  /// stuck (uzoq vaqt topshirilmagan buyurtma).
+  source      String    @default("uzum")
+  /// Manba ichidagi kalit (SKU, nakladnoy yoki buyurtma) — qayta sinxronda
+  /// o'sha yozuv yangilanishi uchun
+  ref         String?
+  /// Dalil (JSON matn): hisob-kitob va buyurtma raqamlari
+  details     String?
   createdAt   DateTime  @default(now())
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   sku   Sku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
 
   @@index([storeId, happenedAt])
+  @@index([storeId, source])
 }
 
 model ReturnRecord {

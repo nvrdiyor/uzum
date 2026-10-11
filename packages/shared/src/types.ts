@@ -875,21 +875,141 @@ export interface BatchRate {
 
 // ─────────────────────────── Yo'qotish / qaytarish / saqlash ───────────────────────────
 
+/**
+ * SavdoIQ o'zi aniqlagan yo'qotish turi (Uzum API'da yo'qotishlar ro'yxati yo'q):
+ *  • `balance`  — tovar balansida hisobda yo'q: qabul qilingan − sotilgan − ombordagi;
+ *  • `counter`  — Uzum o'zi "yo'qolgan" deb belgilagan dona;
+ *  • `defect`   — Uzum brak deb belgilagan dona;
+ *  • `shortage` — nakladnoyda yuborilgandan kam qabul qilingan.
+ */
+export type LossKind = 'balance' | 'counter' | 'defect' | 'shortage';
+
+/** Bekor qilingan yoki qaytarilgan, ammo omborga qaytgani ko'rinmagan buyurtma */
+export interface BalanceOrderRef {
+  orderId: string;
+  /** Buyurtma sanasi (ISO) */
+  date: string;
+  kind: 'canceled' | 'returned';
+  qty: number;
+  /** Uzum bergan sabab (asl matni) */
+  cause: string | null;
+  /** Shu sanagacha omborga qaytishi kutiladi (ISO) */
+  expectedBy: string;
+}
+
+/** Yo'qotish yozuvining dalili — raqam qayerdan chiqqani */
+export interface LossEvidence {
+  /** balance: tenglama hadlari */
+  accepted?: number;
+  sold?: number;
+  returnedToSeller?: number;
+  onHand?: number;
+  /** Uzumda, lekin sotuvda emas (qo'shimcha ombor, fotostudiya, brak) */
+  held?: number;
+  /** Qaytishi hali kutilayotgan dona — yo'qotishga kirmagan */
+  inReturn?: number;
+  /** Omborga qaytmagan buyurtmalar (nomzodlar, yangisi birinchi) */
+  suspects?: BalanceOrderRef[];
+  /** Qoldiq buyurtmasiz kamaygan kunlar */
+  removals?: { date: string; qty: number }[];
+  /** shortage: nakladnoy raqami va yuborilgan dona */
+  invoice?: string;
+  sent?: number;
+}
+
 export interface LossRow {
   id: string;
   sku: string | null;
   title: string | null;
   imageUrl: string | null;
   type: 'lost' | 'damaged' | 'not_delivered';
+  /** SavdoIQ aniqlagan yozuvda — turi; Uzum/namuna yozuvida null */
+  kind: LossKind | null;
   scheme: 'FBO' | 'FBS';
   qty: number;
   amount: number;
   compensated: number;
   status: 'open' | 'claimed' | 'compensated' | 'rejected';
   happenedAt: string;
+  evidence: LossEvidence | null;
+  note: string | null;
+}
+
+export type StockBalanceState =
+  /** Hammasi joyida */
+  | 'ok'
+  /** Hisobda yo'q dona bor */
+  | 'loss'
+  /** Farq bor, lekin qaytishi kutilayotgan dona bilan tushuntiriladi */
+  | 'waiting'
+  /** Yaqinda qabul qilingan — Uzum qoldig'i hali o'rnashmagan */
+  | 'settling'
+  /** Buyurtmalar tarixi to'liq emas — hisoblab bo'lmaydi */
+  | 'incomplete';
+
+/** Bitta SKU bo'yicha tovar balansi (butun davr) */
+export interface StockBalanceRow {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  state: StockBalanceState;
+  /** Uzum nakladnoylari bo'yicha qabul qilingan */
+  accepted: number;
+  /** Sotilgan (yo'ldagi buyurtmalar bilan) */
+  sold: number;
+  /** Uzum sotuvchiga qaytarib bergan (qaytarish nakladnoylari) */
+  returnedToSeller: number;
+  /** Uzum omborida sotuvda turgan */
+  onHand: number;
+  /** Uzumda, lekin sotuvda emas: qo'shimcha ombor, fotostudiya, brak */
+  held: number;
+  /** Bekor qilingan/qaytarilgan, omborga qaytishi kutilmoqda */
+  inReturn: number;
+  /** Hisobda yo'q */
+  unaccounted: number;
+  /** Hisobda yo'q donalarning tannarxi */
+  amount: number;
+  /** Kutilayotgan donalar eng kechi shu sanagacha qaytishi kerak (ISO) */
+  waitingUntil: string | null;
+  suspects: BalanceOrderRef[];
+  removals: { date: string; qty: number }[];
+}
+
+/** Uzoq vaqt xaridorga topshirilmagan buyurtma */
+export interface StuckOrderRow {
+  orderId: string;
+  sku: string | null;
+  title: string | null;
+  imageUrl: string | null;
+  qty: number;
+  /** Buyurtma summasi (xaridor narxida) */
+  amount: number;
+  orderedAt: string;
+  days: number;
+}
+
+export interface StockBalanceSummary {
+  /** Qoldiq qaysi kun holatida (ISO); nakladnoy topilmasa null */
+  asOf: string | null;
+  totals: {
+    skus: number;
+    accepted: number;
+    sold: number;
+    onHand: number;
+    inReturn: number;
+    unaccounted: number;
+    amount: number;
+  };
+  rows: StockBalanceRow[];
+  stuck: StuckOrderRow[];
+  /** Qoidalar — sahifadagi izohlar shu raqamlardan */
+  rules: { returnWaitDays: number; stuckDays: number };
 }
 
 export interface LossesResponse {
+  /** Tovar balansi — butun davr bo'yicha, tanlangan davrga bog'liq emas */
+  balance: StockBalanceSummary;
   totals: { skuCount: number; qty: number; amount: number; compensated: number };
   /**
    * Da'vo holati bo'yicha jamilar — BUTUN davr bo'yicha.

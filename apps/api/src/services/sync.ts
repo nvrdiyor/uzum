@@ -24,6 +24,7 @@ import {
   addDays,
   formatMoney,
   getPlan,
+  hasFeature,
   round,
   type PlanId,
   type SyncStatus,
@@ -35,6 +36,7 @@ import { createUzumClient } from '../uzum/client.js';
 import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
+import { syncLossRecords } from './stock-balance.js';
 import {
   applyActualLogistics,
   upsertExpenses,
@@ -709,6 +711,31 @@ async function stepReturns(run: SyncRun, setDetail: (t: string) => void): Promis
     const lossRes = await upsertLosses(store.id, losses);
     run.totals.returns += countOf(retRes);
     run.totals.losses += countOf(lossRes);
+
+    /*
+     * Tovar balansi: Uzum yo'qotishlar ro'yxatini bermaydi, shuning uchun
+     * qabul, sotuv va qoldiq shu yerda solishtiriladi. Mahsulot, qoldiq,
+     * nakladnoy va buyurtmalar shu sinxronning oldingi bosqichlarida
+     * yangilangan — hammasi bir paytga tegishli.
+     *
+     * Xato sinxronni yiqitmaydi: bu qo'shimcha tahlil, asosiy ma'lumot emas.
+     */
+    try {
+      const found = await syncLossRecords(store.id);
+      run.totals.losses += found.created + found.updated;
+      // Bo'lim tarifda ochiq bo'lmasa xabar yuborilmaydi — havola yopiq sahifaga olib borardi
+      if (found.created > 0 && hasFeature(run.planId, 'losses_report')) {
+        await notifyCompanyOwners(run.companyId, {
+          type: 'warning',
+          title: 'Yo‘qotilgan tovar aniqlandi',
+          body: `${store.title}: ${found.createdQty} dona, tannarxda ${formatMoney(found.createdAmount, 'uz')}.`,
+          link: '/losses',
+          buttonText: 'Tafsilotni ko‘rish',
+        });
+      }
+    } catch (err) {
+      log(`job ${run.jobId}: tovar balansi hisoblanmadi — ${errorMessage(err)}`);
+    }
     setDetail(`Qaytarishlar: ${run.totals.returns} · yo‘qotishlar: ${run.totals.losses}`);
   }
 }

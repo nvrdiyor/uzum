@@ -263,6 +263,14 @@ const LOSS_TYPE_LABEL: Record<string, string> = {
   not_delivered: 'Yetkazilmagan',
 };
 
+/** SavdoIQ o'zi aniqlagan yozuvlar turi (`LossRecord.source`) */
+const LOSS_KIND_LABEL: Record<string, string> = {
+  balance: 'Hisobda yo‘q',
+  counter: 'Uzum: yo‘qolgan',
+  defect: 'Brak',
+  shortage: 'Qabulda kam',
+};
+
 const LOSS_STATUS_LABEL: Record<string, string> = {
   open: 'Ochiq',
   claimed: 'Da’vo yuborilgan',
@@ -1077,9 +1085,13 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
+    // Sahifadagi kabi: hal bo'lmagan yozuvlar davrdan qat'i nazar kiradi
     const where = {
       storeId: { in: storeIds },
-      happenedAt: { gte: range.from, lt: range.toExclusive },
+      OR: [
+        { happenedAt: { gte: range.from, lt: range.toExclusive } },
+        { status: { in: ['open', 'claimed'] } },
+      ],
     };
 
     const [total, records, catalog] = await Promise.all([
@@ -1107,7 +1119,7 @@ router.get(
         toISODate(r.happenedAt),
         dash(info?.sku ?? null),
         info ? info.title : '—',
-        LOSS_TYPE_LABEL[r.type] ?? r.type,
+        LOSS_KIND_LABEL[r.source] ?? LOSS_TYPE_LABEL[r.type] ?? r.type,
         r.scheme,
         r.qty,
         round(r.amount),

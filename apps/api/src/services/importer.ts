@@ -390,6 +390,9 @@ export async function upsertProducts(storeId: string, products: UzumProduct[]): 
         returnedPct: round(num(sku.returnedPct)),
         qtyDefected: int(sku.qtyDefected),
         qtyMissing: int(sku.qtyMissing),
+        qtyElsewhere: int(sku.qtyElsewhere),
+        uzumSold: int(sku.qtySold),
+        uzumReturned: int(sku.qtyReturned),
       };
 
       const current = byUzumId.get(String(sku.id)) ?? bySku.get(code);
@@ -876,7 +879,12 @@ function mapItemStatus(raw: string | undefined, fallback: string): string {
 // ─────────────────────────── Qaytarishlar ───────────────────────────
 
 /**
- * Mijoz qaytarishlari. Unique indeksi yo'q — barqaror `id` (store + Uzum id) idempotentlikni beradi.
+ * Qaytarish nakladnoylari (Uzum → sotuvchi). Unique indeksi yo'q — barqaror
+ * `id` (store + Uzum id) idempotentlikni beradi.
+ *
+ * `status`: pending | completed | canceled — tovar balansi faqat shularni
+ * sanaydi. Demo ma'lumotida holat yo'q, u eski `returned` bilan yoziladi va
+ * balansga kirmaydi. Katalogda topilmagan SKU (begona do'kon) tashlab yuboriladi.
  */
 export async function upsertReturns(storeId: string, returns: UzumReturn[]): Promise<ImportResult> {
   const res = emptyResult();
@@ -891,6 +899,8 @@ export async function upsertReturns(storeId: string, returns: UzumReturn[]): Pro
         const key = String(r.id);
         if (seen.has(key)) return false;
         seen.add(key);
+        // Nakladnoy butun kabinet bo'yicha keladi — begona do'kon pozitsiyasi kerak emas
+        if (r.status && !refs.has(String(r.skuId))) return false;
         return true;
       })
       .map((r) => {
@@ -901,10 +911,11 @@ export async function upsertReturns(storeId: string, returns: UzumReturn[]): Pro
           storeId,
           skuId: ref?.id ?? null,
           orderCode: text(r.orderCode),
-          qty: Math.max(1, int(r.qty, 1)),
+          // Nakladnoyda 0 bo'lishi mumkin (bekor qilingan) — namuna ma'lumotida kamida 1
+          qty: r.status ? Math.max(0, int(r.qty)) : Math.max(1, int(r.qty, 1)),
           amount: round(num(r.amount)),
           reason: text(r.reason),
-          status: 'returned',
+          status: r.status ?? 'returned',
           returnedAt,
         };
       });

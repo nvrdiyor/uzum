@@ -22,7 +22,6 @@ import {
   isRecord,
   toUzumApiError,
   uzumErrorMessage,
-  type UzumQuery,
 } from './http.js';
 import { fetchStorefrontReviews } from './storefront.js';
 import type {
@@ -374,6 +373,9 @@ function pickImage(value: unknown): string {
 
 // ─────────────────────────── Klient ───────────────────────────
 
+/** Tarkibi alohida so'raladigan qaytarish nakladnoylari chegarasi (bir sinxronda) */
+const RETURN_DETAIL_CAP = 40;
+
 export class LiveUzumClient implements UzumClient {
   private readonly http: UzumHttp;
 
@@ -587,6 +589,14 @@ export class LiveUzumClient implements UzumClient {
       returnedPct: asNumber(firstOf(r, KEYS.returnedPct)) || undefined,
       qtyDefected: Math.round(asNumber(firstOf(r, KEYS.defected))) || undefined,
       qtyMissing: Math.round(asNumber(firstOf(r, KEYS.missing))) || undefined,
+      // Tovar balansi uchun: Uzumda turgan boshqa donalar va umrbod hisoblagichlar
+      qtyElsewhere:
+        ['quantityAdditional', 'quantityOnPhotoStudio', 'quantityArchived', 'quantityPending'].reduce(
+          (sum, key) => sum + Math.max(0, Math.round(asNumber(r[key]))),
+          0,
+        ) || undefined,
+      qtySold: Math.round(asNumber(r.quantitySold)) || undefined,
+      qtyReturned: Math.round(asNumber(r.quantityReturned)) || undefined,
     };
   }
 
@@ -834,61 +844,98 @@ export class LiveUzumClient implements UzumClient {
     return [...orders.values()].filter((o) => inRange(o.orderedAt, from, to));
   }
 
-  async getReturns(shopId: string, from: Date, to: Date): Promise<UzumReturn[]> {
-    const rows = await this.tryPages(
-      [
-        { path: uzumPath('shopReturns', { shopId }), query: {} },
-        { path: uzumPath('returns'), query: { shopIds: shopId } },
-      ],
-      ['returns', 'returnList'],
-      UZUM_PAGE_LIMITS.returns,
-      `qaytarishlar (shop ${shopId})`,
-    );
+  /**
+   * Qaytarish nakladnoylari — Uzum omboridan SOTUVCHIGA qaytarilgan tovar.
+   *
+   * Tovar balansida bu donalar "sotuvchiga qaytarilgan" bo'lib ayriladi, aks
+   * holda ombordan olib ketilgan tovar "yo'qolgan" bo'lib ko'rinardi. Shuning
+   * uchun sana bo'yicha kesilmaydi (`from`/`to` e'tiborsiz) — hammasi kerak.
+   *
+   * Sxema OpenAPI hujjatidan (`SellerReturnDto`): `/v1/return` tarkibi bilan
+   * (`returnItems[].{skuId, amount, packedAmount}`), `/v1/shop/{id}/return`
+   * esa tarkibsiz ro'yxat — unda har biri alohida so'raladi. `/v1/return`
+   * butun kabinet bo'yicha keladi; begona do'kon pozitsiyasi importda SKU
+   * topilmagani uchun tushib qoladi.
+   *
+   * Dona soni holatga qarab:
+   *  • bekor qilingan — 0 (tovar omborda qolgan);
+   *  • yakunlangan — haqiqatda qadoqlangani (`packedAmount`): so'ralgan 10
+   *    donadan 8 tasi topilgan bo'lsa, qolgan 2 tasi balansda ochiq qoladi;
+   *  • jarayonda — so'ralgani (`amount`): ular sotuvdan allaqachon olingan.
+   *
+   * `type: FBS` — sotuvchining o'z omboridagi tovar, FBO balansiga kirmaydi.
+   */
+  async getReturns(shopId: string, _from: Date, _to: Date): Promise<UzumReturn[]> {
+    let rows: unknown[] = [];
+    try {
+      rows = await this.http.fetchAllPages(
+        uzumPath('returns'),
+        {},
+        (payload) => pickList(payload, ['returns', 'returnList']),
+        { size: UZUM_PAGE_LIMITS.returns },
+      );
+    } catch (err) {
+      this.warn(`qaytarish nakladnoylari (shop ${shopId})`, err);
+    }
+
+    // Zaxira yo'l: do'kon ro'yxati tarkibsiz keladi — har birining tarkibi alohida
+    if (rows.length === 0) {
+      let lite: unknown[] = [];
+      try {
+        lite = await this.http.fetchAllPages(
+          uzumPath('shopReturns', { shopId }),
+          {},
+          (payload) => pickList(payload, ['returns', 'returnList']),
+          { size: UZUM_PAGE_LIMITS.returns },
+        );
+      } catch (err) {
+        this.warn(`qaytarish nakladnoylari — do'kon ro'yxati (shop ${shopId})`, err);
+      }
+      for (const raw of lite.slice(0, RETURN_DETAIL_CAP)) {
+        const id = asString(asRecord(raw).id);
+        if (!id) continue;
+        try {
+          const one = asRecord(await this.http.get(uzumPath('shopReturn', { shopId, returnId: id })));
+          rows.push(one.payload ?? one);
+        } catch (err) {
+          this.warn(`qaytarish nakladnoyi ${id}`, err);
+        }
+      }
+    }
 
     const out: UzumReturn[] = [];
     const fallbackIso = new Date().toISOString();
 
     for (const raw of rows) {
       const r = asRecord(raw);
-      const docId = asString(firstOf(r, KEYS.returnId));
-      const returnedAt = asIso(firstOf(r, KEYS.returnedAt), fallbackIso);
-      if (!inRange(returnedAt, from, to)) continue;
+      const docId = asString(r.id);
+      const kind = asString(r.type).toUpperCase();
+      if (!docId || kind === 'FBS') continue;
 
-      const reason = asString(firstOf(r, KEYS.reason)) || undefined;
-      const orderCode = asString(firstOf(r, KEYS.orderCode)) || undefined;
-      const items = asArray(firstOf(r, KEYS.orderItems));
+      const statusRaw = asString(r.status).toUpperCase();
+      const canceled = Boolean(r.canceledDate) || /CANCEL/.test(statusRaw);
+      const completed = !canceled && (Boolean(r.completedDate) || statusRaw === 'COMPLETED');
+      const status: UzumReturn['status'] = canceled ? 'canceled' : completed ? 'completed' : 'pending';
+      const returnedAt = asIso(r.completedDate ?? r.executionDate ?? r.dateCreated, fallbackIso);
 
-      if (items.length === 0) {
-        const skuId = asString(firstOf(r, KEYS.skuId));
-        if (!skuId && !docId) continue;
-        out.push({
-          id: docId || `${skuId}-${returnedAt}`,
-          skuId,
-          orderCode,
-          qty: Math.max(1, Math.round(asNumber(firstOf(r, KEYS.qty), 1))),
-          amount: asMoney(firstOf(r, KEYS.total)),
-          reason,
-          returnedAt,
-        });
-        continue;
-      }
-
-      let index = 0;
-      for (const itemRaw of items) {
+      for (const itemRaw of asArray(r.returnItems)) {
         const it = asRecord(itemRaw);
-        const skuId = asString(firstOf(it, KEYS.skuId));
+        const skuId = asString(it.skuId);
         if (!skuId) continue;
-        const qty = Math.max(1, Math.round(asNumber(firstOf(it, KEYS.qty), 1)));
+        const asked = Math.max(0, Math.round(asNumber(it.amount)));
+        const packed = Math.max(0, Math.round(asNumber(it.packedAmount)));
+        const qty = canceled ? 0 : completed ? packed || asked : Math.max(asked, packed);
         out.push({
-          id: `${docId || 'return'}-${index}`,
+          id: `${docId}-${asString(it.id) || skuId}`,
           skuId,
-          orderCode,
+          orderCode: asString(r.externalNumber) || docId,
           qty,
-          amount: asMoney(firstOf(it, KEYS.total)) || asMoney(firstOf(it, KEYS.price)) * qty,
-          reason: asString(firstOf(it, KEYS.reason)) || reason,
+          amount: asMoney(it.purchasePrice) * qty,
+          reason: kind || undefined,
           returnedAt,
+          status,
+          kind: kind || undefined,
         });
-        index += 1;
       }
     }
 
@@ -899,8 +946,10 @@ export class LiveUzumClient implements UzumClient {
 
   /**
    * Marketpleys aybi bilan yo'qolgan/shikastlangan tovarlar uchun seller OpenAPI'da
-   * alohida endpoint YO'Q (`docs/UZUM-API.md` 2.9). Ma'lumot topilmagani uchun bo'sh massiv.
-   * TODO(uzum): kabinet ichidagi kengaytirilgan spec'da tekshirish.
+   * alohida endpoint YO'Q, katalogdagi `quantityMissing` esa hujjatda "eskirgan"
+   * deb belgilangan (amalda doim 0). Shuning uchun yo'qotishlar Uzumdan
+   * o'qilmaydi — SavdoIQ ularni tovar balansidan o'zi hisoblaydi
+   * (`services/stock-balance.ts`).
    */
   async getLosses(_shopId: string, _from: Date, _to: Date): Promise<UzumLoss[]> {
     return [];
@@ -1159,29 +1208,6 @@ export class LiveUzumClient implements UzumClient {
       this.warn(`xarajatlar (shop ${shopId})`, err);
       return [];
     }
-  }
-
-  /** Bir necha yo'lni navbat bilan sinaydi — birinchi ishlagani natija beradi */
-  private async tryPages(
-    variants: ReadonlyArray<{ path: string; query: UzumQuery }>,
-    listKeys: readonly string[],
-    size: number,
-    label: string,
-  ): Promise<unknown[]> {
-    for (const variant of variants) {
-      try {
-        const rows = await this.http.fetchAllPages(
-          variant.path,
-          variant.query,
-          (payload) => pickList(payload, listKeys),
-          { size },
-        );
-        if (rows.length > 0) return rows;
-      } catch (err) {
-        this.warn(`${label} — ${variant.path}`, err);
-      }
-    }
-    return [];
   }
 
   /** Xatolarni jurnalga yozamiz, lekin oqimni to'xtatmaymiz */
