@@ -612,11 +612,34 @@ export interface NewSaleNotice {
   amount: number;
 }
 
+/**
+ * Telegramga "bekor qilindi" / "qaytarildi" xabari uchun.
+ *
+ * Faqat bizda allaqachon turgan buyurtmadagi O'ZGARISH: oldingi sinxronda
+ * tirik sotuv edi, endi donasi bekor bo'ldi yoki qaytdi. Birinchi marta
+ * ko'rinayotgan buyurtma allaqachon bekor bo'lsa — xabar yo'q: sotuvchi u
+ * haqda "sotildi" ham olmagan, demak aytadigan yangilik ham yo'q.
+ */
+export interface OrderChangeNotice {
+  kind: 'canceled' | 'returned';
+  uzumOrderId: string;
+  title: string;
+  /** Shu sinxronda bekor bo'lgan yoki qaytgan dona */
+  qty: number;
+  /** O'sha donalarning sotuv summasi */
+  amount: number;
+  /** Uzum bergan sabab (asl matni) */
+  cause: string | null;
+}
+
 export interface OrdersImportResult extends ImportResult {
   /** Shu importda BIRINCHI marta ko'ringan sotuvlar (`collectNew` yoqilganda) */
   newSales: NewSaleNotice[];
   /** Cheklovdan oldingi haqiqiy son — xabarda "yana N ta" deb yozish uchun */
   newSalesTotal: number;
+  /** Shu importda bekor bo'lgan yoki qaytgan pozitsiyalar (`collectNew` yoqilganda) */
+  changes: OrderChangeNotice[];
+  changesTotal: number;
 }
 
 /**
@@ -628,6 +651,12 @@ const SALE_STATUSES = new Set<OrderStatus>(['new', 'processing', 'delivered']);
 
 /** Bitta importda ko'pi bilan shuncha sotuv eslab qolinadi */
 const NEW_SALES_CAP = 50;
+
+/**
+ * Pozitsiya holati aniq bo'lmaganda (qisman qaytgan) sabab matnidan:
+ * "Отменён до получения" — xaridor olmasdan bekor qilgan, qolgani — qaytarish.
+ */
+const CANCELED_CAUSE = /до\s+получени|before\s+recei|qabul\s+qilishdan\s+oldin/i;
 
 /**
  * Buyurtmalar va ularning pozitsiyalari.
@@ -651,7 +680,13 @@ export async function upsertOrders(
    */
   const costFromUzum = new Map<string, number>();
 
-  const res: OrdersImportResult = { ...emptyResult(), newSales: [], newSalesTotal: 0 };
+  const res: OrdersImportResult = {
+    ...emptyResult(),
+    newSales: [],
+    newSalesTotal: 0,
+    changes: [],
+    changesTotal: 0,
+  };
   if (orders.length === 0) return res;
 
   const taxRate = Number.isFinite(options.taxRate ?? NaN) ? (options.taxRate as number) : DEFAULTS.taxPct;
@@ -662,10 +697,22 @@ export async function upsertOrders(
     const keys = batch.map((o) => String(o.id));
     const existing = await prisma.order.findMany({
       where: { storeId, uzumOrderId: { in: keys } },
-      select: { id: true, uzumOrderId: true },
+      select: {
+        id: true,
+        uzumOrderId: true,
+        // Oldingi holat — nima bekor bo'lgani/qaytganini bilish uchun (to'liq sinxronda kerak emas)
+        ...(options.collectNew ? { items: { select: { id: true, returnedQty: true } } } : {}),
+      },
     });
     const byKey = new Map<string, string>();
-    for (const o of existing) if (o.uzumOrderId) byKey.set(o.uzumOrderId, o.id);
+    /** Pozitsiya id'si → oldingi sinxrondagi qaytgan/bekor bo'lgan dona */
+    const returnedBefore = new Map<string, number>();
+    for (const o of existing) {
+      if (o.uzumOrderId) byKey.set(o.uzumOrderId, o.id);
+      for (const it of (o as { items?: { id: string; returnedQty: number }[] }).items ?? []) {
+        returnedBefore.set(it.id, it.returnedQty);
+      }
+    }
 
     const orderCreates: Prisma.OrderCreateManyInput[] = [];
     const itemCreates: Prisma.OrderItemCreateManyInput[] = [];
@@ -764,14 +811,40 @@ export async function upsertOrders(
         const lineReturnedAt =
           lineStatus === 'returned' ? (toDate(it.returnedAt) ?? returnedAt ?? deliveredAt ?? orderedAt) : null;
 
+        const itemId = stableId('oi', orderId, index, String(it.skuId));
+        const returnedQty = Math.max(0, int(it.returnedQty, 0));
+
+        // Shu sinxronda bekor bo'lgan yoki qaytgan dona — Telegram xabari uchun
+        const before = returnedBefore.get(itemId);
+        if (options.collectNew && before !== undefined && returnedQty > before) {
+          res.changesTotal += 1;
+          if (res.changes.length < NEW_SALES_CAP) {
+            const cause = text(it.returnCause);
+            const gone = returnedQty - before;
+            res.changes.push({
+              kind:
+                lineStatus === 'returned'
+                  ? 'returned'
+                  : lineStatus === 'canceled' || (cause !== null && CANCELED_CAUSE.test(cause))
+                    ? 'canceled'
+                    : 'returned',
+              uzumOrderId,
+              title: text(it.title) ?? text(it.skuCode) ?? ref?.sku ?? 'Mahsulot',
+              qty: gone,
+              amount: round(sellPrice * gone),
+              cause,
+            });
+          }
+        }
+
         itemCreates.push({
-          id: stableId('oi', orderId, index, String(it.skuId)),
+          id: itemId,
           orderId,
           skuId: ref?.id ?? null,
           skuCode: text(it.skuCode) ?? ref?.sku ?? String(it.skuId),
           title: text(it.title),
           qty,
-          returnedQty: Math.max(0, int(it.returnedQty, 0)),
+          returnedQty,
           sellPrice,
           purchasePrice,
           commission,

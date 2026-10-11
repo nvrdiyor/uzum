@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Coins, Download, Percent, Receipt, Undo2 } from 'lucide-react';
 import { eachDay, type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -310,7 +311,12 @@ export default function Returns() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [kind, setKind] = useState<Kind>('returned');
+  // Telegram xabaridagi havola (?kind=canceled) kerakli ro'yxatni ochadi
+  const [params] = useSearchParams();
+  const [kind, setKind] = useState<Kind>(() => {
+    const fromLink = params.get('kind');
+    return fromLink === 'canceled' || fromLink === 'all' ? fromLink : 'returned';
+  });
 
   const query = useMemo(
     () => ({ ...q, page, pageSize: 25, search: search || undefined, kind }),

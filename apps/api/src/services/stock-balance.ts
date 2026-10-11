@@ -525,11 +525,18 @@ const lossId = (...parts: (string | number)[]): string =>
  * `settling` va `incomplete` holatdagi SKU'ning balans yozuvi o'zgarmaydi:
  * ma'lumot ishonchli bo'lmagan paytda na yangi signal, na "topildi" kerak.
  */
-export async function syncLossRecords(
-  storeId: string,
-  now: Date = new Date(),
-): Promise<{ created: number; updated: number; removed: number; createdQty: number; createdAmount: number }> {
-  const res = { created: 0, updated: 0, removed: 0, createdQty: 0, createdAmount: 0 };
+export interface LossSyncResult {
+  created: number;
+  updated: number;
+  removed: number;
+  /** Yangi aniqlangan yo'qotishlar — xabar uchun */
+  found: { skuId: string; kind: LossKind; qty: number; amount: number }[];
+  /** Hisobda yo'q bo'lib turgan, endi yana ko'ringan donalar (faqat balans) */
+  recovered: { skuId: string; qty: number }[];
+}
+
+export async function syncLossRecords(storeId: string, now: Date = new Date()): Promise<LossSyncResult> {
+  const res: LossSyncResult = { created: 0, updated: 0, removed: 0, found: [], recovered: [] };
   const { bySku, shortages } = await loadBalances([storeId], now);
 
   const desired = new Map<string, Desired>();
@@ -573,7 +580,7 @@ export async function syncLossRecords(
 
   const existing = await prisma.lossRecord.findMany({
     where: { storeId, source: { in: [...AUTO_LOSS_SOURCES] } },
-    select: { id: true, source: true, ref: true, qty: true, amount: true, details: true, status: true },
+    select: { id: true, skuId: true, source: true, ref: true, qty: true, amount: true, details: true, status: true },
   });
   const byKey = new Map<string, typeof existing>();
   for (const r of existing) {
@@ -594,6 +601,7 @@ export async function syncLossRecords(
       if (open) {
         await prisma.lossRecord.delete({ where: { id: open.id } });
         res.removed += 1;
+        if (open.source === 'balance' && open.skuId) res.recovered.push({ skuId: open.skuId, qty: open.qty });
       }
       continue;
     }
@@ -608,6 +616,13 @@ export async function syncLossRecords(
       if (open.qty !== data.qty || open.amount !== data.amount || open.details !== data.details) {
         await prisma.lossRecord.update({ where: { id: open.id }, data });
         res.updated += 1;
+        // Ochiq yozuvdagi dona o'zgarishi ham yangilik: ortgani — yana yo'qoldi, kamaygani — qaytdi
+        if (data.qty > open.qty) {
+          const more = data.qty - open.qty;
+          res.found.push({ skuId: want.skuId, kind: want.source, qty: more, amount: round(more * want.unitCost) });
+        } else if (data.qty < open.qty && want.source === 'balance') {
+          res.recovered.push({ skuId: want.skuId, qty: open.qty - data.qty });
+        }
       }
     } else {
       creates.push({
@@ -623,8 +638,7 @@ export async function syncLossRecords(
         ref: want.ref,
         ...data,
       });
-      res.createdQty += qty;
-      res.createdAmount += data.amount;
+      res.found.push({ skuId: want.skuId, kind: want.source, qty, amount: data.amount });
     }
   }
 

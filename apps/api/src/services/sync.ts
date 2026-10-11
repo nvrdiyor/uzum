@@ -26,6 +26,7 @@ import {
   getPlan,
   hasFeature,
   round,
+  type LossKind,
   type PlanId,
   type SyncStatus,
   type SyncStepId,
@@ -88,6 +89,10 @@ const RETURN_WINDOW_DAYS = 45;
 const SALE_NOTIFY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 /** Bitta sinxronda ko'pi bilan shuncha alohida sotuv xabari; qolgani — bitta yig'ma */
 const SALE_NOTIFY_LIMIT = 8;
+/** Bekor qilish va qaytarish xabarlari uchun xuddi shunday chegara */
+const CHANGE_NOTIFY_LIMIT = 8;
+/** Yo'qotish xabarida nomma-nom sanaladigan tovarlar soni */
+const LOSS_NOTIFY_LINES = 6;
 /** To'liq sinxronda tarix chuqurligining yuqori chegarasi (kun) */
 const MAX_HISTORY_DAYS = 365;
 /** Bir sikldа nechta job parallel bajariladi */
@@ -651,6 +656,112 @@ ${storeTitle} · №${sale.uzumOrderId}`,
   return budget - single.length;
 }
 
+/**
+ * Buyurtma bekor qilingani yoki qaytarilgani haqida xabar.
+ *
+ * Sotuv xabari bilan bir xil sozlamaga (`notifyOrders`) bo'ysunadi: "sotildi"
+ * deb yozgan bot o'sha buyurtma bekor bo'lganini ham aytishi kerak, aks holda
+ * sotuvchi Telegramdagi sotuvlarni sanab, kabinetdagi tushumdan ko'p chiqaradi.
+ * Faqat inkremental sinxronda va faqat shu sinxronda ro'y bergan o'zgarish.
+ */
+async function notifyOrderChanges(
+  run: SyncRun,
+  storeTitle: string,
+  res: OrdersImportResult,
+  budget: number,
+): Promise<number> {
+  if (res.changes.length === 0) return budget;
+
+  const single = res.changes.slice(0, Math.max(0, budget));
+  for (const change of single) {
+    const returned = change.kind === 'returned';
+    const money = change.amount > 0 ? ` · ${formatMoney(change.amount, 'uz')}` : '';
+    // Bekor qilishda sabab doim bir xil ("olmasdan bekor qilindi") — faqat qaytarishda foydali
+    const cause = returned && change.cause ? `\nSabab: ${change.cause}` : '';
+    await notifyCompanyOwners(run.companyId, {
+      type: 'warning',
+      requireFlag: 'notifyOrders',
+      title: `${returned ? 'Qaytarildi' : 'Bekor qilindi'}: ${change.title}`,
+      body: `${change.qty} dona${money}${cause}
+${storeTitle} · №${change.uzumOrderId}`,
+      link: `/returns?kind=${change.kind}`,
+      buttonText: returned ? 'Qaytarishlarni ko‘rish' : 'Bekor qilishlarni ko‘rish',
+    });
+  }
+
+  const restCount = res.changesTotal - single.length;
+  if (restCount > 0) {
+    await notifyCompanyOwners(run.companyId, {
+      type: 'warning',
+      requireFlag: 'notifyOrders',
+      title: `Yana ${restCount} ta bekor qilish yoki qaytarish`,
+      body: storeTitle,
+      link: '/returns?kind=all',
+      buttonText: 'Ro‘yxatni ko‘rish',
+    });
+  }
+
+  return budget - single.length;
+}
+
+/**
+ * Tovar balansidagi yangilik: yangi yo'qotish va yana ko'ringan dona.
+ * Har biri bitta xabarda, tovarlar nomma-nom — sotuvchi qaysi tovar ekanini
+ * sahifaga kirmasdan bilsin.
+ */
+async function notifyLossChanges(
+  run: SyncRun,
+  storeTitle: string,
+  found: Awaited<ReturnType<typeof syncLossRecords>>,
+): Promise<void> {
+  if (found.found.length === 0 && found.recovered.length === 0) return;
+  // Bo'lim tarifda ochiq bo'lmasa xabar yuborilmaydi — havola yopiq sahifaga olib borardi
+  if (!hasFeature(run.planId, 'losses_report')) return;
+
+  const ids = [...new Set([...found.found, ...found.recovered].map((r) => r.skuId))];
+  const skus = await prisma.sku.findMany({ where: { id: { in: ids } }, select: { id: true, sku: true, title: true } });
+  // Nom + SKU kodi: rangi boshqa ikki variantning nomi bir xil bo'lishi mumkin
+  const nameOf = new Map(
+    skus.map((s) => [s.id, s.title && s.title !== s.sku ? `${s.title.slice(0, 48)} (${s.sku})` : s.sku]),
+  );
+  const lines = (rows: { skuId: string; qty: number; note?: string }[]): string => {
+    const shown = rows.slice(0, LOSS_NOTIFY_LINES).map((r) => `• ${nameOf.get(r.skuId) ?? 'Mahsulot'} — ${r.qty} dona${r.note ?? ''}`);
+    if (rows.length > LOSS_NOTIFY_LINES) shown.push(`…va yana ${rows.length - LOSS_NOTIFY_LINES} ta tovar`);
+    return shown.join('\n');
+  };
+
+  if (found.found.length > 0) {
+    const KIND_NOTE: Record<LossKind, string> = {
+      balance: '',
+      counter: ' (Uzum belgilagan)',
+      defect: ' (brak)',
+      shortage: ' (qabulda kam chiqqan)',
+    };
+    const qty = found.found.reduce((s, r) => s + r.qty, 0);
+    const amount = found.found.reduce((s, r) => s + r.amount, 0);
+    await notifyCompanyOwners(run.companyId, {
+      type: 'warning',
+      title: `Yo‘qotilgan tovar aniqlandi: ${qty} dona`,
+      body: `${lines(found.found.map((r) => ({ ...r, note: KIND_NOTE[r.kind] })))}
+${storeTitle} · tannarxda ${formatMoney(amount, 'uz')}`,
+      link: '/losses',
+      buttonText: 'Tafsilotni ko‘rish',
+    });
+  }
+
+  if (found.recovered.length > 0) {
+    const qty = found.recovered.reduce((s, r) => s + r.qty, 0);
+    await notifyCompanyOwners(run.companyId, {
+      type: 'success',
+      title: `Yo‘qolgan tovar topildi: ${qty} dona`,
+      body: `${lines(found.recovered)}
+${storeTitle} · ombor hisobida yana ko‘rindi`,
+      link: '/losses',
+      buttonText: 'Balansni ko‘rish',
+    });
+  }
+}
+
 /** 5. Buyurtmalar (eng uzun bosqich) */
 async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
@@ -658,6 +769,7 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
   const collectNew = run.type === 'incremental';
   const collectNewSince = new Date(Date.now() - SALE_NOTIFY_MAX_AGE_MS);
   let budget = SALE_NOTIFY_LIMIT;
+  let changeBudget = CHANGE_NOTIFY_LIMIT;
 
   for (const store of run.stores) {
     const orders = await client.getOrders(store.uzumShopId, run.from, run.to);
@@ -665,7 +777,7 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
     run.totals.orders += countOf(res);
     setDetail(`${run.totals.orders} ta buyurtma yuklandi`);
 
-    if (!collectNew || res.newSales.length === 0) continue;
+    if (!collectNew) continue;
     /*
      * Xabar sinxron natijasiga ta'sir qilmaydi: xato bo'lsa bosqich baribir
      * muvaffaqiyatli hisoblanadi, aks holda bitta yiqilgan xabar butun
@@ -673,8 +785,9 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
      */
     try {
       budget = await notifyNewSales(run, store.title, res, budget);
+      changeBudget = await notifyOrderChanges(run, store.title, res, changeBudget);
     } catch (err) {
-      log(`job ${run.jobId}: sotuv xabari yuborilmadi — ${errorMessage(err)}`);
+      log(`job ${run.jobId}: buyurtma xabari yuborilmadi — ${errorMessage(err)}`);
     }
   }
 }
@@ -723,16 +836,7 @@ async function stepReturns(run: SyncRun, setDetail: (t: string) => void): Promis
     try {
       const found = await syncLossRecords(store.id);
       run.totals.losses += found.created + found.updated;
-      // Bo'lim tarifda ochiq bo'lmasa xabar yuborilmaydi — havola yopiq sahifaga olib borardi
-      if (found.created > 0 && hasFeature(run.planId, 'losses_report')) {
-        await notifyCompanyOwners(run.companyId, {
-          type: 'warning',
-          title: 'Yo‘qotilgan tovar aniqlandi',
-          body: `${store.title}: ${found.createdQty} dona, tannarxda ${formatMoney(found.createdAmount, 'uz')}.`,
-          link: '/losses',
-          buttonText: 'Tafsilotni ko‘rish',
-        });
-      }
+      await notifyLossChanges(run, store.title, found);
     } catch (err) {
       log(`job ${run.jobId}: tovar balansi hisoblanmadi — ${errorMessage(err)}`);
     }
