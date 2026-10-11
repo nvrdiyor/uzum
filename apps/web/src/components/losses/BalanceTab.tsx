@@ -16,7 +16,7 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
-import { BalanceEvidence } from './BalanceEvidence';
+import { BalanceEvidence, CompensationBreakdown } from './BalanceEvidence';
 import './texts';
 
 /** Uzoq yo'ldagi buyurtmalardan dastlab nechta ko'rsatiladi */
@@ -253,6 +253,9 @@ export function BalanceTab({ balance, loading }: { balance?: StockBalanceSummary
               <p className="text-sm text-muted">{t(`bal.state.${shown.state}Hint`)}</p>
             ) : null}
             <BalanceEvidence data={shown} />
+            {shown.comp && shown.unaccounted > 0 ? (
+              <CompensationBreakdown comp={shown.comp} qty={shown.unaccounted} />
+            ) : null}
           </div>
         ) : null}
       </Modal>

@@ -897,8 +897,30 @@ export interface BalanceOrderRef {
   expectedBy: string;
 }
 
+/**
+ * Kompensatsiya taxmini — Uzum qo'llanmasi 6.8 formulasi bo'yicha:
+ * tovarning haqiqiy narxi − marketpleys komissiyasi.
+ */
+export interface CompensationBasis {
+  /** "Haqiqiy narx": bir donaning o'rtacha sotuv narxi */
+  price: number;
+  /**
+   * Narx qayerdan: oxirgi 30 kun o'rtachasi → sotuv bo'lmasa 90 kun →
+   * u ham bo'lmasa oxirgi sotuv narxi → umuman sotilmagan bo'lsa kabinetdagi narx.
+   */
+  basis: '30d' | '90d' | 'last' | 'list';
+  /** Bir donadagi marketpleys komissiyasi */
+  commission: number;
+  /** Bir dona uchun kompensatsiya: narx − komissiya */
+  unit: number;
+}
+
 /** Yo'qotish yozuvining dalili — raqam qayerdan chiqqani */
 export interface LossEvidence {
+  /** Summa qanday hisoblangani */
+  comp?: CompensationBasis;
+  /** Shu donalarning tannarxi — solishtirish uchun */
+  cost?: number;
   /** balance: tenglama hadlari */
   accepted?: number;
   sold?: number;
@@ -968,8 +990,10 @@ export interface StockBalanceRow {
   inReturn: number;
   /** Hisobda yo'q */
   unaccounted: number;
-  /** Hisobda yo'q donalarning tannarxi */
+  /** Hisobda yo'q donalar uchun kompensatsiya taxmini (Uzum formulasi) */
   amount: number;
+  /** Summa qanday hisoblangani; yo'qotish bo'lmasa null */
+  comp: CompensationBasis | null;
   /** Kutilayotgan donalar eng kechi shu sanagacha qaytishi kerak (ISO) */
   waitingUntil: string | null;
   suspects: BalanceOrderRef[];
@@ -1004,12 +1028,17 @@ export interface StockBalanceSummary {
   rows: StockBalanceRow[];
   stuck: StuckOrderRow[];
   /** Qoidalar — sahifadagi izohlar shu raqamlardan */
-  rules: { returnWaitDays: number; stuckDays: number };
+  rules: { returnWaitDays: number; stuckDays: number; minClaim: number };
 }
 
 export interface LossesResponse {
   /** Tovar balansi — butun davr bo'yicha, tanlangan davrga bog'liq emas */
   balance: StockBalanceSummary;
+  /**
+   * Hali da'vo yuborilmagan yo'qotishlar — filtr va davrdan qat'i nazar.
+   * Uzum da'voni `balance.rules.minClaim` dan kam summaga qabul qilmaydi.
+   */
+  open: { count: number; qty: number; amount: number };
   totals: { skuCount: number; qty: number; amount: number; compensated: number };
   /**
    * Da'vo holati bo'yicha jamilar — BUTUN davr bo'yicha.

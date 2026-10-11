@@ -602,12 +602,36 @@ function toLossRow(l: DbLoss, catalog: Map<string, { sku: string; title: string;
   };
 }
 
+const PRICE_BASIS_LABEL: Record<NonNullable<LossEvidence['comp']>['basis'], string> = {
+  '30d': 'oxirgi 30 kunning o‘rtacha sotuv narxi',
+  '90d': 'oxirgi 90 kunning o‘rtacha sotuv narxi',
+  last: 'oxirgi sotuv narxi',
+  list: 'kabinetdagi joriy narx',
+};
+
+/** Hali da'vo yuborilmagan yo'qotishlar jami — filtr va davrdan qat'i nazar */
+async function openLossSummary(storeIds: string[]): Promise<LossesResponse['open']> {
+  if (storeIds.length === 0) return { count: 0, qty: 0, amount: 0 };
+  const agg = await prisma.lossRecord.aggregate({
+    where: { storeId: { in: storeIds }, status: 'open' },
+    _count: true,
+    _sum: { qty: true, amount: true },
+  });
+  return { count: agg._count, qty: agg._sum.qty ?? 0, amount: round(agg._sum.amount ?? 0) };
+}
+
 /** Da'vo matni uchun: yozuv ostidagi dalil satrlari */
 function evidenceLines(r: LossRow): string[] {
   const e = r.evidence;
   if (!e) return [];
   const n = (v: number | undefined): string => formatNumber(v ?? 0, 'uz');
   const lines: string[] = [];
+  // Summa asosi — har qanday turdagi yozuv uchun oxirida qo'shiladi
+  const money = e.comp
+    ? [
+        `   Summa: ${PRICE_BASIS_LABEL[e.comp.basis]} ${n(e.comp.price)} − komissiya ${n(e.comp.commission)} = ${n(e.comp.unit)} so‘m × ${n(r.qty)} dona = ${n(r.amount)} so‘m.`,
+      ]
+    : [];
 
   if (r.kind === 'balance') {
     const terms = [`qabul qilingan ${n(e.accepted)}`, `sotilgan ${n(e.sold)}`];
@@ -629,7 +653,7 @@ function evidenceLines(r: LossRow): string[] {
       `   Nakladnoy №${e.invoice ?? '—'}: yuborilgan ${n(e.sent)}, qabul qilingan ${n(e.accepted)} — ${n(r.qty)} dona kam.`,
     );
   }
-  return lines;
+  return [...lines, ...money];
 }
 
 /** GET /losses — yo'qotishlar ro'yxati */
@@ -645,6 +669,7 @@ router.get(
     if (storeIds.length === 0) {
       const empty: LossesResponse = {
         balance: await getBalanceSummary([]),
+        open: { count: 0, qty: 0, amount: 0 },
         totals: { skuCount: 0, qty: 0, amount: 0, compensated: 0 },
         claims: {
           receivedAmount: 0,
@@ -660,13 +685,14 @@ router.get(
       return;
     }
 
-    const [losses, catalog, balance] = await Promise.all([
+    const [losses, catalog, balance, open] = await Promise.all([
       prisma.lossRecord.findMany({
         where: lossWhere(storeIds, range.from, range.toExclusive, q),
         orderBy: { happenedAt: range.order === 'asc' ? 'asc' : 'desc' },
       }),
       getSkuCatalog(storeIds, true),
       getBalanceSummary(storeIds),
+      openLossSummary(storeIds),
     ]);
 
     const search = range.search?.toLowerCase();
@@ -688,6 +714,7 @@ router.get(
 
     const payload: LossesResponse = {
       balance,
+      open,
       totals: { skuCount: skuIds.size, qty, amount: round(amount), compensated: round(compensated) },
       claims: (() => {
         // Da'vo jamilari butun davr bo'yicha — jadval sahifasiga bog'liq emas
@@ -808,6 +835,8 @@ router.get(
       '',
       'Quyidagi tovarlar bo‘yicha ombor/yetkazib berish bosqichida yo‘qotish qayd etildi.',
       'Iltimos, holatni tekshirib, kompensatsiya ajratishingizni so‘raymiz.',
+      'Summa sotuvchi qo‘llanmasining 6.8-bo‘limidagi formula bo‘yicha hisoblandi:',
+      'tovarning haqiqiy narxi (o‘rtacha sotuv narxi) − marketpleys komissiyasi.',
       '',
       table,
       '',

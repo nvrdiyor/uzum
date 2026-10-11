@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Coins, Download, FileText, Hash, PackageX, ShieldCheck } from 'lucide-react';
+import { Boxes, Coins, Download, FileText, Hash, Info, PackageX, ShieldCheck } from 'lucide-react';
 import type { LossRow, LossesResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
@@ -43,7 +43,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Yo‘qotishlar soni',
     'kpi.qtyHint': 'Jami dona',
     'kpi.amount': 'Qaytarish summasi',
-    'kpi.amountHint': 'Tannarx bo‘yicha — Uzumdan talab qilinadi',
+    'kpi.amountHint': 'Uzum formulasi: sotuv narxi − komissiya',
     'kpi.compensated': 'Kompensatsiya olingan',
     'kpi.compHint': 'Qaytarish summasining {pct} qismi',
     'filter.scheme': 'Sxema',
@@ -78,7 +78,7 @@ registerNamespace('losses', {
     'claim.descSelected': 'Tanlangan {n} ta yozuv asosida tayyorlandi',
     'claim.descAll': 'Davrdagi barcha ochiq yo‘qotishlar asosida tayyorlandi',
     'claim.hint':
-      'Matnni nusxalab, Uzum seller kabinetidagi qo‘llab-quvvatlash bo‘limiga yuboring. Javob odatda 3–5 ish kunida keladi.',
+      'Uzum da’voni o‘z Word shablonida va imzolangan qo‘shimcha shartnoma bilan qabul qiladi — bu matndagi raqamlarni shablonga ko‘chiring va Biznesni qo‘llab-quvvatlashga yuboring. Ko‘rib chiqish 60 kungacha davom etadi; minimal summa 500 000 so‘m.',
     'claim.support': 'Uzum qo‘llab-quvvatlash',
     'claim.empty': 'Da’vo uchun mos yozuv topilmadi',
     'claim.copiedToast': 'Da’vo matni nusxalandi',
@@ -113,7 +113,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Количество потерь',
     'kpi.qtyHint': 'Всего штук',
     'kpi.amount': 'Сумма к возврату',
-    'kpi.amountHint': 'По себестоимости — к требованию с Uzum',
+    'kpi.amountHint': 'Формула Uzum: цена продажи − комиссия',
     'kpi.compensated': 'Получено компенсаций',
     'kpi.compHint': '{pct} от суммы требований',
     'filter.scheme': 'Схема',
@@ -148,7 +148,7 @@ registerNamespace('losses', {
     'claim.descSelected': 'Подготовлено по {n} выбранным записям',
     'claim.descAll': 'Подготовлено по всем открытым потерям за период',
     'claim.hint':
-      'Скопируйте текст и отправьте в поддержку кабинета продавца Uzum. Ответ обычно приходит за 3–5 рабочих дней.',
+      'Uzum принимает претензию в своём шаблоне Word и с подписанным допсоглашением — перенесите цифры из этого текста в шаблон и отправьте в Поддержку бизнеса. Рассмотрение занимает до 60 дней; минимальная сумма — 500 000 сум.',
     'claim.support': 'Поддержка Uzum',
     'claim.empty': 'Подходящих записей для претензии не найдено',
     'claim.copiedToast': 'Текст претензии скопирован',
@@ -183,7 +183,7 @@ registerNamespace('losses', {
     'kpi.qty': 'Lost units',
     'kpi.qtyHint': 'Units in total',
     'kpi.amount': 'Claimable amount',
-    'kpi.amountHint': 'At cost — claimable from Uzum',
+    'kpi.amountHint': 'Uzum formula: sale price − commission',
     'kpi.compensated': 'Compensated',
     'kpi.compHint': '{pct} of the claimable amount',
     'filter.scheme': 'Scheme',
@@ -218,7 +218,7 @@ registerNamespace('losses', {
     'claim.descSelected': 'Prepared from {n} selected records',
     'claim.descAll': 'Prepared from every open loss in the period',
     'claim.hint':
-      'Copy the text and send it to Uzum seller support. A reply usually arrives within 3–5 business days.',
+      'Uzum accepts claims in its own Word template with a signed additional agreement — move the figures from this text into the template and send it to Business Support. Review takes up to 60 days; the minimum amount is 500,000 UZS.',
     'claim.support': 'Uzum support',
     'claim.empty': 'No records match this claim',
     'claim.copiedToast': 'Claim text copied',
@@ -537,51 +537,56 @@ export default function Losses() {
           ) : tab === 'comp' ? (
             <CompensationsTab rows={rows} loading={isLoading} claims={data?.claims} />
           ) : (
-            <Card>
-              <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                <div>
-                  <h3 className="section-title">{t('table.title')}</h3>
-                  <p className="mt-0.5 text-sm text-muted">{t('table.note')}</p>
+            <>
+              {data && data.open.amount > 0 ? (
+                <ClaimMinimum amount={data.open.amount} min={data.balance.rules.minClaim} />
+              ) : null}
+              <Card>
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
+                  <div>
+                    <h3 className="section-title">{t('table.title')}</h3>
+                    <p className="mt-0.5 text-sm text-muted">{t('table.note')}</p>
+                  </div>
+                  <p className="text-sm text-muted">
+                    {f.num(data?.rows.total ?? 0)} {t('common.rows')}
+                  </p>
                 </div>
-                <p className="text-sm text-muted">
-                  {f.num(data?.rows.total ?? 0)} {t('common.rows')}
-                </p>
-              </div>
-              <div className="mt-4">
-                <DataTable
-                  columns={columns}
-                  rows={rows}
-                  rowKey={(r) => r.id}
-                  loading={isLoading}
-                  onRowClick={setDetail}
-                  empty={<EmptyState icon={<PackageX className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
-                  pagination={
-                    data
-                      ? {
-                          page: data.rows.page,
-                          pages: data.rows.pages,
-                          total: data.rows.total,
-                          pageSize: data.rows.pageSize,
-                          onPage: (p) => setPage(p),
-                        }
-                      : undefined
-                  }
-                  footer={
-                    rows.length ? (
-                      <>
-                        <td className="px-4 py-3 eyebrow-lg" colSpan={4}>
-                          {t('table.pageTotal')}
-                        </td>
-                        <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
-                        <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                        <td className="tnum px-4 py-3 text-right text-brand-ink">{f.money(pageComp)}</td>
-                        <td className="px-4 py-3" colSpan={2} />
-                      </>
-                    ) : undefined
-                  }
-                />
-              </div>
-            </Card>
+                <div className="mt-4">
+                  <DataTable
+                    columns={columns}
+                    rows={rows}
+                    rowKey={(r) => r.id}
+                    loading={isLoading}
+                    onRowClick={setDetail}
+                    empty={<EmptyState icon={<PackageX className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
+                    pagination={
+                      data
+                        ? {
+                            page: data.rows.page,
+                            pages: data.rows.pages,
+                            total: data.rows.total,
+                            pageSize: data.rows.pageSize,
+                            onPage: (p) => setPage(p),
+                          }
+                        : undefined
+                    }
+                    footer={
+                      rows.length ? (
+                        <>
+                          <td className="px-4 py-3 eyebrow-lg" colSpan={4}>
+                            {t('table.pageTotal')}
+                          </td>
+                          <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
+                          <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
+                          <td className="tnum px-4 py-3 text-right text-brand-ink">{f.money(pageComp)}</td>
+                          <td className="px-4 py-3" colSpan={2} />
+                        </>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              </Card>
+            </>
           )}
         </div>
       </PlanGate>
@@ -589,6 +594,32 @@ export default function Losses() {
       <ClaimDraftModal open={claimOpen} onClose={() => setClaimOpen(false)} ids={selected} query={query} />
       <LossDetailModal row={detail} onClose={() => setDetail(null)} />
     </>
+  );
+}
+
+/**
+ * Uzum kompensatsiyaga da'voni faqat ma'lum summadan boshlab qabul qiladi
+ * (qo'llanma 6.8). Sotuvchi bekorga da'vo yozmasligi uchun shu yerning o'zida
+ * aytiladi: hozir yuborsa bo'ladimi yoki yana qancha yig'ilishi kerak.
+ */
+function ClaimMinimum({ amount, min }: { amount: number; min: number }) {
+  const t = useT('losses');
+  const f = useFormat();
+  const enough = amount >= min;
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-3 rounded-2xl border p-4',
+        enough ? 'border-brand/30 bg-brand/5' : 'border-warn/30 bg-warn/5',
+      )}
+    >
+      <Info className={cn('mt-0.5 h-4 w-4 shrink-0', enough ? 'text-brand-ink' : 'text-warn-ink')} />
+      <p className="text-sm leading-relaxed text-ink-soft">
+        {enough
+          ? t('min.ok', { amount: f.money(amount), min: f.money(min) })
+          : t('min.below', { amount: f.money(amount), min: f.money(min), left: f.money(min - amount) })}
+      </p>
+    </div>
   );
 }
 

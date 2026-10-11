@@ -743,7 +743,7 @@ async function notifyLossChanges(
       type: 'warning',
       title: `Yo‘qotilgan tovar aniqlandi: ${qty} dona`,
       body: `${lines(found.found.map((r) => ({ ...r, note: KIND_NOTE[r.kind] })))}
-${storeTitle} · tannarxda ${formatMoney(amount, 'uz')}`,
+${storeTitle} · kompensatsiya taxminan ${formatMoney(amount, 'uz')}`,
       link: '/losses',
       buttonText: 'Tafsilotni ko‘rish',
     });

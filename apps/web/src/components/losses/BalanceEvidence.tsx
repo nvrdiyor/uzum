@@ -1,4 +1,4 @@
-import type { BalanceOrderRef } from '@savdoiq/shared';
+import type { BalanceOrderRef, CompensationBasis } from '@savdoiq/shared';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import './texts';
@@ -14,6 +14,43 @@ export interface BalanceEvidenceData {
   waitingUntil?: string | null;
   suspects: BalanceOrderRef[];
   removals: { date: string; qty: number }[];
+}
+
+/**
+ * Summa qanday chiqqani — Uzum formulasi: haqiqiy narx − komissiya, donaga
+ * ko'paytirilgan. Tannarx yonida solishtirish uchun turadi.
+ */
+export function CompensationBreakdown({
+  comp,
+  qty,
+  cost,
+}: {
+  comp: CompensationBasis;
+  qty: number;
+  cost?: number;
+}) {
+  const t = useT('losses');
+  const f = useFormat();
+  return (
+    <div>
+      <p className="eyebrow mb-2">{t('comp.title')}</p>
+      <dl className="rounded-xl border border-line bg-surface-2/60 px-4 py-1.5">
+        <Line label={t(`comp.basis.${comp.basis}`)} value={f.money(comp.price)} />
+        <Line op="−" label={t('comp.commission')} value={f.money(comp.commission)} />
+        <Line op="=" label={t('comp.unit')} value={f.money(comp.unit)} rule />
+        <Line
+          op="×"
+          label={t('comp.total', { n: f.num(qty) })}
+          value={f.money(comp.unit * qty)}
+          className="font-semibold text-ink"
+        />
+      </dl>
+      <p className="mt-2 text-xs leading-relaxed text-muted">
+        {t('comp.note')}
+        {cost !== undefined && cost > 0 ? ` ${t('comp.cost', { amount: f.money(cost) })}.` : ''}
+      </p>
+    </div>
+  );
 }
 
 /**

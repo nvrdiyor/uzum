@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { useSession } from '@/store/session';
 import { Badge, Button, Input, Modal, toast, type Tone } from '@/components/ui';
-import { BalanceEvidence } from './BalanceEvidence';
+import { BalanceEvidence, CompensationBreakdown } from './BalanceEvidence';
 import './texts';
 
 export const LOSS_STATUS_TONE: Record<LossRow['status'], Tone> = {
@@ -149,6 +149,8 @@ export function LossDetailModal({ row: active, onClose }: { row: LossRow | null;
           ) : row.kind === 'counter' || row.kind === 'defect' ? (
             <p className="text-sm text-ink-soft">{t(`ev.${row.kind}`)}</p>
           ) : null}
+
+          {e?.comp ? <CompensationBreakdown comp={e.comp} qty={row.qty} cost={e.cost} /> : null}
 
           {row.compensated > 0 ? (
             <p className="text-sm text-ink-soft">

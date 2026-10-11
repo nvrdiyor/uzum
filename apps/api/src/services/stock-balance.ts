@@ -26,6 +26,7 @@ import {
   round,
   toISODate,
   type BalanceOrderRef,
+  type CompensationBasis,
   type LossEvidence,
   type LossKind,
   type StockBalanceRow,
@@ -52,6 +53,11 @@ export const STUCK_DAYS = 14;
 const SETTLE_MS = DAY_MS;
 /** Dalilda ko'rsatiladigan nomzod buyurtmalar chegarasi */
 const MAX_SUSPECTS = 5;
+/**
+ * Kompensatsiyaga da'vo uchun minimal umumiy summa (Uzum sotuvchi qo'llanmasi,
+ * 6.8-bo'lim, 2026-10 holati). Shundan kam bo'lsa da'vo qabul qilinmaydi.
+ */
+export const MIN_CLAIM_AMOUNT = 500_000;
 
 // ─────────────────────────── Sof hisob (bazasiz) ───────────────────────────
 
@@ -286,6 +292,8 @@ export interface SkuBalance extends BalanceResult {
   unitCost: number;
   defected: number;
   missing: number;
+  /** Kompensatsiya taxmini; yo'qotishi yo'q SKU uchun hisoblanmaydi (null) */
+  comp: CompensationBasis | null;
 }
 
 export interface ShortageRef {
@@ -310,6 +318,91 @@ const chunk = <T,>(items: T[], size = 400): T[][] => {
 };
 
 /**
+ * Kompensatsiya taxmini — Uzum sotuvchi qo'llanmasi, 6.8-bo'lim:
+ *
+ *   o'rnini to'ldirish = tovarning haqiqiy narxi − marketpleys komissiyasi
+ *
+ * "Haqiqiy narx": oxirgi 30 kalendar kunning o'rtacha sotuv narxi; o'sha oyda
+ * sotuv bo'lmasa — 90 kunniki; 3 oyda ham bo'lmasa — oxirgi sotuv narxi;
+ * umuman sotilmagan bo'lsa — kabinetdagi joriy narx.
+ *
+ * Komissiya o'sha sotuvlarda HAQIQATDA ushlangani olinadi (dona boshiga
+ * o'rtacha) — katalogdagi foizdan aniqroq: aksiyada komissiya boshqacha
+ * bo'ladi. Sotuv bo'lmagandagina katalog foiziga tayanamiz.
+ *
+ * Bu taxmin: Uzum narx oshirilgan deb gumon qilsa raqobatchilar narxini oladi,
+ * sug'urta hodisasida esa qabul dalolatnomasidagi summa to'lanadi.
+ */
+async function loadCompensation(
+  skus: { id: string; price: number; commissionPct: number }[],
+  now: Date,
+): Promise<Map<string, CompensationBasis>> {
+  const out = new Map<string, CompensationBasis>();
+  if (skus.length === 0) return out;
+
+  const d30 = now.getTime() - 30 * DAY_MS;
+  const sums = new Map<string, Record<'30d' | '90d', { qty: number; revenue: number; commission: number }>>();
+  for (const part of chunk(skus.map((s) => s.id))) {
+    const items = await prisma.orderItem.findMany({
+      where: { skuId: { in: part }, qty: { gt: 0 }, orderedAt: { gte: new Date(now.getTime() - 90 * DAY_MS) } },
+      select: { skuId: true, qty: true, revenue: true, commission: true, orderedAt: true },
+    });
+    for (const it of items) {
+      if (!it.skuId) continue;
+      const cur = sums.get(it.skuId) ?? {
+        '30d': { qty: 0, revenue: 0, commission: 0 },
+        '90d': { qty: 0, revenue: 0, commission: 0 },
+      };
+      for (const key of it.orderedAt.getTime() >= d30 ? (['30d', '90d'] as const) : (['90d'] as const)) {
+        cur[key].qty += it.qty;
+        cur[key].revenue += it.revenue;
+        cur[key].commission += it.commission;
+      }
+      sums.set(it.skuId, cur);
+    }
+  }
+
+  const basisOf = (price: number, commission: number, basis: CompensationBasis['basis']): CompensationBasis => ({
+    price: round(price),
+    basis,
+    commission: round(commission),
+    unit: Math.max(0, round(price) - round(commission)),
+  });
+
+  const noRecent: typeof skus = [];
+  for (const s of skus) {
+    const sum = sums.get(s.id);
+    const basis = sum && sum['30d'].qty > 0 ? '30d' : sum && sum['90d'].qty > 0 ? '90d' : null;
+    if (sum && basis) {
+      out.set(s.id, basisOf(sum[basis].revenue / sum[basis].qty, sum[basis].commission / sum[basis].qty, basis));
+    } else {
+      noRecent.push(s);
+    }
+  }
+
+  // 3 oyda sotuv yo'q: oxirgi sotuv narxi; umuman sotilmagan bo'lsa — kabinetdagi narx
+  for (const part of chunk(noRecent)) {
+    const last = await prisma.orderItem.findMany({
+      where: { skuId: { in: part.map((s) => s.id) }, qty: { gt: 0 } },
+      orderBy: { orderedAt: 'desc' },
+      distinct: ['skuId'],
+      select: { skuId: true, qty: true, revenue: true, commission: true },
+    });
+    const lastBy = new Map(last.map((it) => [it.skuId as string, it]));
+    for (const s of part) {
+      const it = lastBy.get(s.id);
+      out.set(
+        s.id,
+        it
+          ? basisOf(it.revenue / it.qty, it.commission / it.qty, 'last')
+          : basisOf(s.price, (s.price * s.commissionPct) / 100, 'list'),
+      );
+    }
+  }
+  return out;
+}
+
+/**
  * Do'kon(lar)dagi barcha SKU balansi.
  *
  * Ikki bosqich: avval hamma SKU uchun arzon yig'indilar (qabul, sotuv, qoldiq),
@@ -327,6 +420,8 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
       select: {
         id: true,
         storeId: true,
+        price: true,
+        commissionPct: true,
         purchasePrice: true,
         extraCost: true,
         qtyDefected: true,
@@ -463,7 +558,20 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
       unitCost: s.purchasePrice + s.extraCost,
       defected: s.qtyDefected,
       missing: s.qtyMissing,
+      comp: null,
     });
+  }
+
+  // Kompensatsiya faqat yo'qotishi bor SKU'lar uchun — qolganlariga kerak emas
+  const short = new Set(shortages.map((x) => x.skuId));
+  const lossy = skus.filter((s) => {
+    const b = bySku.get(s.id);
+    return b ? b.unaccounted > 0 || b.missing > 0 || b.defected > 0 || short.has(s.id) : false;
+  });
+  const comps = await loadCompensation(lossy, now);
+  for (const [id, comp] of comps) {
+    const b = bySku.get(id);
+    if (b) b.comp = comp;
   }
 
   return { bySku, shortages };
@@ -490,7 +598,14 @@ const refOf = (e: EventRef): BalanceOrderRef => ({
   expectedBy: toISODate(e.expectedBy),
 });
 
+/** Summa asosi: kompensatsiya formulasi va solishtirish uchun tannarx */
+const moneyOf = (b: SkuBalance, qty: number): LossEvidence => ({
+  ...(b.comp ? { comp: b.comp } : {}),
+  cost: round(qty * b.unitCost),
+});
+
 const evidenceOf = (b: SkuBalance): LossEvidence => ({
+  ...moneyOf(b, b.unaccounted),
   accepted: b.accepted,
   sold: b.sold,
   returnedToSeller: b.returnedToSeller,
@@ -506,13 +621,24 @@ interface Desired {
   ref: string;
   skuId: string;
   qty: number;
-  unitCost: number;
+  /** Bir dona uchun kompensatsiya taxmini */
+  unit: number;
   happenedAt: Date;
   details: LossEvidence | null;
 }
 
 const lossId = (...parts: (string | number)[]): string =>
   `ls_${createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 24)}`;
+
+export interface LossSyncResult {
+  created: number;
+  updated: number;
+  removed: number;
+  /** Yangi aniqlangan yo'qotishlar — xabar uchun */
+  found: { skuId: string; kind: LossKind; qty: number; amount: number }[];
+  /** Hisobda yo'q bo'lib turgan, endi yana ko'ringan donalar (faqat balans) */
+  recovered: { skuId: string; qty: number }[];
+}
 
 /**
  * Balans natijasini `LossRecord` yozuvlariga aylantiradi (sinxronning oxirida).
@@ -524,17 +650,10 @@ const lossId = (...parts: (string | number)[]): string =>
  *
  * `settling` va `incomplete` holatdagi SKU'ning balans yozuvi o'zgarmaydi:
  * ma'lumot ishonchli bo'lmagan paytda na yangi signal, na "topildi" kerak.
+ *
+ * Summa — Uzum formulasi bo'yicha kompensatsiya taxmini (`loadCompensation`),
+ * ochiq yozuvda har sinxronda yangilanadi: o'rtacha narx 30 kunlik oynada suriladi.
  */
-export interface LossSyncResult {
-  created: number;
-  updated: number;
-  removed: number;
-  /** Yangi aniqlangan yo'qotishlar — xabar uchun */
-  found: { skuId: string; kind: LossKind; qty: number; amount: number }[];
-  /** Hisobda yo'q bo'lib turgan, endi yana ko'ringan donalar (faqat balans) */
-  recovered: { skuId: string; qty: number }[];
-}
-
 export async function syncLossRecords(storeId: string, now: Date = new Date()): Promise<LossSyncResult> {
   const res: LossSyncResult = { created: 0, updated: 0, removed: 0, found: [], recovered: [] };
   const { bySku, shortages } = await loadBalances([storeId], now);
@@ -550,7 +669,7 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
         ref: b.skuId,
         skuId: b.skuId,
         qty: b.unaccounted,
-        unitCost: b.unitCost,
+        unit: b.comp?.unit ?? 0,
         happenedAt: b.since ?? now,
         details: evidenceOf(b),
       });
@@ -558,23 +677,24 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
       frozen.add(`balance|${b.skuId}`);
     }
     if (b.missing > 0) {
-      put({ source: 'counter', ref: b.skuId, skuId: b.skuId, qty: b.missing, unitCost: b.unitCost, happenedAt: now, details: null });
+      put({ source: 'counter', ref: b.skuId, skuId: b.skuId, qty: b.missing, unit: b.comp?.unit ?? 0, happenedAt: now, details: moneyOf(b, b.missing) });
     }
     if (b.defected > 0) {
-      put({ source: 'defect', ref: b.skuId, skuId: b.skuId, qty: b.defected, unitCost: b.unitCost, happenedAt: now, details: null });
+      put({ source: 'defect', ref: b.skuId, skuId: b.skuId, qty: b.defected, unit: b.comp?.unit ?? 0, happenedAt: now, details: moneyOf(b, b.defected) });
     }
   }
   for (const s of shortages) {
-    const unitCost = bySku.get(s.skuId)?.unitCost;
-    if (unitCost === undefined) continue;
+    const b = bySku.get(s.skuId);
+    if (!b) continue;
+    const qty = s.sent - s.accepted;
     put({
       source: 'shortage',
       ref: `${s.shipmentId}:${s.skuId}`,
       skuId: s.skuId,
-      qty: s.sent - s.accepted,
-      unitCost,
+      qty,
+      unit: b.comp?.unit ?? 0,
       happenedAt: s.at,
-      details: { invoice: s.code, sent: s.sent, accepted: s.accepted },
+      details: { ...moneyOf(b, qty), invoice: s.code, sent: s.sent, accepted: s.accepted },
     });
   }
 
@@ -608,7 +728,7 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
 
     const data = {
       qty,
-      amount: round(qty * want.unitCost),
+      amount: round(qty * want.unit),
       details: want.details ? JSON.stringify(want.details) : null,
     };
     if (open) {
@@ -619,7 +739,7 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
         // Ochiq yozuvdagi dona o'zgarishi ham yangilik: ortgani — yana yo'qoldi, kamaygani — qaytdi
         if (data.qty > open.qty) {
           const more = data.qty - open.qty;
-          res.found.push({ skuId: want.skuId, kind: want.source, qty: more, amount: round(more * want.unitCost) });
+          res.found.push({ skuId: want.skuId, kind: want.source, qty: more, amount: round(more * want.unit) });
         } else if (data.qty < open.qty && want.source === 'balance') {
           res.recovered.push({ skuId: want.skuId, qty: open.qty - data.qty });
         }
@@ -655,7 +775,7 @@ const STATE_RANK: Record<StockBalanceState, number> = { loss: 0, waiting: 1, set
 
 /** "Yo'qotilgan tovarlar" sahifasidagi tovar balansi bo'limi */
 export async function getBalanceSummary(storeIds: string[], now: Date = new Date()): Promise<StockBalanceSummary> {
-  const rules = { returnWaitDays: RETURN_WAIT_DAYS, stuckDays: STUCK_DAYS };
+  const rules = { returnWaitDays: RETURN_WAIT_DAYS, stuckDays: STUCK_DAYS, minClaim: MIN_CLAIM_AMOUNT };
   const empty: StockBalanceSummary = {
     asOf: null,
     totals: { skus: 0, accepted: 0, sold: 0, onHand: 0, inReturn: 0, unaccounted: 0, amount: 0 },
@@ -717,7 +837,8 @@ export async function getBalanceSummary(storeIds: string[], now: Date = new Date
       held: b.held,
       inReturn: b.inReturn,
       unaccounted: b.unaccounted,
-      amount: round(b.unaccounted * b.unitCost),
+      amount: round(b.unaccounted * (b.comp?.unit ?? 0)),
+      comp: b.unaccounted > 0 ? b.comp : null,
       waitingUntil: b.waitingUntil ? toISODate(b.waitingUntil) : null,
       suspects: b.suspects.map(refOf),
       removals: b.removals.map((r) => ({ date: toISODate(r.date), qty: r.qty })),
