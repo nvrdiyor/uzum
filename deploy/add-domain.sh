@@ -3,7 +3,7 @@
 #  SavdoIQ — domen va HTTPS ulash
 #
 #  Ishlatish (serverda):
-#      bash add-domain.sh idturst.uz admin@idturst.uz
+#      bash add-domain.sh savdoiq.uz admin@savdoiq.uz
 #
 #  Oldindan: domen DNS'ida A-yozuvlar serverga qaratilgan bo'lishi SHART.
 # ─────────────────────────────────────────────────────────────────────────────
