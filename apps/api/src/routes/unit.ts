@@ -26,6 +26,8 @@ import {
   round,
   safeDiv,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   unitCalcSchema,
   type ImportCalcInput,
   type ImportDefaults,
@@ -45,6 +47,7 @@ import {
   type SalesAgg,
   type SkuInfo,
 } from '../services/common.js';
+import { aggregateSalesNet } from '../services/pnl.js';
 import { getRate } from '../services/rates.js';
 
 const router = Router();
@@ -100,7 +103,7 @@ const clampPct = (value: number, max = 100): number => Math.min(max, Math.max(0,
  */
 function buildRow(
   info: SkuInfo,
-  agg: SalesAgg | undefined,
+  agg: (SalesAgg & { adFee?: number }) | undefined,
   storage: StorageAgg | undefined,
   fallback: { commissionPct: number; logistics: number },
   taxRate: number,
@@ -118,7 +121,14 @@ function buildRow(
    * satrlaridagi qiymat, aks holda katalogdagi qiymat. Ilgari ikkalasi
    * qo'shilib, bir dona uchun xarajat oshib ketardi.
    */
-  const otherCost = hasSales && agg ? safeDiv(agg.otherCost, units) : info.extraCost;
+  const extraCost = hasSales && agg ? safeDiv(agg.otherCost, units) : info.extraCost;
+  /**
+   * Shu mahsulotning reklama to'lovi, bir donaga. Tovarga sarflangan pul emas
+   * (ROI maxrajiga kirmaydi), lekin foydadan ayriladi — aks holda reklama bilan
+   * sotilayotgan tovarning marjasi haqiqiydan baland ko'rinardi.
+   */
+  const adPerUnit = hasSales && agg ? safeDiv(agg.adFee ?? 0, units) : 0;
+  const otherCost = extraCost + adPerUnit;
 
   // Saqlash: davr to'lovi sotilgan donalarga taqsimlanadi, sotuv bo'lmasa — dona-kun bo'yicha
   const storagePerUnit = storage
@@ -134,8 +144,9 @@ function buildRow(
     logistics,
     storagePerDay: storagePerUnit,
     storageDays: 1,
-    packaging: 0,
-    otherCost,
+    // Qadoq va bir donaga qo'shimcha xarajat — tovarga sarflangan pul (ROI maxrajida)
+    packaging: extraCost,
+    otherCost: adPerUnit,
     taxPct: clampPct(taxRate, 50),
     // Qaytarishlar allaqachon yig'indidan chiqarilgan — shuning uchun 100%
     buyoutPct: 100,
@@ -167,7 +178,7 @@ function buildRow(
   return {
     row,
     revenue: agg?.revenue ?? 0,
-    investment: (info.purchasePrice + otherCost) * units,
+    investment: (info.purchasePrice + extraCost) * units,
   };
 }
 
@@ -191,7 +202,7 @@ router.get(
 
     const [catalog, sales, storage] = await Promise.all([
       getSkuCatalog(storeIds, false),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       storageBySku(storeIds, range.from, range.toExclusive),
     ]);
 
@@ -303,7 +314,7 @@ router.get(
     const storeIds = await getStoreIds(company.id, range.storeId);
 
     // Standart qiymatlar oxirgi 30 kunlik statistika asosida hisoblanadi
-    const toExclusive = addDays(parseISODate(toISODate(new Date())), 1);
+    const toExclusive = addDays(businessDayStart(toBusinessDate(new Date())), 1);
     const from = addDays(toExclusive, -DEFAULTS_WINDOW_DAYS);
 
     const [catalog, sales, storage, stocks] = await Promise.all([

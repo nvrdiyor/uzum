@@ -25,6 +25,7 @@ import type { Prisma } from '@savdoiq/db';
 import {
   round,
   toISODate,
+  toBusinessDate,
   type BalanceOrderRef,
   type CompensationBasis,
   type LossEvidence,
@@ -606,11 +607,11 @@ const TYPE_OF: Record<LossKind, 'lost' | 'damaged' | 'not_delivered'> = {
 
 const refOf = (e: EventRef): BalanceOrderRef => ({
   orderId: e.orderId,
-  date: toISODate(e.orderedAt),
+  date: toBusinessDate(e.orderedAt),
   kind: e.kind,
   qty: e.qty,
   cause: e.cause,
-  expectedBy: toISODate(e.expectedBy),
+  expectedBy: toBusinessDate(e.expectedBy),
 });
 
 /** Summa asosi: kompensatsiya formulasi va solishtirish uchun tannarx */
@@ -871,7 +872,7 @@ export async function getBalanceSummary(storeIds: string[], now: Date = new Date
       unaccounted: b.unaccounted,
       amount: round(b.unaccounted * (b.comp?.unit ?? 0)),
       comp: b.unaccounted > 0 ? b.comp : null,
-      waitingUntil: b.waitingUntil ? toISODate(b.waitingUntil) : null,
+      waitingUntil: b.waitingUntil ? toBusinessDate(b.waitingUntil) : null,
       suspects: b.suspects.map(refOf),
       removals: b.removals.map((r) => ({ date: toISODate(r.date), qty: r.qty })),
     });
@@ -889,7 +890,7 @@ export async function getBalanceSummary(storeIds: string[], now: Date = new Date
       imageUrl: info?.imageUrl ?? null,
       qty: it.qty,
       amount: round(it.revenue),
-      orderedAt: toISODate(it.orderedAt),
+      orderedAt: toBusinessDate(it.orderedAt),
       days: Math.floor((now.getTime() - it.orderedAt.getTime()) / DAY_MS),
     };
   });

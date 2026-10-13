@@ -25,6 +25,7 @@ import {
   parseISODate,
   round,
   toISODate,
+  toBusinessDate,
   todayInBusinessTz,
   type PayoutCalendarResponse,
   type PayoutCheck,
@@ -445,7 +446,7 @@ router.get(
       },
       select: { orderedAt: true },
     });
-    const saleDays = new Set(recent.map((o) => toISODate(o.orderedAt)));
+    const saleDays = new Set(recent.map((o) => toBusinessDate(o.orderedAt)));
     checks.push({
       key: 'stable_sales',
       status: saleDays.size >= MIN_SALE_DAYS ? 'ok' : 'fail',

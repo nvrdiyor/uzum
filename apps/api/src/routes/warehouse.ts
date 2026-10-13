@@ -31,6 +31,7 @@ import {
   safeDiv,
   shipmentSchema,
   toISODate,
+  toBusinessDate,
   type LossEvidence,
   type LossKind,
   type LossRow,
@@ -229,7 +230,7 @@ async function nextShipmentCode(companyId: string): Promise<string> {
  * Bugungi kun uchun StockSnapshot yaratiladi yoki yangilanadi.
  */
 async function applyAcceptance(items: { skuId: string; accepted: number }[]): Promise<void> {
-  const today = parseISODate(toISODate(new Date()));
+  const today = parseISODate(toBusinessDate(new Date()));
 
   for (const it of items) {
     if (it.accepted <= 0) continue;
@@ -596,7 +597,7 @@ function toLossRow(l: DbLoss, catalog: Map<string, { sku: string; title: string;
     amount: round(l.amount),
     compensated: round(l.compensated),
     status: toLossStatus(l.status),
-    happenedAt: toISODate(l.happenedAt),
+    happenedAt: toBusinessDate(l.happenedAt),
     evidence: parseEvidence(l.details),
     note: l.note,
   };
@@ -1017,7 +1018,7 @@ router.get(
         reason: l.reason,
         status: l.kind,
         kind: l.kind,
-        returnedAt: toISODate(l.date),
+        returnedAt: toBusinessDate(l.date),
       };
       if (search) {
         const hay = `${row.sku ?? ''} ${row.title ?? ''} ${row.orderCode ?? ''} ${row.reason ?? ''}`.toLowerCase();

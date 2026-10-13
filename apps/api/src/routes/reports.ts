@@ -26,6 +26,8 @@ import {
   round,
   safeDiv,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   type DeliveryType,
   type ExpenseCategory,
   type Insight,
@@ -47,6 +49,7 @@ import {
   getStoreIds,
   type SkuInfo,
 } from '../services/common.js';
+import { getAdFeesBySku, getPeriodCostsByDay } from '../services/pnl.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -124,7 +127,7 @@ function monthPeriod(key: string, now = new Date()): Period {
   const first = new Date(Date.UTC(year, month - 1, 1));
   // `day = 0` — oldingi oyning oxirgi kuni, ya'ni shu oyning oxiri
   const last = new Date(Date.UTC(year, month, 0));
-  const today = parseISODate(toISODate(now));
+  const today = parseISODate(toBusinessDate(now));
   const to = last.getTime() > today.getTime() ? today : last;
   if (to.getTime() < first.getTime()) return { from: toISODate(first), to: toISODate(first) };
   return { from: toISODate(first), to: toISODate(to) };
@@ -132,7 +135,7 @@ function monthPeriod(key: string, now = new Date()): Period {
 
 /** Tarif tarix chuqurligiga qarab davrni qisqartirish */
 function clampToPlan(period: Period, plan: PlanId): Period {
-  const earliest = toISODate(addDays(new Date(), -getPlan(plan).limits.historyDays));
+  const earliest = toBusinessDate(addDays(new Date(), -getPlan(plan).limits.historyDays));
   if (period.from >= earliest) return period;
   return { from: earliest, to: period.to < earliest ? earliest : period.to };
 }
@@ -461,8 +464,8 @@ router.get(
     // `?month=YYYY-MM` ustuvor, aks holda umumiy davr filtri ishlaydi
     const period =
       q.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(q.month) ? clampToPlan(monthPeriod(q.month), plan) : range.period;
-    const from = parseISODate(period.from);
-    const toExclusive = addDays(parseISODate(period.to), 1);
+    const from = businessDayStart(period.from);
+    const toExclusive = addDays(businessDayStart(period.to), 1);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
     const taxRate = company.taxRate;
@@ -475,12 +478,26 @@ router.get(
       getDailySeries(storeIds, period),
     ]);
 
+    // Mahsulotga bog'langan reklama to'lovi (mahsulot foydasidan) va davr xarajatlari kunma-kun (grafik uchun)
+    const [adBySku, costsByDay] = await Promise.all([
+      getAdFeesBySku(
+        company.id,
+        storeIds,
+        from,
+        toExclusive,
+        new Map([...snap.bySku].map(([id, a]) => [id, a.revenue])),
+        range.storeId,
+      ),
+      getPeriodCostsByDay(company.id, storeIds, from, toExclusive, range.storeId),
+    ]);
+
     // ── Top mahsulotlar (tushum bo'yicha 10 ta) ──
     const topProducts: TopProductRow[] = [...snap.bySku.entries()]
       // Katalogda yo'q — o'chirilgan tovar
       .filter(([skuId]) => catalog.has(skuId))
       .map(([skuId, agg]) => {
         const info: SkuInfo | undefined = catalog.get(skuId);
+        const profit = agg.netProfit - (adBySku.get(skuId) ?? 0);
         return {
           skuId,
           sku: info?.sku ?? '—',
@@ -488,10 +505,10 @@ router.get(
           productTitle: info?.productTitle,
           imageUrl: info?.imageUrl ?? null,
           revenue: round(agg.revenue),
-          profit: round(agg.netProfit),
+          profit: round(profit),
           units: agg.units,
           share: pct(agg.revenue, snap.revenue),
-          margin: pct(agg.netProfit, agg.revenue),
+          margin: pct(profit, agg.revenue),
         } satisfies TopProductRow;
       })
       .filter((r) => r.units > 0 || r.revenue > 0)
@@ -540,7 +557,8 @@ router.get(
     const daily: TimeSeriesPoint[] = series.map((row) => ({
       date: row.date,
       revenue: round(row.revenue),
-      profit: round(row.profit),
+      // Kunlik foyda ham davr xarajatlaridan keyin — kunlar yig'indisi yuqoridagi "Sof foyda"ga teng
+      profit: round(row.profit - (costsByDay.get(row.date) ?? 0)),
       orders: row.orders,
       units: row.units,
       payout: round(row.payout),
@@ -647,7 +665,7 @@ router.get(
     const taxRate = company.taxRate;
 
     // Oxirgi 6 oy (joriy oy bilan birga), tarif tarix chuqurligiga qarab qisqartiriladi
-    const today = parseISODate(toISODate(new Date()));
+    const today = parseISODate(toBusinessDate(new Date()));
     const earliest = addDays(new Date(), -getPlan(plan).limits.historyDays);
 
     const months: { key: string; from: Date; toExclusive: Date }[] = [];
@@ -656,7 +674,12 @@ router.get(
       const next = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1));
       // Butunlay ruxsat etilgan tarixdan tashqarida qolgan oylarni tashlab ketamiz
       if (next.getTime() <= earliest.getTime()) continue;
-      months.push({ key: monthKeyOf(first), from: first, toExclusive: next });
+      // Oy chegaralari ham savdo kuni bo'yicha: 1-kun Toshkentda 00:00 da boshlanadi
+      months.push({
+        key: monthKeyOf(first),
+        from: businessDayStart(toISODate(first)),
+        toExclusive: businessDayStart(toISODate(next)),
+      });
     }
 
     if (months.length === 0) {

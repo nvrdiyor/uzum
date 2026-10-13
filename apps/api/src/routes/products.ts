@@ -29,6 +29,8 @@ import {
   round,
   safeDiv,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   type AbcResponse,
   type AbcRow,
   type IlliquidResponse,
@@ -57,6 +59,7 @@ import {
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
+import { aggregateSalesNet, investedIn } from '../services/pnl.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -236,6 +239,8 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   let revenue = 0;
   let profit = 0;
   let cogs = 0;
+  /** Bir donaga qo'shimcha xarajat yig'indisi — tannarx bilan birga ROI maxraji */
+  let otherCost = 0;
   let stockFbo = 0;
   let stockFbs = 0;
   let stockOwn = 0;
@@ -256,6 +261,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     revenue += agg.revenue;
     profit += agg.netProfit;
     cogs += agg.cogs;
+    otherCost += agg.otherCost;
     stockFbo += st.fbo;
     stockFbs += st.fbs;
     stockOwn += st.own;
@@ -324,7 +330,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     returns,
     revenue: round(revenue),
     profit: round(profit),
-    roi: pct(profit, cogs),
+    roi: pct(profit, investedIn(cogs, otherCost)),
     margin: pct(profit, revenue),
     conversion: estimateConversion(p.rating, sold, returns),
     stockFbo,
@@ -418,7 +424,7 @@ router.get(
     const storeIds = await getStoreIds(company.id, range.storeId);
     const [products, sales, stocks, avgDaily] = await Promise.all([
       loadProducts(storeIds),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getLatestStocks(storeIds),
       getAvgDaily(storeIds, 30),
     ]);
@@ -540,14 +546,14 @@ router.get(
 
     const [catalog, sales, buckets] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       salesBuckets(storeIds, range.from, range.toExclusive),
     ]);
 
     const search = range.search?.toLowerCase();
     const base = [...sales.values()]
       .map((agg) => ({ agg, info: catalog.get(agg.skuId) }))
-      .filter((r): r is { agg: SalesAgg; info: SkuInfo } => Boolean(r.info))
+      .filter((r): r is { agg: SalesAgg & { adFee: number }; info: SkuInfo } => Boolean(r.info))
       .filter((r) => r.agg.units > 0 || r.agg.revenue > 0)
       .filter(
         (r) =>
@@ -999,7 +1005,7 @@ router.post(
 
 /** Oxirgi `DETAIL_DAYS` kunning ISO sanalari (bugun oxirgi) */
 function lastDays(days: number): string[] {
-  const today = parseISODate(toISODate(new Date()));
+  const today = parseISODate(toBusinessDate(new Date()));
   const out: string[] = [];
   for (let i = days - 1; i >= 0; i -= 1) out.push(toISODate(addDays(today, -i)));
   return out;
@@ -1019,11 +1025,11 @@ router.get(
 
     const skuIds = product.skus.map((s) => s.id);
     const scopedStores = [product.storeId];
-    const seriesFrom = parseISODate(lastDays(DETAIL_DAYS)[0]);
+    const seriesFrom = businessDayStart(lastDays(DETAIL_DAYS)[0] ?? toBusinessDate(new Date()));
 
     const [sales, stocks, avgDaily, lastSale, storeTitles, orderRows, snapshots, reviewRows, taxCompany] =
       await Promise.all([
-        aggregateSales(scopedStores, range.from, range.toExclusive),
+        aggregateSalesNet(company.id, scopedStores, range.from, range.toExclusive),
         getLatestStocks(scopedStores),
         getAvgDaily(scopedStores, 30),
         getLastSaleDates(scopedStores),
@@ -1090,7 +1096,7 @@ router.get(
         daysLeft: state.daysLeft,
         status: state.status,
         margin: pct(agg.netProfit, agg.revenue),
-        roi: pct(agg.netProfit, agg.cogs),
+        roi: pct(agg.netProfit, investedIn(agg.cogs, agg.otherCost)),
         lastSaleAt: agg.lastSaleAt ? agg.lastSaleAt.toISOString() : null,
       } satisfies ProductDetailSku;
     });
@@ -1102,7 +1108,7 @@ router.get(
     );
     const ordersPerDay = new Map<string, Set<string>>();
     for (const it of orderRows) {
-      const key = toISODate(it.orderedAt);
+      const key = toBusinessDate(it.orderedAt);
       const row = seriesMap.get(key);
       if (!row) continue;
       const returned = it.status === 'returned' || Boolean(it.returnedAt);

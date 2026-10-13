@@ -20,8 +20,9 @@ import {
   round,
   safeDiv,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   type DashboardResponse,
-  type ExpenseCategory,
   type Insight,
   type MetricValue,
   type Period,
@@ -35,7 +36,6 @@ import {
   daysSince,
   getAvgDaily,
   getDailySeries,
-  getExpenses,
   getLastSaleDates,
   getLatestStocks,
   getSkuCatalog,
@@ -46,6 +46,7 @@ import {
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
+import { getAdFeesBySku, getPeriodCosts, getPeriodCostsByDay, investedIn } from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 
 const router = Router();
@@ -68,6 +69,8 @@ interface SkuAgg {
   revenue: number;
   payout: number;
   cogs: number;
+  /** Bir donaga qo'shimcha xarajat (qadoq va h.k.) — tannarx bilan birga ROI maxrajiga kiradi */
+  otherCost: number;
   netProfit: number;
   returns: number;
 }
@@ -77,6 +80,7 @@ interface PeriodTotals {
   payout: number;
   netProfit: number;
   cogs: number;
+  otherCost: number;
   commission: number;
   logistics: number;
   units: number;
@@ -97,6 +101,7 @@ const emptyTotals = (): PeriodTotals => ({
   payout: 0,
   netProfit: 0,
   cogs: 0,
+  otherCost: 0,
   commission: 0,
   logistics: 0,
   units: 0,
@@ -132,6 +137,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
           payout: true,
           netProfit: true,
           purchasePrice: true,
+          otherCost: true,
           commission: true,
           logistics: true,
           status: true,
@@ -155,7 +161,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
       const returned = it.status === 'returned' || Boolean(it.returnedAt);
       const skuAgg = it.skuId
         ? t.bySku.get(it.skuId) ??
-          ({ units: 0, revenue: 0, payout: 0, cogs: 0, netProfit: 0, returns: 0 } satisfies SkuAgg)
+          ({ units: 0, revenue: 0, payout: 0, cogs: 0, otherCost: 0, netProfit: 0, returns: 0 } satisfies SkuAgg)
         : null;
 
       if (returned) {
@@ -167,6 +173,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
         t.payout += it.payout;
         t.netProfit += it.netProfit;
         t.cogs += it.purchasePrice * it.qty;
+        t.otherCost += it.otherCost;
         t.commission += it.commission;
         t.logistics += it.logistics;
         orderRevenue += it.revenue;
@@ -176,6 +183,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
           skuAgg.payout += it.payout;
           skuAgg.netProfit += it.netProfit;
           skuAgg.cogs += it.purchasePrice * it.qty;
+          skuAgg.otherCost += it.otherCost;
         }
       }
 
@@ -440,12 +448,6 @@ function buildInsights(inp: InsightInput): Insight[] {
 
 // ─────────────────────────── GET /analytics/dashboard ───────────────────────────
 
-/** Buyurtmaga bog'lanmaydigan, davrga tegishli xarajat kategoriyalari */
-const PERIOD_CATEGORIES = ['logistics', 'marketing', 'storage', 'other', 'salary'] as const;
-
-const periodOnlyOf = (e: Record<ExpenseCategory, number>): number =>
-  PERIOD_CATEGORIES.reduce((sum, key) => sum + (e[key] ?? 0), 0);
-
 router.get(
   '/dashboard',
   ah(async (req, res) => {
@@ -453,10 +455,10 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const prevFrom = parseISODate(range.previous.from);
-    const prevToExclusive = addDays(parseISODate(range.previous.to), 1);
+    const prevFrom = businessDayStart(range.previous.from);
+    const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev, catalog, stocks, avgDaily, lastSale, rawSeries, exp, prevExp, periodRows, taxRate, storeTitles] = await Promise.all([
+    const [cur, prev, catalog, stocks, avgDaily, lastSale, rawSeries, costs, prevCosts, expenseByDay, taxRate, storeTitles] = await Promise.all([
       collectTotals(storeIds, range.from, range.toExclusive),
       collectTotals(storeIds, prevFrom, prevToExclusive),
       getSkuCatalog(storeIds, true),
@@ -464,25 +466,17 @@ router.get(
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
       getDailySeries(storeIds, range.period),
-      getExpenses(company.id, range.from, range.toExclusive, range.storeId),
-      getExpenses(company.id, prevFrom, prevToExclusive, range.storeId),
-      // Davr xarajatlari kunma-kun — grafikdagi foyda chizig'i ham ularni ayirsin
-      prisma.expense.findMany({
-        where: {
-          companyId: company.id,
-          date: { gte: range.from, lt: range.toExclusive },
-          source: { not: 'uzum-payout' },
-          category: { in: [...PERIOD_CATEGORIES] },
-          ...(range.storeId ? { storeId: range.storeId } : {}),
-        },
-        select: { date: true, amount: true },
-      }),
+      // Davr xarajatlari — Moliya va Oylik hisobot bilan BIR XIL ta'rif (services/pnl.ts)
+      getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
+      getPeriodCosts(company.id, storeIds, prevFrom, prevToExclusive, range.storeId),
+      // Kunma-kun — grafikdagi foyda chizig'i ham ularni ayirsin
+      getPeriodCostsByDay(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getTaxRate(company.id),
       getStoreTitles(company.id),
     ]);
 
-    // Bugungi/kechagi to'lovlar — UTC kun chegaralari bo'yicha
-    const todayStart = parseISODate(toISODate(new Date()));
+    // Bugungi/kechagi to'lovlar — savdo kuni (Toshkent) chegaralari bo'yicha
+    const todayStart = businessDayStart(toBusinessDate(new Date()));
     const yesterdayStart = addDays(todayStart, -1);
     const tomorrowStart = addDays(todayStart, 1);
 
@@ -515,22 +509,18 @@ router.get(
      * sotuvchi 1 481 078 ko'rardi, hisobiga esa 372 ming kam tushardi.
      * Endi sof foyda, marja va ROI davr xarajatlaridan keyin hisoblanadi.
      */
-    const curPeriodOnly = periodOnlyOf(exp);
+    const curPeriodOnly = costs.total;
     const curNet = cur.netProfit - curPeriodOnly;
-    const prevNet = prev.netProfit - periodOnlyOf(prevExp);
+    const prevNet = prev.netProfit - prevCosts.total;
 
-    const expenseByDay = new Map<string, number>();
-    for (const r of periodRows) {
-      const key = toISODate(r.date);
-      expenseByDay.set(key, (expenseByDay.get(key) ?? 0) + r.amount);
-    }
     const series = rawSeries.map((p) => ({ ...p, profit: round(p.profit - (expenseByDay.get(p.date) ?? 0)) }));
 
     // Ko'rsatkichlar
     const curMargin = pct(curNet, cur.revenue);
     const prevMargin = pct(prevNet, prev.revenue);
-    const curRoi = pct(curNet, cur.cogs);
-    const prevRoi = pct(prevNet, prev.cogs);
+    // ROI maxraji — tovarga sarflangan pul: tannarx va bir donaga qo'shimcha xarajat
+    const curRoi = pct(curNet, investedIn(cur.cogs, cur.otherCost));
+    const prevRoi = pct(prevNet, investedIn(prev.cogs, prev.otherCost));
     const curAvgCheck = safeDiv(cur.revenue, cur.ordersActive);
     const prevAvgCheck = safeDiv(prev.revenue, prev.ordersActive);
     // Sotib olish darajasi: yetkazilgan / (yetkazilgan + qaytarilgan + bekor qilingan)
@@ -543,20 +533,22 @@ router.get(
 
     const revenueMetric = metric(cur.revenue, prev.revenue);
 
-    // Xarajatlar: komissiya/logistika buyurtmalardan, qolganlari Expense jadvalidan
-    const taxAmount = exp.tax > 0 ? round(exp.tax) : round((cur.revenue * taxRate) / 100);
+    /*
+     * Xarajatlar tuzilmasi. Har kategoriya = buyurtma pozitsiyalaridagi qism +
+     * davr xarajati. Yig'indisi: tushum − tannarx − jami xarajat = sof foyda.
+     */
+    const taxAmount = round((cur.revenue * taxRate) / 100 + costs.tax);
     const expenses = {
-      // Uzum "Xizmatlarga to'lov" bo'limidagi summalar ham qo'shiladi
-      // (omborga yetkazish, mijozga yetkazish, qaytarishlar) — Expense jadvalidan
-      commission: round(cur.commission + exp.commission),
-      logistics: round(cur.logistics + exp.logistics),
-      marketing: round(exp.marketing),
-      storage: round(exp.storage),
+      commission: round(cur.commission + costs.commission),
+      logistics: round(cur.logistics + costs.logistics),
+      marketing: round(costs.marketing),
+      // Uzum saqlash to'lovi (StorageFee) ham shu yerda — ilgari u sof foydadan ayrilmasdi
+      storage: round(costs.storage),
       tax: taxAmount,
-      // Ish haqi va boshqa xarajatlar bitta ustunda
-      other: round(exp.other + exp.salary),
+      // Bir donaga qo'shimcha xarajat, ish haqi va boshqalar bitta ustunda
+      other: round(cur.otherCost + costs.other + costs.salary),
       total: 0,
-      // Davr xarajatlari (Expense jadvalidan) — sof foydadan ayrilgan
+      // Davr xarajatlari — sof foydadan ayrilgan
       periodOnly: round(curPeriodOnly),
     };
     expenses.total =
@@ -572,12 +564,23 @@ router.get(
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
+    // Mahsulotga bog'langan reklama to'lovi — mahsulot foydasi va marjasidan ayriladi
+    const adBySku = await getAdFeesBySku(
+      company.id,
+      storeIds,
+      range.from,
+      range.toExclusive,
+      new Map([...cur.bySku].map(([id, a]) => [id, a.revenue])),
+      range.storeId,
+    );
+
     // Top mahsulotlar (tushum bo'yicha 8 ta)
     const topProducts: TopProductRow[] = [...cur.bySku.entries()]
       // Katalogda yo'q — o'chirilgan tovar
       .filter(([skuId]) => catalog.has(skuId))
       .map(([skuId, agg]) => {
         const info = catalog.get(skuId);
+        const profit = agg.netProfit - (adBySku.get(skuId) ?? 0);
         return {
           skuId,
           sku: info?.sku ?? '—',
@@ -585,10 +588,10 @@ router.get(
           productTitle: info?.productTitle,
           imageUrl: info?.imageUrl ?? null,
           revenue: round(agg.revenue),
-          profit: round(agg.netProfit),
+          profit: round(profit),
           units: agg.units,
           share: pct(agg.revenue, cur.revenue),
-          margin: pct(agg.netProfit, agg.revenue),
+          margin: pct(profit, agg.revenue),
         } satisfies TopProductRow;
       })
       .filter((r) => r.units > 0 || r.revenue > 0)
@@ -695,21 +698,26 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const prevFrom = parseISODate(range.previous.from);
-    const prevToExclusive = addDays(parseISODate(range.previous.to), 1);
+    const prevFrom = businessDayStart(range.previous.from);
+    const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev] = await Promise.all([
+    const [cur, prev, costs, prevCosts] = await Promise.all([
       lightTotals(storeIds, range.from, range.toExclusive),
       lightTotals(storeIds, prevFrom, prevToExclusive),
+      getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
+      getPeriodCosts(company.id, storeIds, prevFrom, prevToExclusive, range.storeId),
     ]);
+    // Sof foyda — davr xarajatlaridan keyin, boshqaruv panelidagi bilan bir xil
+    const curNet = cur.netProfit - costs.total;
+    const prevNet = prev.netProfit - prevCosts.total;
 
     const payload: KpiResponse = {
       period: range.period,
       currency: company.currency,
       revenue: metric(cur.revenue, prev.revenue),
-      netProfit: metric(cur.netProfit, prev.netProfit),
+      netProfit: metric(curNet, prevNet),
       ordersCount: metric(cur.orders, prev.orders),
-      margin: metric(pct(cur.netProfit, cur.revenue), pct(prev.netProfit, prev.revenue), 2),
+      margin: metric(pct(curNet, cur.revenue), pct(prevNet, prev.revenue), 2),
     };
 
     res.json(payload);

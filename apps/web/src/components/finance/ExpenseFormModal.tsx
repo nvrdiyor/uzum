@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { EXPENSE_CATEGORIES, type ExpenseCategory } from '@savdoiq/shared';
+import { EXPENSE_CATEGORIES, toBusinessDate, type ExpenseCategory } from '@savdoiq/shared';
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useStores } from '@/store/session';
 import { pickLocalized, useFormat, useLang, useT } from '@/i18n';
 import type { ExpenseInput, ExpenseRow } from './types';
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Savdo kuni (Toshkent): yarim tundan keyin kiritilgan xarajat kechagi sanaga tushmasin
+  return toBusinessDate(new Date());
 }
 
 /** Xarajat qo'shish / tahrirlash oynasi */

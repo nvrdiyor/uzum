@@ -156,6 +156,29 @@ export const toISODate = (d: Date): string => {
 
 export const parseISODate = (s: string): Date => new Date(`${s.slice(0, 10)}T00:00:00.000Z`);
 
+/**
+ * SAVDO KUNI — Asia/Tashkent (UTC+5, yozgi vaqtga o'tmaydi).
+ *
+ * Buyurtma vaqtlari bazada UTC'da turadi. Kunni UTC bo'yicha kesish Toshkentda
+ * 00:00–05:00 orasida berilgan buyurtmani OLDINGI kunga yozib qo'yardi: jonli
+ * do'konda bu har to'qqizinchi buyurtma edi va kunlik tushum Uzum kabinetidagi
+ * bilan mos kelmasdi (masalan 07.10: 456 000 ko'rsatilgan, aslida 515 000).
+ *
+ * Shuning uchun:
+ *  • `toBusinessDate`  — vaqt belgisidan savdo kunini oladi (kunlarga ajratish uchun);
+ *  • `businessDayStart` — savdo kunining boshlanish paytini beradi (davr chegarasi uchun).
+ *
+ * Faqat sanadan iborat qiymatlar (xarajat sanasi — 00:00 UTC) ikkalasida ham
+ * o'z kunida qoladi: 00:00 UTC Toshkentda o'sha kunning 05:00 i.
+ */
+export const BUSINESS_TZ_OFFSET_MS = 5 * 3_600_000;
+
+/** Vaqt belgisi → savdo kuni: 2026-10-13T21:30Z → "2026-10-14" */
+export const toBusinessDate = (d: Date): string => toISODate(new Date(d.getTime() + BUSINESS_TZ_OFFSET_MS));
+
+/** Savdo kunining boshlanishi: "2026-10-14" → 2026-10-13T19:00:00Z */
+export const businessDayStart = (iso: string): Date => new Date(parseISODate(iso).getTime() - BUSINESS_TZ_OFFSET_MS);
+
 export function addDays(date: Date, days: number): Date {
   const d = new Date(date.getTime());
   d.setUTCDate(d.getUTCDate() + days);
@@ -193,7 +216,8 @@ export type PresetRange =
   | 'thisYear';
 
 export function presetPeriod(preset: PresetRange, now = new Date()): Period {
-  const today = parseISODate(toISODate(now));
+  // "Bugun" — savdo kuni bo'yicha: Toshkentda yarim tundan keyin yangi kun boshlanadi, soat 05:00 da emas
+  const today = parseISODate(toBusinessDate(now));
   switch (preset) {
     case 'today':
       return { from: toISODate(today), to: toISODate(today) };

@@ -3,7 +3,14 @@
  * BU FAYLNI O'ZGARTIRMANG — barcha route modullari shunga tayanadi.
  */
 import { prisma } from '@savdoiq/db';
-import { STOCK_THRESHOLDS, addDays, toISODate, type ExpenseCategory, type Period } from '@savdoiq/shared';
+import {
+  STOCK_THRESHOLDS,
+  addDays,
+  businessDayStart,
+  toBusinessDate,
+  type ExpenseCategory,
+  type Period,
+} from '@savdoiq/shared';
 
 export interface SkuInfo {
   id: string;
@@ -380,13 +387,14 @@ export async function getDailySeries(
   storeIds: string[],
   period: Period,
 ): Promise<{ date: string; revenue: number; profit: number; orders: number; units: number; payout: number; returns: number }[]> {
-  const from = new Date(`${period.from}T00:00:00.000Z`);
+  // Kun — savdo mintaqasi (Toshkent) bo'yicha: chegaralar ham, kunlarga ajratish ham
+  const from = businessDayStart(period.from);
   /**
    * Seriya bugundan nariga o'tmaydi: "shu oy" tanlanganda oy oxirigacha nol
    * kunlar chizilsa, grafik har doim nolga qulagandek ko'rinardi.
    */
-  const tomorrow = addDays(new Date(`${toISODate(new Date())}T00:00:00.000Z`), 1);
-  const periodEnd = addDays(new Date(`${period.to}T00:00:00.000Z`), 1);
+  const tomorrow = addDays(businessDayStart(toBusinessDate(new Date())), 1);
+  const periodEnd = addDays(businessDayStart(period.to), 1);
   const to = periodEnd < tomorrow ? periodEnd : tomorrow;
 
   const map = new Map<
@@ -396,7 +404,7 @@ export async function getDailySeries(
 
   let cur = new Date(from);
   while (cur < to) {
-    const key = toISODate(cur);
+    const key = toBusinessDate(cur);
     map.set(key, { date: key, revenue: 0, profit: 0, orders: 0, units: 0, payout: 0, returns: 0 });
     cur = addDays(cur, 1);
   }
@@ -420,7 +428,7 @@ export async function getDailySeries(
   const ordersPerDay = new Map<string, Set<string>>();
 
   for (const it of items) {
-    const key = toISODate(it.orderedAt);
+    const key = toBusinessDate(it.orderedAt);
     const row = map.get(key);
     if (!row) continue;
     const returned = it.status === 'returned' || Boolean(it.returnedAt);

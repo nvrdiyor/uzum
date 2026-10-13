@@ -22,6 +22,8 @@ import {
   round,
   parseISODate,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   type FunnelProductRow,
   type FunnelResponse,
   type FunnelStep,
@@ -119,7 +121,7 @@ async function collect(storeIds: string[], from: Date, toExclusive: Date, withDa
     out.bySku.set(key, bucket);
 
     if (withDays) {
-      const day = toISODate(it.orderedAt);
+      const day = toBusinessDate(it.orderedAt);
       const row = out.byDay.get(day) ?? { ordered: 0, sold: 0, canceled: 0, returned: 0 };
       row.ordered += units;
       if (returned) row.returned += units;
@@ -143,8 +145,8 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const prevFrom = new Date(`${range.previous.from}T00:00:00.000Z`);
-    const prevTo = addDays(new Date(`${range.previous.to}T00:00:00.000Z`), 1);
+    const prevFrom = businessDayStart(range.previous.from);
+    const prevTo = addDays(businessDayStart(range.previous.to), 1);
 
     const [cur, prev, catalog] = await Promise.all([
       collect(storeIds, range.from, range.toExclusive, true),
@@ -194,10 +196,10 @@ router.get(
 
     // ── Kunlik dinamika (bo'sh kunlar ham chiqadi, lekin bugundan nariga o'tmaydi) ──
     const daily: FunnelResponse['daily'] = [];
-    const tomorrow = addDays(parseISODate(toISODate(new Date())), 1);
+    const tomorrow = addDays(businessDayStart(toBusinessDate(new Date())), 1);
     const lastDay = range.toExclusive < tomorrow ? range.toExclusive : tomorrow;
     for (let d = new Date(range.from); d < lastDay; d = addDays(d, 1)) {
-      const key = toISODate(d);
+      const key = toBusinessDate(d);
       const row = cur.byDay.get(key);
       daily.push({
         date: key,

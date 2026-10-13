@@ -1,10 +1,11 @@
 import type { Request } from 'express';
 import {
+  businessDayStart,
   getPlan,
   parseISODate,
   presetPeriod,
   previousPeriod,
-  toISODate,
+  toBusinessDate,
   addDays,
   type Period,
   type PlanId,
@@ -15,7 +16,13 @@ export interface ResolvedRange {
   previous: Period;
   from: Date;
   to: Date;
-  /** to + 1 kun (yarim ochiq oraliq uchun: orderedAt < toExclusive) */
+  /**
+   * to + 1 kun (yarim ochiq oraliq uchun: orderedAt < toExclusive).
+   *
+   * `from`, `to` va `toExclusive` — SAVDO KUNI (Asia/Tashkent) chegaralari,
+   * UTC yarim tuni emas: "14-oktabr" davri 13-oktabr 19:00 UTC da boshlanadi.
+   * Kalendar sanasi kerak bo'lsa `period.from` / `period.to` dan olinadi.
+   */
   toExclusive: Date;
   storeId?: string;
   page: number;
@@ -53,12 +60,12 @@ export function resolveRange(req: Request, plan: PlanId = 'trial'): ResolvedRang
   const earliest = addDays(new Date(), -maxDays);
   let clamped = false;
   if (parseISODate(period.from).getTime() < earliest.getTime()) {
-    period = { from: toISODate(earliest), to: period.to };
+    period = { from: toBusinessDate(earliest), to: period.to };
     clamped = true;
   }
 
-  const from = parseISODate(period.from);
-  const to = parseISODate(period.to);
+  const from = businessDayStart(period.from);
+  const to = businessDayStart(period.to);
 
   const page = Math.max(1, Number(q.page ?? 1) || 1);
   const pageSizeRaw = Number(q.pageSize ?? 50) || 50;

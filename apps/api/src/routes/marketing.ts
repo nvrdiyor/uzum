@@ -21,6 +21,8 @@ import {
   round,
   safeDiv,
   toISODate,
+  businessDayStart,
+  toBusinessDate,
   type Paginated,
   type PromoRow,
   type PromoSkuRow,
@@ -48,7 +50,7 @@ const HIGH_RETURN_PCT = 20;
  * u faqat buyurtma pozitsiyasida bo'ladi, shuning uchun realizatsiyadan olinadi.
  */
 async function recentSales(storeIds: string[]): Promise<Map<string, { units: number; logistics: number }>> {
-  const toExclusive = addDays(parseISODate(toISODate(new Date())), 1);
+  const toExclusive = addDays(businessDayStart(toBusinessDate(new Date())), 1);
   const from = addDays(toExclusive, -SALES_WINDOW_DAYS);
 
   const rows = await prisma.orderItem.groupBy({

@@ -55,10 +55,10 @@ registerNamespace('finance', {
     'kpi.payoutHint': 'Uzum o‘tkazadigan sof summa',
     'kpi.gross': 'Yalpi foyda',
     'kpi.grossHint': 'Tushum minus tannarx',
-    'kpi.net': 'Sof foyda',
-    'kpi.netHint': 'Tovarlar bo‘yicha, marja {v}',
-    'kpi.oper': 'Davr foydasi',
-    'kpi.operHint': 'Sof foyda minus davr xarajatlari ({v})',
+    'kpi.net': 'Tovarlar bo‘yicha foyda',
+    'kpi.netHint': 'Davr xarajatlarigacha, marja {v}',
+    'kpi.oper': 'Sof foyda',
+    'kpi.operHint': 'Davr xarajatlari ({v}) ayirilgan, marja {m}',
 
     'chart.title': 'Kunlik dinamika',
     'chart.subtitle': 'Tushum, xarajat va sof foyda',
@@ -95,8 +95,8 @@ registerNamespace('finance', {
     'pnl.manualTax': 'Soliq (qo‘lda kiritilgan)',
     'pnl.other': 'Boshqa xarajatlar',
     'pnl.grossProfit': 'Yalpi foyda',
-    'pnl.netProfit': 'Sof foyda (tovarlar bo‘yicha)',
-    'pnl.operatingProfit': 'Davr foydasi',
+    'pnl.netProfit': 'Tovarlar bo‘yicha foyda',
+    'pnl.operatingProfit': 'Sof foyda',
     'pnl.delivery': 'Mijozga yetkazish',
     'pnl.itemOther': 'Sotuvdagi boshqa ushlanmalar',
     'pnl.logistics': 'Omborga logistika',
@@ -131,10 +131,10 @@ registerNamespace('finance', {
     'kpi.payoutHint': 'Чистая сумма перевода от Uzum',
     'kpi.gross': 'Валовая прибыль',
     'kpi.grossHint': 'Выручка минус себестоимость',
-    'kpi.net': 'Чистая прибыль',
-    'kpi.netHint': 'По товарам, маржа {v}',
-    'kpi.oper': 'Прибыль периода',
-    'kpi.operHint': 'Чистая прибыль минус расходы периода ({v})',
+    'kpi.net': 'Прибыль по товарам',
+    'kpi.netHint': 'До расходов периода, маржа {v}',
+    'kpi.oper': 'Чистая прибыль',
+    'kpi.operHint': 'За вычетом расходов периода ({v}), маржа {m}',
 
     'chart.title': 'Динамика по дням',
     'chart.subtitle': 'Выручка, расходы и чистая прибыль',
@@ -171,8 +171,8 @@ registerNamespace('finance', {
     'pnl.manualTax': 'Налог (вручную)',
     'pnl.other': 'Прочие расходы',
     'pnl.grossProfit': 'Валовая прибыль',
-    'pnl.netProfit': 'Чистая прибыль (по товарам)',
-    'pnl.operatingProfit': 'Прибыль периода',
+    'pnl.netProfit': 'Прибыль по товарам',
+    'pnl.operatingProfit': 'Чистая прибыль',
     'pnl.delivery': 'Доставка покупателю',
     'pnl.itemOther': 'Прочие удержания в продаже',
     'pnl.logistics': 'Логистика на склад',
@@ -207,10 +207,10 @@ registerNamespace('finance', {
     'kpi.payoutHint': 'Net amount Uzum transfers to you',
     'kpi.gross': 'Gross profit',
     'kpi.grossHint': 'Revenue minus cost of goods',
-    'kpi.net': 'Net profit',
-    'kpi.netHint': 'On goods sold, margin {v}',
-    'kpi.oper': 'Period profit',
-    'kpi.operHint': 'Net profit minus period expenses ({v})',
+    'kpi.net': 'Profit on goods',
+    'kpi.netHint': 'Before period expenses, margin {v}',
+    'kpi.oper': 'Net profit',
+    'kpi.operHint': 'After period expenses ({v}), margin {m}',
 
     'chart.title': 'Daily trend',
     'chart.subtitle': 'Revenue, expenses and net profit',
@@ -247,8 +247,8 @@ registerNamespace('finance', {
     'pnl.manualTax': 'Tax (manual)',
     'pnl.other': 'Other expenses',
     'pnl.grossProfit': 'Gross profit',
-    'pnl.netProfit': 'Net profit (on goods)',
-    'pnl.operatingProfit': 'Period profit',
+    'pnl.netProfit': 'Profit on goods',
+    'pnl.operatingProfit': 'Net profit',
     'pnl.delivery': 'Delivery to customer',
     'pnl.itemOther': 'Other sale deductions',
     'pnl.logistics': 'Inbound logistics',
@@ -308,6 +308,8 @@ export default function Finance() {
   }, [lineMap, data]);
 
   const margin = data && data.revenue > 0 ? (data.netProfit / data.revenue) * 100 : 0;
+  // Sof foyda marjasi — Boshqaruv paneli va Oylik hisobotdagi "Marja" bilan bir xil son
+  const netMargin = data && data.revenue > 0 ? (data.operatingProfit / data.revenue) * 100 : 0;
 
   const chartData = useMemo(
     () =>
@@ -460,17 +462,17 @@ export default function Finance() {
                 delta={netDelta}
                 hint={t('kpi.netHint', { v: f.pct(margin) })}
                 icon={<PiggyBank className="h-5 w-5" />}
-                spark={sparks.profit}
-                tone={(data?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
+                tone={(data?.netProfit ?? 0) < 0 ? 'danger' : 'violet'}
                 loading={isLoading}
               />
               <StatCard
                 label={t('kpi.oper')}
                 value={f.money(data?.operatingProfit ?? 0)}
                 delta={operDelta}
-                hint={t('kpi.operHint', { v: f.money(data?.periodExpenses ?? 0) })}
+                hint={t('kpi.operHint', { v: f.money(data?.periodExpenses ?? 0), m: f.pct(netMargin) })}
                 icon={<Scale className="h-5 w-5" />}
-                tone={(data?.operatingProfit ?? 0) < 0 ? 'danger' : 'violet'}
+                spark={sparks.profit}
+                tone={(data?.operatingProfit ?? 0) < 0 ? 'danger' : 'brand'}
                 loading={isLoading}
               />
             </StatGrid>

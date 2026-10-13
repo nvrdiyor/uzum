@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Check, ChevronDown, Lock, Store } from 'lucide-react';
-import { getPlan, presetPeriod, toISODate } from '@savdoiq/shared';
+import { getPlan, presetPeriod, toISODate, toBusinessDate } from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
 import { usePlan, useStores } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
@@ -58,7 +58,7 @@ export function PeriodPicker({ className }: { className?: string }) {
     () => toISODate(new Date(Date.now() - historyDays * 86_400_000)),
     [historyDays],
   );
-  const today = useMemo(() => toISODate(new Date()), []);
+  const today = useMemo(() => toBusinessDate(new Date()), []);
 
   useEffect(() => {
     setFrom(period.from);

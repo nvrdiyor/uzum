@@ -150,6 +150,24 @@ export async function buildDayReport(
     for (const s of skus) titles.set(s.id, s.title || s.sku);
   }
 
+  /*
+   * SOF FOYDA — davr xarajatlaridan keyin, saytdagi bilan bir xil ta'rif
+   * (apps/api/src/services/pnl.ts): pozitsiyaga bog'lanmaydigan to'lovlar —
+   * reklama, omborga logistika, saqlash — shu kunniki bo'lsa ayriladi.
+   * `uzum-payout` satrlari pozitsiyada allaqachon ayrilgan.
+   */
+  const [expenses, storage] = await Promise.all([
+    prisma.expense.aggregate({
+      _sum: { amount: true },
+      where: { companyId, date: { gte: from, lt: toExclusive }, source: { not: 'uzum-payout' } },
+    }),
+    prisma.storageFee.aggregate({
+      _sum: { amount: true },
+      where: { storeId: { in: storeIds }, date: { gte: from, lt: toExclusive } },
+    }),
+  ]);
+  netProfit -= (expenses._sum.amount ?? 0) + (storage._sum.amount ?? 0);
+
   return {
     revenue: Math.round(revenue),
     orders,

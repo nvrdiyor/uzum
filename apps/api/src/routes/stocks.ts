@@ -16,6 +16,7 @@ import {
   parseISODate,
   round,
   toISODate,
+  toBusinessDate,
   type Paginated,
   type SalesStockResponse,
   type SalesStockRow,
@@ -38,6 +39,7 @@ import {
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
+import { aggregateSalesNet } from '../services/pnl.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -214,7 +216,7 @@ router.get(
     const [catalog, stocks, sales, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
       getLatestStocks(storeIds),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getAvgDaily(storeIds, AVG_WINDOW),
       getLastSaleDates(storeIds),
     ]);
@@ -494,7 +496,7 @@ router.get(
     if (!sku) throw AppError.notFound('SKU topilmadi');
 
     // Oxirgi 60 kunning ISO sanalari (bugun — oxirgi nuqta)
-    const today = parseISODate(toISODate(new Date()));
+    const today = parseISODate(toBusinessDate(new Date()));
     const days: string[] = [];
     for (let i = HISTORY_DAYS - 1; i >= 0; i -= 1) days.push(toISODate(addDays(today, -i)));
 

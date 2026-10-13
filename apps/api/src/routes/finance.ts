@@ -21,6 +21,8 @@ import {
   pct,
   round,
   toISODate,
+  addDays,
+  businessDayStart,
   type ExpenseCategory,
   type FinanceResponse,
   type Paginated,
@@ -156,9 +158,8 @@ async function collectFinance(
   taxRate: number,
   storeId?: string,
 ): Promise<FinanceSnapshot> {
-  const from = parseISODate(period.from);
-  const toExclusive = parseISODate(period.to);
-  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+  const from = businessDayStart(period.from);
+  const toExclusive = addDays(businessDayStart(period.to), 1);
 
   const [sales, manual, storage] = await Promise.all([
     aggregateSales(storeIds, from, toExclusive),
@@ -200,13 +201,14 @@ async function collectFinance(
   const grossProfit = revenue - cogs;
 
   /**
-   * Ikki xil foyda — atamalar butun saytda bir xil ma'noda ishlatiladi:
+   * Ikki xil foyda — atamalar butun saytda bir xil ma'noda (services/pnl.ts):
    *
-   *  netProfit       — SOTILGAN TOVARLAR bo'yicha sof foyda. Komissiya, mijozga
-   *                    yetkazish va soliq ayirilgan (Uzum "yechib olish uchun"
-   *                    summasi shu mantiqda). Boshqaruv panelidagi raqam bilan bir xil.
-   *  operatingProfit — davr foydasi: sof foydadan davrga tegishli xarajatlar
-   *                    (omborga logistika, reklama, saqlash, ish haqi) ayriladi.
+   *  netProfit       — TOVARLAR BO'YICHA foyda: komissiya, mijozga yetkazish va
+   *                    soliq ayirilgan, davr xarajatlari hali ayirilmagan.
+   *                    Boshqaruv panelidagi `itemProfit` bilan bir xil.
+   *  operatingProfit — SOF FOYDA: undan davr xarajatlari (omborga logistika,
+   *                    reklama, saqlash, ish haqi) ham ayirilgan. Boshqaruv paneli
+   *                    va Oylik hisobotdagi "Sof foyda" aynan shu.
    */
   const itemExpenses = commission + logistics + otherCost + taxAmount;
   const netProfit = revenue - cogs - itemExpenses;
@@ -458,10 +460,11 @@ router.get(
         grossProfit: round(cur.grossProfit),
         grossMargin: pct(cur.grossProfit, cur.revenue),
         expensesTotal: round(cur.expensesTotal),
-        netProfit: round(cur.netProfit),
-        margin: pct(cur.netProfit, cur.revenue),
-        previousNetProfit: round(prev.netProfit),
-        netProfitDeltaPct: deltaPct(round(cur.netProfit), round(prev.netProfit)),
+        // Sof foyda — HAMMA xarajatdan keyin: tushum − tannarx − jami xarajat (yuqoridagi uch qator bilan yopiladi)
+        netProfit: round(cur.operatingProfit),
+        margin: pct(cur.operatingProfit, cur.revenue),
+        previousNetProfit: round(prev.operatingProfit),
+        netProfitDeltaPct: deltaPct(round(cur.operatingProfit), round(prev.operatingProfit)),
       },
     };
 

@@ -30,6 +30,7 @@ import {
   round,
   safeDiv,
   toISODate,
+  toBusinessDate,
   type DeliveryType,
   type ExpenseCategory,
   type OrderStatus,
@@ -52,6 +53,7 @@ import {
   stockState,
   type SkuInfo,
 } from '../services/common.js';
+import { aggregateSalesNet } from '../services/pnl.js';
 import { loadReturnLines } from '../services/returns.js';
 
 const router = Router();
@@ -402,7 +404,7 @@ router.get(
           : toOrderStatus(it.order.status);
 
       const row: Cell[] = [
-        toISODate(it.orderedAt),
+        toBusinessDate(it.orderedAt),
         dash(it.order.uzumOrderId),
         ORDER_STATUS_LABEL[status],
         toDeliveryType(it.order.deliveryType),
@@ -462,7 +464,7 @@ router.get(
     const [catalog, stocks, sales, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
       getLatestStocks(storeIds),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
     ]);
@@ -553,7 +555,7 @@ router.get(
     const [catalog, stocks, sales, avgDaily, products] = await Promise.all([
       getSkuCatalog(storeIds, true),
       getLatestStocks(storeIds),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getAvgDaily(storeIds, 30),
       prisma.product.findMany({
         where: { storeId: { in: storeIds } },
@@ -621,7 +623,7 @@ router.get(
       p.returns += agg?.returns ?? 0;
       p.revenue += agg?.revenue ?? 0;
       p.profit += agg?.netProfit ?? 0;
-      p.cogs += agg?.cogs ?? 0;
+      p.cogs += (agg?.cogs ?? 0) + (agg?.otherCost ?? 0);
       p.fbo += st?.fbo ?? 0;
       p.fbs += st?.fbs ?? 0;
       p.own += st?.own ?? 0;
@@ -797,7 +799,7 @@ router.get(
 
     const [catalog, sales] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
     ]);
 
     const columns: ColumnDef[] = [
@@ -870,7 +872,7 @@ router.get(
 
     const [catalog, sales] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      aggregateSales(storeIds, range.from, range.toExclusive),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
     ]);
 
     const columns: ColumnDef[] = [
@@ -1116,7 +1118,7 @@ router.get(
     const rows: Cell[][] = records.map((r) => {
       const info = r.skuId ? catalog.get(r.skuId) : undefined;
       return [
-        toISODate(r.happenedAt),
+        toBusinessDate(r.happenedAt),
         dash(info?.sku ?? null),
         info ? info.title : '—',
         LOSS_KIND_LABEL[r.source] ?? LOSS_TYPE_LABEL[r.type] ?? r.type,

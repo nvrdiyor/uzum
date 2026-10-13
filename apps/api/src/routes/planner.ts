@@ -29,6 +29,7 @@ import {
   recommendedQty,
   round,
   toISODate,
+  toBusinessDate,
   type PlannerResponse,
   type PlannerRow,
   type ShipmentItemRow,
@@ -239,7 +240,7 @@ router.get(
       getInbound(company.id, storeIds),
     ]);
 
-    const today = parseISODate(toISODate(new Date()));
+    const today = parseISODate(toBusinessDate(new Date()));
     const search = range.search?.toLowerCase();
 
     const counts = { all: 0, critical: 0, ending: 0, enough: 0, noAction: 0 };
@@ -364,7 +365,7 @@ router.post(
     const picked = ids.map((id) => catalog.get(id)).filter((s): s is SkuInfo => Boolean(s));
     if (picked.length === 0) throw AppError.badRequest('Yuborilgan SKU’lar bu kompaniyada topilmadi');
 
-    const today = parseISODate(toISODate(new Date()));
+    const today = parseISODate(toBusinessDate(new Date()));
     const drafts = picked.map((info) => {
       // Jadvaldagi "Tavsiya" bilan aynan bir xil son
       const supply = (stocks.get(info.id) ?? EMPTY_STOCK).total + (inbound.get(info.id) ?? 0);

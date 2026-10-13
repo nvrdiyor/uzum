@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Boxes, Lightbulb, PackagePlus, TrendingDown } from 'lucide-react';
-import { addDays, parseISODate, toISODate, type StockRow } from '@savdoiq/shared';
+import { addDays, parseISODate, toBusinessDate, toISODate, type StockRow } from '@savdoiq/shared';
 import { Button, Drawer, ErrorState, ProductCell, Skeleton, EmptyState } from '@/components/ui';
 import { LinesChart, CHART_COLORS } from '@/components/charts';
 import { api } from '@/lib/api';
@@ -131,7 +131,7 @@ export function StockHistoryDrawer({
     const unitCost = row.total > 0 ? row.costValue / row.total : 0;
     const stockoutDate =
       avg > 0 && row.daysLeft !== null && Number.isFinite(row.daysLeft)
-        ? toISODate(addDays(parseISODate(toISODate(new Date())), Math.round(row.daysLeft)))
+        ? toISODate(addDays(parseISODate(toBusinessDate(new Date())), Math.round(row.daysLeft)))
         : null;
     return { avg, need, cost: Math.round(need * unitCost), stockoutDate };
   }, [row]);
