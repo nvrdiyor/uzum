@@ -39,10 +39,20 @@ import { getLatestStocks, getSkuCatalog } from './common.js';
 const DAY_MS = 86_400_000;
 
 /**
- * Bekor qilingan buyurtma tovari omborga qaytishi uchun beriladigan muddat,
- * BUYURTMA sanasidan. Bekor qilingan sana API'da yo'q, shuning uchun yetkazish
- * (≈3 kun), punktda saqlash (≈5–7 kun) va qaytish yo'li (≈7–10 kun) birga
- * olinadi. Jonli do'konda eng uzoq qaytish 12 kun bo'lgan.
+ * Bekor qilingan buyurtma tovari omborga qaytishi uchun muddat — BEKOR
+ * BO'LGANI KO'RILGAN paytdan (`OrderItem.canceledAt`). Tovar 2–3 kunda ham,
+ * 10 kunda ham ko'rinishi mumkin; 10 kun ichida ko'rinmasa — yo'qolgan.
+ *
+ * Ilgari muddat buyurtma kunidan sanalardi. Buyurtma punktda uzoq turib,
+ * keyin bekor bo'lsa (jonli do'konda: 15.09 da berilgan buyurtma 13.10 da
+ * bekor qilindi), muddat allaqachon "o'tgan" bo'lib chiqardi va tovar bekor
+ * bo'lgan zahoti, omborga yetib kelishga ulgurmay, yo'qolgan deb yozilardi.
+ */
+export const CANCEL_WAIT_DAYS = 10;
+/**
+ * Bekor bo'lgan payti NOMA'LUM buyurtma uchun (tarixdan bekor holatda kelgan):
+ * BUYURTMA sanasidan. Yetkazish (≈3 kun), punktda saqlash (≈5–7 kun) va
+ * qaytish yo'li (≈7–10 kun) birga olinadi.
  */
 export const RETURN_WAIT_DAYS = 21;
 /** Xaridor qaytargan (sanasi ma'lum) tovar uchun — QAYTARILGAN kundan */
@@ -65,6 +75,8 @@ export interface BalanceOrder {
   orderId: string;
   orderedAt: Date;
   returnedAt: Date | null;
+  /** Bekor bo'lgani birinchi marta ko'rilgan payt; noma'lum bo'lsa null */
+  canceledAt: Date | null;
   /** Sotuvda qolgan dona (Uzum `amount`) */
   qty: number;
   /** Bekor qilingan yoki qaytarilgan dona (Uzum `amountReturns`) */
@@ -221,8 +233,9 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
   const events: (EventRef & { left: number })[] = inp.orders
     .filter((o) => o.returnedQty > 0)
     .map((o) => {
-      const at = o.returnedAt ?? o.orderedAt;
-      const waitDays = o.returnedAt ? RETURNED_WAIT_DAYS : RETURN_WAIT_DAYS;
+      // Qachondan kutiladi: qaytarilgan kun → bekor bo'lgani ko'rilgan payt → (ikkalasi ham noma'lum) buyurtma kuni
+      const at = o.returnedAt ?? o.canceledAt ?? o.orderedAt;
+      const waitDays = o.returnedAt ? RETURNED_WAIT_DAYS : o.canceledAt ? CANCEL_WAIT_DAYS : RETURN_WAIT_DAYS;
       return {
         orderId: o.orderId,
         orderedAt: o.orderedAt,
@@ -493,7 +506,7 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
       receipts: receipts.get(s.id) ?? [],
       // Yig'indi bitta "buyurtma" sifatida — farq bor-yo'qligini bilish uchun yetarli
       orders: [
-        { orderId: '', orderedAt: now, returnedAt: null, qty: soldFbo.get(s.id) ?? 0, returnedQty: 0, status: 'delivered', cause: null },
+        { orderId: '', orderedAt: now, returnedAt: null, canceledAt: null, qty: soldFbo.get(s.id) ?? 0, returnedQty: 0, status: 'delivered', cause: null },
       ],
       returnedToSeller: back.get(s.id) ?? 0,
       onHand: stock?.fbo ?? 0,
@@ -520,6 +533,7 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
           status: true,
           orderedAt: true,
           returnedAt: true,
+          canceledAt: true,
           returnCause: true,
           order: { select: { uzumOrderId: true } },
         },
@@ -539,6 +553,7 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
           orderId: it.order.uzumOrderId ?? '',
           orderedAt: it.orderedAt,
           returnedAt: it.returnedAt,
+          canceledAt: it.canceledAt,
           qty: it.qty,
           returnedQty: it.returnedQty,
           status: it.status,
@@ -708,6 +723,14 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
     byKey.set(key, [...(byKey.get(key) ?? []), r]);
   }
 
+  /*
+   * Ochiq yozuvdagi donadan nechtasi HAQIQATDA topildi. Dona "hisobda yo'q"
+   * dan "qaytish yo'lida" ga o'tgan bo'lsa (bekor qilish endi ma'lum bo'ldi),
+   * u hali omborda emas — "topildi" deb xabar berish yolg'on bo'lardi.
+   */
+  const reallyBack = (skuId: string, was: number, stillOpen: number): number =>
+    Math.max(0, was - stillOpen - (bySku.get(skuId)?.inReturn ?? 0));
+
   const creates: Prisma.LossRecordCreateManyInput[] = [];
   for (const key of new Set([...desired.keys(), ...byKey.keys()])) {
     if (frozen.has(key)) continue;
@@ -721,7 +744,10 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
       if (open) {
         await prisma.lossRecord.delete({ where: { id: open.id } });
         res.removed += 1;
-        if (open.source === 'balance' && open.skuId) res.recovered.push({ skuId: open.skuId, qty: open.qty });
+        if (open.source === 'balance' && open.skuId) {
+          const back = reallyBack(open.skuId, open.qty, 0);
+          if (back > 0) res.recovered.push({ skuId: open.skuId, qty: back });
+        }
       }
       continue;
     }
@@ -741,7 +767,8 @@ export async function syncLossRecords(storeId: string, now: Date = new Date()): 
           const more = data.qty - open.qty;
           res.found.push({ skuId: want.skuId, kind: want.source, qty: more, amount: round(more * want.unit) });
         } else if (data.qty < open.qty && want.source === 'balance') {
-          res.recovered.push({ skuId: want.skuId, qty: open.qty - data.qty });
+          const back = reallyBack(want.skuId, open.qty, data.qty);
+          if (back > 0) res.recovered.push({ skuId: want.skuId, qty: back });
         }
       }
     } else {
@@ -775,7 +802,12 @@ const STATE_RANK: Record<StockBalanceState, number> = { loss: 0, waiting: 1, set
 
 /** "Yo'qotilgan tovarlar" sahifasidagi tovar balansi bo'limi */
 export async function getBalanceSummary(storeIds: string[], now: Date = new Date()): Promise<StockBalanceSummary> {
-  const rules = { returnWaitDays: RETURN_WAIT_DAYS, stuckDays: STUCK_DAYS, minClaim: MIN_CLAIM_AMOUNT };
+  const rules = {
+    returnWaitDays: RETURN_WAIT_DAYS,
+    cancelWaitDays: CANCEL_WAIT_DAYS,
+    stuckDays: STUCK_DAYS,
+    minClaim: MIN_CLAIM_AMOUNT,
+  };
   const empty: StockBalanceSummary = {
     asOf: null,
     totals: { skus: 0, accepted: 0, sold: 0, onHand: 0, inReturn: 0, unaccounted: 0, amount: 0 },

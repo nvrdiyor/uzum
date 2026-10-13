@@ -45,7 +45,7 @@ registerNamespace('losses', {
       'Uzum omboriga qabul qilingan nakladnoy topilmadi. Balans FBO tovarlar uchun, sinxrondan keyin paydo bo‘ladi.',
     'bal.how.title': 'Qanday hisoblanadi',
     'bal.how.text':
-      'Uzum yo‘qolgan tovarlar ro‘yxatini bermaydi, shuning uchun har bir SKU bo‘yicha qabul qilingan donadan sotilgani va omborda turgani ayiriladi. Bekor qilingan yoki qaytarilgan buyurtma tovari omborga {days} kungacha qaytib keladi — shu vaqt ichida u qaytish yo‘lida hisoblanadi. Muddat o‘tib ham qaytmagani va buyurtmasiz kamaygani hisobda yo‘q bo‘ladi. Summa Uzum qoidasi bo‘yicha: oxirgi 30 kunning o‘rtacha sotuv narxi − komissiya.',
+      'Uzum yo‘qolgan tovarlar ro‘yxatini bermaydi, shuning uchun har bir SKU bo‘yicha qabul qilingan donadan sotilgani va omborda turgani ayiriladi. Bekor qilingan buyurtma tovari omborga darhol qaytmaydi: 2–3 kunda ham, {days} kunda ham ko‘rinishi mumkin. Shuning uchun bekor qilingan kundan {days} kun u qaytish yo‘lida hisoblanadi. Shu muddatda ham ko‘rinmagani va buyurtmasiz kamaygani hisobda yo‘q bo‘ladi. Summa Uzum qoidasi bo‘yicha: oxirgi 30 kunning o‘rtacha sotuv narxi − komissiya.',
     'bal.state.settlingHint': 'Yaqinda qabul qilingan — qoldiq o‘rnashgach tekshiriladi',
     'bal.state.incompleteHint': 'Buyurtmalar tarixi to‘liq yuklanmagan — keyingi sinxrondan keyin hisoblanadi',
 
@@ -137,7 +137,7 @@ registerNamespace('losses', {
       'Не найдено принятых накладных на склад Uzum. Баланс считается для товаров FBO и появляется после синхронизации.',
     'bal.how.title': 'Как это считается',
     'bal.how.text':
-      'Uzum не отдаёт список потерянных товаров, поэтому по каждому SKU из принятого количества вычитаются проданное и остаток на складе. Товар отменённого или возвращённого заказа возвращается на склад в течение {days} дней — всё это время он считается возвращающимся. Не вернувшееся в срок и убывшее без заказа попадает в «нет в учёте». Сумма — по правилу Uzum: средняя цена продажи за 30 дней − комиссия.',
+      'Uzum не отдаёт список потерянных товаров, поэтому по каждому SKU из принятого количества вычитаются проданное и остаток на складе. Товар отменённого заказа возвращается на склад не сразу: может появиться и через 2–3 дня, и через {days}. Поэтому {days} дней с момента отмены он считается возвращающимся. Не появившееся за этот срок и убывшее без заказа попадает в «нет в учёте». Сумма — по правилу Uzum: средняя цена продажи за 30 дней − комиссия.',
     'bal.state.settlingHint': 'Недавняя приёмка — проверим, когда остаток обновится',
     'bal.state.incompleteHint': 'История заказов загружена не полностью — посчитаем после следующей синхронизации',
 
@@ -229,7 +229,7 @@ registerNamespace('losses', {
       'No invoices received at the Uzum warehouse were found. The balance covers FBO items and appears after a sync.',
     'bal.how.title': 'How it is calculated',
     'bal.how.text':
-      'Uzum does not provide a list of lost items, so for every SKU sold units and warehouse stock are subtracted from received units. Items from cancelled or returned orders come back to the warehouse within {days} days — until then they count as coming back. Whatever has not returned in time or left stock without an order is unaccounted. The amount follows the Uzum rule: average sale price over 30 days − commission.',
+      'Uzum does not provide a list of lost items, so for every SKU sold units and warehouse stock are subtracted from received units. Items from a cancelled order do not return to the warehouse right away: they may show up in 2–3 days or in {days}. So for {days} days after the cancellation they count as coming back. Whatever has not shown up by then or left stock without an order is unaccounted. The amount follows the Uzum rule: average sale price over 30 days − commission.',
     'bal.state.settlingHint': 'Received recently — checked once stock settles',
     'bal.state.incompleteHint': 'Order history is not fully loaded — calculated after the next sync',
 

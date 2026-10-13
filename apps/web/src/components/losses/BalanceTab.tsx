@@ -232,7 +232,7 @@ export function BalanceTab({ balance, loading }: { balance?: StockBalanceSummary
         <div className="min-w-0">
           <p className="text-sm font-medium text-ink">{t('bal.how.title')}</p>
           <p className="mt-1 text-sm leading-relaxed text-muted">
-            {t('bal.how.text', { days: balance.rules.returnWaitDays })}
+            {t('bal.how.text', { days: balance.rules.cancelWaitDays })}
           </p>
         </div>
       </div>

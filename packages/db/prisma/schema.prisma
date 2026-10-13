@@ -448,6 +448,10 @@ model OrderItem {
   returnedAt    DateTime?
   /// Uzum `returnCause` — bekor qilish yoki qaytarish sababi (asl matni)
   returnCause   String?
+  /// Pozitsiya bekor bo'lgani yoki qaytgani BIZ birinchi marta ko'rgan payt.
+  /// Uzum API'da bekor qilingan sana yo'q. Tovar omborga qaytishi shu paytdan
+  /// kutiladi (tovar balansi). Tarixdan bekor holatda kelgan yozuvlarda null.
+  canceledAt    DateTime?
   orderedAt     DateTime
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)

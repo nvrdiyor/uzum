@@ -692,6 +692,8 @@ export async function upsertOrders(
   const taxRate = Number.isFinite(options.taxRate ?? NaN) ? (options.taxRate as number) : DEFAULTS.taxPct;
   const refs = await getSkuRefs(storeId);
   const seen = new Set<string>();
+  /** Shu importda ko'rilgan o'zgarishlar uchun yagona vaqt belgisi */
+  const seenAt = new Date();
 
   for (const batch of chunked(orders)) {
     const keys = batch.map((o) => String(o.id));
@@ -700,17 +702,20 @@ export async function upsertOrders(
       select: {
         id: true,
         uzumOrderId: true,
-        // Oldingi holat — nima bekor bo'lgani/qaytganini bilish uchun (to'liq sinxronda kerak emas)
-        ...(options.collectNew ? { items: { select: { id: true, returnedQty: true } } } : {}),
+        // Oldingi holat — nima bekor bo'lgani/qaytganini va QACHON ko'rilganini bilish uchun
+        items: { select: { id: true, returnedQty: true, canceledAt: true } },
       },
     });
     const byKey = new Map<string, string>();
     /** Pozitsiya id'si → oldingi sinxrondagi qaytgan/bekor bo'lgan dona */
     const returnedBefore = new Map<string, number>();
+    /** Pozitsiya id'si → bekor bo'lgani birinchi marta ko'rilgan payt */
+    const canceledBefore = new Map<string, Date | null>();
     for (const o of existing) {
       if (o.uzumOrderId) byKey.set(o.uzumOrderId, o.id);
-      for (const it of (o as { items?: { id: string; returnedQty: number }[] }).items ?? []) {
+      for (const it of o.items) {
         returnedBefore.set(it.id, it.returnedQty);
+        canceledBefore.set(it.id, it.canceledAt);
       }
     }
 
@@ -814,8 +819,19 @@ export async function upsertOrders(
         const itemId = stableId('oi', orderId, index, String(it.skuId));
         const returnedQty = Math.max(0, int(it.returnedQty, 0));
 
-        // Shu sinxronda bekor bo'lgan yoki qaytgan dona — Telegram xabari uchun
         const before = returnedBefore.get(itemId);
+
+        /*
+         * Bekor bo'lgani/qaytgani birinchi marta ko'rilgan payt. Pozitsiyalar har
+         * importda qayta yoziladi, shuning uchun oldingi qiymat ko'chirib o'tiladi.
+         * Yangi qiymat faqat O'ZGARISHNI ko'rganimizda qo'yiladi: tarixdan bekor
+         * holatda kelgan buyurtmaning sanasi noma'lum — unga bugungi kunni yozsak,
+         * bir oy oldin yo'qolgan tovar ham "endi qaytadi" bo'lib ko'rinardi.
+         */
+        let canceledAt = returnedQty > 0 ? (canceledBefore.get(itemId) ?? null) : null;
+        if (!canceledAt && before !== undefined && returnedQty > before) canceledAt = seenAt;
+
+        // Shu sinxronda bekor bo'lgan yoki qaytgan dona — Telegram xabari uchun
         if (options.collectNew && before !== undefined && returnedQty > before) {
           res.changesTotal += 1;
           if (res.changes.length < NEW_SALES_CAP) {
@@ -857,6 +873,7 @@ export async function upsertOrders(
           status: lineStatus,
           returnedAt: lineReturnedAt,
           returnCause: text(it.returnCause),
+          canceledAt,
           orderedAt,
         });
       });

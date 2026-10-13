@@ -1080,7 +1080,14 @@ export interface StockBalanceSummary {
   rows: StockBalanceRow[];
   stuck: StuckOrderRow[];
   /** Qoidalar — sahifadagi izohlar shu raqamlardan */
-  rules: { returnWaitDays: number; stuckDays: number; minClaim: number };
+  rules: {
+    /** Bekor bo'lgan payti noma'lum buyurtma: buyurtma kunidan shuncha kun kutiladi */
+    returnWaitDays: number;
+    /** Bekor qilingan buyurtma tovari omborga shuncha kun ichida qaytadi (bekor qilingan kundan) */
+    cancelWaitDays: number;
+    stuckDays: number;
+    minClaim: number;
+  };
 }
 
 export interface LossesResponse {
