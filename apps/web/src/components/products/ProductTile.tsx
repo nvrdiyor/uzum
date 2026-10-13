@@ -90,19 +90,11 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
             {/*
-              Raqam TO'G'RI NOMLANADI.
-
-              Sotuvi bo'lgan tovarda bu joriy narx EMAS, davr bo'yicha
-              o'rtacha to'langan narx: Uzumning ochiq API'si aksiyadagi
-              joriy narxni umuman bermaydi. Ilgari u oddiygina narx
-              sifatida ko‘rsatilardi va sotuvchi narxni o‘zgartirgach
-              «nega o‘zgarmadi» degan savol tug‘ilardi.
+              Katta raqam — JORIY narx. Chiziladigani faqat chegirmadan oldingi
+              narx. Davr bo'yicha o'rtacha sotilgan narx pastda, o'z nomi bilan:
+              ilgari u katta raqam o'rnida turib, joriy narxni "eski narx"dek
+              chizib qo'yardi.
             */}
-            {product.priceIsAverage ? (
-              <p className="eyebrow truncate" title={t('card.priceWhy')}>
-                {t('card.avgPrice')}
-              </p>
-            ) : null}
             <p className="tnum truncate font-display text-lg font-extrabold text-ink">{f.money(product.minPrice)}</p>
             {product.listPrice > product.minPrice ? (
               <p className="tnum truncate text-2xs text-muted">
@@ -118,6 +110,13 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
                 {product.promo.endsAt
                   ? ' · ' + t('card.promoUntil', { date: f.dateShort(product.promo.endsAt) })
                   : ''}
+              </p>
+            ) : null}
+            {/* Joriy narxdan farq qilsagina: o'tgan sotuvlar boshqa narxda bo'lgan */}
+            {product.avgSoldPrice > 0 && Math.abs(product.avgSoldPrice - product.minPrice) >= product.minPrice * 0.01 ? (
+              // Kesilmaydi: tor kartochkada summa keyingi qatorga tushadi, lekin butun ko'rinadi
+              <p className="tnum text-2xs leading-snug text-muted" title={t('card.priceWhy')}>
+                {t('card.avgPrice')}: <span className="whitespace-nowrap">{f.money(product.avgSoldPrice)}</span>
               </p>
             ) : null}
             <p className="truncate text-2xs text-muted">

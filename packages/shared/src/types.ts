@@ -462,20 +462,18 @@ export interface ProductCard {
   reviewsCount: number;
   skuCount: number;
   /**
-   * Ko'rsatiladigan narx.
+   * JORIY narx — katalogdagi eng arzon SKU narxi (aksiyada bo'lsa aksiya narxi).
    *
-   * Sotuvi bo'lgan tovarda bu — xaridorlar HAQIQATDA to'lagan narxning
-   * DAVR BO'YICHA O'RTACHASI, joriy narx emas. Uzumning ochiq API'si
-   * aksiyadagi joriy narxni umuman bermaydi (`specialOffer.mechanicPrice`
-   * doim null, `price` esa ro'yxat narxi), shuning uchun joriy narxni
-   * faqat sotuvdan keyin bilish mumkin. `priceIsAverage` shu holatni
-   * bildiradi va interfeys raqamni shunga yarasha nomlaydi.
+   * Ilgari bu yerda davr bo'yicha o'rtacha sotilgan narx turardi va joriy narx
+   * uning ostida "eski narx"dek chizib ko'rsatilardi: 59 000 ga sotilayotgan
+   * tovar "44 333, 59 000 dan −25%" bo'lib chiqardi. O'rtacha endi alohida
+   * maydonda (`avgSoldPrice`) va o'z nomi bilan ko'rsatiladi.
    */
   minPrice: number;
-  /** Chegirmasiz ro'yxat narxi (katalogdagi `price`) */
+  /** Chegirmadan OLDINGI narx; chegirma bo'lmasa 0 */
   listPrice: number;
-  /** `minPrice` sotuvlardan olingan o'rtachami yoki katalog narximi */
-  priceIsAverage: boolean;
+  /** Davr ichida xaridorlar haqiqatda to'lagan o'rtacha narx (tushum / dona); sotuv bo'lmasa 0 */
+  avgSoldPrice: number;
   /** Faol aksiya — nomi va tugash sanasi (ISO) */
   promo: { name: string; endsAt: string | null } | null;
   sold: number;

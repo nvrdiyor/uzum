@@ -241,10 +241,9 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   let stockOwn = 0;
   let avgTotal = 0;
   let needOrder = 0;
+  /** Joriy narx — katalogdagi eng arzon SKU */
   let minPrice = Number.POSITIVE_INFINITY;
-  /** Ko'rsatilgan narx sotuvlardan olinganmi (o'rtacha) yoki katalogdanmi */
-  let priceFromSales = false;
-  /** Katalogdagi ro'yxat narxi (sotuv narxi bilan solishtirish uchun) */
+  /** O'sha SKU'ning chegirmadan oldingi narxi (bo'lmasa 0) */
   let listPrice = 0;
 
   for (const s of p.skus) {
@@ -263,25 +262,22 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     avgTotal += avg;
     // Har bir SKU o'z zaxirasiga muhtoj — shuning uchun SKU kesimida qo'shamiz
     needOrder += recommendedQty(avg, c.cover, st.total, 0);
-    /**
-     * Ko'rsatiladigan narx — xaridor HAQIQATDA to'lagan narx (tushum / dona).
-     * Katalog joriy chegirmali narxni bermaydi, shuning uchun sotuvi bo'lgan
-     * tovarda katalog narxi kabinetdagidan katta ko'rinardi
-     * (masalan 299 000 ko'rsatilardi, aslida 245 000 ga sotilgan).
-     * Sotuv bo'lmasa — katalog narxi.
+    /*
+     * Ko'rsatiladigan narx — JORIY katalog narxi (import aksiya narxini ham shu
+     * maydonga yozadi). Davr bo'yicha o'rtacha sotilgan narx alohida qaytadi:
+     * ikkalasini bitta raqamga aralashtirish sotuvchini chalg'itardi — o'tgan
+     * oyda arzonroq sotilgan tovarning bugungi narxi "chizilgan" bo'lib chiqardi.
      */
-    const realPrice = agg.units > 0 ? safeDiv(agg.revenue, agg.units) : s.price;
-    if (realPrice > 0 && realPrice < minPrice) {
-      minPrice = realPrice;
-      listPrice = Math.max(s.price, s.oldPrice);
-      priceFromSales = agg.units > 0;
+    if (s.price > 0 && s.price < minPrice) {
+      minPrice = s.price;
+      listPrice = s.oldPrice > s.price ? s.oldPrice : 0;
     }
 
     skus.push({
       id: s.id,
       sku: s.sku,
       title: s.title || p.title,
-      price: round(agg.units > 0 ? safeDiv(agg.revenue, agg.units) : s.price),
+      price: round(s.price),
       purchasePrice: round(s.purchasePrice),
       extraCost: round(s.extraCost),
       totalCost: round(s.purchasePrice + s.extraCost),
@@ -322,7 +318,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     skuCount: p.skus.length,
     minPrice: Number.isFinite(minPrice) ? round(minPrice) : 0,
     listPrice: round(listPrice),
-    priceIsAverage: priceFromSales,
+    avgSoldPrice: sold > 0 ? round(safeDiv(revenue, sold)) : 0,
     promo: promoInfo,
     sold,
     returns,
