@@ -255,7 +255,10 @@ export interface TimeSeriesPoint {
 export interface TopProductRow {
   skuId: string;
   sku: string;
+  /** SKU nomi — ko'pincha faqat variant («ЧЕРН», «БЕЛЫЙ») */
   title: string;
+  /** Mahsulot nomi: ikki xil tovarning bir xil nomli variantlarini ajratadi */
+  productTitle?: string;
   imageUrl: string | null;
   revenue: number;
   profit: number;

@@ -637,9 +637,16 @@ export default function Reports() {
                   data={dailyData}
                   series={[
                     { key: 'revenue', name: t('daily.revenue'), money: true, color: CHART_COLORS.info },
-                    { key: 'profit', name: t('daily.profit'), money: true, color: CHART_COLORS.brand },
+                    {
+                      key: 'profit',
+                      name: t('daily.profit'),
+                      money: true,
+                      color: CHART_COLORS.brand,
+                      negColor: CHART_COLORS.danger,
+                    },
                   ]}
                   height={300}
+                  variant="bars"
                 />
               ) : (
                 <EmptyState title={t('daily.empty')} />

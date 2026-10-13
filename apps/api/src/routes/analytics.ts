@@ -582,6 +582,7 @@ router.get(
           skuId,
           sku: info?.sku ?? '—',
           title: info?.title ?? 'Noma’lum SKU',
+          productTitle: info?.productTitle,
           imageUrl: info?.imageUrl ?? null,
           revenue: round(agg.revenue),
           profit: round(agg.netProfit),

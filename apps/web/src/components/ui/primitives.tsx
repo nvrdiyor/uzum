@@ -1,5 +1,7 @@
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { forwardRef, useId, useMemo, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { useT } from '@/i18n';
+// Faqat sof hisob-kitob (Recharts yo'q) — grafik kutubxonasi asosiy to'plamga tortilmaydi
+import { downsample, smoothPath } from '@/components/charts/series';
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -584,29 +586,53 @@ export function Sparkline({
   tone?: 'brand' | 'danger' | 'info' | 'warn';
   className?: string;
 }) {
-  if (!data || data.length < 2) return <div style={{ width, height }} className={className} />;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+  const id = `spark-${useId().replace(/:/g, '')}`;
+  /*
+   * Kunlik qator to'g'ridan-to'g'ri chizilmaydi:
+   *  - boshidagi uzoq bo'sh davr kesiladi — aks holda 96 px lik chiziqning
+   *    deyarli hammasi nol ustida yotadi va oxirida bitta "tikan" qoladi;
+   *  - nuqtalar ko'p bo'lsa qo'shni kunlar o'rtachasiga siqiladi — yo'nalish
+   *    ko'rinadi, kunlik sakrashlar esa chiziqni arraga aylantirmaydi.
+   */
+  const values = useMemo(() => {
+    const all = data ?? [];
+    const first = all.findIndex((v) => v !== 0);
+    const cut = first >= 7 && first / all.length > 0.2 ? all.slice(first - 1) : all;
+    return downsample(cut, 18);
+  }, [data]);
+
+  if (values.length < 2) return <div style={{ width, height }} className={className} />;
+
+  const max = Math.max(...values);
+  const min = Math.min(...values);
   const span = max - min || 1;
-  const step = width / (data.length - 1);
-  const pts = data.map((v, i) => `${i * step},${height - ((v - min) / span) * (height - 4) - 2}`);
+  // Oxirgi nuqta doirachasi chetdan kesilmasin
+  const pad = 3;
+  const step = (width - pad * 2) / (values.length - 1);
+  const pts = values.map((v, i) => ({
+    x: pad + i * step,
+    y: height - pad - ((v - min) / span) * (height - pad * 2),
+  }));
+  const line = smoothPath(pts);
+  const end = pts[pts.length - 1] as { x: number; y: number };
   const color = {
     brand: 'rgb(var(--c-brand))',
     danger: 'rgb(var(--c-danger))',
     info: 'rgb(var(--c-info))',
     warn: 'rgb(var(--c-warn))',
   }[tone];
-  const id = `spark-${tone}-${data.length}-${Math.round(max)}`;
+
   return (
-    <svg width={width} height={height} className={className} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg width={width} height={height} className={className} viewBox={`0 0 ${width} ${height}`} aria-hidden>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      <polygon points={`0,${height} ${pts.join(' ')} ${width},${height}`} fill={`url(#${id})`} />
+      <path d={`${line}L${end.x.toFixed(2)},${height}L${pad},${height}Z`} fill={`url(#${id})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={end.x} cy={end.y} r="2.5" fill={color} stroke="rgb(var(--c-surface))" strokeWidth="1.5" />
     </svg>
   );
 }

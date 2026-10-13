@@ -10,7 +10,7 @@ import {
   PackageSearch,
   Tag,
 } from 'lucide-react';
-import type { DashboardResponse } from '@savdoiq/shared';
+import type { DashboardResponse, TopProductRow } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
@@ -357,6 +357,26 @@ registerNamespace('dashboard', {
 
 type MetricKey = 'revenue' | 'profit' | 'orders' | 'units';
 
+/**
+ * Tovar yorlig'i: mahsulot nomi va (bo'lsa) variant.
+ *
+ * SKU nomi ko'pincha faqat rang («ЧЕРН»). Ikki xil tovarning varianti bir xil
+ * atalsa, ro'yxatda ikkita «ЧЕРН» turardi va qaysi biri qaysi tovar ekanini
+ * bilib bo'lmasdi — shuning uchun asosiy nom mahsulotniki, variant yonida.
+ */
+function productLabel(r: TopProductRow): { name: string; sub: string } {
+  const product = r.productTitle?.trim();
+  // SKU nomi mahsulot nomini o'z ichiga olgan bo'lsa, takrorlamaymiz
+  if (!product || r.title.toLowerCase().includes(product.toLowerCase())) return { name: r.title, sub: '' };
+  return { name: product, sub: r.title };
+}
+
+/** Marja xaritasi nuqtasi: to'liq nom izoh oynasida, qisqasi nuqta yonida (variant oldinda — u kesilmaydi) */
+function mapLabel(r: TopProductRow): { name: string; label: string } {
+  const { name, sub } = productLabel(r);
+  return sub ? { name: `${name} · ${sub}`, label: `${sub} · ${name}` } : { name, label: name };
+}
+
 export default function Dashboard() {
   const t = useT('dashboard');
   const f = useFormat();
@@ -395,33 +415,9 @@ export default function Dashboard() {
   /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga */
   const topByProfit = useMemo(() => {
     const rows = [...(data?.topProducts ?? [])].filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
-    /*
-     * Bir mahsulotning variantlari deyarli bir xil nom bilan keladi
-     * ("Robot changyutgich Mini H60" va "… Mini H90"). To'liq nomlar
-     * FARQ qiladi, lekin o'q yorlig'i qirqilgandan keyin ikkita ustun
-     * aynan bir xil ko'rinadi.
-     *
-     * Shuning uchun taqqoslash KO'RINADIGAN shakl bo'yicha bo'ladi, va
-     * ajratuvchi belgi yorliq BOSHIGA qo'yiladi — oxiriga qo'yilgani
-     * qirqilib ketardi. Ajratgich sifatida SKU'ning oxirgi bo'lagi
-     * ishlatiladi: aynan u variantni bildiradi (masalan «ЧЕРН»).
-     */
-    const shown = (text: string) => (text.length > 26 ? text.slice(0, 25) : text);
-    const variant = (sku: string) => sku.split('-').pop() ?? sku;
-
-    const collide = new Map<string, number>();
-    for (const r of rows.slice(0, 8)) collide.set(shown(r.title), (collide.get(shown(r.title)) ?? 0) + 1);
-
-    const head = rows.slice(0, 8).map((r) => {
-      const dup = (collide.get(shown(r.title)) ?? 0) > 1;
-      const label = dup ? `${variant(r.sku)} · ${r.title}` : r.title;
-      return {
-        name: label.length > 32 ? `${label.slice(0, 31)}…` : label,
-        profit: Math.round(r.profit),
-      };
-    });
+    const head = rows.slice(0, 8).map((r) => ({ ...productLabel(r), profit: Math.round(r.profit) }));
     const tail = rows.slice(8).reduce((sum, r) => sum + r.profit, 0);
-    return tail > 0 ? [...head, { name: t('ptop.other'), profit: Math.round(tail) }] : head;
+    return tail > 0 ? [...head, { name: t('ptop.other'), sub: '', profit: Math.round(tail) }] : head;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.topProducts, t]);
 
@@ -432,7 +428,7 @@ export default function Dashboard() {
       x: Math.round(r.revenue),
       y: Number(r.margin.toFixed(1)),
       z: Math.max(1, r.units),
-      name: r.title,
+      ...mapLabel(r),
       sku: r.sku,
     }));
     const totalRevenue = rows.reduce((s2, r) => s2 + r.revenue, 0);
@@ -445,7 +441,14 @@ export default function Dashboard() {
 
   const chartSeries: SeriesDef[] = useMemo(() => {
     const revenue: SeriesDef = { key: 'revenue', name: t('metric.revenue'), money: true, color: CHART_COLORS.info };
-    const profit: SeriesDef = { key: 'profit', name: t('metric.profit'), money: true, color: CHART_COLORS.brand };
+    // Zarar ko'rilgan kun qizil ustun bo'lib nol chizig'idan pastga tushadi
+    const profit: SeriesDef = {
+      key: 'profit',
+      name: t('metric.profit'),
+      money: true,
+      color: CHART_COLORS.brand,
+      negColor: CHART_COLORS.danger,
+    };
     if (metric === 'revenue') return [revenue, profit];
     if (metric === 'profit') return [profit];
     if (metric === 'orders') return [{ key: 'orders', name: t('metric.orders'), color: CHART_COLORS.info }];
@@ -646,7 +649,7 @@ export default function Dashboard() {
           }
         >
           {chartData.length > 1 ? (
-            <TrendChart data={chartData} series={chartSeries} height={320} />
+            <TrendChart data={chartData} series={chartSeries} height={320} variant="bars" />
           ) : (
             <EmptyState
               className="py-16"
@@ -665,7 +668,6 @@ export default function Dashboard() {
                 data={topByProfit}
                 xKey="name"
                 horizontal
-                height={Math.max(220, topByProfit.length * 38 + 40)}
                 series={[{ key: 'profit', name: t('metric.profit'), color: CHART_COLORS.brand, money: true }]}
               />
             ) : (

@@ -480,7 +480,7 @@ export default function Finance() {
               {isLoading ? (
                 <Skeleton className="h-[300px] w-full" />
               ) : chartData.length > 1 ? (
-                <TrendChart data={chartData} series={chartSeries} height={310} />
+                <TrendChart data={chartData} series={chartSeries} height={310} variant="bars" />
               ) : (
                 <EmptyState
                   className="py-14"

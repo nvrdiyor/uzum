@@ -467,6 +467,9 @@ export default function Funnel() {
                 { key: 'returned', name: t('chart.returned'), color: CHART_COLORS.danger },
               ]}
               height={280}
+              // Keng och ustun — buyurtmalar; ichida ular nima bo'lgani: sotildi, bekor, qaytdi
+              variant="bars"
+              stacked
             />
           </ChartCard>
 

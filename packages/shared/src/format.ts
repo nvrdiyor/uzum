@@ -70,7 +70,8 @@ export function formatCompact(value: number, lang: Lang = 'uz'): string {
   for (const u of units) {
     if (abs >= u.v) {
       const n = value / u.v;
-      return `${formatNumber(n, lang, n >= 100 ? 0 : 1)}${u.s}`;
+      // Math.abs: manfiy qiymat ham musbatidek yozilsin — «-250,0 ming» emas, «-250 ming»
+      return `${formatNumber(n, lang, Math.abs(n) >= 100 ? 0 : 1)}${u.s}`;
     }
   }
   return formatNumber(value, lang);

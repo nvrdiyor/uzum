@@ -581,6 +581,7 @@ export default function Returns() {
                       series={[{ key: 'qty', name: tk('chart.count') }]}
                       showLegend={false}
                       height={300}
+                      variant="bars"
                     />
                   )}
                 </ChartCard>
