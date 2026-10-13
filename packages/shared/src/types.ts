@@ -1344,7 +1344,11 @@ export interface SkuHealthResponse {
  */
 export type PayoutMode = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
-/** Bir kunda ochiladigan summa */
+/**
+ * Bir kunda ochiladigan summa — faqat HALI KELADIGAN pul.
+ * To'langan va xizmat to'lovlariga ketgan qism kirmaydi, shuning uchun
+ * ochilgan kunlar yig'indisi "Yechib olish mumkin" ga teng chiqadi.
+ */
 export interface PayoutDay {
   /** Yechib olish uchun ochiladigan sana (ISO) */
   date: string;
@@ -1352,41 +1356,40 @@ export interface PayoutDay {
   orders: number;
   /** Bugun yoki undan oldinmi — ya'ni allaqachon ochilganmi */
   unlocked: boolean;
-  /**
-   * Shu kunlik summaning jadval bo'yicha allaqachon o'tkazilgan qismi.
-   *
-   * Busiz jadvaldagi yig'indi "Ochilgan" ko'rsatkichidan katta chiqib,
-   * ikkovi bir-biriga zid tushardi.
-   */
-  paid: number;
 }
 
-/** Ochilishini kutayotgan bitta buyurtma */
+/**
+ * Buyurtma puli qaysi bosqichda:
+ * transit — sotilgan, xaridor hali qabul qilmagan (kutish boshlanmagan);
+ * waiting — qabul qilingan, kutish muddati sanalyapti;
+ * ready — ochilgan, yechib olish mumkin.
+ */
+export type PayoutOrderState = 'transit' | 'waiting' | 'ready';
+
+/**
+ * Puli hali kelmagan bitta buyurtma. Uzum to'liq yechib bergan yoki puli
+ * xizmat to'lovlariga ketgan buyurtma ro'yxatdan chiqadi.
+ */
 export interface PayoutOrder {
   uzumOrderId: string | null;
   title: string;
-  /** Xaridor tovarni qabul qilgan sana */
-  acceptedAt: string;
-  /** Yechib olish uchun ochiladigan sana */
-  unlockAt: string;
+  state: PayoutOrderState;
+  /** Buyurtma berilgan (sotilgan) sana */
+  orderedAt: string;
+  /** Xaridor tovarni qabul qilgan sana; yo'lda bo'lsa null */
+  acceptedAt: string | null;
+  /** Yechib olish uchun ochiladigan sana; yo'lda bo'lsa hali noma'lum */
+  unlockAt: string | null;
   /** Jadval bo'yicha pul haqiqatda tushadigan sana */
-  payoutAt: string;
+  payoutAt: string | null;
+  /** Shu buyurtmadan hali keladigan summa */
   amount: number;
   unlocked: boolean;
   daysLeft: number;
   /** Ochilishgacha qolgan soat (ochilgan bo'lsa 0) */
   hoursLeft: number;
   /** Ochilishning aniq vaqti (ISO) — qabul vaqti + 10 × 24 soat */
-  unlockTime: string;
-  /** Uzum bu buyurtma pulini to'liq yechib bergan (`withdrawnProfit`) */
-  paid: boolean;
-  /**
-   * Ochilgan, lekin puli Uzum ushlagan xizmat to'lovlariga ketgan — bu
-   * buyurtmadan endi pul kelmaydi. Uzum to'lovni eng eski buyurtmalarga
-   * yozadi, xizmat to'lovlari esa balansdan olinadi; qolgan eng eski
-   * ochilgan buyurtmalar shu to'lovlar hisobiga yopiladi.
-   */
-  coveredByFees: boolean;
+  unlockTime: string | null;
 }
 
 /** Uzum o'tkazgan bitta to'lov */
@@ -1515,6 +1518,8 @@ export interface PayoutCalendarResponse {
     pending: number;
     /** Hali xaridorga yetmagan buyurtmalar: balansda bor, kutish boshlanmagan */
     inTransit: number;
+    /** Yo'ldagi buyurtmalar soni */
+    transitOrders: number;
     /** Davr ichidagi xizmat to'lovlari (logistika, reklama, saqlash) */
     charges: number;
     /** Eng yaqin ochilish sanasi (ISO) yoki null */
@@ -1523,13 +1528,13 @@ export interface PayoutCalendarResponse {
     nextAt: string | null;
     nextAmount: number;
   };
-  /** Kunlar bo'yicha ochilish jadvali */
+  /** Kunlar bo'yicha ochilish jadvali — faqat puli hali kelmagan kunlar */
   days: PayoutDay[];
   /** Jadval bo'yicha KELGUSI to'lov kunlari (kamida uchta) */
   plan: PayoutPlanDay[];
   /** Uzum o'tkazgan to'lovlar — eng yangisi birinchi */
   history: PayoutHistoryRow[];
-  /** Har bir buyurtma alohida */
+  /** Puli hali kelmagan buyurtmalar: avval ochilganlar, keyin kutilayotganlar, oxirida yo'ldagilar */
   orders: PayoutOrder[];
   /** Tezkor yechib olish mezonlari */
   instant: {

@@ -69,6 +69,29 @@ const ANOMALY_FACTOR = 10;
 /** Bekor qilingan va qaytarilgan buyurtma pul keltirmaydi */
 const EFFECTIVE_STATUSES = ['new', 'processing', 'delivered'];
 
+/**
+ * Qabul qilingan buyurtma — hisob-kitob uchun ichki qator.
+ *
+ * `paid` va `coveredByFees` javobga chiqmaydi: bunday buyurtmadan endi pul
+ * kelmaydi, shuning uchun u ro'yxatdan tushib qoladi. Ilgari ular "ochilgan"
+ * bo'lib turaverardi va jadval yig'indisi yechib olish mumkin bo'lgan puldan
+ * bir necha barobar katta chiqardi (13.10.2026: 963 398 ga qarshi 66 500).
+ */
+type AcceptedRow = PayoutOrder & {
+  acceptedAt: string;
+  unlockAt: string;
+  payoutAt: string;
+  unlockTime: string;
+  /** Uzum bu buyurtma pulini to'liq yechib bergan (`withdrawnProfit`) */
+  paid: boolean;
+  /**
+   * Ochilgan, lekin puli Uzum ushlagan xizmat to'lovlariga ketgan. Uzum
+   * to'lovni eng eski buyurtmalarga yozadi, xizmat to'lovlari esa balansdan
+   * olinadi; eng eski ochilgan buyurtmalar shu to'lovlar hisobiga yopiladi.
+   */
+  coveredByFees: boolean;
+};
+
 router.get(
   '/',
   requireFeature('unit_economics'),
@@ -103,13 +126,16 @@ router.get(
       where: { storeId: { in: storeIds }, status: { in: EFFECTIVE_STATUSES } },
       select: {
         uzumOrderId: true,
+        orderedAt: true,
         deliveredAt: true,
         items: { select: { title: true, revenue: true, commission: true, payout: true, withdrawn: true, status: true } },
       },
       orderBy: { deliveredAt: 'desc' },
     });
 
-    const rows: PayoutOrder[] = [];
+    const rows: AcceptedRow[] = [];
+    /** Yo'ldagi buyurtmalar: sotilgan, lekin xaridor hali qabul qilmagan */
+    const transitRows: PayoutOrder[] = [];
     const nowTs = Date.now();
     const holdMs = holdDays * 86_400_000;
     /** Hali xaridorga yetmagan buyurtmalar: balansda bor, lekin 10 kunlik soat boshlanmagan */
@@ -128,10 +154,29 @@ router.get(
        * Faqat QABUL QILINGAN buyurtma soatni boshlaydi. `deliveredAt` —
        * kabinetdagi "Qabul sanasi"; u bo'sh bo'lsa tovar hali yo'lda.
        */
+      const title = o.items[0]?.title ?? '';
+      const orderedAt = todayInBusinessTz(o.orderedAt);
+
       if (!o.deliveredAt) {
         inTransit += Math.max(0, rest);
         transitPayout += Math.max(0, live.reduce((sum, i) => sum + i.payout - i.withdrawn, 0));
         transitOrders += 1;
+        if (rest >= 1) {
+          transitRows.push({
+            uzumOrderId: o.uzumOrderId,
+            title,
+            state: 'transit',
+            orderedAt,
+            acceptedAt: null,
+            unlockAt: null,
+            payoutAt: null,
+            amount: rest,
+            unlocked: false,
+            daysLeft: 0,
+            hoursLeft: 0,
+            unlockTime: null,
+          });
+        }
         continue;
       }
 
@@ -160,7 +205,9 @@ router.get(
 
       rows.push({
         uzumOrderId: o.uzumOrderId,
-        title: o.items[0]?.title ?? '',
+        title,
+        state: isUnlocked ? 'ready' : 'waiting',
+        orderedAt,
         acceptedAt: toISODate(acceptedAt),
         unlockAt: toISODate(unlockAt),
         payoutAt: toISODate(payoutAt),
@@ -175,29 +222,6 @@ router.get(
       });
     }
     inTransit = round(inTransit);
-
-    // Kunlar bo'yicha jamlash — kalendarda bir kun bitta qator
-    const byDay = new Map<string, { amount: number; orders: number; paid: number; locked: number }>();
-    for (const r of rows) {
-      const cur = byDay.get(r.unlockAt) ?? { amount: 0, orders: 0, paid: 0, locked: 0 };
-      cur.amount += r.amount;
-      cur.orders += 1;
-      if (r.paid) cur.paid += r.amount;
-      if (!r.unlocked) cur.locked += 1;
-      byDay.set(r.unlockAt, cur);
-    }
-
-    const days: PayoutDay[] = [...byDay.entries()]
-      .map(([date, v]) => ({
-        date,
-        amount: round(v.amount),
-        orders: v.orders,
-        // Kun ochilgan — undagi barcha buyurtmalar soati to'lgan bo'lsa
-        unlocked: v.locked === 0,
-        // Shu kuni ochilgan pulning Uzum allaqachon yechib bergan qismi
-        paid: round(v.paid),
-      }))
-      .sort((x, y) => x.date.localeCompare(y.date));
 
     const unpaid = rows.filter((r) => !r.paid);
     const unlockedGross = round(unpaid.filter((r) => r.unlocked).reduce((sum, r) => sum + r.amount, 0));
@@ -237,6 +261,25 @@ router.get(
     }
     /** Hali pul kelishi kutilayotgan buyurtmalar */
     const open = unpaid.filter((r) => !r.coveredByFees);
+
+    /*
+     * Kunlar bo'yicha jamlash — faqat puli hali kelmagan buyurtmalardan.
+     * Bir kunda ochilgan va hali ochilmagan buyurtma birga uchrasa (bugun
+     * ertalab va kechqurun ochiladiganlar), ular alohida qator bo'ladi:
+     * shunda "ochilgan" qatorlar yig'indisi yechib olish mumkin bo'lgan
+     * pulga teng chiqadi.
+     */
+    const byDay = new Map<string, PayoutDay>();
+    for (const r of open) {
+      const key = `${r.unlockAt}|${r.unlocked ? 1 : 0}`;
+      const cur = byDay.get(key) ?? { date: r.unlockAt, amount: 0, orders: 0, unlocked: r.unlocked };
+      cur.amount += r.amount;
+      cur.orders += 1;
+      byDay.set(key, cur);
+    }
+    const days: PayoutDay[] = [...byDay.values()]
+      .map((d) => ({ ...d, amount: round(d.amount) }))
+      .sort((x, y) => x.date.localeCompare(y.date) || Number(y.unlocked) - Number(x.unlocked));
 
     /*
      * KELGUSI TO'LOVLAR. Har bir sana uchun:
@@ -456,6 +499,7 @@ router.get(
         paidOut: balance.withdrawn,
         pending,
         inTransit,
+        transitOrders,
         charges,
         withdrawn: balance.withdrawn,
         balance: balance.total,
@@ -466,7 +510,17 @@ router.get(
       days,
       plan: planDays,
       history,
-      orders: rows.sort((a, b) => a.unlockAt.localeCompare(b.unlockAt)),
+      /*
+       * Avval ochilganlar, keyin ochilish vaqti bo'yicha kutilayotganlar,
+       * oxirida yo'ldagilar (eng yangi sotuv birinchi). To'langan va xizmat
+       * to'lovlariga ketgan buyurtmalar bu yerda yo'q.
+       */
+      orders: [
+        ...open
+          .sort((a, b) => a.unlockTime.localeCompare(b.unlockTime))
+          .map(({ paid: _paid, coveredByFees: _covered, ...order }): PayoutOrder => order),
+        ...transitRows.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt)),
+      ],
       instant: { eligible, checks },
     };
     res.json(payload);

@@ -17,6 +17,7 @@ import {
   type PayoutDay,
   type PayoutMode,
   type PayoutOrder,
+  type PayoutOrderState,
   type PayoutHistoryRow,
   type PayoutPlanDay,
   type PayoutRulesRequest,
@@ -35,17 +36,17 @@ import {
   Card,
   CardBody,
   CardHeader,
-  DataTable,
   EmptyState,
   ErrorState,
   Input,
   Modal,
   PageHeader,
   PlanGate,
+  Segmented,
   Select,
+  SkeletonRows,
   Toggle,
   toast,
-  type Column,
 } from '@/components/ui';
 
 registerNamespace('payout', {
@@ -68,26 +69,24 @@ registerNamespace('payout', {
     'chart.pending': 'Kutilmoqda',
     'chart.empty': 'Ko‘rsatadigan kun yo‘q',
     'cal.title': 'Ochilish jadvali',
-    'cal.subtitle': 'Har bir kun uchun ochiladigan summa',
-    'cal.date': 'Sana',
-    'cal.orders': 'Buyurtma',
-    'cal.amount': 'Summa',
-    'cal.state': 'Holat',
+    'cal.subtitle': 'Faqat hali kelmagan pul — yechib olingani ro‘yxatdan chiqadi',
+    'cal.count': '{n} ta buyurtma',
+    'cal.transitHint': 'Sotilgan, xaridor hali qabul qilmagan. Qabul qilingach {n} kundan keyin ochiladi',
     'state.unlocked': 'Ochilgan',
     'state.waiting': 'Kutilmoqda',
+    'state.transit': 'Yo‘lda',
     'ord.title': 'Buyurtmalar bo‘yicha',
-    'ord.subtitle': 'Yechib olish uchun summa = tushum − komissiya − logistika',
-    'ord.order': 'Buyurtma',
-    'ord.product': 'Mahsulot',
-    'ord.accepted': 'Qabul sanasi',
-    'ord.unlock': 'Ochiladi',
-    'ord.amount': 'Summa',
-    'ord.left': 'Qoldi',
+    'ord.subtitle': 'Sotilgan buyurtma shu yerga qo‘shiladi, puli yechib olingach chiqib ketadi',
     'ord.days': '{n} kun',
     'ord.hours': '{n} soat',
     'ord.ready': 'Tayyor',
-    'ord.paid': 'To‘langan',
-    'ord.fees': 'Xizmat to‘loviga ketdi',
+    'ord.all': 'Hammasi',
+    'ord.payOn': 'To‘lov: {date}',
+    'ord.unlockOn': 'Ochiladi: {date}',
+    'ord.soldOn': 'Sotilgan: {date}',
+    'ord.none': 'Bu holatda buyurtma yo‘q',
+    'list.more': 'Yana {n} ta ko‘rsatish',
+    'list.less': 'Yig‘ish',
     'inst.title': 'Tezkor yechib olish',
     'inst.subtitle': 'Uzum shartlari bo‘yicha — {n} kunni kutmasdan yechish mumkinmi',
     'inst.yes': 'Shartlar bajarilgan',
@@ -102,8 +101,8 @@ registerNamespace('payout', {
     'chk.stable_sales': 'Barqaror savdo',
     'chk.no_anomaly': 'Savdo dinamikasida anomaliya yo‘q',
     'chk.antifraud': 'Qo‘shimcha antifrod cheklovlari',
-    'empty.title': 'Hali qabul qilingan buyurtma yo‘q',
-    'empty.hint': 'Xaridor tovarni qabul qilgach, shu yerda ochilish sanasi ko‘rinadi',
+    'empty.title': 'Kutilayotgan pul yo‘q',
+    'empty.hint': 'Yangi sotuv bo‘lganda shu yerda ko‘rinadi',
     'plan.title': 'To‘lov jadvali',
     'plan.subtitle': 'Keyingi to‘lovlar: Uzum pulni jadval kunining boshida, soat 00:00 da o‘tkazadi',
     'plan.date': 'To‘lov sanasi',
@@ -139,8 +138,6 @@ registerNamespace('payout', {
     'plan.empty': 'Oldinda turgan to‘lov yo‘q',
     'plan.emptyHint': 'Yangi buyurtma qabul qilingach, bu yerda to‘lov sanasi paydo bo‘ladi',
     'plan.assumed': 'Sanalar standart jadval bo‘yicha taxmin qilingan.',
-    'state.paid': 'To‘langan',
-    'state.partPaid': 'Qisman to‘langan',
     'sched.edit': 'Jadvalni sozlash',
     'sched.title': 'To‘lov jadvalini sozlash',
     'sched.subtitle': 'Uzum kabinetida qaysi variant belgilangan bo‘lsa, shuni tanlang',
@@ -177,26 +174,24 @@ registerNamespace('payout', {
     'chart.pending': 'Ожидается',
     'chart.empty': 'Нет дней для показа',
     'cal.title': 'График открытия',
-    'cal.subtitle': 'Сумма, открывающаяся в каждый день',
-    'cal.date': 'Дата',
-    'cal.orders': 'Заказов',
-    'cal.amount': 'Сумма',
-    'cal.state': 'Статус',
+    'cal.subtitle': 'Только деньги, которые ещё не пришли — выведенное уходит из списка',
+    'cal.count': 'заказов: {n}',
+    'cal.transitHint': 'Продано, покупатель ещё не получил. Откроется через {n} дн. после получения',
     'state.unlocked': 'Открыто',
     'state.waiting': 'Ожидает',
+    'state.transit': 'В пути',
     'ord.title': 'По заказам',
-    'ord.subtitle': 'К выводу = выручка − комиссия − логистика',
-    'ord.order': 'Заказ',
-    'ord.product': 'Товар',
-    'ord.accepted': 'Дата получения',
-    'ord.unlock': 'Откроется',
-    'ord.amount': 'Сумма',
-    'ord.left': 'Осталось',
+    'ord.subtitle': 'Проданный заказ появляется здесь и уходит из списка после вывода денег',
     'ord.days': '{n} дн',
     'ord.hours': '{n} ч',
     'ord.ready': 'Готово',
-    'ord.paid': 'Выплачено',
-    'ord.fees': 'Ушло на услуги',
+    'ord.all': 'Все',
+    'ord.payOn': 'Выплата: {date}',
+    'ord.unlockOn': 'Откроется: {date}',
+    'ord.soldOn': 'Продан: {date}',
+    'ord.none': 'В этом статусе заказов нет',
+    'list.more': 'Показать ещё {n}',
+    'list.less': 'Свернуть',
     'inst.title': 'Мгновенный вывод',
     'inst.subtitle': 'По условиям Uzum — можно ли вывести не дожидаясь {n} дней',
     'inst.yes': 'Условия выполнены',
@@ -211,8 +206,8 @@ registerNamespace('payout', {
     'chk.stable_sales': 'Стабильные продажи',
     'chk.no_anomaly': 'Нет аномалий в динамике продаж',
     'chk.antifraud': 'Дополнительные антифрод-ограничения',
-    'empty.title': 'Пока нет полученных заказов',
-    'empty.hint': 'Когда покупатель получит товар, здесь появится дата открытия',
+    'empty.title': 'Ожидаемых денег нет',
+    'empty.hint': 'Новая продажа появится здесь',
     'plan.title': 'График выплат',
     'plan.subtitle': 'Ближайшие выплаты: Uzum переводит деньги в начале дня графика, в 00:00',
     'plan.date': 'Дата выплаты',
@@ -248,8 +243,6 @@ registerNamespace('payout', {
     'plan.empty': 'Предстоящих выплат нет',
     'plan.emptyHint': 'Когда покупатель получит новый заказ, здесь появится дата выплаты',
     'plan.assumed': 'Даты рассчитаны по графику по умолчанию.',
-    'state.paid': 'Выплачено',
-    'state.partPaid': 'Частично выплачено',
     'sched.edit': 'Настроить график',
     'sched.title': 'Настройка графика выплат',
     'sched.subtitle': 'Выберите тот вариант, который стоит в кабинете Uzum',
@@ -286,26 +279,24 @@ registerNamespace('payout', {
     'chart.pending': 'Pending',
     'chart.empty': 'Nothing to show yet',
     'cal.title': 'Unlock schedule',
-    'cal.subtitle': 'Amount unlocking on each day',
-    'cal.date': 'Date',
-    'cal.orders': 'Orders',
-    'cal.amount': 'Amount',
-    'cal.state': 'State',
+    'cal.subtitle': 'Only money still to come — withdrawn amounts drop off the list',
+    'cal.count': '{n} orders',
+    'cal.transitHint': 'Sold, not yet accepted by the buyer. Unlocks {n} days after acceptance',
     'state.unlocked': 'Unlocked',
     'state.waiting': 'Waiting',
+    'state.transit': 'In transit',
     'ord.title': 'By order',
-    'ord.subtitle': 'Withdrawable = revenue − commission − logistics',
-    'ord.order': 'Order',
-    'ord.product': 'Product',
-    'ord.accepted': 'Accepted',
-    'ord.unlock': 'Unlocks',
-    'ord.amount': 'Amount',
-    'ord.left': 'Left',
+    'ord.subtitle': 'A sold order appears here and leaves the list once its money is withdrawn',
     'ord.days': '{n} d',
     'ord.hours': '{n} h',
     'ord.ready': 'Ready',
-    'ord.paid': 'Paid out',
-    'ord.fees': 'Used for service fees',
+    'ord.all': 'All',
+    'ord.payOn': 'Payout: {date}',
+    'ord.unlockOn': 'Unlocks: {date}',
+    'ord.soldOn': 'Sold: {date}',
+    'ord.none': 'No orders in this state',
+    'list.more': 'Show {n} more',
+    'list.less': 'Show less',
     'inst.title': 'Instant withdrawal',
     'inst.subtitle': 'Per Uzum terms — can you withdraw without waiting {n} days',
     'inst.yes': 'Conditions met',
@@ -320,8 +311,8 @@ registerNamespace('payout', {
     'chk.stable_sales': 'Stable sales',
     'chk.no_anomaly': 'No anomalies in sales dynamics',
     'chk.antifraud': 'Additional antifraud limits',
-    'empty.title': 'No accepted orders yet',
-    'empty.hint': 'Once a buyer accepts a delivery, its unlock date appears here',
+    'empty.title': 'No money pending',
+    'empty.hint': 'A new sale will show up here',
     'plan.title': 'Payout schedule',
     'plan.subtitle': 'Upcoming payouts: Uzum transfers at the start of the schedule day, 00:00',
     'plan.date': 'Payout date',
@@ -357,8 +348,6 @@ registerNamespace('payout', {
     'plan.empty': 'No upcoming payouts',
     'plan.emptyHint': 'Once a new order is accepted, its payout date appears here',
     'plan.assumed': 'Dates are based on the default schedule.',
-    'state.paid': 'Paid out',
-    'state.partPaid': 'Partly paid out',
     'sched.edit': 'Configure schedule',
     'sched.title': 'Payout schedule settings',
     'sched.subtitle': 'Pick the option that is selected in your Uzum cabinet',
@@ -396,95 +385,6 @@ export default function Payout() {
    * ochiqdan-ochiq vaqtini olish bo‘lardi.
    */
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
-
-  const dayCols: Column<PayoutDay>[] = [
-    { key: 'date', header: t('cal.date'), render: (r) => <span className="tnum whitespace-nowrap">{f.date(r.date)}</span> },
-    {
-      key: 'state',
-      header: t('cal.state'),
-      /*
-       * To'langan ulush alohida ko'rsatiladi. Busiz bu jadvalning
-       * yig‘indisi "Ochilgan" ko‘rsatkichidan katta chiqib, sotuvchi
-       * ikkovini solishtirganda chalg‘irdi.
-       */
-      render: (r) =>
-        r.paid >= r.amount && r.amount > 0 ? (
-          <Badge tone="muted" dot>
-            {t('state.paid')}
-          </Badge>
-        ) : r.paid > 0 ? (
-          <Badge tone="muted" dot>
-            {t('state.partPaid')}
-          </Badge>
-        ) : (
-          <Badge tone={r.unlocked ? 'brand' : 'warn'} dot>
-            {r.unlocked ? t('state.unlocked') : t('state.waiting')}
-          </Badge>
-        ),
-    },
-    { key: 'orders', header: t('cal.orders'), align: 'right', render: (r) => <span className="tnum">{f.num(r.orders)}</span> },
-    {
-      key: 'amount',
-      header: t('cal.amount'),
-      align: 'right',
-      render: (r) => (
-        <span className={cn('tnum font-semibold', r.unlocked ? 'text-brand-ink' : 'text-ink')}>{f.money(r.amount)}</span>
-      ),
-    },
-  ];
-
-  const orderCols: Column<PayoutOrder>[] = [
-    {
-      key: 'uzumOrderId',
-      header: t('ord.order'),
-      render: (r) => <span className="tnum whitespace-nowrap">№{r.uzumOrderId ?? '—'}</span>,
-    },
-    {
-      key: 'title',
-      header: t('ord.product'),
-      render: (r) => <span className="line-clamp-2 text-xs leading-snug">{r.title}</span>,
-    },
-    {
-      key: 'acceptedAt',
-      header: t('ord.accepted'),
-      render: (r) => <span className="tnum whitespace-nowrap text-muted">{f.dateShort(r.acceptedAt)}</span>,
-    },
-    {
-      key: 'unlockAt',
-      header: t('ord.unlock'),
-      render: (r) => <span className="tnum whitespace-nowrap">{f.dateShort(r.unlockAt)}</span>,
-    },
-    {
-      key: 'payoutAt',
-      header: t('plan.date'),
-      render: (r) => <span className="tnum whitespace-nowrap font-semibold">{f.dateShort(r.payoutAt)}</span>,
-    },
-    {
-      key: 'daysLeft',
-      header: t('ord.left'),
-      align: 'right',
-      render: (r) =>
-        r.paid ? (
-          <Badge tone="muted">{t('ord.paid')}</Badge>
-        ) : r.coveredByFees ? (
-          <Badge tone="muted">{t('ord.fees')}</Badge>
-        ) : r.unlocked ? (
-          <Badge tone="brand">{t('ord.ready')}</Badge>
-        ) : (
-          <span className="tnum text-warn-ink" title={f.dateTime(r.unlockTime)}>
-            {r.hoursLeft < 24 ? t('ord.hours', { n: r.hoursLeft }) : t('ord.days', { n: r.daysLeft })}
-          </span>
-        ),
-    },
-    {
-      key: 'amount',
-      header: t('ord.amount'),
-      align: 'right',
-      render: (r) => (
-        <span className={cn('tnum font-semibold', r.unlocked ? 'text-brand-ink' : 'text-ink')}>{f.money(r.amount)}</span>
-      ),
-    },
-  ];
 
   if (isError) {
     return (
@@ -622,21 +522,8 @@ export default function Payout() {
             subtitle={t('chart.subtitle')}
           >
             <BarsChart
-              /*
-               * Butun tarix emas, YAQIN ORA.
-               *
-               * Ochilish jadvalida 127 kungacha yozuv bo'ladi va ularning
-               * deyarli hammasi o'tmish. Sotuvchining savoli esa "pulim
-               * qachon ochiladi" — ya'ni oldinda nima borligi. Shuning
-               * uchun oxirgi 7 kun va oldindagi barcha kunlar ko'rsatiladi.
-               */
-              data={data.days.slice(-Math.min(30, data.days.length)).map((d) => ({
-                date: d.date,
-                // Bitta kun faqat bitta holatda bo'ladi, shuning uchun
-                // ustunlar ustma-ust turadi va bir-birini bekitmaydi
-                unlocked: d.unlocked ? d.amount : 0,
-                pending: d.unlocked ? 0 : d.amount,
-              }))}
+              // Faqat puli hali kelmagan kunlar: to'langani serverdan kelmaydi
+              data={chartDays(data.days)}
               xKey="date"
               xIsDate
               stacked
@@ -650,27 +537,32 @@ export default function Payout() {
           </ChartCard>
         ) : null}
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        <div className="mt-5 grid items-start gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader icon={<CalendarClock className="h-4 w-4" />} title={t('cal.title')} subtitle={t('cal.subtitle')} />
-            <DataTable<PayoutDay>
-              columns={dayCols}
-              rows={data?.days ?? []}
-              rowKey={(r) => r.date}
-              loading={isLoading}
-              empty={<EmptyState icon={<CalendarClock className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
-            />
+            {isLoading || !data ? (
+              <div className="p-5">
+                <SkeletonRows rows={6} />
+              </div>
+            ) : (
+              <DayList
+                days={data.days}
+                transitOrders={data.totals.transitOrders}
+                transitAmount={data.totals.inTransit}
+                hold={hold}
+              />
+            )}
           </Card>
 
           <Card>
             <CardHeader icon={<Receipt className="h-4 w-4" />} title={t('ord.title')} subtitle={t('ord.subtitle')} />
-            <DataTable<PayoutOrder>
-              columns={orderCols}
-              rows={data?.orders ?? []}
-              rowKey={(r) => `${r.uzumOrderId ?? ''}-${r.unlockAt}`}
-              loading={isLoading}
-              empty={<EmptyState icon={<Receipt className="h-6 w-6" />} title={t('empty.title')} />}
-            />
+            {isLoading || !data ? (
+              <div className="p-5">
+                <SkeletonRows rows={6} />
+              </div>
+            ) : (
+              <OrderList orders={data.orders} />
+            )}
           </Card>
         </div>
 
@@ -680,6 +572,210 @@ export default function Payout() {
       {data && canEdit ? (
         <ScheduleModal open={editing} onClose={() => setEditing(false)} rules={data.rules} />
       ) : null}
+    </>
+  );
+}
+
+/** Ro'yxatda dastlab ko'rinadigan qatorlar — qolgani tugma bilan ochiladi */
+const ROWS_SHOWN = 8;
+/** Tugma har bosilganda shuncha qator qo'shiladi: minglab qator birdaniga chizilmasin */
+const ROWS_STEP = 40;
+
+/** Bir sana ikki qator bo'lishi mumkin (ochilgan va kutilayotgan) — grafikda bitta ustun */
+function chartDays(days: PayoutDay[]) {
+  const byDate = new Map<string, { date: string; unlocked: number; pending: number }>();
+  for (const d of days) {
+    const cur = byDate.get(d.date) ?? { date: d.date, unlocked: 0, pending: 0 };
+    if (d.unlocked) cur.unlocked += d.amount;
+    else cur.pending += d.amount;
+    byDate.set(d.date, cur);
+  }
+  return [...byDate.values()].slice(-30);
+}
+
+/** Uzun ro'yxat sahifani cho'zib yubormasin: qolgan qatorlar shu tugma ortida */
+function ShowMore({
+  total,
+  limit,
+  onLimit,
+}: {
+  total: number;
+  limit: number;
+  onLimit: (next: number) => void;
+}) {
+  const t = useT('payout');
+  const hidden = Math.max(0, total - limit);
+  const expanded = limit > ROWS_SHOWN;
+  if (hidden === 0 && !expanded) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1 border-t border-line px-3 py-2">
+      {hidden > 0 ? (
+        <Button size="sm" variant="ghost" onClick={() => onLimit(limit + ROWS_STEP)}>
+          {t('list.more', { n: Math.min(hidden, ROWS_STEP) })}
+        </Button>
+      ) : null}
+      {expanded ? (
+        <Button size="sm" variant="ghost" onClick={() => onLimit(ROWS_SHOWN)}>
+          {t('list.less')}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Ochilish jadvali: bir kun — bir qator, faqat puli hali kelmagan kunlar.
+ * Oxirida yo'ldagi buyurtmalar bitta qator: ularning ochilish sanasi xaridor
+ * tovarni qabul qilgandagina ma'lum bo'ladi.
+ */
+function DayList({
+  days,
+  transitOrders,
+  transitAmount,
+  hold,
+}: {
+  days: PayoutDay[];
+  transitOrders: number;
+  transitAmount: number;
+  hold: number;
+}) {
+  const t = useT('payout');
+  const f = useFormat();
+  const [limit, setLimit] = useState(ROWS_SHOWN);
+  const shown = days.slice(0, limit);
+
+  if (days.length === 0 && transitOrders === 0) {
+    return <EmptyState icon={<CalendarClock className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />;
+  }
+
+  return (
+    <>
+      <ul className="divide-y divide-line/60">
+        {shown.map((d) => (
+          <li key={`${d.date}-${d.unlocked ? 1 : 0}`} className="flex items-center gap-3 px-5 py-2.5">
+            <span className="tnum min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm text-ink">{f.date(d.date)}</span>
+            <Badge tone={d.unlocked ? 'brand' : 'warn'} dot>
+              {d.unlocked ? t('state.unlocked') : t('state.waiting')}
+            </Badge>
+            <span className="tnum ml-auto hidden whitespace-nowrap text-xs text-muted sm:inline">
+              {t('cal.count', { n: d.orders })}
+            </span>
+            <span
+              className={cn(
+                'tnum ml-auto w-32 shrink-0 whitespace-nowrap text-right text-sm font-semibold sm:ml-0',
+                d.unlocked ? 'text-brand-ink' : 'text-ink',
+              )}
+            >
+              {f.money(d.amount)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <ShowMore total={days.length} limit={limit} onLimit={setLimit} />
+      {transitOrders > 0 ? (
+        <div className="flex items-center gap-3 border-t border-line px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <Badge tone="muted" dot>
+              {t('state.transit')}
+            </Badge>
+            <p className="mt-1.5 text-xs leading-snug text-muted">{t('cal.transitHint', { n: hold })}</p>
+          </div>
+          <span className="tnum hidden whitespace-nowrap text-xs text-muted sm:inline">
+            {t('cal.count', { n: transitOrders })}
+          </span>
+          <span className="tnum w-32 shrink-0 whitespace-nowrap text-right text-sm font-semibold text-ink">
+            {f.money(transitAmount)}
+          </span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+type OrderTab = 'all' | PayoutOrderState;
+
+/**
+ * Buyurtmalar: puli hali kelmaganlari. Yangi sotuv "Yo'lda" bo'lib qo'shiladi,
+ * qabul qilingach "Kutilmoqda", muddat o'tgach "Tayyor" bo'ladi, pul yechib
+ * olingach ro'yxatdan chiqadi.
+ */
+function OrderList({ orders }: { orders: PayoutOrder[] }) {
+  const t = useT('payout');
+  const f = useFormat();
+  const [tab, setTab] = useState<OrderTab>('all');
+  const [limit, setLimit] = useState(ROWS_SHOWN);
+
+  if (orders.length === 0) {
+    return <EmptyState icon={<Receipt className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />;
+  }
+
+  const count = (state: PayoutOrderState) => orders.filter((o) => o.state === state).length;
+  const list = tab === 'all' ? orders : orders.filter((o) => o.state === tab);
+  const shown = list.slice(0, limit);
+
+  return (
+    <>
+      <div className="px-5 pb-1 pt-3">
+        <Segmented<OrderTab>
+          size="sm"
+          value={tab}
+          onChange={(v) => {
+            setTab(v);
+            setLimit(ROWS_SHOWN);
+          }}
+          options={[
+            { value: 'all', label: t('ord.all'), count: orders.length },
+            { value: 'ready', label: t('ord.ready'), count: count('ready') },
+            { value: 'waiting', label: t('state.waiting'), count: count('waiting') },
+            { value: 'transit', label: t('state.transit'), count: count('transit') },
+          ]}
+        />
+      </div>
+
+      {list.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-muted">{t('ord.none')}</p>
+      ) : (
+        <ul className="divide-y divide-line/60">
+          {shown.map((o, i) => (
+            <li key={`${o.uzumOrderId ?? i}-${o.state}`} className="flex items-center gap-3 px-5 py-2.5">
+              {/* Ikki ustun: chapda buyurtma va holati, o'ngda summa va sana — telefonda ham sig'adi */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="tnum whitespace-nowrap text-sm font-medium text-ink">№{o.uzumOrderId ?? '—'}</span>
+                  {o.state === 'ready' ? (
+                    <Badge tone="brand">{t('ord.ready')}</Badge>
+                  ) : o.state === 'waiting' ? (
+                    <Badge tone="warn" title={o.unlockTime ? f.dateTime(o.unlockTime) : undefined}>
+                      {o.hoursLeft < 24 ? t('ord.hours', { n: o.hoursLeft }) : t('ord.days', { n: o.daysLeft })}
+                    </Badge>
+                  ) : (
+                    <Badge tone="muted">{t('state.transit')}</Badge>
+                  )}
+                </div>
+                <p className="mt-0.5 truncate text-xs text-muted">{o.title}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p
+                  className={cn(
+                    'tnum whitespace-nowrap text-sm font-semibold',
+                    o.state === 'ready' ? 'text-brand-ink' : 'text-ink',
+                  )}
+                >
+                  {f.money(o.amount)}
+                </p>
+                <p className="tnum mt-0.5 whitespace-nowrap text-2xs text-muted">
+                  {o.state === 'ready' && o.payoutAt
+                    ? t('ord.payOn', { date: f.dateShort(o.payoutAt) })
+                    : o.state === 'waiting' && o.unlockAt
+                      ? t('ord.unlockOn', { date: f.dateShort(o.unlockAt) })
+                      : t('ord.soldOn', { date: f.dateShort(o.orderedAt) })}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ShowMore total={list.length} limit={limit} onLimit={setLimit} />
     </>
   );
 }
