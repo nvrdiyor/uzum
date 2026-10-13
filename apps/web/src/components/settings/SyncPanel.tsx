@@ -162,7 +162,9 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
                 <span className="mx-1.5">·</span>
                 {stepLabel(s.step, lang) ?? s.message ?? ''}
               </span>
-              <span className="tnum">{t('sync.eta', { v: formatDuration(s.etaSeconds, lang) })}</span>
+              <span className="tnum">
+                {s.etaSeconds > 0 ? t('sync.eta', { v: formatDuration(s.etaSeconds, lang) }) : t('sync.etaUnknown')}
+              </span>
             </div>
           </div>
         ) : (

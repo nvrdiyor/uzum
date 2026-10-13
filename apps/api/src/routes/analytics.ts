@@ -397,7 +397,7 @@ function buildInsights(inp: InsightInput): Insight[] {
       id: 'no_data',
       level: 'info',
       title: 'Tanlangan davrda buyurtma yo‘q',
-      body: 'Boshqa davrni tanlang yoki sinxronizatsiya tugashini kuting — birinchi to‘liq yig‘ish ~30 daqiqa davom etadi.',
+      body: 'Boshqa davrni tanlang yoki sinxronizatsiya tugashini kuting — birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi.',
       link: '/settings',
       metric: 'orders',
     });

@@ -407,7 +407,7 @@ function buildInsights(inp: InsightInput): Insight[] {
       id: 'no_data',
       level: 'info',
       title: `${inp.periodLabel} uchun buyurtma topilmadi`,
-      body: 'Boshqa oyni tanlang yoki sinxronizatsiya tugashini kuting — birinchi to‘liq yig‘ish ~30 daqiqa davom etadi.',
+      body: 'Boshqa oyni tanlang yoki sinxronizatsiya tugashini kuting — birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi.',
       link: '/settings',
       metric: 'orders',
     });

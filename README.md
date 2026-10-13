@@ -83,7 +83,7 @@ seed qilingan kompaniyaga kiritadi.
 
 ```
 /start → til → telefon → kompaniya nomi → soliq stavkasi → Uzum API kaliti
-      → "Ma'lumot yig'ilmoqda, ~30 daqiqa" → tayyor bo'lganda xabar + saytga kirish kodi
+      → "Ma'lumot yig'ilmoqda" → tayyor bo'lganda xabar + saytga kirish kodi
 ```
 
 ---
@@ -108,10 +108,10 @@ haqiqiy hujjatlar bilan solishtiring — adapter bitta joyda: `apps/api/src/uzum
 
 ---
 
-## Sinxronizatsiya (30 daqiqa)
+## Sinxronizatsiya
 
-API kalit ulangach dastlabki to'liq yig'ish ishga tushadi va **~30 daqiqa** davom etadi
-(bosqichlar: `packages/shared/src/constants.ts` → `SYNC_STEPS`):
+API kalit ulangach dastlabki to'liq yig'ish ishga tushadi. Vaqt haqiqiy — sun'iy kutish yo'q:
+kichik do'konda bir daqiqadan kam, kattasida bir necha daqiqa (bosqichlar: `packages/shared/src/constants.ts` → `SYNC_STEPS`):
 
 ```
 API kalit → do'konlar → mahsulotlar → qoldiqlar → buyurtmalar → moliya
@@ -119,9 +119,8 @@ API kalit → do'konlar → mahsulotlar → qoldiqlar → buyurtmalar → moliya
 ```
 
 Jarayon saytda jonli ko'rinadi (`/onboarding`) va yuqori panelda progress chizig'i bo'lib turadi.
-Keyingi sinxronlar inkremental va ancha tez (tarifga qarab 10–60 daqiqada bir marta).
-
-Sinovda tezlashtirish uchun: `SYNC_SPEED_FACTOR=60` (30 daqiqa → ~30 soniya).
+Keyingi sinxronlar inkremental: kunduzi tarifga qarab har 20–60 daqiqada, kechasi 03:00 va 06:00 da.
+Qolgan vaqt oldingi sinxronlarning haqiqiy davomiyligidan hisoblanadi.
 
 ---
 

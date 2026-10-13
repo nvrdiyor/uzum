@@ -11,7 +11,7 @@ Asosiy oqim:
 
 1. Foydalanuvchi **Telegram bot** orqali ro‘yxatdan o‘tadi (telefon → kompaniya nomi → soliq stavkasi).
 2. Bot **Uzum seller API kaliti**ni so‘raydi (seller.uzum.uz → Mening profilim → API kalitlar).
-3. API kalit kelgach, platforma **~30 daqiqa** davomida ma’lumotlarni yig‘adi (birinchi to‘liq sinxronizatsiya).
+3. API kalit kelgach, platforma ma’lumotlarni yig‘adi (odatda bir necha daqiqa) (birinchi to‘liq sinxronizatsiya).
 4. Saytga kirish ham Telegram orqali: **Login Widget** yoki botdagi **bir martalik kod/havola**.
 5. Analitika: sotuv, foyda, qoldiq, ABC, unit-iqtisod, yo‘qotishlar, sharhlar va h.k.
 
@@ -144,11 +144,15 @@ sellerman.io — binafsha/neon, biz **boshqacha**: **grafit + mint (emerald)**, 
 - Mobil: jadval `overflow-x-auto`, KPI `grid-cols-2`, sidebar chekka menyuga aylanadi.
 - Animatsiya: `framer-motion` yengil (0.25s), `ease-spring`.
 
-## Sinxronizatsiya (30 daqiqa)
+## Sinxronizatsiya
 
-- Bosqichlar `packages/shared/src/constants.ts` → `SYNC_STEPS` (jami 1800 s).
+- Bosqichlar `packages/shared/src/constants.ts` → `SYNC_STEPS`.
+- Vaqt HAQIQIY: bosqich ishi tugashi bilan keyingisi boshlanadi. Kichik do‘konda butun sinxron
+  15–55 soniya (2026-10-13 da jonli serverda o‘lchangan). Ilgari u sun’iy ravishda 30 daqiqaga
+  (to‘liq) va 150 soniyaga (oraliq) cho‘zilardi — endi yo‘q, `SYNC_SPEED_FACTOR` ham olib tashlangan.
+- Progress va qolgan vaqt kabinetning oldingi sinxronida o‘lchangan bosqich davomiyliklaridan
+  (`CompanySetting`, kalit `sync.timing.<tur>.<kabinet>`) hisoblanadi; o‘lchov bo‘lmasa qolgan vaqt 0 (noma’lum).
 - `SyncJob` yozuvi progress/step/eta bilan yangilanadi, sayt `/sync/status` ni so‘rab turadi.
-- `SYNC_SPEED_FACTOR` (env) sinov uchun jarayonni tezlashtiradi (masalan 60 → ~30 soniya).
 - Demo rejim (`UZUM_MODE=demo`) haqiqiy API’siz ishonchli namunaviy ma’lumot generatsiya qiladi.
 
 ## Uzum API

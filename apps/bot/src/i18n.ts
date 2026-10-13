@@ -224,7 +224,7 @@ const uz: Messages = {
   onb_api_invalid:
     'Bu API kalitga o‘xshamayapti. Kalit kamida 16 ta belgidan iborat bo‘ladi.\nIltimos, kalitni to‘liq nusxalab yuboring.',
   onb_syncing:
-    '✅ Kalit qabul qilindi!\n\n⏳ <b>Ma’lumotlar yig‘ilmoqda, taxminan 30 daqiqa.</b>\nTayyor bo‘lganda sizga xabar beramiz.\n\nShu vaqt ichida saytga kirib, jarayonni kuzatishingiz mumkin.',
+    '✅ Kalit qabul qilindi!\n\n⏳ <b>Ma’lumotlar yig‘ilmoqda — odatda bir necha daqiqa.</b>\nTayyor bo‘lganda sizga xabar beramiz.\n\nShu vaqt ichida saytga kirib, jarayonni kuzatishingiz mumkin.',
   onb_ref_applied: '🎁 Referal havola qabul qilindi.',
   onb_api_deleted:
     '🔒 Xavfsizlik uchun kalit yozilgan xabaringiz chatdan o‘chirildi. Kalit shifrlangan holda saqlandi.',
@@ -407,7 +407,7 @@ const uz: Messages = {
     + 'Kalit shifrlangan holda saqlanadi va faqat sizning ma’lumotingizni o‘qish uchun ishlatiladi.',
   faq_sync:
     '🔄 <b>Ma’lumot qachon yangilanadi</b>\n\n'
-    + 'Har 30 daqiqada avtomatik. Birinchi ulanishda to‘liq tarix yig‘iladi — bu 30 daqiqagacha vaqt oladi.\n\n'
+    + 'Tarifga qarab har 20–60 daqiqada avtomatik. Birinchi ulanishda to‘liq tarix yig‘iladi — bu odatda bir necha daqiqa oladi.\n\n'
     + 'Oxirgi yangilanish vaqti saytdagi boshqaruv panelida ko‘rinadi. Ma’lumot eskirgandek tuyulsa, avval sahifani yangilang.',
   faq_billing:
     '💳 <b>Tarif va to‘lov</b>\n\n'
@@ -461,7 +461,7 @@ const ru: Messages = {
   onb_api_invalid:
     'Это не похоже на API-ключ. Ключ содержит минимум 16 символов.\nСкопируйте ключ полностью и отправьте ещё раз.',
   onb_syncing:
-    '✅ Ключ принят!\n\n⏳ <b>Собираем данные, это займёт около 30 минут.</b>\nМы сообщим, когда всё будет готово.\n\nА пока можно зайти на сайт и следить за процессом.',
+    '✅ Ключ принят!\n\n⏳ <b>Собираем данные — обычно это несколько минут.</b>\nМы сообщим, когда всё будет готово.\n\nА пока можно зайти на сайт и следить за процессом.',
   onb_ref_applied: '🎁 Реферальная ссылка принята.',
   onb_api_deleted:
     '🔒 В целях безопасности сообщение с ключом удалено из чата. Ключ сохранён в зашифрованном виде.',
@@ -642,7 +642,7 @@ const ru: Messages = {
     + 'Ключ хранится в зашифрованном виде и используется только для чтения ваших данных.',
   faq_sync:
     '🔄 <b>Когда обновляются данные</b>\n\n'
-    + 'Автоматически каждые 30 минут. При первом подключении собирается вся история — это занимает до 30 минут.\n\n'
+    + 'Автоматически каждые 20–60 минут в зависимости от тарифа. При первом подключении собирается вся история — обычно это несколько минут.\n\n'
     + 'Время последнего обновления видно в панели на сайте. Если данные кажутся устаревшими — сначала обновите страницу.',
   faq_billing:
     '💳 <b>Тариф и оплата</b>\n\n'

@@ -27,8 +27,7 @@ async function main(): Promise<void> {
   await prisma.$connect();
 
   log(
-    `mustaqil ishchi ishga tushmoqda — Uzum rejimi: ${env.uzum.mode}, ` +
-      `tezlik x${env.sync.speedFactor}, poll ${env.sync.pollMs} ms`,
+    `mustaqil ishchi ishga tushmoqda — Uzum rejimi: ${env.uzum.mode}, poll ${env.sync.pollMs} ms`,
   );
 
   if (env.sync.inProcessWorker) {

@@ -48,7 +48,7 @@ registerNamespace('landing', {
       'SavdoIQ Uzum Market kabinetingizni ulaydi va sotuv, sof foyda, qoldiq, unit-iqtisod hamda yo‘qotishlarni bitta tiniq panelda ko‘rsatadi. Endi Excel bilan tunlab ovora bo‘lish shart emas.',
     'hero.ctaPrimary': 'Telegram orqali boshlash',
     'hero.ctaSecondary': 'Tariflarni ko‘rish',
-    'hero.note': 'Ulanish 2 daqiqa · To‘liq tahlil 30 daqiqada tayyor',
+    'hero.note': 'Ulanish 2 daqiqa · To‘liq tahlil bir necha daqiqada tayyor',
     'hero.p1': 'Har bir SKU bo‘yicha sof foyda',
     'hero.p2': 'Qoldiq tugash prognozi',
     'hero.p3': 'Telegram’da kunlik hisobot',
@@ -63,7 +63,7 @@ registerNamespace('landing', {
     'mock.units': 'dona',
     'mock.live': 'Jonli ma’lumot',
 
-    'trust.a.v': '30 daqiqa',
+    'trust.a.v': 'Bir necha daqiqa',
     'trust.a.l': 'To‘liq tahlil tayyor bo‘ladi',
     'trust.b.v': '24/7',
     'trust.b.l': 'Telegram’da bildirishnomalar',
@@ -101,7 +101,7 @@ registerNamespace('landing', {
     'how.s1.d': 'Telegram botni oching, telefon raqamingiz va kompaniya nomini yuboring.',
     'how.s2.t': 'API kalitni yuboring',
     'how.s2.d': 'seller.uzum.uz → Mening profilim → API kalitlar. Kalit shifrlangan holda saqlanadi.',
-    'how.s3.t': '30 daqiqa yig‘ish',
+    'how.s3.t': 'Ma’lumot yig‘iladi',
     'how.s3.d': 'Platforma buyurtmalar, qoldiq, moliya va sharhlar tarixini to‘liq yig‘ib chiqadi.',
     'how.s4.t': 'Tayyor analitika',
     'how.s4.d': 'Saytga kiring — barcha hisobotlar to‘ldirilgan holda sizni kutib turadi.',
@@ -149,7 +149,7 @@ registerNamespace('landing', {
       'Ha. Kalit AES-256-GCM algoritmi bilan shifrlanadi va faqat sizning ma’lumotlaringizni o‘qish uchun ishlatiladi. Uni istalgan vaqtda sozlamalardan o‘chirib tashlashingiz mumkin — bu Uzum kabinetingizga ta’sir qilmaydi.',
     'faq.q2': 'Ma’lumot qancha vaqtda yig‘iladi?',
     'faq.a2':
-      'Birinchi to‘liq yig‘ish taxminan 30 daqiqa davom etadi — eng uzun bosqich buyurtmalar tarixi. Keyin ma’lumot tarifingizga qarab har 20–60 daqiqada avtomatik yangilanib turadi.',
+      'Birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi — eng uzun bosqich buyurtmalar tarixi. Keyin ma’lumot tarifingizga qarab har 20–60 daqiqada avtomatik yangilanib turadi.',
     'faq.q3': 'Nechta do‘kon va kabinet ulash mumkin?',
     'faq.a3':
       'Sinovda 1 ta, Standartda 3 ta, VIP’da esa 10 tagacha do‘kon ulanadi. VIP tarifida Uzum kabinetlari soni cheklanmagan.',
@@ -196,7 +196,7 @@ registerNamespace('landing', {
       'SavdoIQ подключает ваш кабинет Uzum Market и показывает продажи, чистую прибыль, остатки, юнит-экономику и потери на одной понятной панели. Больше не нужно сводить Excel по ночам.',
     'hero.ctaPrimary': 'Начать через Telegram',
     'hero.ctaSecondary': 'Посмотреть тарифы',
-    'hero.note': 'Подключение 2 минуты · Полная аналитика за 30 минут',
+    'hero.note': 'Подключение 2 минуты · Полная аналитика за несколько минут',
     'hero.p1': 'Чистая прибыль по каждому SKU',
     'hero.p2': 'Прогноз, когда закончится остаток',
     'hero.p3': 'Ежедневный отчёт в Telegram',
@@ -211,7 +211,7 @@ registerNamespace('landing', {
     'mock.units': 'шт',
     'mock.live': 'Живые данные',
 
-    'trust.a.v': '30 минут',
+    'trust.a.v': 'Несколько минут',
     'trust.a.l': 'И полная аналитика готова',
     'trust.b.v': '24/7',
     'trust.b.l': 'Уведомления в Telegram',
@@ -249,7 +249,7 @@ registerNamespace('landing', {
     'how.s1.d': 'Откройте Telegram-бота, отправьте номер телефона и название компании.',
     'how.s2.t': 'Отправьте API-ключ',
     'how.s2.d': 'seller.uzum.uz → Мой профиль → API-ключи. Ключ хранится в зашифрованном виде.',
-    'how.s3.t': '30 минут сбора данных',
+    'how.s3.t': 'Сбор данных',
     'how.s3.d': 'Платформа выгружает историю заказов, остатков, финансов и отзывов.',
     'how.s4.t': 'Готовая аналитика',
     'how.s4.d': 'Заходите на сайт — все отчёты уже заполнены и ждут вас.',
@@ -297,7 +297,7 @@ registerNamespace('landing', {
       'Да. Ключ шифруется алгоритмом AES-256-GCM и используется только для чтения ваших данных. Вы можете удалить его в настройках в любой момент — на кабинет Uzum это никак не влияет.',
     'faq.q2': 'Сколько времени собираются данные?',
     'faq.a2':
-      'Первая полная синхронизация занимает около 30 минут — самый долгий этап это история заказов. Дальше данные обновляются автоматически каждые 20–60 минут в зависимости от тарифа.',
+      'Первая полная синхронизация обычно занимает несколько минут — самый долгий этап это история заказов. Дальше данные обновляются автоматически каждые 20–60 минут в зависимости от тарифа.',
     'faq.q3': 'Сколько магазинов и кабинетов можно подключить?',
     'faq.a3':
       'На пробном — 1, на Стандарте — 3, на VIP — до 10 магазинов. На VIP число кабинетов Uzum не ограничено.',
@@ -344,7 +344,7 @@ registerNamespace('landing', {
       'SavdoIQ connects your Uzum Market cabinet and shows sales, net profit, stock, unit economics and losses on one clear dashboard. No more late-night spreadsheets.',
     'hero.ctaPrimary': 'Start with Telegram',
     'hero.ctaSecondary': 'See pricing',
-    'hero.note': 'Connect in 2 minutes · Full analytics within 30 minutes',
+    'hero.note': 'Connect in 2 minutes · Full analytics within minutes',
     'hero.p1': 'Net profit for every SKU',
     'hero.p2': 'Stock-out forecast',
     'hero.p3': 'Daily report in Telegram',
@@ -359,7 +359,7 @@ registerNamespace('landing', {
     'mock.units': 'pcs',
     'mock.live': 'Live data',
 
-    'trust.a.v': '30 minutes',
+    'trust.a.v': 'A few minutes',
     'trust.a.l': 'And your full analytics is ready',
     'trust.b.v': '24/7',
     'trust.b.l': 'Telegram notifications',
@@ -397,7 +397,7 @@ registerNamespace('landing', {
     'how.s1.d': 'Open the Telegram bot and share your phone number and company name.',
     'how.s2.t': 'Send your API key',
     'how.s2.d': 'seller.uzum.uz → My profile → API keys. The key is stored encrypted.',
-    'how.s3.t': '30 minutes of syncing',
+    'how.s3.t': 'Data import',
     'how.s3.d': 'The platform imports your orders, stock, finance and review history.',
     'how.s4.t': 'Analytics ready',
     'how.s4.d': 'Sign in to the web app — every report is already filled in and waiting.',
@@ -445,7 +445,7 @@ registerNamespace('landing', {
       'Yes. The key is encrypted with AES-256-GCM and used only to read your own data. You can delete it from settings at any time — it does not affect your Uzum cabinet.',
     'faq.q2': 'How long does the data sync take?',
     'faq.a2':
-      'The first full sync takes about 30 minutes — order history is the longest step. After that data refreshes automatically every 20–60 minutes depending on your plan.',
+      'The first full sync usually takes a few minutes — order history is the longest step. After that data refreshes automatically every 20–60 minutes depending on your plan.',
     'faq.q3': 'How many stores and cabinets can I connect?',
     'faq.a3':
       'One on Trial, three on Standard and up to ten stores on VIP. On VIP the number of Uzum cabinets is unlimited.',

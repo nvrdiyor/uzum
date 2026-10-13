@@ -75,7 +75,7 @@ Bular kodda, lekin har biri **bitta joyda**:
 | Nima | Fayl |
 | --- | --- |
 | Tarif narxlari, limitlar, imkoniyatlar | `packages/shared/src/plans.ts` |
-| Sinxronizatsiya bosqichlari va 30 daqiqa | `packages/shared/src/constants.ts` → `SYNC_STEPS` |
+| Sinxronizatsiya bosqichlari | `packages/shared/src/constants.ts` → `SYNC_STEPS` |
 | Standart komissiya, logistika, saqlash | `packages/shared/src/constants.ts` → `DEFAULTS` |
 | Referal foizi (20%) | `packages/shared/src/plans.ts` → `REFERRAL_PERCENT` |
 | Brend nomi (matn) | `packages/shared/src/index.ts` → `APP.name` |
@@ -111,9 +111,9 @@ Ikki joyda: Telegram botda (ro'yxatdan o'tish paytida) yoki saytda
 Ha: AES-256-GCM bilan shifrlanadi, interfeysda faqat oxirgi 4 belgi (`••••1234`) ko'rinadi,
 bot esa kalit yuborilgan xabarni Telegram'dan o'chirishga harakat qiladi.
 
-**30 daqiqani qisqartirsa bo'ladimi?**
-Ha: `.env` da `SYNC_SPEED_FACTOR=60` (30 daqiqa → ~30 soniya). Bu sinov uchun;
-haqiqiy foydalanuvchilar uchun `1` qoldiring.
+**Birinchi yig'ish qancha davom etadi?**
+Haqiqiy tezlikda ishlaydi — sun'iy kutish yo'q. Kichik do'konda bir daqiqadan kam,
+kattasida bir necha daqiqa. Qolgan vaqt oldingi sinxronlar davomiyligidan hisoblanadi.
 
 **Ma'lumotlar bazasi qayerda?**
 Hozir SQLite: `packages/db/prisma/dev.db`. Serverga chiqishda:

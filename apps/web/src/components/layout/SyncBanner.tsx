@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * Sinxronizatsiya jarayoni ustki qatorda ko'rinadi.
- * Birinchi to'liq yig'ish ~30 daqiqa davom etadi — foydalanuvchi saytdan foydalanaverishi mumkin.
+ * Sinxron ketayotganda ham saytdan foydalanaverish mumkin. Qolgan vaqt oldingi
+ * sinxronlarning haqiqiy davomiyligidan olinadi; hali noma'lum bo'lsa shunday deyiladi.
  */
 export function SyncBanner() {
   const hasCompany = useSession((s) => Boolean(s.me?.company));
@@ -30,9 +31,9 @@ export function SyncBanner() {
   if (!data || (data.status !== 'running' && data.status !== 'queued')) return null;
 
   const text = {
-    uz: { title: 'Ma’lumotlar yig‘ilmoqda', left: 'qoldi', view: 'Batafsil' },
-    ru: { title: 'Синхронизация данных', left: 'осталось', view: 'Подробнее' },
-    en: { title: 'Syncing your data', left: 'left', view: 'Details' },
+    uz: { title: 'Ma’lumotlar yig‘ilmoqda', left: 'qoldi', unknown: 'vaqt hisoblanmoqda', view: 'Batafsil' },
+    ru: { title: 'Синхронизация данных', left: 'осталось', unknown: 'считаем время', view: 'Подробнее' },
+    en: { title: 'Syncing your data', left: 'left', unknown: 'estimating time', view: 'Details' },
   }[lang];
 
   return (
@@ -53,7 +54,7 @@ export function SyncBanner() {
           </div>
           <span className="tnum text-xs font-semibold text-brand-ink">{data.progress}%</span>
           <span className={cn('hidden text-xs text-muted md:inline')}>
-            ~{formatDuration(data.etaSeconds, lang)} {text.left}
+            {data.etaSeconds > 0 ? `~${formatDuration(data.etaSeconds, lang)} ${text.left}` : text.unknown}
           </span>
           <Link to="/onboarding" className="chip bg-brand/10 text-brand-ink">
             <RefreshCw className="h-3 w-3" />

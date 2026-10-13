@@ -86,8 +86,6 @@ export const env = {
     /** Ishchi jarayon API bilan birga ishga tushsinmi */
     inProcessWorker: bool(process.env.SYNC_IN_PROCESS, true),
     pollMs: num(process.env.SYNC_POLL_MS, 3_000),
-    /** Demo rejimida 30 daqiqalik jarayonni tezlashtirish (test uchun) */
-    speedFactor: num(process.env.SYNC_SPEED_FACTOR, 1),
     concurrency: num(process.env.SYNC_CONCURRENCY, 2),
   },
 

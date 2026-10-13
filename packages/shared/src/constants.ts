@@ -1,13 +1,15 @@
 import type { SyncStepId, ExpenseCategory, PayoutMode } from './types.js';
 
 /**
- * Dastlabki to'liq sinxronizatsiya bosqichlari.
- * Umumiy `weight` = 1800 sekund (~30 daqiqa) — birinchi marta API kalit ulangandan keyin
- * platforma ma'lumotlarni yig'ib, tarixni qayta hisoblab chiqadi.
+ * Sinxronizatsiya bosqichlari.
+ *
+ * Sinxron haqiqiy tezlikda ishlaydi. `weight` — bosqichlarning bir-biriga
+ * nisbatan standart ULUSHI: faqat hali birorta sinxron o'lchanmagan paytda
+ * progress uchun ishlatiladi. Keyin har kabinetning o'z o'lchovi olinadi.
  */
 export interface SyncStepDef {
   id: SyncStepId;
-  /** taxminiy davomiylik, sekund */
+  /** bosqichning standart ulushi (birlik muhim emas, faqat nisbat) */
   weight: number;
   label: { uz: string; ru: string; en: string };
   hint: { uz: string; ru: string; en: string };
@@ -105,12 +107,6 @@ export const SYNC_STEPS: SyncStepDef[] = [
     },
   },
 ];
-
-/** Dastlabki to'liq sinxronizatsiya taxminiy vaqti (sekund) */
-export const FIRST_SYNC_SECONDS = SYNC_STEPS.reduce((s, x) => s + x.weight, 0);
-
-/** Keyingi (inkremental) sinxronlar tezroq — shu koeffitsiyentga bo'linadi */
-export const INCREMENTAL_SPEEDUP = 12;
 
 export const EXPENSE_CATEGORIES: {
   id: ExpenseCategory;

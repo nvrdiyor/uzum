@@ -25,7 +25,7 @@ const SUPPORT_URL = BOT_URL_SHARED;
 const POLL_MS = 4000;
 
 /**
- * 4-qadam: dastlabki to'liq sinxronizatsiya (~30 daqiqa).
+ * 4-qadam: dastlabki to'liq sinxronizatsiya (haqiqiy tezlikda — odatda bir necha daqiqa).
  * Har 4 soniyada `/sync/status` so'raladi, ETA jonli sanaladi.
  */
 export function SyncStep({
@@ -199,7 +199,12 @@ export function SyncStep({
                   <span className="chip bg-surface-2 text-ink-soft">
                     <Clock3 className="h-3.5 w-3.5 text-brand" />
                     <span className="tnum">
-                      {eta > 0 ? t('sync.eta', { time: formatDuration(eta, lang) }) : t('sync.etaSoon')}
+                      {/* 0 serverdan — hali o'lchanmagan; sanoq nolga yetgan bo'lsa — tugayapti */}
+                      {sync.etaSeconds <= 0
+                        ? t('sync.etaUnknown')
+                        : eta > 0
+                          ? t('sync.eta', { time: formatDuration(eta, lang) })
+                          : t('sync.etaSoon')}
                     </span>
                   </span>
                   {idle ? null : (

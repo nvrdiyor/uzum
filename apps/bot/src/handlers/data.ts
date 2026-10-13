@@ -8,7 +8,6 @@
  * Ma'lumot bo'lmasa xato emas — nol qiymatlar va bo'sh ro'yxat qaytadi.
  */
 import {
-  FIRST_SYNC_SECONDS,
   LOGIN_CODE_TTL_MINUTES,
   REFERRAL_PERCENT,
   STOCK_THRESHOLDS,
@@ -460,7 +459,8 @@ export async function connectApiKey(companyId: string, apiKey: string): Promise<
       step: 'queued',
       stepIndex: 0,
       totalSteps: SYNC_STEPS.length,
-      etaSeconds: FIRST_SYNC_SECONDS,
+      // Davomiyligi hali o'lchanmagan — sinxron boshlangach o'zi hisoblaydi
+      etaSeconds: 0,
       scheduledAt: new Date(),
     },
   });

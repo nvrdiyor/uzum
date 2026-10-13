@@ -1,16 +1,21 @@
 /**
  * Sinxronizatsiya xizmati — loyihaning yuragi.
  *
- * API kalit ulangach `SYNC_STEPS` bo'yicha bosqichma-bosqich ma'lumot yig'iladi
- * (birinchi to'liq yig'ish ~30 daqiqa, `FIRST_SYNC_SECONDS = 1800`).
- * Har bosqich uchun rejalashtirilgan davomiylik:
+ * API kalit ulangach `SYNC_STEPS` bo'yicha bosqichma-bosqich ma'lumot yig'iladi.
  *
- *     davomiylik = weight / SYNC_SPEED_FACTOR           (to'liq sinxron)
- *     davomiylik = weight / (SYNC_SPEED_FACTOR * INCREMENTAL_SPEEDUP)   (inkremental)
+ * VAQT HAQIQIY. Bosqich ishi tugashi bilan keyingisi boshlanadi — sun'iy
+ * kutish yo'q. Ilgari har bosqich rejalashtirilgan vaqtini "yashab" o'tardi:
+ * to'liq sinxron doim 30 daqiqa, oraliq sinxron doim 150 soniya davom etardi,
+ * ekrandagi "~29 daqiqa qoldi" esa ishga emas, shu rejaga qarab sanalardi.
  *
- * Ishchi hech qachon uzoq muddatli `sleep` qilmaydi: haqiqiy ish (Uzum'dan yuklash va
- * bazaga yozish) fonda ketadi, sikl esa har ~2 soniyada `SyncJob` yozuvidagi
- * progress / step / message / etaSeconds ni yangilab turadi — UI jonli ko'rinadi.
+ * Progress va qolgan vaqt shu kabinetning OLDINGI muvaffaqiyatli sinxronida
+ * o'lchangan bosqich davomiyliklaridan hisoblanadi (`loadTimings`). Birinchi
+ * sinxronda tarix yo'q — o'shanda o'tgan vaqtdan ekstrapolyatsiya qilinadi,
+ * yetarli ma'lumot yig'ilmaguncha esa qolgan vaqt "noma'lum" (0) bo'ladi.
+ *
+ * Haqiqiy ish (Uzum'dan yuklash va bazaga yozish) fonda ketadi, sikl esa har
+ * ~2 soniyada `SyncJob` yozuvidagi progress / step / message / etaSeconds ni
+ * yangilab turadi.
  *
  * DIQQAT: bu fayldagi eksport nomlari boshqa modullarda ishlatiladi — o'zgartirmang:
  *   `enqueueSync`, `getSyncStatus`, `runDueJobs`, `cancelSync`, `scheduleRecurring`.
@@ -18,8 +23,6 @@
 import { prisma } from '@savdoiq/db';
 import type { Subscription, SyncJob } from '@savdoiq/db';
 import {
-  FIRST_SYNC_SECONDS,
-  INCREMENTAL_SPEEDUP,
   SYNC_STEPS,
   addDays,
   formatMoney,
@@ -99,34 +102,67 @@ const MAX_HISTORY_DAYS = 365;
 /** Bir sikldа nechta job parallel bajariladi */
 const CONCURRENCY = Math.max(1, Math.min(8, Math.round(env.sync.concurrency)));
 
-/** Bosqichlar yig'indisi (1800 s) va har bosqichgacha to'plangan og'irlik */
-const TOTAL_WEIGHT = SYNC_STEPS.reduce((s, x) => s + x.weight, 0);
-const STEP_OFFSETS: number[] = (() => {
-  const out: number[] = [];
-  let acc = 0;
-  for (const step of SYNC_STEPS) {
-    out.push(acc);
-    acc += step.weight;
-  }
-  return out;
-})();
+/**
+ * Bosqichlarning standart ULUSHLARI — faqat kabinetning o'z tarixi ham,
+ * boshqa kabinetlarniki ham bo'lmagan eng birinchi sinxron uchun.
+ * Mutlaq qiymat sifatida ishlatilmaydi.
+ */
+const DEFAULT_PROFILE: number[] = SYNC_STEPS.map((x) => x.weight);
 
 const VALID_STEPS = new Set<string>(['queued', 'done', ...SYNC_STEPS.map((s) => s.id)]);
 
-/** Sekundlarni "tezlik koeffitsiyenti"ga bo'luvchi (env + inkremental tezlashtirish) */
-function speedDivisor(type: SyncJobType): number {
-  const factor = env.sync.speedFactor > 0 ? env.sync.speedFactor : 1;
-  return type === 'full' ? factor : factor * INCREMENTAL_SPEEDUP;
+/** Ulush bo'yicha taxmin shu qismdan keyin ishonchli: undan oldin qolgan vaqt "noma'lum" */
+const MIN_SHARE_FOR_ETA = 0.1;
+
+const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+
+/** O'lchangan bosqich davomiyliklari saqlanadigan sozlama kaliti */
+const timingKey = (type: SyncJobType, accountId: string): string => `sync.timing.${type}.${accountId}`;
+
+function parseTimings(value: string | null | undefined): number[] | null {
+  if (!value) return null;
+  try {
+    const arr: unknown = JSON.parse(value);
+    if (!Array.isArray(arr) || arr.length !== SYNC_STEPS.length) return null;
+    const out = arr.map((x) => Math.max(0, Number(x) || 0));
+    return sum(out) > 0 ? out : null;
+  } catch {
+    return null;
+  }
 }
 
-/** Bitta bosqichning rejalashtirilgan davomiyligi (sekund) */
-function stepSeconds(weight: number, type: SyncJobType): number {
-  return weight / speedDivisor(type);
+/**
+ * Bosqich davomiyliklari (ms).
+ *
+ * `calibrated` — shu kabinetning o'z o'lchovi: mutlaq vaqt sifatida ishoniladi.
+ * Aks holda boshqa kabinetning oxirgi o'lchovi (yoki standart ulushlar)
+ * faqat NISBAT sifatida olinadi — do'kon hajmi boshqa, vaqt ham boshqa.
+ */
+async function loadTimings(
+  companyId: string,
+  accountId: string,
+  type: SyncJobType,
+): Promise<{ profile: number[]; calibrated: boolean }> {
+  const own = await prisma.companySetting.findUnique({
+    where: { companyId_key: { companyId, key: timingKey(type, accountId) } },
+    select: { value: true },
+  });
+  const mine = parseTimings(own?.value);
+  if (mine) return { profile: mine, calibrated: true };
+
+  const other = await prisma.companySetting.findFirst({
+    where: { key: { startsWith: `sync.timing.${type}.` } },
+    orderBy: { updatedAt: 'desc' },
+    select: { value: true },
+  });
+  return { profile: parseTimings(other?.value) ?? DEFAULT_PROFILE, calibrated: false };
 }
 
-/** Butun sinxronning taxminiy davomiyligi (sekund) */
-function estimateSeconds(type: SyncJobType): number {
-  return Math.round(FIRST_SYNC_SECONDS / speedDivisor(type));
+/** Shu kabinet uchun kutilayotgan umumiy davomiylik (s); o'lchov bo'lmasa 0 — "noma'lum" */
+async function expectedSeconds(companyId: string, accountId: string | null, type: SyncJobType): Promise<number> {
+  if (!accountId) return 0;
+  const t = await loadTimings(companyId, accountId, type);
+  return t.calibrated ? Math.max(1, Math.round(sum(t.profile) / 1000)) : 0;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
@@ -195,7 +231,7 @@ function toSyncStatus(job: SyncJob, firstRun: boolean): SyncStatus {
 
 /**
  * Kompaniyaning joriy sinxronizatsiya holati.
- * Job umuman bo'lmasa — bo'sh (`idle`) holat va to'liq yig'ish uchun taxminiy vaqt qaytadi.
+ * Job umuman bo'lmasa — bo'sh (`idle`) holat; qolgan vaqt noma'lum (0).
  */
 export async function getSyncStatus(companyId: string): Promise<SyncStatus> {
   const [job, doneCount] = await Promise.all([
@@ -215,7 +251,7 @@ export async function getSyncStatus(companyId: string): Promise<SyncStatus> {
       error: null,
       startedAt: null,
       finishedAt: null,
-      etaSeconds: estimateSeconds('full'),
+      etaSeconds: 0,
       firstRun: true,
     };
   }
@@ -271,7 +307,7 @@ export async function enqueueSync(
       stepIndex: 0,
       totalSteps: SYNC_STEPS.length,
       message: 'Navbatda — tez orada boshlanadi',
-      etaSeconds: estimateSeconds(jobType),
+      etaSeconds: await expectedSeconds(companyId, accountId, jobType),
       scheduledAt: new Date(),
     },
   });
@@ -380,6 +416,14 @@ interface SyncRun {
   to: Date;
   client: UzumClient | null;
   stores: { id: string; uzumShopId: string; title: string }[];
+  /** Bosqichlarning kutilayotgan davomiyligi (ms) yoki ulushlari — `loadTimings` */
+  profile: number[];
+  /** `profile` shu kabinetning o'z o'lchovimi (mutlaq vaqt sifatida ishonsa bo'ladimi) */
+  calibrated: boolean;
+  /** Sinxron boshlangan payt (ms) */
+  startedMs: number;
+  /** Shu sinxronda o'lchangan bosqich davomiyliklari (ms) */
+  stepMs: number[];
   totals: {
     shops: number;
     products: number;
@@ -421,40 +465,82 @@ async function assertNotCanceled(jobId: string): Promise<void> {
   if (!row || row.status === 'canceled') throw new SyncCanceledError();
 }
 
-/** Bosqich progressini (0..1 nisbat) `SyncJob` yozuviga yozadi */
-async function writeProgress(run: SyncRun, index: number, ratio: number, detail: string | null): Promise<void> {
+/**
+ * Progress (0..1) va qolgan vaqt (s; 0 — hali noma'lum).
+ *
+ * O'z o'lchovi bor kabinetda: o'tgan bosqichlar + joriy bosqichda o'tgan vaqt,
+ * kutilgan davomiyliklarga nisbatan. Joriy bosqich kutilgandan uzoq cho'zilsa
+ * progress bosqich chegarasida to'xtab turadi — oldinga yugurib ketmaydi.
+ *
+ * O'lchovsiz (birinchi sinxron): faqat TUGAGAN bosqichlar ulushi sanaladi va
+ * qolgan vaqt o'tgan vaqtdan ekstrapolyatsiya qilinadi.
+ */
+function estimateProgress(
+  run: SyncRun,
+  index: number,
+  elapsedStepMs: number,
+  stepDone: boolean,
+): { progress: number; etaSeconds: number } {
+  const total = sum(run.profile) || 1;
+  const before = sum(run.profile.slice(0, index));
+  const cur = run.profile[index] ?? 0;
+  const after = sum(run.profile.slice(index + 1));
+
+  if (run.calibrated) {
+    const inStep = stepDone ? cur : Math.min(elapsedStepMs, cur * 0.95);
+    const remaining = after + (stepDone ? 0 : Math.max(0, cur - elapsedStepMs));
+    return { progress: (before + inStep) / total, etaSeconds: Math.max(1, Math.round(remaining / 1000)) };
+  }
+
+  const progress = (before + (stepDone ? cur : 0)) / total;
+  if (progress < MIN_SHARE_FOR_ETA) return { progress, etaSeconds: 0 };
+  /*
+   * Taxmin oxirgi TUGAGAN bosqich chegarasida olinadi va joriy bosqich
+   * davomida kamayib boradi. O'tgan butun vaqtdan olinsa, bosqich cho'zilgan
+   * sari qolgan vaqt O'SIB borardi ("1 daqiqa qoldi" → "3 daqiqa qoldi").
+   */
+  const inStep = stepDone ? 0 : elapsedStepMs;
+  const atBoundary = Date.now() - run.startedMs - inStep;
+  const remaining = (atBoundary * (1 - progress)) / progress - inStep;
+  // Bosqich taxmindan uzoq cho'zildi — "1 soniya qoldi" deb turgandan ko'ra noma'lum degan to'g'ri
+  return { progress, etaSeconds: remaining > 0 ? Math.max(1, Math.round(remaining / 1000)) : 0 };
+}
+
+/** Bosqich holatini `SyncJob` yozuviga yozadi */
+async function writeProgress(
+  run: SyncRun,
+  index: number,
+  elapsedStepMs: number,
+  stepDone: boolean,
+  detail: string | null,
+): Promise<void> {
   const step = SYNC_STEPS[index];
-  const done = clamp(ratio, 0, 1);
-  const passed = STEP_OFFSETS[index] + step.weight * done;
-  const progress = clamp(Math.round((passed / TOTAL_WEIGHT) * 100), 0, 99);
-  const etaSeconds = Math.max(0, Math.round((TOTAL_WEIGHT - passed) / speedDivisor(run.type)));
+  const est = estimateProgress(run, index, elapsedStepMs, stepDone);
 
   await prisma.syncJob.update({
     where: { id: run.jobId },
     data: {
       status: 'running',
-      progress,
+      progress: clamp(Math.round(est.progress * 100), 0, 99),
       step: step.id,
       stepIndex: index,
       totalSteps: SYNC_STEPS.length,
       message: detail ?? step.hint.uz,
-      etaSeconds,
+      etaSeconds: est.etaSeconds,
     },
   });
 }
 
 /**
- * Bitta bosqichni bajaradi: haqiqiy ish fonda ketadi, sikl har ~2 soniyada progressni yangilaydi.
- * Ish rejadan tez tugasa — bosqich baribir rejalashtirilgan vaqtni "yashaydi" (UI silliq bo'lishi uchun),
- * sekin tugasa — progress bosqich chegarasida turib, ish tugashini kutadi.
+ * Bitta bosqichni bajaradi: ish fonda ketadi, sikl har ~2 soniyada progressni
+ * yangilaydi va bekor qilinganini tekshiradi. Ish tugashi bilan bosqich ham
+ * tugaydi — kutish yo'q; davomiylik o'lchab qo'yiladi.
  */
 async function runStep(
   run: SyncRun,
   index: number,
   work: (setDetail: (text: string) => void) => Promise<void>,
 ): Promise<void> {
-  const step = SYNC_STEPS[index];
-  const plannedMs = Math.max(0, Math.round(stepSeconds(step.weight, run.type) * 1000));
   const startedAt = Date.now();
 
   const state: { done: boolean; error: unknown; detail: string | null } = {
@@ -466,8 +552,9 @@ async function runStep(
     state.detail = t;
   };
 
-  await writeProgress(run, index, 0, state.detail);
+  await writeProgress(run, index, 0, false, state.detail);
 
+  // `task` hech qachon rad etilmaydi: xato `state.error` ga yoziladi
   const task = work(setDetail).then(
     () => {
       state.done = true;
@@ -478,21 +565,18 @@ async function runStep(
     },
   );
 
-  for (;;) {
-    const elapsed = Date.now() - startedAt;
-    if (state.done && (state.error !== null || elapsed >= plannedMs)) break;
-
-    const remaining = plannedMs - elapsed;
-    await sleep(state.done ? Math.min(TICK_MS, remaining) : TICK_MS);
-
-    const ratio = plannedMs > 0 ? (Date.now() - startedAt) / plannedMs : state.done ? 1 : 0.9;
-    await writeProgress(run, index, Math.min(1, ratio), state.detail);
+  while (!state.done) {
+    // Ish tugasa darhol uyg'onadi — TICK_MS ni oxirigacha kutmaydi
+    await Promise.race([task, sleep(TICK_MS)]);
+    if (state.done) break;
+    await writeProgress(run, index, Date.now() - startedAt, false, state.detail);
     await assertNotCanceled(run.jobId);
   }
 
-  await task;
   if (state.error !== null) throw state.error;
-  await writeProgress(run, index, 1, state.detail);
+  run.stepMs[index] = Date.now() - startedAt;
+  await writeProgress(run, index, run.stepMs[index], true, state.detail);
+  await assertNotCanceled(run.jobId);
 }
 
 // ─────────────────────────── Bosqichlar ───────────────────────────
@@ -1067,6 +1151,8 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
     from = oldestOpen.orderedAt < historyFloor ? historyFloor : oldestOpen.orderedAt;
   }
 
+  const timings = await loadTimings(company.id, account.id, type);
+
   return {
     jobId: job.id,
     companyId: company.id,
@@ -1079,6 +1165,10 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
     to,
     client: null,
     stores: [],
+    profile: timings.profile,
+    calibrated: timings.calibrated,
+    startedMs: Date.now(),
+    stepMs: [],
     totals: emptyTotals(),
   };
 }
@@ -1137,6 +1227,20 @@ async function finishJob(run: SyncRun): Promise<void> {
   });
 
   // Quyidagilar natijaga ta'sir qilmaydi — xatolik bo'lsa ham job muvaffaqiyatli hisoblanadi
+  // Bosqichlar haqiqatda qancha davom etgani — keyingi sinxronning progressi va qolgan vaqti shundan
+  try {
+    if (run.stepMs.length === SYNC_STEPS.length) {
+      const key = timingKey(run.type, run.accountId);
+      const value = JSON.stringify(run.stepMs.map((ms) => Math.round(ms)));
+      await prisma.companySetting.upsert({
+        where: { companyId_key: { companyId: run.companyId, key } },
+        create: { companyId: run.companyId, key, value },
+        update: { value },
+      });
+    }
+  } catch (err) {
+    log(`job ${run.jobId}: davomiylik saqlanmadi — ${errorMessage(err)}`);
+  }
   try {
     await prisma.company.update({
       where: { id: run.companyId },
@@ -1247,7 +1351,11 @@ async function runJob(job: SyncJob): Promise<void> {
   try {
     run = await prepareRun(job, type);
     const current = run;
-    log(`job ${job.id} boshlandi (${type}, ~${estimateSeconds(type)} s)`);
+    log(
+      `job ${job.id} boshlandi (${type}, ` +
+        (current.calibrated ? `oldingisi ${Math.round(sum(current.profile) / 1000)} s` : 'davomiyligi hali o‘lchanmagan') +
+        ')',
+    );
 
     for (let i = 0; i < SYNC_STEPS.length; i += 1) {
       const step = SYNC_STEPS[i];

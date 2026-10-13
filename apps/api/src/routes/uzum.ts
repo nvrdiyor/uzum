@@ -181,7 +181,7 @@ router.get(
  *  2) kalit shifrlanib saqlanadi (status `pending`);
  *  3) Uzum tomonida tekshiriladi — xato bo'lsa 400 va status `invalid`;
  *  4) muvaffaqiyatda status `active`, onboarding `syncing` bosqichiga o'tadi va
- *     to'liq sinxronizatsiya navbatga qo'yiladi (~30 daqiqa).
+ *     to'liq sinxronizatsiya navbatga qo'yiladi.
  */
 router.post(
   '/',

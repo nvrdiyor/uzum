@@ -5,7 +5,7 @@
  *  • har `SYNC_POLL_MS` (env.sync.pollMs) — `runDueJobs()`: navbatdagi joblarni bajaradi;
  *  • har daqiqada — `scheduleRecurring()`: tarif oralig'i bo'yicha avtomatik sinxronlarni qo'yadi.
  *
- * `runDueJobs()` job tugagunicha (~30 daqiqa) `Promise` ushlab turadi, shuning uchun
+ * `runDueJobs()` joblar tugagunicha `Promise` ushlab turadi, shuning uchun
  * qayta kirishdan himoya (lock bayrog'i) majburiy — aks holda bir job ustma-ust bajarilardi.
  * Barcha xatolar yutiladi va log qilinadi: ishchi hech qachon jarayonni qulatmaydi.
  *
@@ -99,7 +99,7 @@ export function startWorker(): void {
   billingTimer = setInterval(() => void billingTick(), BILLING_MS);
 
   log(
-    `ishga tushdi — poll ${pollMs} ms, tezlik x${env.sync.speedFactor}, ` +
+    `ishga tushdi — poll ${pollMs} ms, ` +
       `bir vaqtda ${env.sync.concurrency} ta job, Uzum rejimi: ${env.uzum.mode}`,
   );
 

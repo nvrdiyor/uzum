@@ -168,7 +168,10 @@ export interface SyncStatus {
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  /** Taxminiy qolgan vaqt (sekund) — dastlabki to'liq yig'ish ~30 daqiqa */
+  /**
+   * Taxminiy qolgan vaqt (sekund) — oldingi sinxronlarning haqiqiy
+   * davomiyligidan. 0 — hali noma'lum (birinchi sinxron boshida).
+   */
   etaSeconds: number;
   firstRun: boolean;
 }
