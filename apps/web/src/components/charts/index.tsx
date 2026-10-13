@@ -838,9 +838,10 @@ function RankBars({
           <span className="tnum pt-px text-xs font-semibold text-muted">{i + 1}</span>
           <div className="min-w-0">
             <div className="flex items-baseline justify-between gap-3">
-              <p className="min-w-0 truncate text-sm text-ink" title={r.sub ? `${r.name} · ${r.sub}` : r.name}>
-                {r.name}
-                {r.sub ? <span className="text-muted"> · {r.sub}</span> : null}
+              {/* Nom kesiladi, variant esa hech qachon: aks holda uzun nomli tovarning «ЧЕРН» va «БЕЛЫЙ»i bir xil ko'rinardi */}
+              <p className="flex min-w-0 text-sm text-ink" title={r.sub ? `${r.name} · ${r.sub}` : r.name}>
+                <span className="truncate">{r.name}</span>
+                {r.sub ? <span className="shrink-0 whitespace-pre text-muted"> · {r.sub}</span> : null}
               </p>
               <p className={cn('tnum shrink-0 whitespace-nowrap text-sm font-semibold', r.value < 0 ? 'text-danger' : 'text-ink')}>
                 {s.money ? f.money(r.value) : f.num(r.value)}

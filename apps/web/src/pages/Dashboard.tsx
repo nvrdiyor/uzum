@@ -366,8 +366,12 @@ type MetricKey = 'revenue' | 'profit' | 'orders' | 'units';
  */
 function productLabel(r: TopProductRow): { name: string; sub: string } {
   const product = r.productTitle?.trim();
-  // SKU nomi mahsulot nomini o'z ichiga olgan bo'lsa, takrorlamaymiz
-  if (!product || r.title.toLowerCase().includes(product.toLowerCase())) return { name: r.title, sub: '' };
+  if (!product) return { name: r.title, sub: '' };
+  // Biri ikkinchisining ichida bo'lsa (SKU nomi — mahsulot nomining boshi yoki aksincha), takrorlamaymiz
+  const a = r.title.toLowerCase();
+  const b = product.toLowerCase();
+  if (a.includes(b)) return { name: r.title, sub: '' };
+  if (b.includes(a)) return { name: product, sub: '' };
   return { name: product, sub: r.title };
 }
 
