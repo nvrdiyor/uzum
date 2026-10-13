@@ -184,7 +184,7 @@ export const PLANS: Record<PlanId, Plan> = {
       cabinets: 999,
       members: 50,
       historyDays: 1825,
-      syncIntervalMinutes: 20,
+      syncIntervalMinutes: 30,
       autoReplyPerDay: 2000,
     },
     features: ALL_FULL(),

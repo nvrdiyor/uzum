@@ -138,7 +138,7 @@ registerNamespace('landing', {
     'plan.vip.1': 'Standartdagi hamma narsa',
     'plan.vip.2': 'Uzum kabinetlari cheksiz',
     'plan.vip.3': 'API kirish — o‘z tizimingizga ulash',
-    'plan.vip.4': '5 yillik tarix, har 20 daqiqada sinxron',
+    'plan.vip.4': '5 yillik tarix, har 30 daqiqada sinxron',
     'plan.vip.5': 'Shaxsiy menejer',
 
     'faq.eyebrow': 'Savol-javob',
@@ -149,7 +149,7 @@ registerNamespace('landing', {
       'Ha. Kalit AES-256-GCM algoritmi bilan shifrlanadi va faqat sizning ma’lumotlaringizni o‘qish uchun ishlatiladi. Uni istalgan vaqtda sozlamalardan o‘chirib tashlashingiz mumkin — bu Uzum kabinetingizga ta’sir qilmaydi.',
     'faq.q2': 'Ma’lumot qancha vaqtda yig‘iladi?',
     'faq.a2':
-      'Birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi — eng uzun bosqich buyurtmalar tarixi. Keyin ma’lumot tarifingizga qarab har 20–60 daqiqada avtomatik yangilanib turadi.',
+      'Birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi — eng uzun bosqich buyurtmalar tarixi. Keyin ma’lumot tarifingizga qarab har 30–60 daqiqada avtomatik yangilanib turadi.',
     'faq.q3': 'Nechta do‘kon va kabinet ulash mumkin?',
     'faq.a3':
       'Sinovda 1 ta, Standartda 3 ta, VIP’da esa 10 tagacha do‘kon ulanadi. VIP tarifida Uzum kabinetlari soni cheklanmagan.',
@@ -286,7 +286,7 @@ registerNamespace('landing', {
     'plan.vip.1': 'Всё из Стандарта',
     'plan.vip.2': 'Безлимит кабинетов Uzum',
     'plan.vip.3': 'Доступ к API — интеграция в свою систему',
-    'plan.vip.4': '5 лет истории, синхронизация каждые 20 минут',
+    'plan.vip.4': '5 лет истории, синхронизация каждые 30 минут',
     'plan.vip.5': 'Персональный менеджер',
 
     'faq.eyebrow': 'Вопросы и ответы',
@@ -297,7 +297,7 @@ registerNamespace('landing', {
       'Да. Ключ шифруется алгоритмом AES-256-GCM и используется только для чтения ваших данных. Вы можете удалить его в настройках в любой момент — на кабинет Uzum это никак не влияет.',
     'faq.q2': 'Сколько времени собираются данные?',
     'faq.a2':
-      'Первая полная синхронизация обычно занимает несколько минут — самый долгий этап это история заказов. Дальше данные обновляются автоматически каждые 20–60 минут в зависимости от тарифа.',
+      'Первая полная синхронизация обычно занимает несколько минут — самый долгий этап это история заказов. Дальше данные обновляются автоматически каждые 30–60 минут в зависимости от тарифа.',
     'faq.q3': 'Сколько магазинов и кабинетов можно подключить?',
     'faq.a3':
       'На пробном — 1, на Стандарте — 3, на VIP — до 10 магазинов. На VIP число кабинетов Uzum не ограничено.',
@@ -434,7 +434,7 @@ registerNamespace('landing', {
     'plan.vip.1': 'Everything in Standard',
     'plan.vip.2': 'Unlimited Uzum cabinets',
     'plan.vip.3': 'API access — plug it into your own systems',
-    'plan.vip.4': '5 years of history, sync every 20 minutes',
+    'plan.vip.4': '5 years of history, sync every 30 minutes',
     'plan.vip.5': 'A personal manager',
 
     'faq.eyebrow': 'FAQ',
@@ -445,7 +445,7 @@ registerNamespace('landing', {
       'Yes. The key is encrypted with AES-256-GCM and used only to read your own data. You can delete it from settings at any time — it does not affect your Uzum cabinet.',
     'faq.q2': 'How long does the data sync take?',
     'faq.a2':
-      'The first full sync usually takes a few minutes — order history is the longest step. After that data refreshes automatically every 20–60 minutes depending on your plan.',
+      'The first full sync usually takes a few minutes — order history is the longest step. After that data refreshes automatically every 30–60 minutes depending on your plan.',
     'faq.q3': 'How many stores and cabinets can I connect?',
     'faq.a3':
       'One on Trial, three on Standard and up to ten stores on VIP. On VIP the number of Uzum cabinets is unlimited.',

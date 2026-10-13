@@ -598,6 +598,12 @@ export interface OrderImportOptions {
    * haqiqiy sotuvlar ro'yxatga umuman tushmasdi.
    */
   collectNewSince?: Date;
+  /**
+   * "Xaridor qabul qilib oldi" xabari faqat shu paytdan keyin topshirilgan
+   * buyurtmalar uchun yig'iladi. Sinxron uzoq to'xtab qolgan bo'lsa, bir hafta
+   * oldin olib ketilgan buyurtma haqida bugun xabar yuborish yangilik emas.
+   */
+  acceptedSince?: Date;
 }
 
 /** Telegramga "sotildi" xabarini yuborish uchun zarur minimal ma'lumot */
@@ -632,6 +638,26 @@ export interface OrderChangeNotice {
   cause: string | null;
 }
 
+/**
+ * Telegramga "xaridor qabul qilib oldi" xabari uchun.
+ *
+ * Belgi — Uzum bergan topshirilgan sana (`dateIssued`, kabinetdagi "Qabul
+ * sanasi"): oldingi sinxronda bo'sh edi, endi bor. Buyurtma holatiga
+ * tayanilmaydi — Uzum uni topshirilgandan keyin ham bir necha kun PROCESSING
+ * deb ko'rsatadi (pul ushlab turilgan davr). Birinchi marta ko'rinayotgan
+ * buyurtma allaqachon topshirilgan bo'lsa — xabar yo'q: bu tarix, yangilik emas.
+ */
+export interface OrderAcceptedNotice {
+  uzumOrderId: string;
+  title: string;
+  /** Buyurtmadagi pozitsiyalar soni */
+  positions: number;
+  qty: number;
+  amount: number;
+  /** Xaridorga topshirilgan payt — pul ochilishi shundan sanaladi */
+  acceptedAt: Date;
+}
+
 export interface OrdersImportResult extends ImportResult {
   /** Shu importda BIRINCHI marta ko'ringan sotuvlar (`collectNew` yoqilganda) */
   newSales: NewSaleNotice[];
@@ -640,6 +666,9 @@ export interface OrdersImportResult extends ImportResult {
   /** Shu importda bekor bo'lgan yoki qaytgan pozitsiyalar (`collectNew` yoqilganda) */
   changes: OrderChangeNotice[];
   changesTotal: number;
+  /** Shu importda xaridor qabul qilib olgani ko'ringan buyurtmalar (`collectNew` yoqilganda) */
+  accepted: OrderAcceptedNotice[];
+  acceptedTotal: number;
 }
 
 /**
@@ -686,6 +715,8 @@ export async function upsertOrders(
     newSalesTotal: 0,
     changes: [],
     changesTotal: 0,
+    accepted: [],
+    acceptedTotal: 0,
   };
   if (orders.length === 0) return res;
 
@@ -702,17 +733,24 @@ export async function upsertOrders(
       select: {
         id: true,
         uzumOrderId: true,
+        // Oldingi sinxronda xaridorga topshirilganmidi — "qabul qilib oldi" xabari uchun
+        deliveredAt: true,
         // Oldingi holat — nima bekor bo'lgani/qaytganini va QACHON ko'rilganini bilish uchun
         items: { select: { id: true, returnedQty: true, canceledAt: true } },
       },
     });
     const byKey = new Map<string, string>();
+    /** Uzum buyurtma raqami → oldingi sinxrondagi topshirilgan sana (bo'sh — hali yo'lda edi) */
+    const deliveredBefore = new Map<string, Date | null>();
     /** Pozitsiya id'si → oldingi sinxrondagi qaytgan/bekor bo'lgan dona */
     const returnedBefore = new Map<string, number>();
     /** Pozitsiya id'si → bekor bo'lgani birinchi marta ko'rilgan payt */
     const canceledBefore = new Map<string, Date | null>();
     for (const o of existing) {
-      if (o.uzumOrderId) byKey.set(o.uzumOrderId, o.id);
+      if (o.uzumOrderId) {
+        byKey.set(o.uzumOrderId, o.id);
+        deliveredBefore.set(o.uzumOrderId, o.deliveredAt);
+      }
       for (const it of o.items) {
         returnedBefore.set(it.id, it.returnedQty);
         canceledBefore.set(it.id, it.canceledAt);
@@ -897,6 +935,34 @@ export async function upsertOrders(
       if (byKey.has(uzumOrderId)) {
         await prisma.order.update({ where: { id: orderId }, data });
         res.updated += 1;
+
+        // Xaridor QABUL QILIB OLDI: oldin topshirilgan sana yo'q edi, endi bor
+        if (
+          options.collectNew &&
+          deliveredAt &&
+          !deliveredBefore.get(uzumOrderId) &&
+          SALE_STATUSES.has(status) &&
+          sumQty > 0 &&
+          data.totalAmount > 0 &&
+          (!options.acceptedSince || deliveredAt.getTime() >= options.acceptedSince.getTime())
+        ) {
+          res.acceptedTotal += 1;
+          if (res.accepted.length < NEW_SALES_CAP) {
+            // Bekor bo'lgan pozitsiya emas, haqiqatda olib ketilgani nomlanadi
+            const first = lines.find((l) => l.qty > 0) ?? lines[0];
+            res.accepted.push({
+              uzumOrderId,
+              title:
+                text(first?.it.title) ??
+                text(first?.it.skuCode) ??
+                (first?.it.skuId ? String(first.it.skuId) : 'Mahsulot'),
+              positions: lines.filter((l) => l.qty > 0).length,
+              qty: sumQty,
+              amount: data.totalAmount,
+              acceptedAt: deliveredAt,
+            });
+          }
+        }
       } else {
         orderCreates.push({ id: orderId, storeId, uzumOrderId, ...data });
 

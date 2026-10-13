@@ -119,7 +119,7 @@ API kalit → do'konlar → mahsulotlar → qoldiqlar → buyurtmalar → moliya
 ```
 
 Jarayon saytda jonli ko'rinadi (`/onboarding`) va yuqori panelda progress chizig'i bo'lib turadi.
-Keyingi sinxronlar inkremental: kunduzi tarifga qarab har 20–60 daqiqada, kechasi 03:00 va 06:00 da.
+Keyingi sinxronlar inkremental: kunduzi tarifga qarab har 30–60 daqiqada, kechasi 03:00 va 06:00 da.
 Qolgan vaqt oldingi sinxronlarning haqiqiy davomiyligidan hisoblanadi.
 
 ---

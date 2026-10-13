@@ -29,6 +29,7 @@ import {
   getPlan,
   hasFeature,
   round,
+  todayInBusinessTz,
   type LossKind,
   type PlanId,
   type SyncStatus,
@@ -40,6 +41,7 @@ import { createUzumClient } from '../uzum/client.js';
 import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
+import { getPayoutRules } from './payout-schedule.js';
 import { syncLossRecords } from './stock-balance.js';
 import { nextAutoSyncAt } from './sync-schedule.js';
 import {
@@ -95,6 +97,16 @@ const SALE_NOTIFY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SALE_NOTIFY_LIMIT = 8;
 /** Bekor qilish va qaytarish xabarlari uchun xuddi shunday chegara */
 const CHANGE_NOTIFY_LIMIT = 8;
+/** "Xaridor qabul qilib oldi" xabarlari uchun ham */
+const ACCEPT_NOTIFY_LIMIT = 8;
+/**
+ * Faqat shu vaqt ichida topshirilgan buyurtma haqida xabar beriladi.
+ *
+ * Kechasi sinxronlar orasi uch soatgacha cho'ziladi, shuning uchun chegara
+ * keng — bir sutka. Undan eski topshirish (sinxron uzoq to'xtab qolgan yoki
+ * kabinet endi ulangan) yangilik emas.
+ */
+const ACCEPT_NOTIFY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** Yo'qotish xabarida nomma-nom sanaladigan tovarlar soni */
 const LOSS_NOTIFY_LINES = 6;
 /** To'liq sinxronda tarix chuqurligining yuqori chegarasi (kun) */
@@ -797,6 +809,58 @@ ${storeTitle} · №${change.uzumOrderId}`,
 }
 
 /**
+ * Xaridor buyurtmani qabul qilib olgani haqida xabar.
+ *
+ * Sotuvchi uchun bu "pul soati boshlandi" degani: Uzum pulni topshirilgandan
+ * keyin `holdDays` kun ushlab turadi, shuning uchun xabarda ochilish kuni ham
+ * aytiladi — Pul kalendaridagi sana bilan bir xil hisob (qabul vaqti + N × 24 soat).
+ * Sotuv xabari bilan bir xil sozlamaga (`notifyOrders`) bo'ysunadi.
+ */
+async function notifyAccepted(
+  run: SyncRun,
+  storeTitle: string,
+  res: OrdersImportResult,
+  budget: number,
+): Promise<number> {
+  if (res.accepted.length === 0) return budget;
+
+  const { holdDays } = await getPayoutRules(run.companyId);
+  // Pul kalendari tarifda yopiq bo'lsa, havola yopiq sahifaga emas, buyurtmaning o'ziga olib boradi
+  const calendarOpen = hasFeature(run.planId, 'unit_economics');
+  const single = res.accepted.slice(0, Math.max(0, budget));
+  for (const order of single) {
+    const more = order.positions > 1 ? ` va yana ${order.positions - 1} ta mahsulot` : '';
+    // "2026-10-23" → "23.10" (Toshkent kuni bo'yicha)
+    const unlock = todayInBusinessTz(new Date(order.acceptedAt.getTime() + holdDays * 86_400_000));
+    const unlockLabel = `${unlock.slice(8, 10)}.${unlock.slice(5, 7)}`;
+    await notifyCompanyOwners(run.companyId, {
+      type: 'success',
+      requireFlag: 'notifyOrders',
+      title: `Xaridor qabul qilib oldi: ${order.title}`,
+      body: `${order.qty} dona · ${formatMoney(order.amount, 'uz')}${more}
+Pul ${unlockLabel} da ochiladi
+${storeTitle} · №${order.uzumOrderId}`,
+      link: calendarOpen ? '/payout' : `/sales?order=${encodeURIComponent(order.uzumOrderId)}`,
+      buttonText: calendarOpen ? 'Pul kalendarini ko‘rish' : 'Buyurtmani ko‘rish',
+    });
+  }
+
+  const restCount = res.acceptedTotal - single.length;
+  if (restCount > 0) {
+    await notifyCompanyOwners(run.companyId, {
+      type: 'success',
+      requireFlag: 'notifyOrders',
+      title: `Yana ${restCount} ta buyurtma qabul qilib olindi`,
+      body: storeTitle,
+      link: calendarOpen ? '/payout' : '/sales',
+      buttonText: calendarOpen ? 'Pul kalendarini ko‘rish' : 'Sotuvlarni ko‘rish',
+    });
+  }
+
+  return budget - single.length;
+}
+
+/**
  * Tovar balansidagi yangilik: yangi yo'qotish va yana ko'ringan dona.
  * Har biri bitta xabarda, tovarlar nomma-nom — sotuvchi qaysi tovar ekanini
  * sahifaga kirmasdan bilsin.
@@ -862,10 +926,17 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
   const collectNewSince = new Date(Date.now() - SALE_NOTIFY_MAX_AGE_MS);
   let budget = SALE_NOTIFY_LIMIT;
   let changeBudget = CHANGE_NOTIFY_LIMIT;
+  let acceptBudget = ACCEPT_NOTIFY_LIMIT;
+  const acceptedSince = new Date(Date.now() - ACCEPT_NOTIFY_MAX_AGE_MS);
 
   for (const store of run.stores) {
     const orders = await client.getOrders(store.uzumShopId, run.from, run.to);
-    const res = await upsertOrders(store.id, orders, { taxRate: run.taxRate, collectNew, collectNewSince });
+    const res = await upsertOrders(store.id, orders, {
+      taxRate: run.taxRate,
+      collectNew,
+      collectNewSince,
+      acceptedSince,
+    });
     run.totals.orders += countOf(res);
     setDetail(`${run.totals.orders} ta buyurtma yuklandi`);
 
@@ -878,6 +949,7 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
     try {
       budget = await notifyNewSales(run, store.title, res, budget);
       changeBudget = await notifyOrderChanges(run, store.title, res, changeBudget);
+      acceptBudget = await notifyAccepted(run, store.title, res, acceptBudget);
     } catch (err) {
       log(`job ${run.jobId}: buyurtma xabari yuborilmadi — ${errorMessage(err)}`);
     }
@@ -1208,8 +1280,8 @@ async function finishJob(run: SyncRun): Promise<void> {
   });
 
   /*
-   * Oraliq sinxron BOSHLANGAN paytdan sanaladi: 20 daqiqalik tarifda u har
-   * 20 daqiqada yuradi, "20 daqiqa + sinxron davomiyligi"da emas. Sinxron
+   * Oraliq sinxron BOSHLANGAN paytdan sanaladi: 30 daqiqalik tarifda u har
+   * 30 daqiqada yuradi, "30 daqiqa + sinxron davomiyligi"da emas. Sinxron
    * oraliqdan uzoq cho'zilgan bo'lsa (birinchi to'liq yig'ish) — tugagan paytdan.
    */
   const fromStart = nextAutoSyncAt(job.startedAt ?? now, run.syncIntervalMinutes);

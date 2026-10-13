@@ -407,7 +407,7 @@ const uz: Messages = {
     + 'Kalit shifrlangan holda saqlanadi va faqat sizning ma’lumotingizni o‘qish uchun ishlatiladi.',
   faq_sync:
     '🔄 <b>Ma’lumot qachon yangilanadi</b>\n\n'
-    + 'Tarifga qarab har 20–60 daqiqada avtomatik. Birinchi ulanishda to‘liq tarix yig‘iladi — bu odatda bir necha daqiqa oladi.\n\n'
+    + 'Tarifga qarab har 30–60 daqiqada avtomatik. Birinchi ulanishda to‘liq tarix yig‘iladi — bu odatda bir necha daqiqa oladi.\n\n'
     + 'Oxirgi yangilanish vaqti saytdagi boshqaruv panelida ko‘rinadi. Ma’lumot eskirgandek tuyulsa, avval sahifani yangilang.',
   faq_billing:
     '💳 <b>Tarif va to‘lov</b>\n\n'
@@ -642,7 +642,7 @@ const ru: Messages = {
     + 'Ключ хранится в зашифрованном виде и используется только для чтения ваших данных.',
   faq_sync:
     '🔄 <b>Когда обновляются данные</b>\n\n'
-    + 'Автоматически каждые 20–60 минут в зависимости от тарифа. При первом подключении собирается вся история — обычно это несколько минут.\n\n'
+    + 'Автоматически каждые 30–60 минут в зависимости от тарифа. При первом подключении собирается вся история — обычно это несколько минут.\n\n'
     + 'Время последнего обновления видно в панели на сайте. Если данные кажутся устаревшими — сначала обновите страницу.',
   faq_billing:
     '💳 <b>Тариф и оплата</b>\n\n'

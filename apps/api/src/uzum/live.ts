@@ -756,6 +756,9 @@ export class LiveUzumClient implements UzumClient {
       const existing = orders.get(orderId);
       if (existing) {
         existing.items.push(item);
+        // Topshirilgan sana birinchi qatorda bo'lmasligi mumkin (u bekor qilingan pozitsiya bo'lsa).
+        // Faqat tirik pozitsiyadan olinadi: qaytgan tovarning sanasi "xaridor qabul qildi" degani emas.
+        if (!existing.deliveredAt && deliveredAt && kind === null) existing.deliveredAt = deliveredAt;
         existing.totalAmount += sellPrice * Math.max(qty, 0);
         existing.commission = (existing.commission ?? 0) + commission;
         existing.logistics = (existing.logistics ?? 0) + logistics;
