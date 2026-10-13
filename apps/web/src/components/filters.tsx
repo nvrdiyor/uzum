@@ -68,7 +68,7 @@ export function PeriodPicker({ className }: { className?: string }) {
   const label = preset === 'custom' ? `${f.date(period.from)} — ${f.date(period.to)}` : t(`period.${preset}`);
 
   return (
-    <div className={cn('relative', className)} ref={ref}>
+    <div className={cn('sm:relative', className)} ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-2"
@@ -79,7 +79,13 @@ export function PeriodPicker({ className }: { className?: string }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-11 z-50 w-[300px] rounded-xl border border-line bg-surface p-3 shadow-pop">
+        /*
+         * Telefonda oyna tugmaga emas, yuqori panelga (eng yaqin joylashtirilgan
+         * ota — `header`) bog'lanadi va ekran kengligini egallaydi. Tugma ekran
+         * o'rtasida turgani uchun 300 px li oyna uning o'ng chetiga bog'lansa,
+         * chap tomondan ekrandan chiqib ketardi.
+         */
+        <div className="absolute inset-x-3 top-[calc(100%+0.375rem)] z-50 rounded-xl border border-line bg-surface p-3 shadow-pop sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[300px]">
           <div className="grid grid-cols-2 gap-1.5">
             {PRESETS.map((p) => {
               const locked = presetSpan(p) > historyDays;
@@ -117,7 +123,7 @@ export function PeriodPicker({ className }: { className?: string }) {
 
           <div className="mt-3 border-t border-line pt-3">
             <p className="mb-2 eyebrow">{t('period.custom')}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 [&>input]:min-w-0 [&>input]:flex-1">
               <input
                 type="date"
                 value={from}
@@ -182,7 +188,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-11 z-50 max-h-[320px] w-[260px] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-pop">
+        <div className="absolute left-0 top-11 z-50 max-h-[320px] w-[260px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-pop sm:left-auto sm:right-0">
           <button
             onClick={() => {
               setStoreId('all');

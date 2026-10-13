@@ -865,7 +865,12 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
   return (
     <li
       className={cn(
-        'flex items-center gap-3.5 rounded-xl border p-3.5 transition-colors sm:gap-4',
+        /*
+         * Telefonda summa alohida qatorga tushadi (flex-wrap + w-full). Uchta
+         * ustun bir qatorda qolsa, summa ustuni siqilmaydi va o'rtadagi matnga
+         * 30–40 px qolib, u so'zma-so'z ustun bo'lib tizilib qolardi.
+         */
+        'flex flex-wrap items-center gap-x-3.5 gap-y-2.5 rounded-xl border p-3.5 transition-colors sm:flex-nowrap sm:gap-4',
         first ? 'border-brand/30 bg-brand/[0.06]' : 'border-line bg-surface-2',
       )}
     >
@@ -921,7 +926,7 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
         ) : null}
       </div>
 
-      <div className="shrink-0 text-right">
+      <div className="w-full border-t border-line/60 pt-2.5 text-right sm:w-auto sm:shrink-0 sm:border-0 sm:pt-0">
         <p className={cn('tnum font-display text-lg font-bold tracking-[-0.01em]', first ? 'text-brand-ink' : 'text-ink')}>
           <Amount value={f.money(row.net)} />
         </p>
@@ -1154,7 +1159,7 @@ function InstantCard({
         title={t('inst.title')}
         subtitle={t('inst.subtitle', { n: hold })}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 [&>span]:whitespace-nowrap">
             {freeUntil ? (
               <Badge tone="brand">{t('inst.feeFree', { date: f.date(freeUntil) })}</Badge>
             ) : (
