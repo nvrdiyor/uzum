@@ -270,6 +270,26 @@ const STATUS_TONE: Record<PlannerRow['status'], Tone> = {
 
 const LEAD_OPTIONS = [1, 3, 5, 7, 10, 14, 21, 30];
 
+/** Zaxira davri slayderi: chegaralari va ostidagi belgilar */
+const COVER_MIN = 7;
+const COVER_MAX = 90;
+const COVER_MARKS = [7, 30, 60, 90];
+/** Slayder dumalog'ining kengligi (px) — pastdagi `h-4 w-4` bilan bir xil bo'lishi shart */
+const THUMB_PX = 16;
+
+/**
+ * Belgining gorizontal o'rni — dumaloq shu qiymatda turgandagi MARKAZI.
+ *
+ * Belgilar ilgari teng oraliqda (0, ⅓, ⅔, 1) turardi, slayder esa chiziqli:
+ * 30 kun yo'lakning ⅓ qismida emas, (30 − 7) / (90 − 7) ≈ 28% ida. Shu sababli
+ * dumaloq "30" yozuviga yetmasdan 30 kunni ko'rsatardi. Bundan tashqari
+ * dumaloq markazi yo'lak chetidan emas, o'z yarim kengligidan boshlanadi.
+ */
+function markLeft(value: number): string {
+  const share = (value - COVER_MIN) / (COVER_MAX - COVER_MIN);
+  return `calc(${(share * 100).toFixed(2)}% + ${((0.5 - share) * THUMB_PX).toFixed(2)}px)`;
+}
+
 /** Yo'nalish shu foizdan kichik bo'lsa ko'rsatilmaydi — u tasodifiy tebranish */
 const TREND_MIN_PCT = 10;
 
@@ -282,7 +302,7 @@ function readParams(): { cover: number; lead: number } {
     const cover = Number(saved.cover);
     const lead = Number(saved.lead);
     return {
-      cover: Number.isFinite(cover) && cover >= 7 && cover <= 90 ? Math.round(cover) : 30,
+      cover: Number.isFinite(cover) && cover >= COVER_MIN && cover <= COVER_MAX ? Math.round(cover) : 30,
       lead: LEAD_OPTIONS.includes(lead) ? lead : 7,
     };
   } catch {
@@ -608,19 +628,21 @@ export default function Planner() {
                   </div>
                   <input
                     type="range"
-                    min={7}
-                    max={90}
+                    min={COVER_MIN}
+                    max={COVER_MAX}
                     step={1}
                     value={coverInput}
                     onChange={(e) => setCoverInput(Number(e.target.value))}
                     aria-label={t('ctrl.cover')}
-                    className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-brand"
+                    // Dumaloq o'lchami aniq berilgan (brauzerlarda standarti har xil) — belgilar shunga tayanadi
+                    className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-brand [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-brand [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand"
                   />
-                  <div className="tnum mt-1.5 flex justify-between text-2xs text-muted">
-                    <span>7</span>
-                    <span>30</span>
-                    <span>60</span>
-                    <span>90</span>
+                  <div className="tnum relative mt-1.5 h-4 text-2xs text-muted">
+                    {COVER_MARKS.map((v) => (
+                      <span key={v} className="absolute -translate-x-1/2" style={{ left: markLeft(v) }}>
+                        {v}
+                      </span>
+                    ))}
                   </div>
                   <p className="mt-1.5 text-xs text-muted">{t('ctrl.coverHint')}</p>
                 </div>
