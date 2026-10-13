@@ -16,10 +16,17 @@ export function NumberField({
   step,
   icon,
   tone = 'default',
+  hintOnFocus = false,
   className,
 }: {
   label: ReactNode;
   hint?: ReactNode;
+  /**
+   * Izoh faqat maydonga kirilganda, uning ostida suzib chiqadi. O'n ikkita
+   * maydonning har biri ostida doimiy izoh tursa, forma ikki barobar uzayadi
+   * va raqamlar matn orasida yo'qolib qoladi.
+   */
+  hintOnFocus?: boolean;
   value: number;
   onChange: (v: number) => void;
   suffix?: ReactNode;
@@ -52,7 +59,7 @@ export function NumberField({
   };
 
   return (
-    <div className={cn('min-w-0', className)}>
+    <div className={cn('group relative min-w-0', className)}>
       <label htmlFor={id} className="label mb-1.5 flex items-center gap-1.5">
         {icon ? <span className="text-muted">{icon}</span> : null}
         <span className="truncate">{label}</span>
@@ -80,7 +87,14 @@ export function NumberField({
           </span>
         ) : null}
       </div>
-      {hint ? <p className="mt-1.5 text-2xs leading-relaxed text-muted">{hint}</p> : null}
+      {!hint ? null : hintOnFocus ? (
+        // Joy egallamaydi (absolute) — chiqqanda pastdagi maydonlar sakramaydi
+        <p className="pointer-events-none absolute inset-x-0 top-full z-20 mt-1 hidden rounded-lg border border-line bg-surface-3 px-2.5 py-1.5 text-2xs leading-snug text-ink-soft shadow-pop group-focus-within:block">
+          {hint}
+        </p>
+      ) : (
+        <p className="mt-1.5 text-2xs leading-relaxed text-muted">{hint}</p>
+      )}
     </div>
   );
 }

@@ -1,22 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BadgePercent,
   Bookmark,
   BookmarkPlus,
   Boxes,
   Calculator as CalculatorIcon,
   Coins,
-  LineChart as LineChartIcon,
-  PieChart as PieChartIcon,
+  PackageOpen,
   Receipt,
   RotateCcw,
+  SlidersHorizontal,
   Target,
   Trash2,
   TrendingUp,
   Truck,
-  Warehouse,
 } from 'lucide-react';
 import {
   calcUnitEconomics,
@@ -25,6 +23,7 @@ import {
   type UnitCalcResult,
 } from '@savdoiq/shared';
 import {
+  Amount,
   Badge,
   Button,
   Card,
@@ -38,11 +37,12 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
+  Segmented,
   Select,
   Skeleton,
   toast,
 } from '@/components/ui';
-import { ChartCard, DonutChart, LinesChart } from '@/components/charts';
+import { CostSplitBar, type SplitSegment } from '@/components/unit/CostSplitBar';
 import { NumberField } from '@/components/unit/NumberField';
 import {
   DEFAULT_INPUT,
@@ -50,6 +50,7 @@ import {
   PRICE_STEPS,
   mergeInput,
   normalizeScenarios,
+  type PartKey,
   type UnitDefaultsResponse,
 } from '@/components/unit/types';
 import { api } from '@/lib/api';
@@ -60,19 +61,15 @@ import { cn } from '@/lib/utils';
 registerNamespace('calculator', {
   uz: {
     title: 'Unit kalkulyator',
-    subtitle: 'Sotishdan oldin bitta donaning iqtisodini hisoblab ko‘ring',
+    subtitle: 'Bitta dona qancha foyda beradi va narxi qayerga ketadi',
     'sku.label': 'Mahsulot (SKU)',
     'sku.manual': 'Qo‘lda kiritish',
-    'sku.hint': 'SKU tanlansa, narx va tannarx sizning ma’lumotlaringizdan to‘ldiriladi',
+    'sku.hint': 'SKU tanlansa, narx va tannarx o‘z ma’lumotlaringizdan to‘ldiriladi',
     'sku.loaded': 'SKU ma’lumotlari yuklandi',
     'section.price': 'Narx va tannarx',
-    'section.priceHint': 'Asosiy raqamlar — qolgan hammasi shulardan hisoblanadi',
-    'section.market': 'Marketpleys xarajatlari',
-    'section.marketHint': 'Uzum ushlab qoladigan va ombor bilan bog‘liq xarajatlar',
+    'section.market': 'Uzum xarajatlari',
     'section.extra': 'Qo‘shimcha xarajat va soliq',
-    'section.extraHint': 'Qadoqlash, boshqa xarajatlar va soliq stavkasi',
-    'section.batch': 'Sotib olish va partiya',
-    'section.batchHint': 'Qaytarishlar va partiya hajmi natijaga sezilarli ta’sir qiladi',
+    'section.batch': 'Partiya va qaytarishlar',
     'fld.price': 'Sotuv narxi',
     'fld.priceHint': 'Xaridor to‘laydigan narx (chegirmadan keyin)',
     'fld.cost': 'Tannarx',
@@ -101,20 +98,20 @@ registerNamespace('calculator', {
     'unit.pct': '%',
     'unit.days': 'kun',
     'unit.pcs': 'dona',
-    'res.title': 'Natija',
     'res.profit': 'Sof foyda (1 dona)',
-    'res.batchProfit': 'Butun partiya: {v}',
+    'res.batchProfit': 'Butun partiyadan ({n} dona):',
     'res.loss': 'Zarar',
     'res.ok': 'Foydali',
     'res.margin': 'Marja',
     'res.roi': 'ROI',
-    'res.markup': 'Ustama',
     'res.breakEven': 'Nol foyda narxi',
-    'res.breakEvenHint': 'Shu narxdan pastda sotish zarar keltiradi',
-    'res.split': 'Xarajatlar taqsimoti',
-    'res.splitHint': 'Butun partiya bo‘yicha',
-    'res.costTotal': 'Jami xarajat',
-    'res.revenue': 'Tushum',
+    'res.buffer': 'Narx {v} dan pastga tushsa zarar boshlanadi — hozir undan {n} yuqorisiz.',
+    'res.bufferNeg': 'Zarar ko‘rmaslik uchun narx kamida {v} bo‘lishi kerak — hozirgisi {n} past.',
+    'split.title': 'Narx qayerga ketadi',
+    'split.revenue': 'Tushum: {v}',
+    'split.unit': '1 dona',
+    'split.batch': 'Partiya',
+    'split.note': 'Bir donaga tushum sotuv narxidan ({price}) kam: yuborilgan tovarning {pct} i sotib olinadi, qolgani qaytadi.',
     'res.cogs': 'Tannarx',
     'res.commission': 'Komissiya',
     'res.logistics': 'Logistika',
@@ -122,15 +119,8 @@ registerNamespace('calculator', {
     'res.other': 'Qadoqlash va boshqa',
     'res.tax': 'Soliq',
     'res.net': 'Sof foyda',
-    'res.table': 'Hisob-kitob',
-    'res.perUnit': '1 dona',
-    'res.batch': 'Butun partiya',
-    'sens.title': 'Narx sezgirligi',
-    'sens.subtitle': 'Narxni o‘zgartirsangiz foyda va marja qanday o‘zgaradi',
-    'sens.change': 'O‘zgarish',
-    'sens.price': 'Narx',
-    'sens.profit': 'Foyda (1 dona)',
-    'sens.margin': 'Marja',
+    'sens.title': 'Narx o‘zgarsa',
+    'sens.subtitle': 'Narxni tushirsangiz yoki ko‘tarsangiz bir donadan foyda va marja',
     'sens.current': 'Joriy',
     'sc.title': 'Ssenariylar',
     'sc.subtitle': 'Hisobni saqlab qo‘ying va keyin taqqoslang',
@@ -151,19 +141,15 @@ registerNamespace('calculator', {
   },
   ru: {
     title: 'Юнит-калькулятор',
-    subtitle: 'Посчитайте экономику одной единицы до старта продаж',
+    subtitle: 'Сколько прибыли даёт одна единица и на что уходит её цена',
     'sku.label': 'Товар (SKU)',
     'sku.manual': 'Ввести вручную',
-    'sku.hint': 'При выборе SKU цена и себестоимость подставятся из ваших данных',
+    'sku.hint': 'Если выбрать SKU, цена и себестоимость подставятся из ваших данных',
     'sku.loaded': 'Данные SKU загружены',
     'section.price': 'Цена и себестоимость',
-    'section.priceHint': 'Базовые цифры — от них считается всё остальное',
-    'section.market': 'Расходы маркетплейса',
-    'section.marketHint': 'Что удерживает Uzum и сколько стоит хранение',
+    'section.market': 'Расходы Uzum',
     'section.extra': 'Доп. расходы и налог',
-    'section.extraHint': 'Упаковка, прочие расходы и налоговая ставка',
-    'section.batch': 'Выкуп и партия',
-    'section.batchHint': 'Возвраты и объём партии заметно влияют на итог',
+    'section.batch': 'Партия и возвраты',
     'fld.price': 'Цена продажи',
     'fld.priceHint': 'Цена, которую платит покупатель (после скидки)',
     'fld.cost': 'Себестоимость',
@@ -192,20 +178,20 @@ registerNamespace('calculator', {
     'unit.pct': '%',
     'unit.days': 'дн.',
     'unit.pcs': 'шт.',
-    'res.title': 'Результат',
     'res.profit': 'Чистая прибыль (1 шт.)',
-    'res.batchProfit': 'Вся партия: {v}',
+    'res.batchProfit': 'Со всей партии ({n} шт.):',
     'res.loss': 'Убыток',
     'res.ok': 'Прибыльно',
     'res.margin': 'Маржа',
     'res.roi': 'ROI',
-    'res.markup': 'Наценка',
     'res.breakEven': 'Точка безубыточности',
-    'res.breakEvenHint': 'Ниже этой цены продажа приносит убыток',
-    'res.split': 'Распределение расходов',
-    'res.splitHint': 'По всей партии',
-    'res.costTotal': 'Всего расходов',
-    'res.revenue': 'Выручка',
+    'res.buffer': 'Ниже {v} начнётся убыток — сейчас цена выше на {n}.',
+    'res.bufferNeg': 'Чтобы не уйти в минус, цена должна быть не ниже {v} — сейчас она ниже на {n}.',
+    'split.title': 'На что уходит цена',
+    'split.revenue': 'Выручка: {v}',
+    'split.unit': '1 шт.',
+    'split.batch': 'Партия',
+    'split.note': 'Выручка на единицу меньше цены ({price}): выкупают {pct} отправленного товара, остальное возвращается.',
     'res.cogs': 'Себестоимость',
     'res.commission': 'Комиссия',
     'res.logistics': 'Логистика',
@@ -213,15 +199,8 @@ registerNamespace('calculator', {
     'res.other': 'Упаковка и прочее',
     'res.tax': 'Налог',
     'res.net': 'Чистая прибыль',
-    'res.table': 'Расчёт',
-    'res.perUnit': '1 шт.',
-    'res.batch': 'Вся партия',
-    'sens.title': 'Чувствительность к цене',
-    'sens.subtitle': 'Как меняются прибыль и маржа при изменении цены',
-    'sens.change': 'Изменение',
-    'sens.price': 'Цена',
-    'sens.profit': 'Прибыль (1 шт.)',
-    'sens.margin': 'Маржа',
+    'sens.title': 'Если изменить цену',
+    'sens.subtitle': 'Прибыль с единицы и маржа при снижении или повышении цены',
     'sens.current': 'Текущая',
     'sc.title': 'Сценарии',
     'sc.subtitle': 'Сохраните расчёт и сравнивайте варианты',
@@ -242,19 +221,15 @@ registerNamespace('calculator', {
   },
   en: {
     title: 'Unit calculator',
-    subtitle: 'Work out the economics of a single unit before you start selling',
+    subtitle: 'How much one unit earns and where its price goes',
     'sku.label': 'Product (SKU)',
     'sku.manual': 'Enter manually',
-    'sku.hint': 'Pick a SKU and the price and cost are filled in from your own data',
+    'sku.hint': 'Pick a SKU to fill the price and cost from your own data',
     'sku.loaded': 'SKU data loaded',
     'section.price': 'Price and cost',
-    'section.priceHint': 'The base numbers — everything else is derived from them',
-    'section.market': 'Marketplace costs',
-    'section.marketHint': 'What Uzum keeps and what storage costs you',
+    'section.market': 'Uzum costs',
     'section.extra': 'Extra costs and tax',
-    'section.extraHint': 'Packaging, other costs and the tax rate',
-    'section.batch': 'Buyout and batch',
-    'section.batchHint': 'Returns and batch size change the result noticeably',
+    'section.batch': 'Batch and returns',
     'fld.price': 'Selling price',
     'fld.priceHint': 'What the buyer pays (after discounts)',
     'fld.cost': 'Cost price',
@@ -283,20 +258,20 @@ registerNamespace('calculator', {
     'unit.pct': '%',
     'unit.days': 'days',
     'unit.pcs': 'pcs',
-    'res.title': 'Result',
     'res.profit': 'Net profit (1 unit)',
-    'res.batchProfit': 'Whole batch: {v}',
+    'res.batchProfit': 'From the whole batch ({n} units):',
     'res.loss': 'Loss',
     'res.ok': 'Profitable',
     'res.margin': 'Margin',
     'res.roi': 'ROI',
-    'res.markup': 'Markup',
     'res.breakEven': 'Break-even price',
-    'res.breakEvenHint': 'Selling below this price makes a loss',
-    'res.split': 'Cost breakdown',
-    'res.splitHint': 'For the whole batch',
-    'res.costTotal': 'Total costs',
-    'res.revenue': 'Revenue',
+    'res.buffer': 'Below {v} you start losing money — the current price is {n} above it.',
+    'res.bufferNeg': 'To avoid a loss the price must be at least {v} — it is currently {n} below.',
+    'split.title': 'Where the price goes',
+    'split.revenue': 'Revenue: {v}',
+    'split.unit': '1 unit',
+    'split.batch': 'Batch',
+    'split.note': 'Revenue per unit is lower than the price ({price}): {pct} of shipped items are bought out, the rest come back.',
     'res.cogs': 'Cost of goods',
     'res.commission': 'Commission',
     'res.logistics': 'Logistics',
@@ -304,15 +279,8 @@ registerNamespace('calculator', {
     'res.other': 'Packaging and other',
     'res.tax': 'Tax',
     'res.net': 'Net profit',
-    'res.table': 'Breakdown',
-    'res.perUnit': '1 unit',
-    'res.batch': 'Whole batch',
-    'sens.title': 'Price sensitivity',
-    'sens.subtitle': 'How profit and margin move when you change the price',
-    'sens.change': 'Change',
-    'sens.price': 'Price',
-    'sens.profit': 'Profit (1 unit)',
-    'sens.margin': 'Margin',
+    'sens.title': 'If the price changes',
+    'sens.subtitle': 'Profit per unit and margin when you lower or raise the price',
     'sens.current': 'Current',
     'sc.title': 'Scenarios',
     'sc.subtitle': 'Save a calculation and compare the options',
@@ -338,14 +306,8 @@ interface SkuOption {
   label: string;
 }
 
-interface BreakdownRow {
-  key: string;
-  label: string;
-  value: number;
-  /** Qalin qatorlar: tushum, jami xarajat, sof foyda */
-  strong?: boolean;
-  net?: boolean;
-}
+/** "Narx qayerga ketadi" bloki: bitta dona yoki butun partiya bo'yicha */
+type SplitMode = 'unit' | 'batch';
 
 export default function Calculator() {
   const t = useT('calculator');
@@ -362,6 +324,7 @@ export default function Calculator() {
   const [input, setInput] = useState<UnitCalcInput>(DEFAULT_INPUT);
   const [saveOpen, setSaveOpen] = useState(false);
   const [name, setName] = useState('');
+  const [splitMode, setSplitMode] = useState<SplitMode>('unit');
 
   useEffect(() => {
     const id = setTimeout(() => setInput(draft), 300);
@@ -414,32 +377,29 @@ export default function Calculator() {
   );
   const profitable = result.netProfit >= 0;
 
-  const donutData = useMemo(
-    () => [
-      { name: t('res.cogs'), value: result.cogs, color: PART_COLOR.cogs },
-      { name: t('res.commission'), value: result.commission, color: PART_COLOR.commission },
-      { name: t('res.logistics'), value: result.logisticsTotal, color: PART_COLOR.logistics },
-      { name: t('res.storage'), value: result.storageTotal, color: PART_COLOR.storage },
-      { name: t('res.other'), value: otherTotal, color: PART_COLOR.other },
-      { name: t('res.tax'), value: result.tax, color: PART_COLOR.tax },
-    ],
-    [result, otherTotal, t],
+  /*
+   * Narx qayerga ketadi: xarajatlar va sof foyda — yig'indisi tushumga teng.
+   * Aylana diagramma (afsonasiz) va uch ustunli jadval o'rniga bitta chiziq
+   * va ro'yxat: har qismning summasi va tushumdagi ulushi yonma-yon.
+   */
+  const scale = splitMode === 'unit' ? 1 / qty : 1;
+  const splitTotal = Math.round(result.revenue * scale);
+  const segments = useMemo<SplitSegment[]>(
+    () =>
+      [
+        { key: 'cogs', label: t('res.cogs'), value: result.cogs },
+        { key: 'commission', label: t('res.commission'), value: result.commission },
+        { key: 'logistics', label: t('res.logistics'), value: result.logisticsTotal },
+        { key: 'storage', label: t('res.storage'), value: result.storageTotal },
+        { key: 'other', label: t('res.other'), value: otherTotal },
+        { key: 'tax', label: t('res.tax'), value: result.tax },
+        { key: 'profit', label: t('res.net'), value: result.netProfit },
+      ].map((x) => ({ ...x, value: Math.round(x.value * scale), color: PART_COLOR[x.key as PartKey] })),
+    [result, otherTotal, scale, t],
   );
 
-  const breakdown = useMemo<BreakdownRow[]>(
-    () => [
-      { key: 'revenue', label: t('res.revenue'), value: result.revenue, strong: true },
-      { key: 'cogs', label: t('res.cogs'), value: result.cogs },
-      { key: 'commission', label: t('res.commission'), value: result.commission },
-      { key: 'logistics', label: t('res.logistics'), value: result.logisticsTotal },
-      { key: 'storage', label: t('res.storage'), value: result.storageTotal },
-      { key: 'other', label: t('res.other'), value: otherTotal },
-      { key: 'tax', label: t('res.tax'), value: result.tax },
-      { key: 'costTotal', label: t('res.costTotal'), value: result.costTotal, strong: true },
-      { key: 'net', label: t('res.net'), value: result.netProfit, strong: true, net: true },
-    ],
-    [result, otherTotal, t],
-  );
+  /** Joriy narx nol foyda narxidan necha foiz yuqori (manfiy — past, ya'ni zarar) */
+  const buffer = input.price > 0 ? ((input.price - result.breakEvenPrice) / input.price) * 100 : 0;
 
   // ── Narx sezgirligi ──
   const sensitivity = useMemo(
@@ -458,6 +418,9 @@ export default function Calculator() {
       }),
     [input],
   );
+
+  /** Ustunchalar uzunligi uchun — eng katta foyda (yoki zarar) */
+  const sensMax = Math.max(1, ...sensitivity.map((x) => Math.abs(x.profit)));
 
   // ── Ssenariylar ──
   const scenarios = useQuery({
@@ -526,358 +489,324 @@ export default function Calculator() {
 
       <PlanGate feature="unit_calculator">
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
-            {/* ── Chap ustun: forma ── */}
-            <div className="space-y-4">
-              <Card>
-                <CardHeader
-                  icon={<Boxes className="h-4 w-4" />}
-                  title={t('sku.label')}
-                  subtitle={t('sku.hint')}
-                />
-                <CardBody>
-                  {products.isLoading ? (
-                    <Skeleton className="h-11 w-full" />
-                  ) : (
-                    <Select value={skuId} onChange={(e) => onSelectSku(e.target.value)}>
-                      <option value="">{t('sku.manual')}</option>
-                      {skuOptions.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                  {defaults.isFetching ? (
-                    <p className="mt-2 text-xs text-muted">{t('common.loading')}</p>
-                  ) : defaults.data ? (
-                    <p className="mt-2 text-xs text-brand-ink">{t('sku.loaded')}</p>
-                  ) : null}
-                </CardBody>
-              </Card>
-
-              <Card>
-                <CardHeader
-                  icon={<Coins className="h-4 w-4" />}
-                  title={t('section.price')}
-                  subtitle={t('section.priceHint')}
-                />
-                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <NumberField
-                    label={t('fld.price')}
-                    hint={t('fld.priceHint')}
-                    suffix={t('unit.som')}
-                    value={draft.price}
-                    step={1000}
-                    tone="brand"
-                    onChange={(v) => patch('price', v)}
-                  />
-                  <NumberField
-                    label={t('fld.cost')}
-                    hint={t('fld.costHint')}
-                    suffix={t('unit.som')}
-                    value={draft.purchasePrice}
-                    step={1000}
-                    onChange={(v) => patch('purchasePrice', v)}
-                  />
-                </CardBody>
-              </Card>
-
-              <Card>
-                <CardHeader
-                  icon={<Truck className="h-4 w-4" />}
-                  title={t('section.market')}
-                  subtitle={t('section.marketHint')}
-                />
-                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <NumberField
-                    label={t('fld.commission')}
-                    hint={t('fld.commissionHint')}
-                    suffix={t('unit.pct')}
-                    value={draft.commissionPct}
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    icon={<BadgePercent className="h-3.5 w-3.5" />}
-                    onChange={(v) => patch('commissionPct', v)}
-                  />
-                  <NumberField
-                    label={t('fld.logistics')}
-                    hint={t('fld.logisticsHint')}
-                    suffix={t('unit.som')}
-                    value={draft.logistics}
-                    step={500}
-                    onChange={(v) => patch('logistics', v)}
-                  />
-                  <NumberField
-                    label={t('fld.storagePerDay')}
-                    hint={t('fld.storagePerDayHint')}
-                    suffix={t('unit.som')}
-                    value={draft.storagePerDay}
-                    step={50}
-                    icon={<Warehouse className="h-3.5 w-3.5" />}
-                    onChange={(v) => patch('storagePerDay', v)}
-                  />
-                  <NumberField
-                    label={t('fld.storageDays')}
-                    hint={t('fld.storageDaysHint')}
-                    suffix={t('unit.days')}
-                    value={draft.storageDays}
-                    min={0}
-                    max={365}
-                    step={1}
-                    onChange={(v) => patch('storageDays', v)}
-                  />
-                </CardBody>
-              </Card>
-
-              <Card>
-                <CardHeader
-                  icon={<Receipt className="h-4 w-4" />}
-                  title={t('section.extra')}
-                  subtitle={t('section.extraHint')}
-                />
-                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <NumberField
-                    label={t('fld.packaging')}
-                    hint={t('fld.packagingHint')}
-                    suffix={t('unit.som')}
-                    value={draft.packaging}
-                    step={500}
-                    onChange={(v) => patch('packaging', v)}
-                  />
-                  <NumberField
-                    label={t('fld.other')}
-                    hint={t('fld.otherHint')}
-                    suffix={t('unit.som')}
-                    value={draft.otherCost}
-                    step={500}
-                    onChange={(v) => patch('otherCost', v)}
-                  />
-                  <NumberField
-                    label={t('fld.tax')}
-                    hint={t('fld.taxHint')}
-                    suffix={t('unit.pct')}
-                    value={draft.taxPct}
-                    min={0}
-                    max={50}
-                    step={0.5}
-                    onChange={(v) => patch('taxPct', v)}
-                  />
-                </CardBody>
-              </Card>
-
-              <Card>
-                <CardHeader
-                  icon={<Boxes className="h-4 w-4" />}
-                  title={t('section.batch')}
-                  subtitle={t('section.batchHint')}
-                />
-                <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <NumberField
-                    label={t('fld.buyout')}
-                    hint={t('fld.buyoutHint')}
-                    suffix={t('unit.pct')}
-                    value={draft.buyoutPct}
-                    min={1}
-                    max={100}
-                    step={1}
-                    onChange={(v) => patch('buyoutPct', v)}
-                  />
-                  <NumberField
-                    label={t('fld.returnLogistics')}
-                    hint={t('fld.returnLogisticsHint')}
-                    suffix={t('unit.som')}
-                    value={draft.returnLogistics}
-                    step={500}
-                    onChange={(v) => patch('returnLogistics', v)}
-                  />
-                  <NumberField
-                    label={t('fld.qty')}
-                    hint={t('fld.qtyHint')}
-                    suffix={t('unit.pcs')}
-                    value={draft.qty}
-                    min={1}
-                    step={1}
-                    onChange={(v) => patch('qty', Math.max(1, Math.round(v)))}
-                  />
-                </CardBody>
-              </Card>
-            </div>
-
-            {/* ── O'ng ustun: natija ── */}
-            <div className="lg:sticky lg:top-4 lg:self-start">
-              <div className="space-y-4">
-                <div className="card overflow-hidden bg-aurora p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="eyebrow-lg">{t('res.profit')}</p>
-                    <Badge tone={profitable ? 'brand' : 'danger'} dot>
-                      {profitable ? t('res.ok') : t('res.loss')}
-                    </Badge>
+          {/*
+            Ikki ustun: chapda kiritish, o'ngda natija (yopishib turadi). Telefonda
+            ustunlar "erib ketadi" (`contents`) va bloklar `order` bo'yicha tiziladi:
+            avval natija, keyin forma — raqamni o'zgartirgan odam nimaga ta'sir
+            qilayotganini ko'rib tursin.
+          */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)] lg:gap-5 xl:grid-cols-[minmax(0,1fr)_480px]">
+            {/* ── Chap ustun: kiritish ── */}
+            <div className="contents lg:block lg:space-y-4">
+              <Card className="order-2">
+                <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex shrink-0 items-center gap-2.5 text-sm font-semibold text-ink">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-surface-2 text-muted">
+                      <Boxes className="h-4 w-4" />
+                    </span>
+                    {t('sku.label')}
                   </div>
-                  <p
-                    className={cn(
-                      'tnum mt-2 font-display text-3xl font-extrabold leading-tight tracking-tight',
-                      profitable ? 'text-brand-ink' : 'text-danger',
-                    )}
-                  >
-                    {f.money(result.netProfitPerUnit)}
-                  </p>
-                  <p className="mt-1.5 text-xs text-muted">
-                    {t('res.batchProfit', { v: f.money(result.netProfit) })}
-                  </p>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2.5">
-                    <MiniStat label={t('res.margin')} value={f.pct(result.margin)} danger={result.margin < 0} />
-                    <MiniStat label={t('res.roi')} value={f.pct(result.roi)} danger={result.roi < 0} />
-                    <MiniStat label={t('res.markup')} value={f.pct(result.markup)} danger={result.markup < 0} />
-                  </div>
-                </div>
-
-                <div className="card flex items-start gap-3 p-4">
-                  <Target className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="text-sm font-medium text-ink-soft">{t('res.breakEven')}</p>
+                    {products.isLoading ? (
+                      <Skeleton className="h-11 w-full" />
+                    ) : (
+                      <Select value={skuId} onChange={(e) => onSelectSku(e.target.value)}>
+                        <option value="">{t('sku.manual')}</option>
+                        {skuOptions.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </div>
+                </CardBody>
+                <p className="-mt-2 px-5 pb-4 text-xs text-muted">
+                  {defaults.isFetching ? (
+                    t('common.loading')
+                  ) : defaults.data ? (
+                    <span className="text-brand-ink">{t('sku.loaded')}</span>
+                  ) : (
+                    t('sku.hint')
+                  )}
+                </p>
+              </Card>
+
+              {/* Bitta forma: beshta alohida kartochka o'rniga bo'limlar ingichka chiziq bilan ajratilgan */}
+              <Card className="order-3">
+                <div className="divide-y divide-line/70">
+                  <FormSection icon={<Coins className="h-4 w-4" />} title={t('section.price')}>
+                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                      <NumberField
+                        label={t('fld.price')}
+                        hint={t('fld.priceHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.price}
+                        step={1000}
+                        tone="brand"
+                        onChange={(v) => patch('price', v)}
+                      />
+                      <NumberField
+                        label={t('fld.cost')}
+                        hint={t('fld.costHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.purchasePrice}
+                        step={1000}
+                        onChange={(v) => patch('purchasePrice', v)}
+                      />
+                    </div>
+                  </FormSection>
+
+                  <FormSection icon={<Truck className="h-4 w-4" />} title={t('section.market')}>
+                    <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+                      <NumberField
+                        label={t('fld.commission')}
+                        hint={t('fld.commissionHint')}
+                        hintOnFocus
+                        suffix={t('unit.pct')}
+                        value={draft.commissionPct}
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        onChange={(v) => patch('commissionPct', v)}
+                      />
+                      <NumberField
+                        label={t('fld.logistics')}
+                        hint={t('fld.logisticsHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.logistics}
+                        step={500}
+                        onChange={(v) => patch('logistics', v)}
+                      />
+                      <NumberField
+                        label={t('fld.storagePerDay')}
+                        hint={t('fld.storagePerDayHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.storagePerDay}
+                        step={50}
+                        onChange={(v) => patch('storagePerDay', v)}
+                      />
+                      <NumberField
+                        label={t('fld.storageDays')}
+                        hint={t('fld.storageDaysHint')}
+                        hintOnFocus
+                        suffix={t('unit.days')}
+                        value={draft.storageDays}
+                        min={0}
+                        max={365}
+                        step={1}
+                        onChange={(v) => patch('storageDays', v)}
+                      />
+                    </div>
+                  </FormSection>
+
+                  <FormSection icon={<Receipt className="h-4 w-4" />} title={t('section.extra')}>
+                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+                      <NumberField
+                        label={t('fld.packaging')}
+                        hint={t('fld.packagingHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.packaging}
+                        step={500}
+                        onChange={(v) => patch('packaging', v)}
+                      />
+                      <NumberField
+                        label={t('fld.other')}
+                        hint={t('fld.otherHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.otherCost}
+                        step={500}
+                        onChange={(v) => patch('otherCost', v)}
+                      />
+                      <NumberField
+                        label={t('fld.tax')}
+                        hint={t('fld.taxHint')}
+                        hintOnFocus
+                        suffix={t('unit.pct')}
+                        value={draft.taxPct}
+                        min={0}
+                        max={50}
+                        step={0.5}
+                        className="col-span-2 sm:col-span-1"
+                        onChange={(v) => patch('taxPct', v)}
+                      />
+                    </div>
+                  </FormSection>
+
+                  <FormSection icon={<PackageOpen className="h-4 w-4" />} title={t('section.batch')}>
+                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+                      <NumberField
+                        label={t('fld.buyout')}
+                        hint={t('fld.buyoutHint')}
+                        hintOnFocus
+                        suffix={t('unit.pct')}
+                        value={draft.buyoutPct}
+                        min={1}
+                        max={100}
+                        step={1}
+                        onChange={(v) => patch('buyoutPct', v)}
+                      />
+                      <NumberField
+                        label={t('fld.returnLogistics')}
+                        hint={t('fld.returnLogisticsHint')}
+                        hintOnFocus
+                        suffix={t('unit.som')}
+                        value={draft.returnLogistics}
+                        step={500}
+                        onChange={(v) => patch('returnLogistics', v)}
+                      />
+                      <NumberField
+                        label={t('fld.qty')}
+                        hint={t('fld.qtyHint')}
+                        hintOnFocus
+                        suffix={t('unit.pcs')}
+                        value={draft.qty}
+                        min={1}
+                        step={1}
+                        className="col-span-2 sm:col-span-1"
+                        onChange={(v) => patch('qty', Math.max(1, Math.round(v)))}
+                      />
+                    </div>
+                  </FormSection>
+                </div>
+              </Card>
+
+              {/* ── Narx o'zgarsa ── */}
+              <Card className="order-5">
+                <CardHeader
+                  icon={<SlidersHorizontal className="h-4 w-4" />}
+                  title={t('sens.title')}
+                  subtitle={t('sens.subtitle')}
+                />
+                {/*
+                  Ilgari bu yerda butun kenglikdagi chiziqli grafik turardi. Foyda
+                  narxga chiziqli bog'liq — grafik har doim to'g'ri chiziq chizardi
+                  va hech narsa demasdi. Ustunchalar o'sha ma'lumotni raqam bilan
+                  birga, joy egallamasdan ko'rsatadi.
+                */}
+                <ul className="mt-3 divide-y divide-line/60 border-t border-line/70">
+                  {sensitivity.map((s) => (
+                    <li
+                      key={s.step}
+                      className={cn(
+                        'grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-5 py-2 sm:grid-cols-[3.5rem_7.5rem_minmax(0,1fr)_7.5rem_3.5rem]',
+                        s.step === 0 && 'bg-brand/[0.06]',
+                      )}
+                    >
+                      <span
+                        className={cn('tnum text-sm font-semibold', s.step === 0 ? 'text-brand-ink' : 'text-ink-soft')}
+                      >
+                        {s.step === 0 ? t('sens.current') : s.label}
+                      </span>
+                      <span className="tnum whitespace-nowrap text-sm text-ink">{f.money(s.price)}</span>
+                      {/* Ustuncha: shu narxdagi foyda eng katta foydaga nisbatan */}
+                      <span className="hidden h-2 overflow-hidden rounded-full bg-surface-3 sm:block" aria-hidden>
+                        <span
+                          className={cn('block h-full rounded-full', s.profit < 0 ? 'bg-danger' : 'bg-brand')}
+                          style={{ width: `${Math.max(2, (Math.abs(s.profit) / sensMax) * 100)}%` }}
+                        />
+                      </span>
                       <span
                         className={cn(
-                          'tnum font-display text-base font-extrabold',
-                          input.price >= result.breakEvenPrice ? 'text-brand-ink' : 'text-danger',
-                        )}
-                      >
-                        {f.money(result.breakEvenPrice)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted">{t('res.breakEvenHint')}</p>
-                  </div>
-                </div>
-
-                <ChartCard title={t('res.split')} subtitle={t('res.splitHint')}>
-                  <DonutChart
-                    data={donutData.filter((d) => d.value > 0)}
-                    height={220}
-                    innerRadius={54}
-                    outerRadius={82}
-                    center={
-                      <div>
-                        <p className="eyebrow">{t('res.costTotal')}</p>
-                        <p className="tnum font-display text-sm font-extrabold text-ink">
-                          {f.compact(result.costTotal)}
-                        </p>
-                      </div>
-                    }
-                  />
-                </ChartCard>
-
-                <Card className="overflow-hidden">
-                  <CardHeader
-                    icon={<PieChartIcon className="h-4 w-4" />}
-                    title={t('res.table')}
-                    subtitle={t('res.batch')}
-                  />
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full border-collapse text-sm">
-                      <thead>
-                        <tr>
-                          <th className="table-head px-4 py-2 text-left">{t('res.title')}</th>
-                          <th className="table-head px-4 py-2 text-right">{t('res.perUnit')}</th>
-                          <th className="table-head px-4 py-2 text-right">{t('res.batch')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {breakdown.map((row) => (
-                          <tr key={row.key} className="border-b border-line/60 last:border-0">
-                            <td
-                              className={cn(
-                                'px-4 py-2 text-ink-soft',
-                                row.strong && 'font-semibold text-ink',
-                              )}
-                            >
-                              {row.label}
-                            </td>
-                            <td
-                              className={cn(
-                                'tnum px-4 py-2 text-right',
-                                row.net && (profitable ? 'font-semibold text-brand-ink' : 'font-semibold text-danger'),
-                              )}
-                            >
-                              {f.money(row.value / qty)}
-                            </td>
-                            <td
-                              className={cn(
-                                'tnum px-4 py-2 text-right',
-                                row.strong && 'font-semibold text-ink',
-                                row.net && (profitable ? 'text-brand-ink' : 'text-danger'),
-                              )}
-                            >
-                              {f.money(row.value)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Narx sezgirligi ── */}
-          <ChartCard
-            title={t('sens.title')}
-            subtitle={t('sens.subtitle')}
-            actions={<LineChartIcon className="h-4 w-4 text-muted" />}
-          >
-            <LinesChart
-              data={sensitivity}
-              xKey="label"
-              xIsDate={false}
-              height={240}
-              series={[{ key: 'profit', name: t('sens.profit'), money: true }]}
-            />
-
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[520px] border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th className="table-head px-4 py-2 text-left">{t('sens.change')}</th>
-                    <th className="table-head px-4 py-2 text-right">{t('sens.price')}</th>
-                    <th className="table-head px-4 py-2 text-right">{t('sens.profit')}</th>
-                    <th className="table-head px-4 py-2 text-right">{t('sens.margin')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sensitivity.map((s) => (
-                    <tr
-                      key={s.step}
-                      className={cn('border-b border-line/60 last:border-0', s.step === 0 && 'bg-brand/5')}
-                    >
-                      <td className="px-4 py-2">
-                        <span className="flex items-center gap-2">
-                          <span className={cn('tnum font-semibold', s.step === 0 ? 'text-brand-ink' : 'text-ink-soft')}>
-                            {s.label}
-                          </span>
-                          {s.step === 0 ? <Badge tone="brand">{t('sens.current')}</Badge> : null}
-                        </span>
-                      </td>
-                      <td className="tnum whitespace-nowrap px-4 py-2 text-right text-ink">{f.money(s.price)}</td>
-                      <td
-                        className={cn(
-                          'tnum px-4 py-2 text-right font-semibold',
+                          'tnum whitespace-nowrap text-right text-sm font-semibold',
                           s.profit < 0 ? 'text-danger' : 'text-brand-ink',
                         )}
                       >
                         {f.money(s.profit)}
-                      </td>
-                      <td className={cn('tnum px-4 py-2 text-right', s.margin < 0 ? 'text-danger' : 'text-ink-soft')}>
+                      </span>
+                      <span
+                        className={cn(
+                          'tnum hidden text-right text-xs sm:block',
+                          s.margin < 0 ? 'text-danger' : 'text-muted',
+                        )}
+                      >
                         {f.pct(s.margin)}
-                      </td>
-                    </tr>
+                      </span>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+              </Card>
             </div>
-          </ChartCard>
+
+            {/* ── O'ng ustun: natija (yuqori panel ostida yopishib turadi) ── */}
+            <div className="contents lg:sticky lg:top-20 lg:block lg:space-y-4 lg:self-start">
+              <div className="card order-1 overflow-hidden bg-aurora p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="eyebrow-lg">{t('res.profit')}</p>
+                  <Badge tone={profitable ? 'brand' : 'danger'} dot>
+                    {profitable ? t('res.ok') : t('res.loss')}
+                  </Badge>
+                </div>
+                <p
+                  className={cn(
+                    'tnum mt-2 font-title text-[34px] font-semibold leading-none tracking-[-0.03em] sm:text-[40px]',
+                    profitable ? 'text-brand-ink' : 'text-danger',
+                  )}
+                >
+                  <Amount value={f.money(result.netProfitPerUnit)} />
+                </p>
+                <p className="tnum mt-2.5 text-sm text-muted">
+                  {t('res.batchProfit', { n: f.num(qty) })}{' '}
+                  <span className={cn('font-semibold', profitable ? 'text-ink' : 'text-danger')}>
+                    {f.money(result.netProfit)}
+                  </span>
+                </p>
+
+                <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <MiniStat label={t('res.margin')} value={f.pct(result.margin)} danger={result.margin < 0} />
+                  <MiniStat label={t('res.roi')} value={f.pct(result.roi)} danger={result.roi < 0} />
+                  <MiniStat
+                    label={t('res.breakEven')}
+                    value={<Amount value={f.money(result.breakEvenPrice)} />}
+                    danger={buffer < 0}
+                    // Telefonda summa uchdan bir kenglikka sig'maydi — butun qatorni oladi
+                    className="col-span-2 sm:col-span-1"
+                  />
+                </div>
+                {/* Nol foyda narxi nimani anglatishi — raqamning o'zi yetarli emas */}
+                <p className={cn('mt-3 flex items-start gap-2 text-xs leading-snug', buffer < 0 ? 'text-danger' : 'text-muted')}>
+                  <Target className="mt-px h-3.5 w-3.5 shrink-0" />
+                  {buffer < 0
+                    ? t('res.bufferNeg', { v: f.money(result.breakEvenPrice), n: f.pct(-buffer) })
+                    : t('res.buffer', { v: f.money(result.breakEvenPrice), n: f.pct(buffer) })}
+                </p>
+              </div>
+
+              <Card className="order-4">
+                <CardHeader
+                  icon={<Receipt className="h-4 w-4" />}
+                  title={t('split.title')}
+                  subtitle={t('split.revenue', { v: f.money(splitTotal) })}
+                  actions={
+                    <Segmented<SplitMode>
+                      size="sm"
+                      value={splitMode}
+                      onChange={setSplitMode}
+                      options={[
+                        { value: 'unit', label: t('split.unit') },
+                        { value: 'batch', label: t('split.batch') },
+                      ]}
+                    />
+                  }
+                />
+                <CardBody>
+                  <CostSplitBar segments={segments} total={splitTotal} compact />
+                  {/* Bir donaga tushum sotuv narxidan kam chiqishining sababi */}
+                  {input.buyoutPct < 100 ? (
+                    <p className="mt-3 border-t border-line/70 pt-3 text-xs leading-relaxed text-muted">
+                      {t('split.note', { pct: f.pct(input.buyoutPct), price: f.money(input.price) })}
+                    </p>
+                  ) : null}
+                </CardBody>
+              </Card>
+            </div>
+          </div>
 
           {/* ── Ssenariylar ── */}
           <Card>
@@ -1026,11 +955,39 @@ export default function Calculator() {
   );
 }
 
-function MiniStat({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
+/** Forma bo'limi: kichik sarlavha va maydonlar. Bo'limlar bitta kartochka ichida chiziq bilan ajraladi */
+function FormSection({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-2.5">
+    <section className="p-5">
+      <h3 className="mb-3.5 flex items-center gap-2 text-sm font-semibold text-ink">
+        <span className="text-muted">{icon}</span>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  danger,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  danger?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn('min-w-0 rounded-xl border border-line bg-surface p-3', className)}>
       <p className="truncate eyebrow">{label}</p>
-      <p className={cn('tnum mt-0.5 font-display text-sm font-extrabold', danger ? 'text-danger' : 'text-ink')}>
+      <p
+        className={cn(
+          'tnum mt-1 whitespace-nowrap font-display text-[15px] font-extrabold leading-tight',
+          danger ? 'text-danger' : 'text-ink',
+        )}
+      >
         {value}
       </p>
     </div>

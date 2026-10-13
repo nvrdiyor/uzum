@@ -47,16 +47,17 @@ export function CostSplitBar({
           return (
             <li
               key={s.key}
-              className="flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-surface-2"
+              // Telefonda ustunlar torayadi: aks holda foiz va summa nomga 40 px qoldirib, hatto "Tannarx" ham kesilardi
+              className="flex items-center gap-2 rounded-xl px-1.5 py-2 transition-colors hover:bg-surface-2 sm:gap-3 sm:px-2.5"
             >
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
               <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{s.label}</span>
-              <span className="tnum w-14 shrink-0 text-right text-xs text-muted">
+              <span className="tnum w-11 shrink-0 text-right text-xs text-muted sm:w-14">
                 {Number.isFinite(share) ? f.pct(share) : '—'}
               </span>
               <span
                 className={cn(
-                  'tnum w-32 shrink-0 text-right text-sm font-semibold',
+                  'tnum w-[6.25rem] shrink-0 whitespace-nowrap text-right text-sm font-semibold sm:w-32',
                   s.value < 0 ? 'text-danger' : 'text-ink',
                 )}
               >
