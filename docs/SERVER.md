@@ -1,19 +1,19 @@
 # Serverni boshqarish — SavdoIQ
 
-**Server:** `139.59.159.128` (Ubuntu 24.04) · **Papka:** `/opt/savdoiq` · **Sayt:** <http://139.59.159.128>
+**Server:** `151.243.182.227` (Ubuntu 24.04) · **Papka:** `/opt/savdoiq` · **Sayt:** <https://savdoiq.uz>
 
 ---
 
 ## Serverga kirish
 
 ```bash
-ssh -i ~/.ssh/savdoiq_deploy root@139.59.159.128
+ssh -i ~/.ssh/savdoiq_deploy root@151.243.182.227
 ```
 
 Yoki parol bilan (kalit ishlamasa):
 
 ```bash
-ssh root@139.59.159.128
+ssh root@151.243.182.227
 ```
 
 ---
@@ -103,7 +103,7 @@ systemctl restart ssh
 ```
 
 > Buni qilishdan oldin **albatta** kalit bilan kira olishingizni tekshiring —
-> aks holda serverga faqat DigitalOcean Console orqali kirasiz.
+> aks holda serverga faqat provayder (HOSTKEY) panelidagi konsol orqali kirasiz.
 
 ### 3. Maxfiy kalitlar
 
@@ -122,7 +122,7 @@ grep -E 'SESSION_SECRET|ENCRYPTION_KEY' /opt/savdoiq/.env
 
 Domen olganingizdan keyin (masalan `savdoiq.uz`):
 
-**1.** Domen sozlamalarida A-yozuv qo'shing: `@` → `139.59.159.128` va `www` → `139.59.159.128`
+**1.** Domen sozlamalarida A-yozuv qo'shing: `@` → `151.243.182.227` va `www` → `151.243.182.227`
 
 **2.** Serverda:
 
