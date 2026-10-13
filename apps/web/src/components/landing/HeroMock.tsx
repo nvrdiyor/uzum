@@ -1,10 +1,18 @@
+import { lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Package, Percent, TrendingUp, Wallet } from 'lucide-react';
 import { StatCard } from '@/components/ui';
-import { TrendChart } from '@/components/charts';
 import { CHART_COLORS } from '@/lib/theme';
 import { useFormat, useT } from '@/i18n';
 import { EASE } from './primitives';
+
+/*
+ * Grafik kutubxonasi (recharts, siqilgan holda ~118 KB) alohida yuklanadi.
+ * Bu mokap bosh sahifada turgani uchun kutubxona ilgari har bir sahifaning
+ * birinchi yuklanishiga — kirish sahifasiga ham — qo'shilib ketardi.
+ */
+const TrendChart = lazy(() => import('@/components/charts').then((m) => ({ default: m.TrendChart })));
+const CHART_HEIGHT = 172;
 
 /**
  * Hero'dagi mahsulot mokapi — haqiqiy StatCard va TrendChart komponentlaridan yig'ilgan.
@@ -100,15 +108,18 @@ export function HeroMock() {
             <p className="text-xs font-semibold text-ink">{t('mock.chart')}</p>
             <span className="chip bg-surface-3 text-muted">{t('mock.period')}</span>
           </div>
-          <TrendChart
-            data={SERIES}
-            height={172}
-            showLegend={false}
-            series={[
-              { key: 'revenue', name: t('mock.revenue'), color: CHART_COLORS.brand, money: true },
-              { key: 'profit', name: t('mock.profit'), color: CHART_COLORS.info, money: true },
-            ]}
-          />
+          {/* Joy oldindan band qilinadi — grafik kelganda sahifa sakramaydi */}
+          <Suspense fallback={<div style={{ height: CHART_HEIGHT }} aria-hidden />}>
+            <TrendChart
+              data={SERIES}
+              height={CHART_HEIGHT}
+              showLegend={false}
+              series={[
+                { key: 'revenue', name: t('mock.revenue'), color: CHART_COLORS.brand, money: true },
+                { key: 'profit', name: t('mock.profit'), color: CHART_COLORS.info, money: true },
+              ]}
+            />
+          </Suspense>
         </div>
 
         {/* Mini jadval */}

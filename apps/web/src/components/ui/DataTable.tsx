@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -63,15 +63,25 @@ export interface DataTableProps<T> {
  * ko'rmasdi.
  */
 function useEdgeScroll() {
-  const ref = useRef<HTMLDivElement>(null);
+  // Element holatda saqlanadi: jadval yuklanishdan keyin paydo bo'ladi va
+  // effekt aynan o'shanda (bir marta) ulanadi
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
 
   useEffect(() => {
-    const el = ref.current;
     if (!el) return undefined;
     const update = () => {
       const max = el.scrollWidth - el.clientWidth;
-      setEdges({ left: el.scrollLeft > 4, right: max > 4 && el.scrollLeft < max - 4 });
+      const left = el.scrollLeft > 4;
+      const right = max > 4 && el.scrollLeft < max - 4;
+      /*
+       * O'zgarmagan bo'lsa AYNAN eski obyekt qaytariladi. Ilgari har
+       * chaqiruvda yangi obyekt yozilardi, effekt esa bog'liqliksiz edi:
+       * holat → qayta chizish → effekt → holat… Jadvali bor har bir sahifa
+       * sekundiga ~100 marta to'xtovsiz qayta chizilardi (Boshqaruv panelida
+       * o'lchangan: 3 soniyada 655 ta yangi ResizeObserver).
+       */
+      setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
     };
     update();
     el.addEventListener('scroll', update, { passive: true });
@@ -81,9 +91,9 @@ function useEdgeScroll() {
       el.removeEventListener('scroll', update);
       ro.disconnect();
     };
-  });
+  }, [el]);
 
-  return { ref, edges };
+  return { ref: setEl, edges };
 }
 
 export function DataTable<T>({

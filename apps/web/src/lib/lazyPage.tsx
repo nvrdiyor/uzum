@@ -38,9 +38,28 @@ function clearReloaded(): void {
   }
 }
 
+/** Yo'l → sahifa faylini yuklovchi. `prefetchPage` shu ro'yxatdan oladi */
+const loaders = new Map<string, () => Promise<unknown>>();
+
+/**
+ * Sahifa faylini oldindan yuklaydi — menyu havolasi ustiga kelinganda yoki
+ * unga barmoq tekkanda chaqiriladi. Bosilgan paytda fayl tayyor bo'ladi va
+ * sahifa kutishsiz ochiladi. Xato jim yutiladi: bosilganda `lazyPage` ning
+ * o'z qayta urinishi ishlaydi.
+ */
+export function prefetchPage(path: string): void {
+  const load = loaders.get(path);
+  if (!load) return;
+  loaders.delete(path);
+  void load().catch(() => loaders.set(path, load));
+}
+
 export function lazyPage<T extends ComponentType<unknown>>(
   load: () => Promise<{ default: T }>,
+  /** Menyudagi manzili — berilsa sahifani `prefetchPage` bilan oldindan yuklash mumkin */
+  path?: string,
 ): LazyExoticComponent<T> {
+  if (path) loaders.set(path, load);
   return lazy(async () => {
     try {
       const mod = await load();

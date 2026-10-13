@@ -43,7 +43,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
+          /*
+           * `clsx` shu yerda ATAYLAB turibdi. U recharts'ning ham, ilovaning
+           * ham bog'liqligi: bu ro'yxatda bo'lmasa `charts` bo'lagiga tushadi
+           * va kirish fayli uni o'sha yerdan import qiladi — natijada 118 KB
+           * (gzip) grafik kutubxonasi har bir sahifada, hatto kirish sahifasida
+           * ham birinchi bo'lib yuklanardi. Bo'laklar tartib bilan to'ldiriladi,
+           * shuning uchun umumiy bog'liqlik birinchisida qoladi.
+           */
+          react: ['react', 'react-dom', 'react-router-dom', 'clsx'],
           charts: ['recharts'],
           motion: ['framer-motion'],
         },

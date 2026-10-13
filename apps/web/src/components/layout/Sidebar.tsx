@@ -5,6 +5,7 @@ import { useT } from '@/i18n';
 import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
+import { prefetchPage } from '@/lib/lazyPage';
 import { getPlan } from '@savdoiq/shared';
 import { BrandLogo } from '@/components/brand/Logo';
 
@@ -89,6 +90,10 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                     <NavLink
                       to={item.to}
                       onClick={onNavigate}
+                      // Sahifa fayli bosishdan oldin kelib turadi — ochilish kutishsiz
+                      onMouseEnter={() => prefetchPage(item.to)}
+                      onTouchStart={() => prefetchPage(item.to)}
+                      onFocus={() => prefetchPage(item.to)}
                       title={rail ? t(item.labelKey) : undefined}
                       className={({ isActive }) =>
                         cn(
