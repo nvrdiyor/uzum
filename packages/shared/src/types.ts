@@ -587,23 +587,72 @@ export interface StocksResponse {
 export interface PlannerRow {
   skuId: string;
   sku: string;
+  /** Mahsulot nomi */
   title: string;
+  /** Variant (rang, o'lcham) — mahsulot nomidan farq qilsa, aks holda null */
+  variant: string | null;
   imageUrl: string | null;
+  /** Sotuvdagi qoldiq: FBO + FBS + o'z ombori */
   stock: number;
+  /** Uzum omboriga jo'natilgan, hali qabul qilinmagan dona */
+  inbound: number;
+  /**
+   * Kunlik sotuv tezligi — tovar sotuvda BO'LGAN kunlar bo'yicha.
+   * Tugab turgan kunlar bo'luvchiga kirmaydi, aks holda tezlik past ko'rinadi.
+   */
   avgDaily: number;
+  /** Tezlik hisoblangan oynadagi sotuv, dona */
+  soldUnits: number;
+  /** Shu oynada tovar sotuvda bo'lgan kunlar */
+  inStockDays: number;
+  /** Shu oynada tovar tugab turgan kunlar */
+  stockoutDays: number;
+  /** Oxirgi 14 kun tezligining butun oynaga nisbatan farqi, %; ma'lumot kam bo'lsa null */
+  trendPct: number | null;
+  /** Qoldiq (yo'ldagisi bilan) necha kunga yetadi; sotuv yo'q bo'lsa null */
   daysLeft: number | null;
+  stockoutDate: string | null;
+  /** Shu sanadan kechikmay buyurtma berilsa, tovar tugamasdan yetib keladi */
+  orderBy: string | null;
+  /** `orderBy` gacha qolgan kun; 0 va manfiy — bugun berish kerak yoki kechikilgan */
+  orderInDays: number | null;
   /** tanlangan zaxira davri uchun kerakli miqdor */
   recommendedQty: number;
   purchaseCost: number;
+  /**
+   * critical — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
+   * ending — buyurtma kuni yetdi yoki bir hafta ichida;
+   * enough — hozircha shoshilmasa bo'ladi; no_action — sotuv yo'q.
+   */
   status: 'critical' | 'ending' | 'enough' | 'no_action';
-  stockoutDate: string | null;
+  /** Bugun buyurtma berilsa ham tovar kelguncha qoldiqsiz o'tadigan kunlar */
+  gapDays: number;
+  /** O'sha kunlarda yo'qotiladigan tushum */
   lostRevenue: number;
+  /** Oynada tugab turgan kunlarda sotilmay qolgan taxminiy tushum */
+  lostPast: number;
 }
 
 export interface PlannerResponse {
   coverDays: number;
+  leadDays: number;
+  /** Sotuv tezligi hisoblangan oyna, kun */
+  windowDays: number;
+  /** Buyurtma kuni hisobidagi ehtiyot zaxirasi, kun */
+  safetyDays: number;
   counts: { all: number; critical: number; ending: number; enough: number; noAction: number };
-  totalPurchaseCost: number;
+  /** Butun katalog bo'yicha — qaysi yorliq ochiq bo'lishidan qat'i nazar */
+  totals: {
+    /** Miqdor tavsiya etilgan SKU'lar soni */
+    needSkus: number;
+    purchaseCost: number;
+    /** Tovar kelguncha yo'qotiladigan tushum (kritik pozitsiyalar) */
+    lostRevenue: number;
+    /** Oynada tovar tugab turgani uchun sotilmay qolgan taxminiy tushum */
+    lostPast: number;
+    /** Buyurtma kuni yetgan yoki o'tgan SKU'lar soni */
+    orderNow: number;
+  };
   rows: PlannerRow[];
 }
 

@@ -2,21 +2,29 @@
  * Yetkazib berish rejalashtiruvchisi — /api/v1/planner
  *
  *  GET  / → PlannerResponse: har bir SKU uchun qoldiq necha kunga yetadi,
- *           tanlangan zaxira davri (cover) va yetkazish muddati (lead) uchun
- *           qancha buyurtma qilish kerak, qancha tushum yo'qotilishi mumkin.
+ *           QACHON buyurtma berish kerak, tanlangan zaxira davri (cover) va
+ *           yetkazish muddati (lead) uchun qancha olib kelish kerak.
  *  POST /shipment-draft → tanlangan SKU'lardan yetkazma qoralamasi (Shipment + ShipmentItem).
  *
- * Prognoz `@savdoiq/shared/calc.ts` dagi umumiy formulalarga tayanadi
- * (`recommendedQty`, `forecastUnits`) — sayt va API bir xil natija beradi.
+ * HISOB:
+ *   tezlik        = oxirgi 30 kundagi sotuv / tovar SOTUVDA BO'LGAN kunlar (`services/demand.ts`)
+ *   ta'minot      = qoldiq + Uzum omboriga yo'ldagi tovar
+ *   yetadi        = ta'minot / tezlik
+ *   buyurtma kuni = tugash sanasi − yetkazish muddati − ehtiyot zaxirasi (3 kun)
+ *   tavsiya       = tezlik × (yetkazish + zaxira davri) − ta'minot
+ *   yo'qotish     = bugun buyurtma berilsa ham tovar kelguncha qoldiqsiz o'tadigan
+ *                   kunlar × tezlik × haqiqiy sotuv narxi
+ *
+ * Ilgari "yo'qotilayotgan tushum" zaxira davridagi talabning qoldiqdan ortgan
+ * qismi edi — hamma tovar yetarli bo'lsa ham 413 000 so'm ko'rsatardi, chunki
+ * 30 kunlik talab har doim qoldiqdan katta. U yo'qotish emas, buyurtma hajmi.
  */
 import { Router } from 'express';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '@savdoiq/db';
 import {
-  STOCK_THRESHOLDS,
   addDays,
-  forecastUnits,
   parseISODate,
   recommendedQty,
   round,
@@ -29,14 +37,8 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
-import {
-  getAvgDaily,
-  getLatestStocks,
-  getSkuCatalog,
-  getStoreIds,
-  type SkuInfo,
-  type StockInfo,
-} from '../services/common.js';
+import { getLatestStocks, getSkuCatalog, getStoreIds, type SkuInfo, type StockInfo } from '../services/common.js';
+import { DEMAND_WINDOW_DAYS, getDemand, type Demand } from '../services/demand.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('planner'));
@@ -47,8 +49,13 @@ const COVER_MAX = 90;
 const DEFAULT_COVER = 30;
 /** Yetkazib berish muddati (kun) — buyurtma berilgandan omborga tushgunga qadar */
 const DEFAULT_LEAD = 7;
-/** O'rtacha kunlik sotuvni hisoblash oynasi (kun) */
-const AVG_WINDOW = 30;
+/**
+ * Ehtiyot zaxirasi (kun): buyurtma kuni shuncha oldinga suriladi. Sotuv bir
+ * tekis emas — bir kunda 3 ta, keyin ikki kun yo'q; yetkazma ham kechikadi.
+ */
+const SAFETY_DAYS = 3;
+/** Buyurtma kuni shuncha kun ichida bo'lsa — "buyurtma vaqti" */
+const ORDER_SOON_DAYS = 7;
 /** Javobdagi qatorlar chegarasi — jadval cheksiz o'smasligi uchun */
 const MAX_ROWS = 1000;
 /** Standart quti hajmi (litr) va qutidagi dona — yetkazma qoralamasi uchun */
@@ -56,6 +63,7 @@ const BOX_VOLUME_L = 60;
 const BOX_UNITS = 20;
 
 const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
+const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0 };
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
@@ -78,14 +86,44 @@ function leadParam(value: string | number | undefined): number {
 }
 
 /**
- * Holat: kritik (7 kundan kam qoldi), tugayapti (14 kungacha),
- * yetarli, harakat kerak emas (sotuv yo'q — prognoz qurib bo'lmaydi).
+ * Uzum omboriga yo'ldagi tovar: jo'natilgan, hali qabul qilinmagan dona.
+ *
+ * Qo'lda yaratilgan yetkazma va Uzum nakladnoyi bitta yukning ikki yozuvi
+ * bo'lishi mumkin, shuning uchun ular qo'shilmaydi — kattasi olinadi.
+ * Qoralamalar (draft) kirmaydi: ular hali jo'natilmagan.
  */
-function plannerStatus(avgDaily: number, daysLeft: number | null): PlannerRow['status'] {
-  if (avgDaily <= 0 || daysLeft === null) return 'no_action';
-  if (daysLeft <= STOCK_THRESHOLDS.critical) return 'critical';
-  if (daysLeft <= STOCK_THRESHOLDS.low) return 'ending';
-  return 'enough';
+async function getInbound(companyId: string, storeIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (storeIds.length === 0) return out;
+  const items = await prisma.shipmentItem.findMany({
+    where: { shipment: { companyId, status: 'in_transit' }, sku: { storeId: { in: storeIds } } },
+    select: { skuId: true, qty: true, accepted: true, shipment: { select: { source: true } } },
+  });
+  const bySource = new Map<string, { uzum: number; manual: number }>();
+  for (const it of items) {
+    const left = Math.max(0, it.qty - it.accepted);
+    if (left <= 0) continue;
+    const cur = bySource.get(it.skuId) ?? { uzum: 0, manual: 0 };
+    if (it.shipment.source === 'uzum') cur.uzum += left;
+    else cur.manual += left;
+    bySource.set(it.skuId, cur);
+  }
+  for (const [skuId, v] of bySource) out.set(skuId, Math.max(v.uzum, v.manual));
+  return out;
+}
+
+/**
+ * Variant nomi (rang, o'lcham). SKU nomi ba'zan mahsulot nomini takrorlaydi
+ * ("Naushnik — Qora"): o'shanda faqat farq qiladigan qismi qoladi.
+ */
+function variantOf(skuTitle: string, productTitle: string): string | null {
+  const sku = skuTitle.trim();
+  const product = productTitle.trim();
+  if (!sku || sku === product) return null;
+  if (product && sku.startsWith(product)) {
+    return sku.slice(product.length).replace(/^[\s—–\-·:,|/]+/, '').trim() || null;
+  }
+  return sku;
 }
 
 /** Jadvalda avval eng shoshilinch qatorlar turadi */
@@ -99,7 +137,8 @@ const STATUS_RANK: Record<PlannerRow['status'], number> = {
 interface PlanInput {
   info: SkuInfo;
   stock: StockInfo;
-  avgDaily: number;
+  inbound: number;
+  demand: Demand;
   cover: number;
   lead: number;
   /** Bugungi kun (UTC yarim tunga tenglashtirilgan) */
@@ -108,29 +147,66 @@ interface PlanInput {
 
 /** Bitta SKU uchun reja qatori */
 function buildRow(inp: PlanInput): PlannerRow {
-  const total = inp.stock.total;
-  const avg = inp.avgDaily;
-  const daysLeft = avg > 0 ? Math.round(total / avg) : null;
-  const qty = recommendedQty(avg, inp.cover, total, inp.lead);
-  const unitCost = inp.info.purchasePrice + inp.info.extraCost;
+  const { info, demand, lead } = inp;
+  const rate = demand.rate;
+  const supply = inp.stock.total + inp.inbound;
 
-  // Zaxira davridagi talabning qoldiq bilan qoplanmagan qismi — yo'qotilgan tushum
-  const demand = forecastUnits(avg, inp.cover);
-  const missed = Math.max(0, demand - total);
+  /** Aniq (kasrli) qiymat hisob uchun, butun kun — ko'rsatish uchun; pastga yaxlitlanadi: ehtiyotkor tomon */
+  const daysExact = rate > 0 ? supply / rate : null;
+  const daysLeft = daysExact === null ? null : Math.floor(daysExact);
+
+  const qty = recommendedQty(rate, inp.cover, supply, lead);
+  const unitCost = info.purchasePrice + info.extraCost;
+  // Katalog narxi eskirgan bo'lishi mumkin (aksiya, o'zgartirilgan narx) — haqiqiy sotuv narxi ishonchliroq
+  const price = demand.avgPrice > 0 ? demand.avgPrice : info.price;
+
+  /*
+   * Buyurtma kuni: shu kuni buyurtma berilsa, tovar qoldiq tugashidan
+   * SAFETY_DAYS kun oldin yetib keladi. Manfiy — kechikilgan.
+   */
+  const orderInDays = daysLeft === null ? null : daysLeft - lead - SAFETY_DAYS;
+
+  /*
+   * HOLAT.
+   *  kritik     — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
+   *  tugayapti  — buyurtma kuni yetdi yoki bir hafta ichida;
+   *  yetarli    — hozircha shoshilmasa bo'ladi;
+   *  harakatsiz — sotuv yo'q, prognoz qurib bo'lmaydi.
+   */
+  let status: PlannerRow['status'];
+  if (daysExact === null || orderInDays === null) status = 'no_action';
+  else if (daysExact <= lead) status = 'critical';
+  else if (orderInDays <= ORDER_SOON_DAYS) status = 'ending';
+  else status = 'enough';
+
+  // Bugun buyurtma berilsa ham qoldiqsiz o'tadigan vaqt
+  const gapExact = daysExact === null ? 0 : Math.max(0, lead - daysExact);
+
+  const variant = variantOf(info.title, info.productTitle);
 
   return {
-    skuId: inp.info.id,
-    sku: inp.info.sku,
-    title: inp.info.title,
-    imageUrl: inp.info.imageUrl,
-    stock: total,
-    avgDaily: round(avg, 2),
+    skuId: info.id,
+    sku: info.sku,
+    title: info.productTitle || info.title,
+    variant,
+    imageUrl: info.imageUrl,
+    stock: inp.stock.total,
+    inbound: inp.inbound,
+    avgDaily: round(rate, 2),
+    soldUnits: demand.units,
+    inStockDays: demand.inStockDays,
+    stockoutDays: demand.stockoutDays,
+    trendPct: demand.trendPct,
     daysLeft,
+    stockoutDate: daysLeft === null ? null : toISODate(addDays(inp.today, daysLeft)),
+    orderBy: orderInDays === null ? null : toISODate(addDays(inp.today, Math.max(0, orderInDays))),
+    orderInDays,
     recommendedQty: qty,
     purchaseCost: round(qty * unitCost),
-    status: plannerStatus(avg, daysLeft),
-    stockoutDate: daysLeft === null ? null : toISODate(addDays(inp.today, daysLeft)),
-    lostRevenue: round(missed * inp.info.price),
+    status,
+    gapDays: Math.ceil(gapExact),
+    lostRevenue: round(gapExact * rate * price),
+    lostPast: round(demand.stockoutDays * rate * price),
   };
 }
 
@@ -156,23 +232,27 @@ router.get(
     const filter = statusParam(req);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [catalog, stocks, avgDaily] = await Promise.all([
+    const [catalog, stocks, demand, inbound] = await Promise.all([
       getSkuCatalog(storeIds, false),
       getLatestStocks(storeIds),
-      getAvgDaily(storeIds, AVG_WINDOW),
+      getDemand(storeIds),
+      getInbound(company.id, storeIds),
     ]);
 
     const today = parseISODate(toISODate(new Date()));
     const search = range.search?.toLowerCase();
 
     const counts = { all: 0, critical: 0, ending: 0, enough: 0, noAction: 0 };
+    // Jamlanmalar butun katalog bo'yicha — qaysi yorliq ochiq bo'lishidan qat'i nazar bir xil
+    const totals = { needSkus: 0, purchaseCost: 0, lostRevenue: 0, lostPast: 0, orderNow: 0 };
     const rows: PlannerRow[] = [];
 
     for (const info of catalog.values()) {
       const row = buildRow({
         info,
         stock: stocks.get(info.id) ?? EMPTY_STOCK,
-        avgDaily: avgDaily.get(info.id) ?? 0,
+        inbound: inbound.get(info.id) ?? 0,
+        demand: demand.get(info.id) ?? NO_DEMAND,
         cover,
         lead,
         today,
@@ -185,7 +265,20 @@ router.get(
       else if (row.status === 'enough') counts.enough += 1;
       else counts.noAction += 1;
 
-      if (search && !info.title.toLowerCase().includes(search) && !info.sku.toLowerCase().includes(search))
+      if (row.recommendedQty > 0) {
+        totals.needSkus += 1;
+        totals.purchaseCost += row.purchaseCost;
+      }
+      totals.lostRevenue += row.lostRevenue;
+      totals.lostPast += row.lostPast;
+      if (row.orderInDays !== null && row.orderInDays <= 0) totals.orderNow += 1;
+
+      if (
+        search &&
+        !info.title.toLowerCase().includes(search) &&
+        !info.productTitle.toLowerCase().includes(search) &&
+        !info.sku.toLowerCase().includes(search)
+      )
         continue;
       if (filter && filter !== 'all' && row.status !== filter) continue;
       // Standart ko'rinishda sotuvi yo'q SKU'lar jadvalni to'ldirmaydi (?status=all — barchasi)
@@ -194,12 +287,12 @@ router.get(
       rows.push(row);
     }
 
-    // Shoshilinchlik bo'yicha: holat → qoldiq kunlari → buyurtma summasi
+    // Shoshilinchlik bo'yicha: holat → buyurtma kuni → buyurtma summasi
     rows.sort((a, b) => {
       const byStatus = STATUS_RANK[a.status] - STATUS_RANK[b.status];
       if (byStatus !== 0) return byStatus;
-      const da = a.daysLeft ?? Number.MAX_SAFE_INTEGER;
-      const db = b.daysLeft ?? Number.MAX_SAFE_INTEGER;
+      const da = a.orderInDays ?? Number.MAX_SAFE_INTEGER;
+      const db = b.orderInDays ?? Number.MAX_SAFE_INTEGER;
       if (da !== db) return da - db;
       return b.purchaseCost - a.purchaseCost;
     });
@@ -208,8 +301,17 @@ router.get(
 
     const payload: PlannerResponse = {
       coverDays: cover,
+      leadDays: lead,
+      windowDays: DEMAND_WINDOW_DAYS,
+      safetyDays: SAFETY_DAYS,
       counts,
-      totalPurchaseCost: round(visible.reduce((s, r) => s + r.purchaseCost, 0)),
+      totals: {
+        needSkus: totals.needSkus,
+        purchaseCost: round(totals.purchaseCost),
+        lostRevenue: round(totals.lostRevenue),
+        lostPast: round(totals.lostPast),
+        orderNow: totals.orderNow,
+      },
       rows: visible,
     };
 
@@ -251,10 +353,11 @@ router.post(
     const lead = leadParam(input.lead);
 
     const storeIds = await getStoreIds(company.id);
-    const [catalog, stocks, avgDaily] = await Promise.all([
+    const [catalog, stocks, demand, inbound] = await Promise.all([
       getSkuCatalog(storeIds, true),
       getLatestStocks(storeIds),
-      getAvgDaily(storeIds, AVG_WINDOW),
+      getDemand(storeIds),
+      getInbound(company.id, storeIds),
     ]);
 
     const ids = [...new Set(input.skuIds)];
@@ -263,9 +366,9 @@ router.post(
 
     const today = parseISODate(toISODate(new Date()));
     const drafts = picked.map((info) => {
-      const stock = stocks.get(info.id) ?? EMPTY_STOCK;
-      const avg = avgDaily.get(info.id) ?? 0;
-      const qty = recommendedQty(avg, cover, stock.total, lead);
+      // Jadvaldagi "Tavsiya" bilan aynan bir xil son
+      const supply = (stocks.get(info.id) ?? EMPTY_STOCK).total + (inbound.get(info.id) ?? 0);
+      const qty = recommendedQty(demand.get(info.id)?.rate ?? 0, cover, supply, lead);
       return { info, qty, boxes: boxCount(qty, info.volumeL) };
     });
 
