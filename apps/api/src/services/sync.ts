@@ -38,6 +38,7 @@ import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
 import { syncLossRecords } from './stock-balance.js';
+import { nextAutoSyncAt } from './sync-schedule.js';
 import {
   applyActualLogistics,
   upsertExpenses,
@@ -307,6 +308,7 @@ export async function cancelSync(companyId: string): Promise<boolean> {
 /**
  * Tarif oralig'i bo'yicha avtomatik (inkremental) sinxronizatsiyalarni navbatga qo'yadi.
  * Ishchi buni har daqiqada chaqiradi. Qaytaradi: navbatga qo'yilgan joblar soni.
+ * Kechasi oraliq siyraklashadi — `nextAutoSyncAt` ga qarang.
  */
 export async function scheduleRecurring(): Promise<number> {
   const now = new Date();
@@ -334,7 +336,7 @@ export async function scheduleRecurring(): Promise<number> {
       await prisma.uzumAccount.update({
         where: { id: account.id },
         data: {
-          nextSyncAt: new Date(now.getTime() + intervalMinutes * 60_000),
+          nextSyncAt: nextAutoSyncAt(now, intervalMinutes),
           syncIntervalM: intervalMinutes,
         },
       });
@@ -1099,7 +1101,7 @@ async function finishJob(run: SyncRun): Promise<void> {
   const now = new Date();
   const summary = summaryText(run);
 
-  await prisma.syncJob.update({
+  const job = await prisma.syncJob.update({
     where: { id: run.jobId },
     data: {
       status: 'done',
@@ -1112,7 +1114,16 @@ async function finishJob(run: SyncRun): Promise<void> {
       etaSeconds: 0,
       finishedAt: now,
     },
+    select: { startedAt: true },
   });
+
+  /*
+   * Oraliq sinxron BOSHLANGAN paytdan sanaladi: 20 daqiqalik tarifda u har
+   * 20 daqiqada yuradi, "20 daqiqa + sinxron davomiyligi"da emas. Sinxron
+   * oraliqdan uzoq cho'zilgan bo'lsa (birinchi to'liq yig'ish) — tugagan paytdan.
+   */
+  const fromStart = nextAutoSyncAt(job.startedAt ?? now, run.syncIntervalMinutes);
+  const nextSyncAt = fromStart.getTime() > now.getTime() ? fromStart : nextAutoSyncAt(now, run.syncIntervalMinutes);
 
   await prisma.uzumAccount.update({
     where: { id: run.accountId },
@@ -1120,7 +1131,7 @@ async function finishJob(run: SyncRun): Promise<void> {
       status: 'active',
       lastError: null,
       lastSyncAt: now,
-      nextSyncAt: new Date(now.getTime() + run.syncIntervalMinutes * 60_000),
+      nextSyncAt,
       syncIntervalM: run.syncIntervalMinutes,
     },
   });

@@ -9,8 +9,9 @@
  * maydonni oshiradi.
  *
  * Shuning uchun har sinxrondan keyin yig'indi solishtiriladi: u oshgan
- * bo'lsa, farq — yangi to'lov. Sinxron ~13 daqiqada bir yuradi, ya'ni
- * to'lov 00:00 da o'tsa, yozuv shu kunning o'zida paydo bo'ladi.
+ * bo'lsa, farq — yangi to'lov. Sinxron kunduzi har 20–60 daqiqada, kechasi
+ * 03:00 va 06:00 da yuradi, ya'ni to'lov 00:00 da o'tsa, yozuv shu kunning
+ * o'zida paydo bo'ladi.
  */
 import { prisma } from '@savdoiq/db';
 import { addDays, round, toISODate, type PayoutHistoryRow } from '@savdoiq/shared';

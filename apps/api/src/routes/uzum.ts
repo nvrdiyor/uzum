@@ -20,6 +20,7 @@ import { companyCtx, requireAuth, requireCompany, requireRole } from '../lib/aut
 import { decryptSecret, encryptSecret, maskKey, randomToken } from '../lib/crypto.js';
 import { createUzumClient } from '../uzum/client.js';
 import { enqueueSync } from '../services/sync.js';
+import { nextAutoSyncAt } from '../services/sync-schedule.js';
 import { env } from '../env.js';
 
 const router = Router();
@@ -230,7 +231,7 @@ router.post(
       data: {
         status: 'active',
         lastError: null,
-        nextSyncAt: new Date(Date.now() + limits.syncIntervalMinutes * 60_000),
+        nextSyncAt: nextAutoSyncAt(new Date(), limits.syncIntervalMinutes),
       },
     });
 
