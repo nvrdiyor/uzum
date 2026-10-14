@@ -643,7 +643,8 @@ router.get(
       itemProfit: round(cur.netProfit),
       margin: metric(curMargin, prevMargin, 2),
       roi: metric(curRoi, prevRoi, 2),
-      ordersCount: metric(cur.ordersTotal, prev.ordersTotal),
+      // Bekor qilingan va qaytarilgan buyurtmalar sanoqqa kirmaydi (Sotuv tahlili bilan bir xil)
+      ordersCount: metric(cur.ordersActive, prev.ordersActive),
       unitsSold: metric(cur.units, prev.units),
       avgCheck: metric(curAvgCheck, prevAvgCheck),
       buyoutRate: metric(curBuyout, prevBuyout, 2),

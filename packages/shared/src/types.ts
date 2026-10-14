@@ -312,9 +312,19 @@ export interface SalesAnalyticsResponse {
   revenue: number;
   /** Davrdagi jami sof foyda (filtr qo'llangan) */
   netProfit: number;
-  /** Bekor qilinmagan/qaytarilmagan buyurtmalar soni (filtr qo'llangan) */
+  /**
+   * BUYURTMALAR SONI — bekor qilinmagan va qaytarilmagan buyurtmalar (filtr
+   * qo'llangan). Yangi buyurtma darhol sanaladi va xaridor olib ketgach ham
+   * sanoqda qoladi; bekor bo'lsa yoki qaytarilsa — sanoqdan chiqadi.
+   * Sahifadagi barcha kesimlar (soat, hafta kuni, yetkazish turi, shahar) shu sanoqda.
+   */
   ordersActive: number;
+  /** Sanoqqa kirmagan: butunlay bekor qilingan buyurtmalar */
+  ordersCanceled: number;
+  /** Sanoqqa kirmagan: butunlay qaytarilgan buyurtmalar */
+  ordersReturned: number;
   hourly: HourlyPoint[];
+  /** Davrdagi BARCHA buyurtmalar, bekor va qaytarilganlari bilan (filtrsiz) */
   totalOrders: number;
   orders: Paginated<OrderRow>;
   byDeliveryType: { type: DeliveryType; orders: number; revenue: number }[];

@@ -439,10 +439,11 @@ export async function getDailySeries(
       row.profit += it.netProfit;
       row.payout += it.payout;
       row.units += it.qty;
+      // Buyurtma — tirik pozitsiyasi bo'lsagina sanaladi (bekor va qaytarilgani kirmaydi)
+      const set = ordersPerDay.get(key) ?? new Set<string>();
+      set.add(it.orderId);
+      ordersPerDay.set(key, set);
     }
-    const set = ordersPerDay.get(key) ?? new Set<string>();
-    set.add(it.orderId);
-    ordersPerDay.set(key, set);
   }
 
   for (const [key, set] of ordersPerDay) {

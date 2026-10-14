@@ -44,6 +44,7 @@ registerNamespace('sales', {
     'kpi.profit': 'Buyurtmalar foydasi',
     'kpi.avgCheck': 'O‘rtacha chek',
     'kpi.ordersHint': 'Tanlangan davr uchun',
+    'kpi.ordersExcluded': 'Bekor qilingan {c} ta va qaytarilgan {r} ta kirmaydi',
     'kpi.revenueHint': 'Bekor va qaytarilganlarsiz, butun davr',
     'kpi.profitHint': 'Komissiya, yetkazish, tannarx va soliq ayirilgan. Omborga logistika va reklama kirmaydi',
     'kpi.avgCheckHint': 'Tushum / faol buyurtmalar',
@@ -104,6 +105,7 @@ registerNamespace('sales', {
     'kpi.profit': 'Прибыль по заказам',
     'kpi.avgCheck': 'Средний чек',
     'kpi.ordersHint': 'За выбранный период',
+    'kpi.ordersExcluded': 'Без отменённых ({c}) и возвращённых ({r})',
     'kpi.revenueHint': 'Без отменённых и возвратов, весь период',
     'kpi.profitHint': 'За вычетом комиссии, доставки, себестоимости и налога. Логистика на склад и реклама не входят',
     'kpi.avgCheckHint': 'Выручка / активные заказы',
@@ -164,6 +166,7 @@ registerNamespace('sales', {
     'kpi.profit': 'Profit on orders',
     'kpi.avgCheck': 'Average check',
     'kpi.ordersHint': 'For the selected period',
+    'kpi.ordersExcluded': 'Excludes {c} cancelled and {r} returned',
     'kpi.revenueHint': 'Excludes cancelled and returned, whole period',
     'kpi.profitHint': 'Net of commission, delivery, cost and tax. Inbound logistics and ads are not included',
     'kpi.avgCheckHint': 'Revenue / active orders',
@@ -330,7 +333,9 @@ export default function Sales() {
     const profit = data?.netProfit ?? 0;
     const ordersActive = data?.ordersActive ?? 0;
     return {
-      orders: data?.orders.total ?? 0,
+      // Faqat tirik buyurtmalar: bekor qilingani va qaytarilgani sanoqdan chiqadi
+      orders: ordersActive,
+      excluded: { canceled: data?.ordersCanceled ?? 0, returned: data?.ordersReturned ?? 0 },
       revenue,
       profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
@@ -588,7 +593,11 @@ export default function Sales() {
               <StatCard
                 label={t('kpi.orders')}
                 value={f.num(kpi.orders)}
-                hint={t('kpi.ordersHint')}
+                hint={
+                  kpi.excluded.canceled + kpi.excluded.returned > 0
+                    ? t('kpi.ordersExcluded', { c: f.num(kpi.excluded.canceled), r: f.num(kpi.excluded.returned) })
+                    : t('kpi.ordersHint')
+                }
                 icon={<Inbox className="h-5 w-5" />}
                 loading={isLoading}
               />

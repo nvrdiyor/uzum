@@ -306,6 +306,7 @@ router.get(
       prisma.order.findMany({
         where,
         select: {
+          status: true,
           deliveryType: true,
           orderedAt: true,
           buyerCity: true,
@@ -340,6 +341,8 @@ router.get(
     let periodRevenue = 0;
     let periodProfit = 0;
     let ordersActive = 0;
+    let ordersCanceled = 0;
+    let ordersReturned = 0;
 
     for (const o of aggRows) {
       let revenue = 0;
@@ -354,7 +357,21 @@ router.get(
       }
       periodRevenue += revenue;
       periodProfit += profit;
-      if (effective) ordersActive += 1;
+
+      /*
+       * Buyurtma sanoqqa faqat TIRIK bo'lsa kiradi: kamida bitta pozitsiyasi
+       * bekor qilinmagan va qaytarilmagan. Butunlay bekor bo'lgan yoki
+       * qaytarilgan buyurtma hech bir kesimda sanalmaydi — aks holda "83 ta
+       * buyurtma" ichida 20 dan ortig'i hech qachon sotuv bo'lmagan bo'lardi
+       * va soatlik grafik ham, yetkazish turlari ham shuncha oshib ko'rinardi.
+       */
+      if (!effective) {
+        const returned = o.status === 'returned' || o.items.some((it) => it.status === 'returned' || it.returnedAt);
+        if (returned) ordersReturned += 1;
+        else ordersCanceled += 1;
+        continue;
+      }
+      ordersActive += 1;
 
       const local = toLocal(o.orderedAt);
       const hourBucket = hourly[local.getUTCHours()];
@@ -405,6 +422,8 @@ router.get(
       revenue: round(periodRevenue),
       netProfit: round(periodProfit),
       ordersActive,
+      ordersCanceled,
+      ordersReturned,
       orders,
       byDeliveryType: DELIVERY_TYPES.map((type) => {
         const agg = byDelivery.get(type) ?? { orders: 0, revenue: 0 };

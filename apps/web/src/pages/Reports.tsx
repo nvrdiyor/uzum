@@ -567,7 +567,8 @@ export default function Reports() {
               <StatCard
                 label={t('kpi.avgCheck')}
                 value={f.money(data.avgCheck)}
-                hint={t('kpi.avgCheckHint', { v: f.num(data.ordersTotal) })}
+                // O'rtacha chek tirik buyurtmalarga bo'linadi — izohdagi son ham shular (bekor va qaytarilgani kirmaydi)
+                hint={t('kpi.avgCheckHint', { v: f.num(Math.max(0, data.ordersTotal - data.canceled - data.returns)) })}
                 icon={<ShoppingBag className="h-5 w-5" />}
                 tone="violet"
               />
