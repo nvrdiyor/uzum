@@ -38,6 +38,9 @@ import {
   type Period,
   type ProductCard,
   type ProductCardSku,
+  type ProductProfitMoney,
+  type ProductProfitResponse,
+  type ProductProfitRow,
   type ProductsResponse,
   type UnitCalcInput,
   type UnitCalcResult,
@@ -59,7 +62,7 @@ import {
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
-import { aggregateSalesNet, investedIn } from '../services/pnl.js';
+import { aggregateSalesNet, getPeriodCosts, investedIn } from '../services/pnl.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -618,6 +621,159 @@ function illiquidAdvice(
   if (daysLeft !== null && daysLeft > 180) return 'promo';
   return 'watch';
 }
+
+// ─────────────────────────── GET /profit — mahsulot foydasi ───────────────────────────
+
+const MONEY_KEYS = [
+  'revenue',
+  'commission',
+  'logistics',
+  'payout',
+  'cogs',
+  'otherCost',
+  'tax',
+  'ads',
+  'netProfit',
+] as const satisfies readonly (keyof ProductProfitMoney)[];
+
+const emptyMoney = (): ProductProfitMoney => ({
+  revenue: 0,
+  commission: 0,
+  logistics: 0,
+  payout: 0,
+  cogs: 0,
+  otherCost: 0,
+  tax: 0,
+  ads: 0,
+  netProfit: 0,
+});
+
+const mapMoney = (m: ProductProfitMoney, f: (v: number) => number): ProductProfitMoney => {
+  const out = emptyMoney();
+  for (const k of MONEY_KEYS) out[k] = f(m[k]);
+  return out;
+};
+
+/**
+ * Har bir mahsulot qancha pul qoldirdi: tushum → Uzum to'laydigani → sof foyda,
+ * jami va bir dona hisobida.
+ *
+ * Foyda ta'rifi butun saytdagi bilan bir xil (services/pnl.ts): pozitsiya
+ * foydasidan shu mahsulotning reklama to'lovi ayriladi. Soliq alohida
+ * saqlanmaydi — u ayniyatdan tiklanadi (chiqarishga − tannarx − qo'shimcha −
+ * pozitsiya foydasi), shuning uchun kartochkadagi qatorlar so'mgacha yopiladi.
+ */
+router.get(
+  '/profit',
+  requireFeature('unit_economics'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    const [catalog, sales, costs, orderLines] = await Promise.all([
+      getSkuCatalog(storeIds, true),
+      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
+      getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
+      // Buyurtmalar soni mahsulot bo'yicha ANIQ bo'lsin: bitta buyurtmada ikki rang bo'lsa ikki marta sanalmaydi
+      storeIds.length
+        ? prisma.orderItem.findMany({
+            where: {
+              orderedAt: { gte: range.from, lt: range.toExclusive },
+              order: { storeId: { in: storeIds } },
+              status: { notIn: ['canceled', 'returned'] },
+              returnedAt: null,
+              qty: { gt: 0 },
+              skuId: { not: null },
+            },
+            select: { skuId: true, orderId: true },
+          })
+        : Promise.resolve([] as { skuId: string | null; orderId: string }[]),
+    ]);
+
+    const skuCount = new Map<string, number>();
+    for (const info of catalog.values()) skuCount.set(info.productId, (skuCount.get(info.productId) ?? 0) + 1);
+
+    const ordersOf = new Map<string, Set<string>>();
+    for (const line of orderLines) {
+      const info = line.skuId ? catalog.get(line.skuId) : undefined;
+      if (!info) continue;
+      const set = ordersOf.get(info.productId) ?? new Set<string>();
+      set.add(line.orderId);
+      ordersOf.set(info.productId, set);
+    }
+
+    const byProduct = new Map<string, { info: SkuInfo; money: ProductProfitMoney; units: number; returns: number; image: string | null }>();
+    let attributedAds = 0;
+    for (const [skuId, agg] of sales) {
+      const info = catalog.get(skuId);
+      if (!info) continue;
+      attributedAds += agg.adFee;
+      // Pozitsiya foydasi (reklamagacha) = to'lov − tannarx − qo'shimcha − soliq
+      const itemProfit = agg.netProfit + agg.adFee;
+      const cur = byProduct.get(info.productId) ?? {
+        info,
+        money: emptyMoney(),
+        units: 0,
+        returns: 0,
+        image: null,
+      };
+      cur.money.revenue += agg.revenue;
+      cur.money.commission += agg.commission;
+      cur.money.logistics += agg.logistics;
+      cur.money.payout += agg.payout;
+      cur.money.cogs += agg.cogs;
+      cur.money.otherCost += agg.otherCost;
+      cur.money.tax += agg.payout - agg.cogs - agg.otherCost - itemProfit;
+      cur.money.ads += agg.adFee;
+      cur.money.netProfit += agg.netProfit;
+      cur.units += agg.units;
+      cur.returns += agg.returns;
+      cur.image ??= info.imageUrl;
+      byProduct.set(info.productId, cur);
+    }
+
+    const rows: ProductProfitRow[] = [...byProduct.entries()]
+      .filter(([, p]) => p.units > 0 || p.money.ads > 0)
+      .map(([productId, p]) => ({
+        productId,
+        title: p.info.productTitle || p.info.title,
+        category: p.info.category,
+        imageUrl: p.image,
+        skuCount: skuCount.get(productId) ?? 1,
+        units: p.units,
+        orders: ordersOf.get(productId)?.size ?? 0,
+        returns: p.returns,
+        ...mapMoney(p.money, round),
+        margin: pct(p.money.netProfit, p.money.revenue),
+        roi: pct(p.money.netProfit, investedIn(p.money.cogs, p.money.otherCost)),
+        perUnit: p.units > 0 ? mapMoney(p.money, (v) => round(v / p.units)) : emptyMoney(),
+      }))
+      .sort((a, b) => b.netProfit - a.netProfit);
+
+    const total = emptyMoney();
+    for (const r of rows) for (const k of MONEY_KEYS) total[k] += r[k];
+    const units = rows.reduce((s, r) => s + r.units, 0);
+
+    const payload: ProductProfitResponse = {
+      period: range.period,
+      currency: company.currency,
+      totals: {
+        ...mapMoney(total, round),
+        units,
+        // Do'kon bo'yicha tirik buyurtmalar (bir buyurtmada ikki mahsulot bo'lsa bir marta)
+        orders: new Set(orderLines.map((l) => l.orderId)).size,
+        products: rows.length,
+        margin: pct(total.netProfit, total.revenue),
+        roi: pct(total.netProfit, investedIn(total.cogs, total.otherCost)),
+      },
+      rows,
+      unallocated: round(Math.max(0, costs.total - attributedAds)),
+    };
+
+    res.json(payload);
+  }),
+);
 
 router.get(
   '/illiquid',

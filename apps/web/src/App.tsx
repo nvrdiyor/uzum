@@ -46,6 +46,7 @@ const Returns = lazyPage(() => import('@/pages/Returns'), '/returns');
 const Storage = lazyPage(() => import('@/pages/Storage'), '/storage');
 const Finance = lazyPage(() => import('@/pages/Finance'), '/finance');
 const UnitEconomics = lazyPage(() => import('@/pages/UnitEconomics'), '/unit-economics');
+const ProductProfit = lazyPage(() => import('@/pages/ProductProfit'), '/product-profit');
 const Expenses = lazyPage(() => import('@/pages/Expenses'), '/expenses');
 const Calculator = lazyPage(() => import('@/pages/Calculator'), '/calculator');
 const ImportCalculator = lazyPage(() => import('@/pages/ImportCalculator'), '/import-calculator');
@@ -175,6 +176,7 @@ export default function App() {
               <Route path="/storage" element={<Storage />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/unit-economics" element={<UnitEconomics />} />
+              <Route path="/product-profit" element={<ProductProfit />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/calculator" element={<Calculator />} />
               <Route path="/import-calculator" element={<ImportCalculator />} />

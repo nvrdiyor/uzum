@@ -516,6 +516,63 @@ export interface ProductsResponse {
   items: Paginated<ProductCard>;
 }
 
+// ─────────────────────────── Mahsulot foydasi ───────────────────────────
+
+/**
+ * Bitta mahsulotning pul oqimi davr bo'yicha: tushumdan sof foydagacha.
+ *
+ * Zanjir yopiladi:
+ *   tushum − komissiya − yetkazish = chiqarishga (Uzum to'laydigan pul)
+ *   chiqarishga − tannarx − qo'shimcha − soliq − reklama = sof foyda
+ * Bekor qilingan va qaytarilgan sotuvlar kirmaydi.
+ */
+export interface ProductProfitMoney {
+  revenue: number;
+  commission: number;
+  logistics: number;
+  /** Uzum "yechib olish uchun" beradigan summa */
+  payout: number;
+  /** Tovar tannarxi (sotib olish narxi × dona) */
+  cogs: number;
+  /** Bir donaga qo'shimcha xarajat (qadoq, marker) × dona */
+  otherCost: number;
+  tax: number;
+  /** Shu mahsulotning reklama to'lovi (buyurtmalarni ko'paytirish) */
+  ads: number;
+  netProfit: number;
+}
+
+export interface ProductProfitRow extends ProductProfitMoney {
+  /** Ichki mahsulot id'si — tafsilot sahifasiga havola */
+  productId: string;
+  title: string;
+  category: string | null;
+  imageUrl: string | null;
+  skuCount: number;
+  /** Sotilgan dona (bekor va qaytarilganlarsiz) */
+  units: number;
+  orders: number;
+  returns: number;
+  margin: number;
+  /** Sof foyda ÷ (tannarx + qo'shimcha), % */
+  roi: number;
+  /** Bir donaga: shu davrdagi o'rtacha (jami ÷ dona); sotuv bo'lmasa 0 */
+  perUnit: ProductProfitMoney;
+}
+
+export interface ProductProfitResponse {
+  period: Period;
+  currency: string;
+  totals: ProductProfitMoney & { units: number; orders: number; products: number; margin: number; roi: number };
+  rows: ProductProfitRow[];
+  /**
+   * Mahsulotga bog'lab bo'lmaydigan davr xarajatlari: omborga logistika, umumiy
+   * reklama, saqlash va h.k. Mahsulotlar sof foydasi yig'indisidan shu ayrilsa —
+   * do'konning sof foydasi chiqadi (Boshqaruv panelidagi bilan bir xil).
+   */
+  unallocated: number;
+}
+
 // ─────────────────────────── ABC tahlil ───────────────────────────
 
 export interface AbcRow {
