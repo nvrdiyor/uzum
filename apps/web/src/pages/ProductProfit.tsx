@@ -45,6 +45,7 @@ registerNamespace('productProfit', {
       'Mahsulotlar sof foydasi {products}. Mahsulotga bog‘lab bo‘lmaydigan xarajatlar (omborga logistika, umumiy reklama, saqlash) {other} ayirilsa — do‘kon sof foydasi {store}, Boshqaruv panelidagi bilan bir xil.',
     'card.meta': '{units} dona · {orders} buyurtma',
     'card.skus': '{n} SKU',
+    'card.hidden': 'Katalogdan yashirilgan',
     'card.net': 'Sof foyda',
     'card.perUnit': '1 donadan {v}',
     'card.loss': 'Zarar',
@@ -91,6 +92,7 @@ registerNamespace('productProfit', {
       'Чистая прибыль товаров {products}. За вычетом расходов, не привязанных к товару (логистика на склад, общая реклама, хранение) {other}, прибыль магазина — {store}, как на главной панели.',
     'card.meta': '{units} шт. · {orders} заказов',
     'card.skus': '{n} SKU',
+    'card.hidden': 'Скрыт из каталога',
     'card.net': 'Чистая прибыль',
     'card.perUnit': 'С 1 шт. {v}',
     'card.loss': 'Убыток',
@@ -137,6 +139,7 @@ registerNamespace('productProfit', {
       'Net profit of products is {products}. Less costs not tied to a product (inbound logistics, general ads, storage) of {other}, the store net profit is {store} — the same as on the dashboard.',
     'card.meta': '{units} units · {orders} orders',
     'card.skus': '{n} SKUs',
+    'card.hidden': 'Hidden from catalogue',
     'card.net': 'Net profit',
     'card.perUnit': '{v} per unit',
     'card.loss': 'Loss',
@@ -368,8 +371,12 @@ export function ProfitCard({ row }: { row: ProductProfitRow }) {
           >
             {row.title}
           </Link>
-          <p className="mt-1 truncate text-xs text-muted">
-            {[row.category, t('card.skus', { n: row.skuCount })].filter(Boolean).join(' · ')}
+          <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted">
+            <span className="truncate">{[row.category, t('card.skus', { n: row.skuCount })].filter(Boolean).join(' · ')}</span>
+            {/* Yashirilgan bo'lsa ham puli hisobda — sotuvchi qaysi biri ekanini bilsin */}
+            {row.hidden ? (
+              <span className="shrink-0 rounded-md border border-line bg-surface-2 px-1.5 py-px text-2xs">{t('card.hidden')}</span>
+            ) : null}
           </p>
           <p className="tnum mt-0.5 text-xs text-ink-soft">
             {t('card.meta', { units: f.num(row.units), orders: f.num(row.orders) })}

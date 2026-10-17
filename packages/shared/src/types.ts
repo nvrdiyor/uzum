@@ -548,6 +548,8 @@ export interface ProductProfitRow extends ProductProfitMoney {
   title: string;
   category: string | null;
   imageUrl: string | null;
+  /** Sotuvchi katalogdan yashirgan mahsulot — puli baribir hisobda */
+  hidden: boolean;
   skuCount: number;
   /** Sotilgan dona (bekor va qaytarilganlarsiz) */
   units: number;

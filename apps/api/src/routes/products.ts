@@ -671,8 +671,7 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, sales, costs, orderLines] = await Promise.all([
-      getSkuCatalog(storeIds, true),
+    const [sales, costs, orderLines] = await Promise.all([
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       // Buyurtmalar soni mahsulot bo'yicha ANIQ bo'lsin: bitta buyurtmada ikki rang bo'lsa ikki marta sanalmaydi
@@ -691,32 +690,66 @@ router.get(
         : Promise.resolve([] as { skuId: string | null; orderId: string }[]),
     ]);
 
-    const skuCount = new Map<string, number>();
-    for (const info of catalog.values()) skuCount.set(info.productId, (skuCount.get(info.productId) ?? 0) + 1);
+    /*
+     * SKU ma'lumoti katalogdan EMAS, sotuvi bor SKU'lardan to'g'ridan-to'g'ri.
+     * Katalog yashirilgan va arxivlangan mahsulotlarni chiqarib tashlaydi —
+     * birinchi versiyada shu sabab sotuvchi yashirgan ikki mahsulotning pullari
+     * sahifadan tushib qoldi va yig'indi paneldagi sof foydadan 403 330 kam
+     * chiqdi. Pul yashirilgan tovardan kelgan bo'lsa ham — u pul.
+     */
+    const skuIds = [...new Set([...sales.keys(), ...orderLines.map((l) => l.skuId).filter((id): id is string => Boolean(id))])];
+    const skuRows = skuIds.length
+      ? await prisma.sku.findMany({
+          where: { id: { in: skuIds } },
+          select: {
+            id: true,
+            imageUrl: true,
+            productId: true,
+            product: { select: { title: true, category: true, imageUrl: true, hidden: true } },
+          },
+        })
+      : [];
+    const skuInfo = new Map(skuRows.map((s) => [s.id, s]));
+    const productIds = [...new Set(skuRows.map((s) => s.productId))];
+    const skuCounts = productIds.length
+      ? await prisma.sku.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: { _all: true } })
+      : [];
+    const skuCount = new Map(skuCounts.map((g) => [g.productId, g._count._all]));
 
     const ordersOf = new Map<string, Set<string>>();
     for (const line of orderLines) {
-      const info = line.skuId ? catalog.get(line.skuId) : undefined;
+      const info = line.skuId ? skuInfo.get(line.skuId) : undefined;
       if (!info) continue;
       const set = ordersOf.get(info.productId) ?? new Set<string>();
       set.add(line.orderId);
       ordersOf.set(info.productId, set);
     }
 
-    const byProduct = new Map<string, { info: SkuInfo; money: ProductProfitMoney; units: number; returns: number; image: string | null }>();
+    type ProductAgg = {
+      title: string;
+      category: string | null;
+      hidden: boolean;
+      image: string | null;
+      money: ProductProfitMoney;
+      units: number;
+      returns: number;
+    };
+    const byProduct = new Map<string, ProductAgg>();
     let attributedAds = 0;
     for (const [skuId, agg] of sales) {
-      const info = catalog.get(skuId);
+      const info = skuInfo.get(skuId);
       if (!info) continue;
       attributedAds += agg.adFee;
       // Pozitsiya foydasi (reklamagacha) = to'lov − tannarx − qo'shimcha − soliq
       const itemProfit = agg.netProfit + agg.adFee;
-      const cur = byProduct.get(info.productId) ?? {
-        info,
+      const cur: ProductAgg = byProduct.get(info.productId) ?? {
+        title: info.product.title,
+        category: info.product.category,
+        hidden: info.product.hidden,
+        image: info.product.imageUrl,
         money: emptyMoney(),
         units: 0,
         returns: 0,
-        image: null,
       };
       cur.money.revenue += agg.revenue;
       cur.money.commission += agg.commission;
@@ -737,9 +770,10 @@ router.get(
       .filter(([, p]) => p.units > 0 || p.money.ads > 0)
       .map(([productId, p]) => ({
         productId,
-        title: p.info.productTitle || p.info.title,
-        category: p.info.category,
+        title: p.title,
+        category: p.category,
         imageUrl: p.image,
+        hidden: p.hidden,
         skuCount: skuCount.get(productId) ?? 1,
         units: p.units,
         orders: ordersOf.get(productId)?.size ?? 0,
