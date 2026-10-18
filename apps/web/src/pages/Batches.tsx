@@ -23,7 +23,7 @@ import {
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
-import { BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
+import { BatchEtaCell, BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
 import { cn } from '@/lib/utils';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
@@ -343,7 +343,7 @@ export default function Batches() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[1040px] text-sm">
                 <thead>
                   <tr>
                     {canEdit ? <th className="table-head w-10 border-b border-line" /> : null}
@@ -351,6 +351,9 @@ export default function Batches() {
                       {t('col.name')}
                     </th>
                     <th className="table-head border-b border-line px-4 py-3 text-left">{t('col.status')}</th>
+                    <th className="table-head border-b border-line px-4 py-3 text-left" title={t('col.etaHint')}>
+                      {t('col.eta')}
+                    </th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.items')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cny')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.goods')}</th>
@@ -406,6 +409,9 @@ export default function Batches() {
                       <td className="px-4 py-3.5 align-middle">
                         {/* Bosilganda jo'natmalar oynasi ochiladi; ko'rish huquqi bo'lsa ham holat ko'rinadi */}
                         <BatchStatusCell batch={b} onClick={canEdit ? () => setShipId(b.id) : undefined} />
+                      </td>
+                      <td className="px-4 py-3.5 align-middle">
+                        <BatchEtaCell batch={b} />
                       </td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{t('items', { n: b.totals.items })}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.priceCny, 2)}</td>
@@ -463,6 +469,7 @@ export default function Batches() {
                   <tr className="border-t border-line bg-surface-2/60">
                     {canEdit ? <td /> : null}
                     <td className={cn('py-3 font-semibold text-ink', canEdit ? 'pl-1 pr-5' : 'px-5')}>{t('row.totals')}</td>
+                    <td />
                     <td />
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{t('items', { n: foot.items })}</td>
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.cny, 2)}</td>

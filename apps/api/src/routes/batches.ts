@@ -154,6 +154,8 @@ function buildShipments(
         arrivedAt: null,
         days: null,
         expectedAt: null,
+        expectedBasis: null,
+        daysLeft: null,
       };
       g.items += 1;
       g.qty += it.qty;
@@ -193,6 +195,8 @@ function buildShipments(
     groupsOf.set(b.id, [...groups.values()]);
   }
 
+  /** Yetkazish turi bo'yicha barcha kargolarning muddatlari — kargoning o'z ma'lumoti bo'lmasa zaxira taxmin */
+  const modeDays = new Map<BatchDelivery, number[]>();
   const stats: CargoStat[] = [...statAcc.values()]
     .map((a) => {
       // Har reys — bitta nuqta (bir necha partiyada kiritilgan bo'lsa, ularning o'rtachasi)
@@ -200,6 +204,7 @@ function buildShipments(
         ...a.loose,
         ...[...a.trips.values()].map((list) => Math.round(list.reduce((x, y) => x + y, 0) / list.length)),
       ];
+      modeDays.set(a.delivery, [...(modeDays.get(a.delivery) ?? []), ...days]);
       return {
         cargoName: a.cargoName,
         delivery: a.delivery,
@@ -213,14 +218,26 @@ function buildShipments(
     .filter((st) => st.arrived > 0 || st.inTransit > 0)
     .sort((x, y) => y.arrived - x.arrived || x.cargoName.localeCompare(y.cargoName));
 
-  // Yo'ldagi jo'natma qachon keladi — shu kargo va turining o'rtachasi bo'yicha
+  /*
+   * Yo'ldagi har jo'natma (har reys) qachon keladi. Avval shu kargo va turining
+   * o'z o'rtachasi; u hali yo'q bo'lsa (kargo birinchi marta olib kelyapti) —
+   * shu turdagi barcha kargolar o'rtachasi. Bir partiyadagi ikki reys har biri
+   * o'z sanasidan hisoblanadi.
+   */
   const avgOf = new Map(stats.map((st) => [`${cargoKeyOf(st.cargoName)}|${st.delivery}`, st.avgDays]));
+  const modeAvg = new Map(
+    [...modeDays].filter(([, list]) => list.length > 0).map(([mode, list]) => [mode, list.reduce((x, y) => x + y, 0) / list.length]),
+  );
   for (const groups of groupsOf.values()) {
     for (const g of groups) {
-      const avg = avgOf.get(`${cargoKeyOf(g.cargoName)}|${g.delivery}`);
-      if (g.status === 'shipped' && g.shippedAt && avg != null) {
-        g.expectedAt = isoDay(new Date(dayDate(g.shippedAt).getTime() + Math.round(avg) * DAY_MS));
-      }
+      if (g.status !== 'shipped' || !g.shippedAt) continue;
+      const own = avgOf.get(`${cargoKeyOf(g.cargoName)}|${g.delivery}`);
+      const avg = own ?? modeAvg.get(g.delivery) ?? null;
+      if (avg == null) continue;
+      const expected = new Date(dayDate(g.shippedAt).getTime() + Math.round(avg) * DAY_MS);
+      g.expectedAt = isoDay(expected);
+      g.expectedBasis = own != null ? 'cargo' : 'mode';
+      g.daysLeft = daysBetween(now, expected);
     }
   }
 

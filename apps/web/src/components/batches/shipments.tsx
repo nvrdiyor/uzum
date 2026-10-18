@@ -27,10 +27,12 @@ export function BatchStatusCell({ batch, onClick }: { batch: BatchSummary; onCli
 
   let note = '';
   if (batch.status === 'shipped') {
-    const onRoad = groups.filter((g) => g.status === 'shipped');
-    const first = onRoad.find((g) => g.expectedAt) ?? onRoad[0];
-    if (first?.expectedAt) note = t('status.expected', { date: shortDay(first.expectedAt) });
-    else if (first?.days != null) note = t('status.onRoad', { n: first.days });
+    // Eng uzoq yo'lda turgani — "necha kundan beri"
+    const days = groups
+      .filter((g) => g.status === 'shipped')
+      .map((g) => g.days)
+      .filter((d): d is number => d != null);
+    if (days.length) note = t('status.onRoad', { n: Math.max(...days) });
   } else if (batch.status === 'arrived') {
     const days = groups.map((g) => g.days).filter((d): d is number => d != null);
     if (days.length) note = t('status.arrivedIn', { n: Math.max(...days) });
@@ -57,6 +59,69 @@ export function BatchStatusCell({ batch, onClick }: { batch: BatchSummary; onCli
         </span>
       ) : null}
     </button>
+  );
+}
+
+/**
+ * Taxminiy kelish: yo'ldagi HAR jo'natma (har reys) o'z qatorida — sana, necha
+ * kun qolgani yoki necha kun kechikayotgani. Bir partiyada 50- va 51-reys bo'lsa,
+ * ikkalasi alohida ko'rinadi.
+ */
+export function BatchEtaCell({ batch }: { batch: BatchSummary }) {
+  const t = useT('batches');
+  const onRoad = batch.shipments.filter((g) => g.status === 'shipped');
+
+  if (onRoad.length === 0) {
+    const arrived = batch.shipments.map((g) => g.arrivedAt).filter((d): d is string => Boolean(d));
+    if (batch.status === 'arrived' && arrived.length) {
+      const last = arrived.sort().at(-1) as string;
+      return <span className="tnum whitespace-nowrap text-xs text-muted">{t('eta.arrived', { date: shortDay(last) })}</span>;
+    }
+    return <span className="text-muted">—</span>;
+  }
+
+  // Partiyada bir nechta jo'natma bo'lsa, har qatorda qaysi biri ekani yoziladi
+  const many = batch.shipments.length > 1;
+  return (
+    <ul className="space-y-1">
+      {onRoad.map((g) => {
+        const label = g.trip
+          ? t('ship.trip', { n: g.trip })
+          : many
+            ? `${g.cargoName || t('cargo.noName')} ${t(`delivery.${g.delivery}`)}`
+            : '';
+        const late = g.daysLeft != null && g.daysLeft < 0;
+        const mode = t(`delivery.${g.delivery}`).toLowerCase();
+        const hint = !g.expectedAt
+          ? t('eta.unknownHint', { mode })
+          : g.expectedBasis === 'mode'
+            ? t('eta.modeHint', { cargo: g.cargoName || t('cargo.noName'), mode })
+            : t('eta.cargoHint', { cargo: g.cargoName || t('cargo.noName'), mode });
+        return (
+          <li key={`${g.cargoName}|${g.delivery}|${g.trip}`} className="flex items-baseline gap-1.5 whitespace-nowrap text-xs" title={hint}>
+            {label ? <span className="text-muted">{label}:</span> : null}
+            {g.expectedAt ? (
+              <>
+                <span className={cn('tnum font-semibold', late ? 'text-warn-ink' : 'text-ink')}>
+                  {g.expectedBasis === 'mode' ? '≈' : '~'}
+                  {shortDay(g.expectedAt)}
+                </span>
+                <span className={cn('tnum', late ? 'text-warn-ink' : 'text-muted')}>
+                  ·{' '}
+                  {late
+                    ? t('eta.late', { n: -(g.daysLeft as number) })
+                    : g.daysLeft === 0
+                      ? t('eta.today')
+                      : t('eta.left', { n: g.daysLeft ?? 0 })}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted">{t('eta.unknown')}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

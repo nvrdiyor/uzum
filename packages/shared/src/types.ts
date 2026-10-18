@@ -998,8 +998,16 @@ export interface BatchShipment {
   arrivedAt: string | null;
   /** Keldi — yo'lda o'tgan kunlar; yo'lda — jo'natilgandan beri o'tgan kunlar */
   days: number | null;
-  /** Yo'lda bo'lsa: shu kargo va turining o'rtacha muddati bo'yicha taxminiy kelish kuni */
+  /** Yo'lda bo'lsa: taxminiy kelish kuni (YYYY-MM-DD) */
   expectedAt: string | null;
+  /**
+   * Taxmin nimaga asoslangan: `cargo` — shu kargo va turining o'zi olib kelgan
+   * jo'natmalar; `mode` — bu kargo bo'yicha hali ma'lumot yo'q, shu turdagi
+   * (avia yoki avto) barcha kargolar o'rtachasi. Taxmin bo'lmasa null.
+   */
+  expectedBasis: 'cargo' | 'mode' | null;
+  /** Taxminiy kelishgacha qolgan kun (bugun — savdo kuni); manfiy — kechikmoqda */
+  daysLeft: number | null;
 }
 
 export interface BatchSummary {
