@@ -966,6 +966,30 @@ export interface BatchTotals {
   total: number;
 }
 
+/** Jo'natma holati: Xitoydagi omborda → yo'lda → keldi */
+export type ShipmentStatus = 'warehouse' | 'shipped' | 'arrived';
+
+/**
+ * Partiyadagi bitta jo'natma — bitta kargo va bitta yetkazish turi bilan
+ * ketgan tovarlar (masalan "MANDARIN · avia" va "TEZ-TEZ · avto" — ikki jo'natma).
+ */
+export interface BatchShipment {
+  /** Qatorlardagi yozilishi (birinchi uchragani); bo'sh — kargo ko'rsatilmagan */
+  cargoName: string;
+  delivery: BatchDelivery;
+  /** Shu jo'natmadagi qatorlar soni */
+  items: number;
+  qty: number;
+  status: ShipmentStatus;
+  /** YYYY-MM-DD */
+  shippedAt: string | null;
+  arrivedAt: string | null;
+  /** Keldi — yo'lda o'tgan kunlar; yo'lda — jo'natilgandan beri o'tgan kunlar */
+  days: number | null;
+  /** Yo'lda bo'lsa: shu kargo va turining o'rtacha muddati bo'yicha taxminiy kelish kuni */
+  expectedAt: string | null;
+}
+
 export interface BatchSummary {
   id: string;
   name: string;
@@ -974,6 +998,25 @@ export interface BatchSummary {
   totals: BatchTotals;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Qolgan tovar qayerda: biror jo'natma yo'lda bo'lsa — yo'lda, aks holda
+   * biror jo'natma omborda bo'lsa — omborda, hammasi kelgan bo'lsa — keldi.
+   */
+  status: ShipmentStatus;
+  shipments: BatchShipment[];
+}
+
+/** Kargo kompaniyasi va yetkazish turi bo'yicha haqiqiy muddat */
+export interface CargoStat {
+  cargoName: string;
+  delivery: BatchDelivery;
+  /** Ikkala sanasi kiritilgan, kelgan jo'natmalar soni */
+  arrived: number;
+  avgDays: number | null;
+  minDays: number | null;
+  maxDays: number | null;
+  /** Hozir yo'lda */
+  inTransit: number;
 }
 
 export interface BatchDetail extends BatchSummary {
@@ -987,6 +1030,9 @@ export interface BatchDetail extends BatchSummary {
 export interface BatchListResponse {
   items: BatchSummary[];
   total: number;
+  /** Barcha partiyalar bo'yicha jami */
+  grand: { qty: number; priceCny: number; goodsUzs: number; cargoUzs: number; extra: number; total: number };
+  cargoStats: CargoStat[];
 }
 
 export interface BatchRate {

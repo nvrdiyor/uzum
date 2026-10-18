@@ -149,6 +149,19 @@ export const batchCreateSchema = z.object({
   rate: z.coerce.number().positive().max(1_000_000).optional(),
 });
 
+const isoDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana YYYY-MM-DD ko‘rinishida bo‘lsin');
+
+/** Jo'natma holati va sanalari (kargo + yetkazish turi bo'yicha) */
+export const batchShipmentSchema = z.object({
+  cargoName: z.string().trim().max(60).default(''),
+  delivery: z.enum(['avia', 'avto']),
+  status: z.enum(['warehouse', 'shipped', 'arrived']),
+  shippedAt: isoDay.nullable().optional(),
+  arrivedAt: isoDay.nullable().optional(),
+});
+
 /** Partiyalar ro'yxatining yangi tartibi — yuqoridan pastga id'lar */
 export const batchOrderSchema = z.object({
   ids: z.array(z.string().min(1).max(64)).min(1).max(500),

@@ -776,11 +776,34 @@ model PurchaseBatch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  items   PurchaseBatchItem[]
-  extras  PurchaseBatchExtra[]
+  company   Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items     PurchaseBatchItem[]
+  extras    PurchaseBatchExtra[]
+  shipments PurchaseBatchShipment[]
 
   @@index([companyId, createdAt])
+}
+
+/// Partiyaning bitta jo'natmasi: bitta kargo va bitta yetkazish turi (avia/avto)
+/// bilan ketgan tovarlar. Holat va sanalar alohida jadvalda — partiya jadvali
+/// (qatorlar) har saqlanganda qayta yoziladi, bu yerdagilar esa o'chib ketmaydi.
+/// Kargolarning o'rtacha yetkazish muddati shu sanalardan hisoblanadi.
+model PurchaseBatchShipment {
+  id        String    @id @default(cuid())
+  batchId   String
+  /// Kargo nomi — katta harfda, bo'sh joysiz (qatorlardagi yozilishidan qat'i nazar bitta jo'natma)
+  cargoKey  String    @default("")
+  /// avia | avto
+  delivery  String    @default("avto")
+  /// warehouse — Xitoydagi omborda | shipped — yo'lda | arrived — keldi
+  status    String    @default("warehouse")
+  shippedAt DateTime?
+  arrivedAt DateTime?
+  updatedAt DateTime  @updatedAt
+
+  batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, cargoKey, delivery])
 }
 
 /// Qo'shimcha xarajat tafsiloti (bojxona, yo'l haqi...). Yig'indisi PurchaseBatch.extra ga yoziladi

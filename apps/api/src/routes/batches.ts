@@ -11,13 +11,18 @@ import { prisma } from '@savdoiq/db';
 import {
   batchCreateSchema,
   batchOrderSchema,
+  batchShipmentSchema,
   batchUpdateSchema,
   calcBatch,
+  toBusinessDate,
   type BatchDelivery,
   type BatchDetail,
   type BatchListResponse,
   type BatchRate,
+  type BatchShipment,
   type BatchSummary,
+  type CargoStat,
+  type ShipmentStatus,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
@@ -57,7 +62,139 @@ const toDelivery = (v: string): BatchDelivery => (v === 'avia' ? 'avia' : 'avto'
 
 type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>;
 
-function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>): BatchSummary {
+// ─────────────────────────── Jo'natmalar va kargo muddati ───────────────────────────
+
+/** Kargo nomi qanday yozilganidan qat'i nazar bitta kalit: "Tez-tez " va "TEZ-TEZ" — bitta kargo */
+const cargoKeyOf = (name: string): string => name.trim().replace(/\s+/g, ' ').toUpperCase();
+
+const DAY_MS = 86_400_000;
+const isoDay = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
+const dayDate = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+const daysBetween = (from: Date, to: Date): number => Math.round((to.getTime() - from.getTime()) / DAY_MS);
+/** Bugun — savdo kuni (Toshkent) bo'yicha */
+const today = (): Date => dayDate(toBusinessDate(new Date()));
+
+interface ShipRecord {
+  batchId: string;
+  cargoKey: string;
+  delivery: string;
+  status: string;
+  shippedAt: Date | null;
+  arrivedAt: Date | null;
+}
+
+interface GroupItem {
+  cargoName: string;
+  delivery: string;
+  qty: number;
+}
+
+const toStatus = (v: string): ShipmentStatus => (v === 'shipped' || v === 'arrived' ? v : 'warehouse');
+
+/**
+ * Har partiyaning jo'natmalari va kargolarning haqiqiy muddati.
+ *
+ * Jo'natma = partiyadagi bitta kargo + bitta yetkazish turi. Partiyada
+ * "MANDARIN avia" va "TEZ-TEZ avto" bo'lsa — ikki jo'natma, ular har xil kuni
+ * keladi. Avia va avto muddati bir necha barobar farq qiladi, shuning uchun
+ * o'rtacha ham kargo + tur bo'yicha alohida.
+ */
+function buildShipments(
+  batches: ReadonlyArray<{ id: string; items: ReadonlyArray<GroupItem> }>,
+  ships: ReadonlyArray<ShipRecord>,
+): { byBatch: Map<string, BatchShipment[]>; stats: CargoStat[] } {
+  const shipOf = new Map(ships.map((sh) => [`${sh.batchId}|${sh.cargoKey}|${sh.delivery}`, sh]));
+  const now = today();
+
+  const groupsOf = new Map<string, BatchShipment[]>();
+  const statAcc = new Map<string, { cargoName: string; delivery: BatchDelivery; days: number[]; inTransit: number }>();
+
+  for (const b of batches) {
+    const groups = new Map<string, BatchShipment>();
+    for (const it of b.items) {
+      const delivery = toDelivery(it.delivery);
+      const key = `${cargoKeyOf(it.cargoName)}|${delivery}`;
+      const g = groups.get(key) ?? {
+        cargoName: it.cargoName.trim(),
+        delivery,
+        items: 0,
+        qty: 0,
+        status: 'warehouse' as ShipmentStatus,
+        shippedAt: null,
+        arrivedAt: null,
+        days: null,
+        expectedAt: null,
+      };
+      g.items += 1;
+      g.qty += it.qty;
+      groups.set(key, g);
+    }
+
+    for (const [key, g] of groups) {
+      const sh = shipOf.get(`${b.id}|${key}`);
+      if (sh) {
+        g.status = toStatus(sh.status);
+        g.shippedAt = isoDay(sh.shippedAt);
+        g.arrivedAt = isoDay(sh.arrivedAt);
+        if (g.status === 'arrived' && sh.shippedAt && sh.arrivedAt) g.days = daysBetween(sh.shippedAt, sh.arrivedAt);
+        if (g.status === 'shipped' && sh.shippedAt) g.days = Math.max(0, daysBetween(sh.shippedAt, now));
+      }
+      const acc = statAcc.get(key) ?? { cargoName: g.cargoName, delivery: g.delivery, days: [], inTransit: 0 };
+      if (g.status === 'arrived' && g.days !== null) acc.days.push(g.days);
+      if (g.status === 'shipped') acc.inTransit += 1;
+      statAcc.set(key, acc);
+    }
+    groupsOf.set(b.id, [...groups.values()]);
+  }
+
+  const stats: CargoStat[] = [...statAcc.values()]
+    .filter((a) => a.days.length > 0 || a.inTransit > 0)
+    .map((a) => ({
+      cargoName: a.cargoName,
+      delivery: a.delivery,
+      arrived: a.days.length,
+      avgDays: a.days.length ? Math.round((a.days.reduce((x, y) => x + y, 0) / a.days.length) * 10) / 10 : null,
+      minDays: a.days.length ? Math.min(...a.days) : null,
+      maxDays: a.days.length ? Math.max(...a.days) : null,
+      inTransit: a.inTransit,
+    }))
+    .sort((x, y) => y.arrived - x.arrived || x.cargoName.localeCompare(y.cargoName));
+
+  // Yo'ldagi jo'natma qachon keladi — shu kargo va turining o'rtachasi bo'yicha
+  const avgOf = new Map(stats.map((st) => [`${cargoKeyOf(st.cargoName)}|${st.delivery}`, st.avgDays]));
+  for (const groups of groupsOf.values()) {
+    for (const g of groups) {
+      const avg = avgOf.get(`${cargoKeyOf(g.cargoName)}|${g.delivery}`);
+      if (g.status === 'shipped' && g.shippedAt && avg != null) {
+        g.expectedAt = isoDay(new Date(dayDate(g.shippedAt).getTime() + Math.round(avg) * DAY_MS));
+      }
+    }
+  }
+
+  return { byBatch: groupsOf, stats };
+}
+
+/** Qolgan tovar qayerda: yo'lda > omborda > keldi */
+function batchStatus(shipments: ReadonlyArray<BatchShipment>): ShipmentStatus {
+  if (shipments.some((g) => g.status === 'shipped')) return 'shipped';
+  if (shipments.length === 0 || shipments.some((g) => g.status === 'warehouse')) return 'warehouse';
+  return 'arrived';
+}
+
+/** Kompaniyaning barcha partiyalari bo'yicha jo'natmalar (kargo o'rtachasi butun tarixdan) */
+async function companyShipments(companyId: string) {
+  const [batches, ships] = await Promise.all([
+    prisma.purchaseBatch.findMany({
+      where: { companyId },
+      select: { id: true, items: { select: { cargoName: true, delivery: true, qty: true } } },
+      take: MAX_BATCHES,
+    }),
+    prisma.purchaseBatchShipment.findMany({ where: { batch: { companyId } } }),
+  ]);
+  return buildShipments(batches, ships);
+}
+
+function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>, shipments: BatchShipment[] = []): BatchSummary {
   return {
     id: b.id,
     name: b.name,
@@ -66,6 +203,8 @@ function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>): BatchSum
     totals: calcBatch(b.rate, b.extra, items).totals,
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
+    status: batchStatus(shipments),
+    shipments,
   };
 }
 
@@ -84,8 +223,9 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
   });
 
   const { rows } = calcBatch(batch.rate, batch.extra, batch.items);
+  const { byBatch } = await companyShipments(companyId);
   return {
-    ...toSummary(batch, batch.items),
+    ...toSummary(batch, batch.items, byBatch.get(batch.id) ?? []),
     items: batch.items.map((it, i) => ({
       id: it.id,
       name: it.name,
@@ -126,10 +266,29 @@ router.get(
       // Sotuvchi belgilagan tartib; teng bo'lsa (hech qachon tartiblanmagan) yangisi yuqorida
       orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
       take: MAX_BATCHES,
-      include: { items: { select: { priceCny: true, cargoCost: true, qty: true, weightKg: true } } },
+      include: {
+        items: {
+          select: { priceCny: true, cargoCost: true, qty: true, weightKg: true, cargoName: true, delivery: true },
+        },
+      },
     });
-    const items = rows.map((b) => toSummary(b, b.items));
-    res.json({ items, total: items.length } satisfies BatchListResponse);
+    const ships = await prisma.purchaseBatchShipment.findMany({ where: { batch: { companyId: company.id } } });
+    const { byBatch, stats } = buildShipments(rows, ships);
+    const items = rows.map((b) => toSummary(b, b.items, byBatch.get(b.id) ?? []));
+
+    // Barcha partiyalar bo'yicha jami — sahifa tepasidagi "Umumiy summa"
+    const grand = { qty: 0, priceCny: 0, goodsUzs: 0, cargoUzs: 0, extra: 0, total: 0 };
+    for (const b of items) {
+      grand.qty += b.totals.qty;
+      grand.priceCny += b.totals.priceCny;
+      grand.goodsUzs += b.totals.goodsUzs;
+      grand.cargoUzs += b.totals.cargoUzs;
+      grand.extra += b.totals.extra;
+      grand.total += b.totals.total;
+    }
+    grand.priceCny = Math.round(grand.priceCny * 100) / 100;
+
+    res.json({ items, total: items.length, grand, cargoStats: stats } satisfies BatchListResponse);
   }),
 );
 
@@ -245,6 +404,54 @@ router.put(
     });
 
     res.json(await loadDetail(company.id, id));
+  }),
+);
+
+/**
+ * PUT /:id/shipment — jo'natma holati va sanalari (kargo + yetkazish turi bo'yicha).
+ *
+ * Partiya jadvaliga (`updatedAt`) tegmaydi: ochiq jadval "boshqa joyda
+ * o'zgargan" deb saqlashni rad etmasin — holat mazmun emas.
+ */
+router.put(
+  '/:id/shipment',
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const id = String(req.params.id);
+    const body = batchShipmentSchema.parse(req.body ?? {});
+
+    const batch = await prisma.purchaseBatch.findFirst({ where: { id, companyId: company.id }, select: { id: true } });
+    if (!batch) throw AppError.notFound('Partiya topilmadi');
+
+    const now = today();
+    const todayIso = isoDay(now) as string;
+    // Holatga mos sanalar: omborda — sanasiz; yo'lda — jo'natilgan sana (bo'lmasa bugun); keldi — kelgan sana (bo'lmasa bugun)
+    const shippedIso = body.status === 'warehouse' ? null : (body.shippedAt ?? (body.status === 'shipped' ? todayIso : null));
+    const arrivedIso = body.status === 'arrived' ? (body.arrivedAt ?? todayIso) : null;
+
+    for (const d of [shippedIso, arrivedIso]) {
+      if (d && dayDate(d).getTime() > now.getTime()) throw AppError.badRequest('Sana kelajakda bo‘lishi mumkin emas');
+    }
+    if (shippedIso && arrivedIso && dayDate(arrivedIso).getTime() < dayDate(shippedIso).getTime()) {
+      throw AppError.badRequest('Kelgan sana jo‘natilgan sanadan oldin bo‘lishi mumkin emas');
+    }
+
+    const cargoKey = cargoKeyOf(body.cargoName);
+    const data = {
+      status: body.status,
+      shippedAt: shippedIso ? dayDate(shippedIso) : null,
+      arrivedAt: arrivedIso ? dayDate(arrivedIso) : null,
+    };
+    await prisma.purchaseBatchShipment.upsert({
+      where: { batchId_cargoKey_delivery: { batchId: id, cargoKey, delivery: body.delivery } },
+      create: { batchId: id, cargoKey, delivery: body.delivery, ...data },
+      update: data,
+    });
+
+    const { byBatch, stats } = await companyShipments(company.id);
+    const shipments = byBatch.get(id) ?? [];
+    res.json({ shipments, status: batchStatus(shipments), cargoStats: stats });
   }),
 );
 

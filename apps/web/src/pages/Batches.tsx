@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
-import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary } from '@savdoiq/shared';
+import { Boxes, ChevronDown, ChevronRight, ChevronUp, CircleCheck, GripVertical, Plus, Trash2, Truck, Warehouse, Wallet } from 'lucide-react';
+import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary, ShipmentStatus } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { useSession } from '@/store/session';
@@ -16,10 +16,14 @@ import {
   Modal,
   PageHeader,
   PlanGate,
+  Segmented,
   SkeletonRows,
+  StatCard,
+  StatGrid,
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
+import { BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
 import { cn } from '@/lib/utils';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
@@ -162,6 +166,8 @@ export default function Batches() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<BatchSummary | null>(null);
+  const [filter, setFilter] = useState<'all' | ShipmentStatus>('all');
+  const [shipId, setShipId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['batches'],
@@ -169,6 +175,40 @@ export default function Batches() {
   });
 
   const rows = data?.items ?? [];
+  // Modal har doim ro'yxatdagi eng so'nggi holatni ko'rsatadi (saqlangach ham)
+  const shipFor = shipId ? (rows.find((b) => b.id === shipId) ?? null) : null;
+
+  /** Holatlar bo'yicha: nechta partiya va qancha pul */
+  const byStatus = useMemo(() => {
+    const out: Record<ShipmentStatus, { n: number; sum: number }> = {
+      warehouse: { n: 0, sum: 0 },
+      shipped: { n: 0, sum: 0 },
+      arrived: { n: 0, sum: 0 },
+    };
+    for (const b of rows) {
+      out[b.status].n += 1;
+      out[b.status].sum += b.totals.total;
+    }
+    return out;
+  }, [rows]);
+
+  const visible = filter === 'all' ? rows : rows.filter((b) => b.status === filter);
+  // Tartibni faqat to'liq ro'yxatda o'zgartirish mumkin — filtrlanganda o'rinlar mos kelmaydi
+  const canReorder = canEdit && filter === 'all';
+  const foot = useMemo(
+    () =>
+      visible.reduce(
+        (a, b) => ({
+          items: a.items + b.totals.items,
+          cny: a.cny + b.totals.priceCny,
+          goods: a.goods + b.totals.goodsUzs,
+          cargo: a.cargo + b.totals.cargoUzs,
+          total: a.total + b.totals.total,
+        }),
+        { items: 0, cny: 0, goods: 0, cargo: 0, total: 0 },
+      ),
+    [visible],
+  );
 
   /*
    * Ro'yxat tartibi. Yangi tartib darhol ekranda ko'rinadi (so'rov kutilmaydi),
@@ -219,6 +259,55 @@ export default function Batches() {
       />
 
       <PlanGate feature="cost_price">
+        {rows.length > 0 && data ? (
+          <StatGrid className="mb-4">
+            <StatCard
+              label={t('sum.total')}
+              value={f.money(data.grand.total)}
+              hint={t('sum.totalHint', { n: rows.length, qty: f.num(data.grand.qty) })}
+              icon={<Wallet className="h-5 w-5" />}
+              tone="brand"
+            />
+            <StatCard
+              label={t('status.warehouse')}
+              value={t('sum.count', { n: byStatus.warehouse.n })}
+              hint={t('sum.countHint', { sum: f.money(byStatus.warehouse.sum) })}
+              icon={<Warehouse className="h-5 w-5" />}
+              tone="info"
+            />
+            <StatCard
+              label={t('status.shipped')}
+              value={t('sum.count', { n: byStatus.shipped.n })}
+              hint={t('sum.countHint', { sum: f.money(byStatus.shipped.sum) })}
+              icon={<Truck className="h-5 w-5" />}
+              tone="warn"
+            />
+            <StatCard
+              label={t('status.arrived')}
+              value={t('sum.count', { n: byStatus.arrived.n })}
+              hint={t('sum.countHint', { sum: f.money(byStatus.arrived.sum) })}
+              icon={<CircleCheck className="h-5 w-5" />}
+              tone="violet"
+            />
+          </StatGrid>
+        ) : null}
+
+        {rows.length > 0 ? (
+          <div className="mb-3">
+            <Segmented<'all' | ShipmentStatus>
+              size="sm"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'all', label: t('filter.all'), count: rows.length },
+                { value: 'warehouse', label: t('status.warehouse'), count: byStatus.warehouse.n },
+                { value: 'shipped', label: t('status.shipped'), count: byStatus.shipped.n },
+                { value: 'arrived', label: t('status.arrived'), count: byStatus.arrived.n },
+              ]}
+            />
+          </div>
+        ) : null}
+
         <Card className="overflow-hidden">
           {isLoading ? (
             <div className="p-5">
@@ -241,13 +330,14 @@ export default function Batches() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead>
                   <tr>
                     {canEdit ? <th className="table-head w-10 border-b border-line" /> : null}
                     <th className={cn('table-head border-b border-line py-3 text-left', canEdit ? 'pl-1 pr-5' : 'px-5')}>
                       {t('col.name')}
                     </th>
+                    <th className="table-head border-b border-line px-4 py-3 text-left">{t('col.status')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.items')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cny')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.goods')}</th>
@@ -257,17 +347,17 @@ export default function Batches() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((b, i) => (
+                  {visible.map((b, i) => (
                     <tr
                       key={b.id}
                       tabIndex={0}
-                      {...(canEdit ? drag.rowProps(i) : {})}
+                      {...(canReorder ? drag.rowProps(i) : {})}
                       onClick={() => navigate(`/batches/${b.id}`)}
                       onKeyDown={(e) => {
                         if (e.target !== e.currentTarget) return;
                         if (e.key === 'Enter') navigate(`/batches/${b.id}`);
                         // Alt+↑/↓ — partiyani ro'yxatda ko'chirish
-                        if (canEdit && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                        if (canReorder && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                           e.preventDefault();
                           move(i, e.key === 'ArrowUp' ? i - 1 : i + 1);
                         }
@@ -282,6 +372,7 @@ export default function Batches() {
                         <td className="py-3.5 pl-3 pr-0">
                           {/* Tutqich: sudrab tartibni o'zgartirish. Bosish partiyani ochib yubormasin */}
                           <span
+                            hidden={!canReorder}
                             {...drag.handleProps(i)}
                             title={t('row.drag')}
                             onClick={(e) => e.stopPropagation()}
@@ -297,14 +388,18 @@ export default function Batches() {
                           {f.date(b.createdAt)} · 1 ¥ = {f.num(b.rate, 2)}
                         </p>
                       </td>
-                      <td className="tnum px-4 py-3.5 text-right text-ink-soft">{t('items', { n: b.totals.items })}</td>
-                      <td className="tnum px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.priceCny, 2)}</td>
-                      <td className="tnum px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.goodsUzs)}</td>
-                      <td className="tnum px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.cargoUzs)}</td>
-                      <td className="tnum px-4 py-3.5 text-right font-bold text-ink">{f.num(b.totals.total)}</td>
+                      <td className="px-4 py-3.5 align-middle">
+                        {/* Bosilganda jo'natmalar oynasi ochiladi; ko'rish huquqi bo'lsa ham holat ko'rinadi */}
+                        <BatchStatusCell batch={b} onClick={canEdit ? () => setShipId(b.id) : undefined} />
+                      </td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{t('items', { n: b.totals.items })}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.priceCny, 2)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.goodsUzs)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.cargoUzs)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right font-bold text-ink">{f.num(b.totals.total)}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-1">
-                          {canEdit ? (
+                          {canReorder ? (
                             <>
                               <IconButton
                                 label={t('row.moveUp')}
@@ -319,7 +414,7 @@ export default function Batches() {
                               </IconButton>
                               <IconButton
                                 label={t('row.moveDown')}
-                                disabled={i === rows.length - 1}
+                                disabled={i === visible.length - 1}
                                 className="h-8 w-8 border-0 bg-transparent opacity-60 disabled:pointer-events-none disabled:opacity-20 group-hover:opacity-100"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -348,14 +443,35 @@ export default function Batches() {
                     </tr>
                   ))}
                 </tbody>
+                {/* Ko'rinib turgan partiyalar bo'yicha jami */}
+                <tfoot>
+                  <tr className="border-t border-line bg-surface-2/60">
+                    {canEdit ? <td /> : null}
+                    <td className={cn('py-3 font-semibold text-ink', canEdit ? 'pl-1 pr-5' : 'px-5')}>{t('row.totals')}</td>
+                    <td />
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{t('items', { n: foot.items })}</td>
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.cny, 2)}</td>
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.goods)}</td>
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.cargo)}</td>
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-extrabold text-ink">{f.num(foot.total)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
         </Card>
+
+        {rows.length > 0 && data ? (
+          <div className="mt-4">
+            <CargoStatsCard stats={data.cargoStats} />
+          </div>
+        ) : null}
       </PlanGate>
 
       <CreateModal open={createOpen} onClose={() => setCreateOpen(false)} nextNo={rows.length + 1} />
       <DeleteModal batch={toDelete} onClose={() => setToDelete(null)} />
+      <ShipmentModal batch={shipFor} onClose={() => setShipId(null)} />
     </>
   );
 }
