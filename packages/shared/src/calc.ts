@@ -258,6 +258,15 @@ export interface BatchRowCalc {
  * kiritilmagan bo'lsa bu ko'rsatkich hisoblanmaydi (null) — ulushsiz son
  * tannarxni kamaytirib ko'rsatardi.
  */
+/**
+ * Qo'shimcha xarajat turi. Tanlangan bo'lsa — o'sha; tanlanmasdan oldin yozilgan
+ * qatorda nomidan aniqlanadi: "Yo'l haqi", "yol kira", "дорога", "проезд" — yo'l kira.
+ */
+export function batchExtraKind(e: { name: string; kind?: string | null }): 'road' | 'other' {
+  if (e.kind === 'road' || e.kind === 'other') return e.kind;
+  return /yo['‘’ʻ`]?l\s*(haq|kira|pul)|дорог|проезд/i.test(e.name) ? 'road' : 'other';
+}
+
 export function calcBatch(
   rate: number,
   extra: number,

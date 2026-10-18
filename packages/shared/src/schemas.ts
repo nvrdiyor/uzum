@@ -142,6 +142,7 @@ export const BATCH_MAX_EXTRAS = 50;
 export const batchExtraSchema = z.object({
   name: z.string().trim().max(120).default(''),
   amount: z.coerce.number().min(0).max(10_000_000_000).default(0),
+  kind: z.enum(['road', 'other']).optional(),
 });
 
 export const batchCreateSchema = z.object({

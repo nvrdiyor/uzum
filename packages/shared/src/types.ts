@@ -933,12 +933,20 @@ export interface BatchItemInput {
   cargoCost: number;
 }
 
+/**
+ * Qo'shimcha xarajat turi. Yo'l kira — tovarni olib kelish puli, partiyalar
+ * umumiy summasiga kiradi. Boshqalari (logistika, paket...) — kirmaydi.
+ * Ikkalasi ham tovar tannarxiga kg bo'yicha bo'linadi.
+ */
+export type BatchExtraKind = 'road' | 'other';
+
 /** Qo'shimcha xarajatning bitta qatori */
 export interface BatchExtraInput {
   /** Izoh: nima uchun to'langan (bojxona, yo'l haqi...) */
   name: string;
   /** so'm */
   amount: number;
+  kind?: BatchExtraKind;
 }
 
 export interface BatchItemRow extends BatchItemInput {
@@ -1008,6 +1016,8 @@ export interface BatchSummary {
    */
   status: ShipmentStatus;
   shipments: BatchShipment[];
+  /** Qo'shimcha xarajatlardan yo'l kira yig'indisi — ro'yxatdagi "Umumiy" shu bilan */
+  roadExtra: number;
 }
 
 /** Kargo kompaniyasi va yetkazish turi bo'yicha haqiqiy muddat */
@@ -1037,8 +1047,20 @@ export interface BatchDetail extends BatchSummary {
 export interface BatchListResponse {
   items: BatchSummary[];
   total: number;
-  /** Barcha partiyalar bo'yicha jami */
-  grand: { qty: number; priceCny: number; goodsUzs: number; cargoUzs: number; extra: number; total: number };
+  /**
+   * Barcha partiyalar bo'yicha jami. `total` = tovar + cargo + yo'l kira;
+   * logistika, paket kabi boshqa xarajatlar (`otherExtra`) unga kirmaydi.
+   */
+  grand: {
+    qty: number;
+    priceCny: number;
+    goodsUzs: number;
+    cargoUzs: number;
+    extra: number;
+    roadExtra: number;
+    otherExtra: number;
+    total: number;
+  };
   cargoStats: CargoStat[];
 }
 

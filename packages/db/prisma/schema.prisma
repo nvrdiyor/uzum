@@ -817,6 +817,9 @@ model PurchaseBatchExtra {
   name     String @default("")
   /// so'm
   amount   Float  @default(0)
+  /// road — yo'l kira (partiyalar umumiy summasiga kiradi) | other — logistika, paket va h.k.
+  /// Bo'sh — turi tanlanmasdan oldin yozilgan: nomidan aniqlanadi ("yo'l haqi" → road)
+  kind     String @default("")
 
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 

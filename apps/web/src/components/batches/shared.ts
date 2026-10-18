@@ -3,6 +3,12 @@ import { registerNamespace } from '@/i18n';
 /** Ikkala sahifa (ro'yxat va jadval) bitta nom maydonidan foydalanadi */
 registerNamespace('batches', {
   uz: {
+    'sum.totalHintOther': '{n} ta partiya · {qty} dona · logistika, paket va boshqalar ({other}) kirmaydi',
+    'col.totalHint': 'Tovar + cargo + yo‘l kira. Logistika, paket kabi boshqa xarajatlar kirmaydi',
+    'extras.addRoad': 'Yo‘l kira',
+    'extras.roadName': 'Yo‘l kira',
+    'extras.roadTag': 'Yo‘l kira — partiyalar umumiy summasiga kiradi',
+    'extras.roadOfTotal': 'shundan yo‘l kira {v}',
     'th.trip': 'Reys',
     'th.tripHint': 'Kargo reys raqami. Partiya bir necha reysda kelsa (masalan avto 50 va 51), har reys alohida kuzatiladi va kargo muddatiga alohida kiradi.',
     'ph.trip': '№',
@@ -154,6 +160,12 @@ registerNamespace('batches', {
     notFound: 'Partiya topilmadi',
   },
   ru: {
+    'sum.totalHintOther': '{n} партий · {qty} шт. · логистика, упаковка и прочее ({other}) не входят',
+    'col.totalHint': 'Товар + карго + проезд. Логистика, упаковка и прочие расходы не входят',
+    'extras.addRoad': 'Проезд',
+    'extras.roadName': 'Проезд',
+    'extras.roadTag': 'Проезд — входит в общую сумму партий',
+    'extras.roadOfTotal': 'из них проезд {v}',
     'th.trip': 'Рейс',
     'th.tripHint': 'Номер рейса карго. Если партия едет несколькими рейсами (например авто 50 и 51), каждый рейс отслеживается и входит в срок карго отдельно.',
     'ph.trip': '№',
@@ -304,6 +316,12 @@ registerNamespace('batches', {
     notFound: 'Партия не найдена',
   },
   en: {
+    'sum.totalHintOther': '{n} batches · {qty} units · logistics, packaging and other ({other}) not included',
+    'col.totalHint': 'Goods + cargo + travel. Logistics, packaging and other costs are not included',
+    'extras.addRoad': 'Travel cost',
+    'extras.roadName': 'Travel cost',
+    'extras.roadTag': 'Travel cost — included in the batches grand total',
+    'extras.roadOfTotal': 'incl. travel {v}',
     'th.trip': 'Trip',
     'th.tripHint': 'Cargo trip number. If a batch travels on several trips (e.g. truck 50 and 51), each trip is tracked and counted in the cargo average separately.',
     'ph.trip': '№',

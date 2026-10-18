@@ -24,6 +24,7 @@ import {
   NotebookPen,
   Plane,
   Plus,
+  Route,
   RefreshCw,
   Trash2,
   Truck,
@@ -134,7 +135,7 @@ function toDraft(d: BatchDetailData): Draft {
     name: d.name,
     rate: d.rate,
     extra: d.extra,
-    extras: d.extras.map((e) => ({ key: newKey(), name: e.name, amount: e.amount })),
+    extras: d.extras.map((e) => ({ key: newKey(), name: e.name, amount: e.amount, kind: e.kind ?? 'other' })),
     rows: rows.length ? rows : [blankRow()],
   };
 }
@@ -303,8 +304,15 @@ function ExtrasModal({
   const add = () => {
     const key = newKey();
     pendingFocus.current = `${key}:name`;
-    onChange((list) => [...list, { key, name: '', amount: 0 }]);
+    onChange((list) => [...list, { key, name: '', amount: 0, kind: 'other' }]);
   };
+  /** Yo'l kira: nomi tayyor, faqat summasini yozasiz — partiyalar umumiy summasiga kiradi */
+  const addRoad = () => {
+    const key = newKey();
+    pendingFocus.current = `${key}:amount`;
+    onChange((list) => [...list, { key, name: t('extras.roadName'), amount: 0, kind: 'road' }]);
+  };
+  const road = Math.round(extras.reduce((a, e) => a + (e.kind === 'road' ? e.amount || 0 : 0), 0));
   const remove = (key: string) => onChange((list) => list.filter((e) => e.key !== key));
   const canAdd = !readonly && extras.length < BATCH_MAX_EXTRAS;
 
@@ -322,6 +330,9 @@ function ExtrasModal({
             <b className="tnum text-base text-ink">
               {f.num(sumExtras(extras))} {t('sum')}
             </b>
+            {road > 0 ? (
+              <span className="tnum ml-2 text-xs text-brand-ink">{t('extras.roadOfTotal', { v: f.num(road) })}</span>
+            ) : null}
           </span>
           <Button onClick={onClose}>{t('extras.done')}</Button>
         </div>
@@ -330,13 +341,21 @@ function ExtrasModal({
       <div ref={listRef} className="space-y-2">
         {extras.map((e, i) => (
           <div key={e.key} className="flex items-center gap-2">
-            <span className="tnum w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+            {/* Yo'l kira qatori belgilanadi: u partiyalar umumiy summasiga kiradi */}
+            {e.kind === 'road' ? (
+              <span className="flex w-5 shrink-0 justify-end text-brand-ink" title={t('extras.roadTag')}>
+                <Route className="h-4 w-4" />
+              </span>
+            ) : (
+              <span className="tnum w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+            )}
             <Input
               data-cell={`${e.key}:name`}
               value={e.name}
               maxLength={120}
               disabled={readonly}
               placeholder={t('extras.namePh')}
+              title={e.kind === 'road' ? t('extras.roadTag') : undefined}
               onChange={(ev) => patch(e.key, { name: ev.target.value })}
               onKeyDown={(ev) => {
                 if (ev.key !== 'Enter') return;
@@ -379,8 +398,12 @@ function ExtrasModal({
           </div>
         ))}
         {canAdd ? (
-          <div className="pl-7 pt-1">
-            <Button variant="soft" size="sm" icon={<Plus className="h-4 w-4" />} onClick={add}>
+          <div className="flex flex-wrap gap-2 pl-7 pt-1">
+            {/* Yo'l kira — tayyor qator: bosasiz, summasini yozasiz */}
+            <Button variant="soft" size="sm" icon={<Route className="h-4 w-4" />} onClick={addRoad}>
+              {t('extras.addRoad')}
+            </Button>
+            <Button variant="outline" size="sm" icon={<Plus className="h-4 w-4" />} onClick={add}>
               {t('extras.add')}
             </Button>
           </div>
@@ -577,7 +600,9 @@ function BatchDetail({ id }: { id: string }) {
           name,
           rate: d.rate,
           extra: d.extra,
-          extras: d.extras.filter((e) => !isBlankExtra(e)).map((e) => ({ name: e.name.trim(), amount: e.amount })),
+          extras: d.extras
+            .filter((e) => !isBlankExtra(e))
+            .map((e) => ({ name: e.name.trim(), amount: e.amount, kind: e.kind ?? 'other' })),
           items: d.rows.filter((r) => !isBlank(r)).map(({ key: _key, ...item }) => item),
           expectedUpdatedAt: serverVersion.current ?? undefined,
         });
@@ -643,7 +668,7 @@ function BatchDetail({ id }: { id: string }) {
     const d = draftRef.current;
     // Tafsilot hali yo'q — oldin yozilgan summa birinchi qatorga o'tadi, izohini yozish qoladi
     if (d && canEdit && d.extras.length === 0)
-      setExtras(() => [{ key: newKey(), name: '', amount: d.extra }]);
+      setExtras(() => [{ key: newKey(), name: '', amount: d.extra, kind: 'other' }]);
     setExtrasOpen(true);
   };
 

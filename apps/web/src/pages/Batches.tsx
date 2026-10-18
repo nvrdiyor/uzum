@@ -175,6 +175,11 @@ export default function Batches() {
   });
 
   const rows = data?.items ?? [];
+  /**
+   * Ro'yxatdagi "Umumiy" — tovar + cargo + yo'l kira. Logistika, paket kabi
+   * boshqa qo'shimcha xarajatlar bu yerga kirmaydi (ular faqat tovar tannarxida).
+   */
+  const listTotal = (b: BatchSummary) => b.totals.goodsUzs + b.totals.cargoUzs + b.roadExtra;
   // Modal har doim ro'yxatdagi eng so'nggi holatni ko'rsatadi (saqlangach ham)
   const shipFor = shipId ? (rows.find((b) => b.id === shipId) ?? null) : null;
 
@@ -187,7 +192,7 @@ export default function Batches() {
     };
     for (const b of rows) {
       out[b.status].n += 1;
-      out[b.status].sum += b.totals.total;
+      out[b.status].sum += listTotal(b);
     }
     return out;
   }, [rows]);
@@ -203,7 +208,7 @@ export default function Batches() {
           cny: a.cny + b.totals.priceCny,
           goods: a.goods + b.totals.goodsUzs,
           cargo: a.cargo + b.totals.cargoUzs,
-          total: a.total + b.totals.total,
+          total: a.total + listTotal(b),
         }),
         { items: 0, cny: 0, goods: 0, cargo: 0, total: 0 },
       ),
@@ -264,7 +269,15 @@ export default function Batches() {
             <StatCard
               label={t('sum.total')}
               value={f.money(data.grand.total)}
-              hint={t('sum.totalHint', { n: rows.length, qty: f.num(data.grand.qty) })}
+              hint={
+                data.grand.otherExtra > 0
+                  ? t('sum.totalHintOther', {
+                      n: rows.length,
+                      qty: f.num(data.grand.qty),
+                      other: f.money(data.grand.otherExtra),
+                    })
+                  : t('sum.totalHint', { n: rows.length, qty: f.num(data.grand.qty) })
+              }
               icon={<Wallet className="h-5 w-5" />}
               tone="brand"
             />
@@ -342,7 +355,9 @@ export default function Batches() {
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cny')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.goods')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cargo')}</th>
-                    <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.total')}</th>
+                    <th className="table-head border-b border-line px-4 py-3 text-right" title={t('col.totalHint')}>
+                      {t('col.total')}
+                    </th>
                     <th className={cn('table-head border-b border-line px-4 py-3', canEdit ? 'w-40' : 'w-24')} />
                   </tr>
                 </thead>
@@ -396,7 +411,7 @@ export default function Batches() {
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.priceCny, 2)}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.goodsUzs)}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.cargoUzs)}</td>
-                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right font-bold text-ink">{f.num(b.totals.total)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right font-bold text-ink">{f.num(listTotal(b))}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-1">
                           {canReorder ? (

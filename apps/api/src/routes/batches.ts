@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { prisma } from '@savdoiq/db';
 import {
   batchCreateSchema,
+  batchExtraKind,
   batchOrderSchema,
   batchShipmentSchema,
   batchUpdateSchema,
@@ -246,7 +247,16 @@ async function companyShipments(companyId: string) {
   return buildShipments(batches, ships);
 }
 
-function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>, shipments: BatchShipment[] = []): BatchSummary {
+/** Yo'l kira yig'indisi. Tafsilotsiz (qo'lda yozilgan) qo'shimcha xarajat — boshqa xarajat */
+const roadOf = (extras: ReadonlyArray<{ name: string; amount: number; kind: string }>): number =>
+  extras.reduce((sum, e) => sum + (batchExtraKind(e) === 'road' ? e.amount : 0), 0);
+
+function toSummary(
+  b: BatchRecord,
+  items: ReadonlyArray<TotalsFields>,
+  shipments: BatchShipment[] = [],
+  roadExtra = 0,
+): BatchSummary {
   return {
     id: b.id,
     name: b.name,
@@ -257,6 +267,7 @@ function toSummary(b: BatchRecord, items: ReadonlyArray<TotalsFields>, shipments
     updatedAt: b.updatedAt.toISOString(),
     status: batchStatus(shipments),
     shipments,
+    roadExtra: Math.round(roadExtra),
   };
 }
 
@@ -277,7 +288,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
   const { rows } = calcBatch(batch.rate, batch.extra, batch.items);
   const { byBatch } = await companyShipments(companyId);
   return {
-    ...toSummary(batch, batch.items, byBatch.get(batch.id) ?? []),
+    ...toSummary(batch, batch.items, byBatch.get(batch.id) ?? [], roadOf(batch.extras)),
     items: batch.items.map((it, i) => ({
       id: it.id,
       name: it.name,
@@ -295,7 +306,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       extraShare: rows[i].extraShare,
       unitCostFull: rows[i].unitCostFull,
     })),
-    extras: batch.extras.map((e) => ({ name: e.name, amount: e.amount })),
+    extras: batch.extras.map((e) => ({ name: e.name, amount: e.amount, kind: batchExtraKind(e) })),
     cargoNames: used.map((u) => u.cargoName).sort((a, b) => a.localeCompare(b)),
   };
 }
@@ -331,23 +342,30 @@ router.get(
             trip: true,
           },
         },
+        extras: { select: { name: true, amount: true, kind: true } },
       },
     });
     const ships = await prisma.purchaseBatchShipment.findMany({ where: { batch: { companyId: company.id } } });
     const { byBatch, stats } = buildShipments(rows, ships);
-    const items = rows.map((b) => toSummary(b, b.items, byBatch.get(b.id) ?? []));
+    const items = rows.map((b) => toSummary(b, b.items, byBatch.get(b.id) ?? [], roadOf(b.extras)));
 
-    // Barcha partiyalar bo'yicha jami — sahifa tepasidagi "Umumiy summa"
-    const grand = { qty: 0, priceCny: 0, goodsUzs: 0, cargoUzs: 0, extra: 0, total: 0 };
+    /*
+     * Barcha partiyalar bo'yicha jami — sahifa tepasidagi "Umumiy summa".
+     * Unga tovar, cargo va YO'L KIRA kiradi (sotuvchi talabi): logistika, paket
+     * kabi boshqa qo'shimcha xarajatlar kirmaydi — ular faqat tovar tannarxida.
+     */
+    const grand = { qty: 0, priceCny: 0, goodsUzs: 0, cargoUzs: 0, extra: 0, roadExtra: 0, otherExtra: 0, total: 0 };
     for (const b of items) {
       grand.qty += b.totals.qty;
       grand.priceCny += b.totals.priceCny;
       grand.goodsUzs += b.totals.goodsUzs;
       grand.cargoUzs += b.totals.cargoUzs;
       grand.extra += b.totals.extra;
-      grand.total += b.totals.total;
+      grand.roadExtra += b.roadExtra;
     }
     grand.priceCny = Math.round(grand.priceCny * 100) / 100;
+    grand.otherExtra = Math.max(0, Math.round(grand.extra - grand.roadExtra));
+    grand.total = Math.round(grand.goodsUzs + grand.cargoUzs + grand.roadExtra);
 
     res.json({ items, total: items.length, grand, cargoStats: stats } satisfies BatchListResponse);
   }),
