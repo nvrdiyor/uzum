@@ -791,7 +791,9 @@ model PurchaseBatch {
 model PurchaseBatchShipment {
   id        String    @id @default(cuid())
   batchId   String
-  /// Kargo nomi — katta harfda, bo'sh joysiz (qatorlardagi yozilishidan qat'i nazar bitta jo'natma)
+  /// Kargo nomi — katta harfda, bo'sh joysiz (qatorlardagi yozilishidan qat'i nazar bitta jo'natma).
+  /// Reys raqami bo'lsa unga qo'shiladi: "TEZ-TEZ#50". Alohida ustun emas — mavjud
+  /// noyob kalitni o'zgartirish jonli bazada ma'lumot yo'qotish ogohlantirishi beradi
   cargoKey  String    @default("")
   /// avia | avto
   delivery  String    @default("avto")
@@ -834,6 +836,9 @@ model PurchaseBatchItem {
   cargoName String @default("")
   /// avia | avto
   delivery  String @default("avto")
+  /// Kargo reys raqami (masalan "50"). Bir partiya bir necha reysda kelsa —
+  /// har reys alohida jo'natma bo'lib kuzatiladi; bo'sh — reys ko'rsatilmagan
+  trip      String @default("")
   weightKg  Float  @default(0)
   cargoCost Float  @default(0)
 

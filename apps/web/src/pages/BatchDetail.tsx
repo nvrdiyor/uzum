@@ -102,6 +102,8 @@ function blankRow(prev?: Row): Row {
     priceCny: 0,
     cargoName: prev?.cargoName ?? '',
     delivery: prev?.delivery ?? 'avto',
+    // Reys ham odatda oldingi qator bilan bir xil — kerak bo'lsa o'zgartiriladi
+    trip: prev?.trip ?? '',
     weightKg: 0,
     cargoCost: 0,
   };
@@ -115,7 +117,7 @@ const isBlank = (r: Row) =>
   !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
 
 function toDraft(d: BatchDetailData): Draft {
-  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, weightKg, cargoCost }) => ({
+  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost }) => ({
     key: id,
     name,
     trackCode,
@@ -123,6 +125,7 @@ function toDraft(d: BatchDetailData): Draft {
     priceCny,
     cargoName,
     delivery,
+    trip: trip ?? '',
     weightKg,
     cargoCost,
   }));
@@ -1016,7 +1019,7 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1530px] border-collapse text-sm">
+              <table ref={tableRef} className="w-full min-w-[1610px] border-collapse text-sm">
                 <colgroup>
                   <col className="w-11" />
                   <col />
@@ -1026,6 +1029,7 @@ function BatchDetail({ id }: { id: string }) {
                   <col className="w-[108px]" />
                   <col className="w-[136px]" />
                   <col className="w-[136px]" />
+                  <col className="w-[80px]" />
                   <col className="w-[80px]" />
                   <col className="w-[112px]" />
                   <col className="w-[124px]" />
@@ -1045,6 +1049,9 @@ function BatchDetail({ id }: { id: string }) {
                     <th className={cn(th, 'text-right')}>{t('th.uzs')}</th>
                     <th className={cn(th, 'text-left')}>{t('th.cargoName')}</th>
                     <th className={cn(th, 'text-center')}>{t('th.delivery')}</th>
+                    <th className={cn(th, 'text-left')} title={t('th.tripHint')}>
+                      {t('th.trip')}
+                    </th>
                     <th className={cn(th, 'text-right')}>{t('th.kg')}</th>
                     <th className={cn(th, 'text-right')}>{t('th.cargo')}</th>
                     <th className={cn(th, 'text-right')}>{t('th.total')}</th>
@@ -1188,6 +1195,20 @@ function BatchDetail({ id }: { id: string }) {
                           </div>
                         </td>
                         <td className={EDITABLE_TD}>
+                          {/* Reys: bir partiya bir necha reysda kelsa, har reys alohida kuzatiladi */}
+                          <input
+                            data-cell={`${i}:trip`}
+                            value={r.trip}
+                            maxLength={30}
+                            disabled={readonly}
+                            placeholder={t('ph.trip')}
+                            title={t('th.tripHint')}
+                            onChange={(e) => patchRow(r.key, { trip: e.target.value })}
+                            onKeyDown={onCellKey(i, 'trip')}
+                            className={cn(CELL_INPUT, 'tnum')}
+                          />
+                        </td>
+                        <td className={EDITABLE_TD}>
                           <NumCell
                             cell={`${i}:kg`}
                             value={r.weightKg}
@@ -1282,7 +1303,7 @@ function BatchDetail({ id }: { id: string }) {
                     <td className="tnum px-3 py-3 text-right">{calc.totals.qty ? f.num(calc.totals.qty) : ''}</td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.priceCny, 2)}</td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.goodsUzs)}</td>
-                    <td colSpan={2} />
+                    <td colSpan={3} />
                     <td className="tnum px-3 py-3 text-right">
                       {calc.totals.weightKg ? kgText(calc.totals.weightKg) : ''}
                     </td>

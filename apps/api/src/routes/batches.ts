@@ -54,6 +54,7 @@ interface ItemRecord {
   priceCny: number;
   cargoName: string;
   delivery: string;
+  trip: string;
   weightKg: number;
   cargoCost: number;
 }
@@ -66,6 +67,16 @@ type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightK
 
 /** Kargo nomi qanday yozilganidan qat'i nazar bitta kalit: "Tez-tez " va "TEZ-TEZ" — bitta kargo */
 const cargoKeyOf = (name: string): string => name.trim().replace(/\s+/g, ' ').toUpperCase();
+/** Reys raqami: "50", " 50 " va "50" — bitta reys */
+const tripKeyOf = (trip: string): string => trip.trim().replace(/\s+/g, ' ').toUpperCase();
+/**
+ * Jo'natmaning saqlanadigan kaliti: kargo, reys bo'lsa unga qo'shilgan — "TEZ-TEZ#50".
+ * Reyssiz jo'natma kaliti avvalgidek faqat kargo: oldin kiritilgan holatlar yo'qolmaydi.
+ */
+const shipKeyOf = (cargoName: string, trip: string): string => {
+  const t = tripKeyOf(trip);
+  return t ? `${cargoKeyOf(cargoName)}#${t}` : cargoKeyOf(cargoName);
+};
 
 const DAY_MS = 86_400_000;
 const isoDay = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
@@ -86,6 +97,7 @@ interface ShipRecord {
 interface GroupItem {
   cargoName: string;
   delivery: string;
+  trip: string;
   qty: number;
 }
 
@@ -94,10 +106,15 @@ const toStatus = (v: string): ShipmentStatus => (v === 'shipped' || v === 'arriv
 /**
  * Har partiyaning jo'natmalari va kargolarning haqiqiy muddati.
  *
- * Jo'natma = partiyadagi bitta kargo + bitta yetkazish turi. Partiyada
- * "MANDARIN avia" va "TEZ-TEZ avto" bo'lsa — ikki jo'natma, ular har xil kuni
- * keladi. Avia va avto muddati bir necha barobar farq qiladi, shuning uchun
- * o'rtacha ham kargo + tur bo'yicha alohida.
+ * Jo'natma = partiyadagi bitta kargo + bitta yetkazish turi + bitta reys.
+ * Partiyada "MANDARIN avia" va "TEZ-TEZ avto" bo'lsa — ikki jo'natma; TEZ-TEZ
+ * tovarining yarmi 50-reysda, yarmi 51-reysda kelsa — yana ikkiga bo'linadi:
+ * ular har xil kuni keladi va har biri o'rtachaga alohida kiradi. Ilgari
+ * bunday partiya bitta jo'natma edi va o'rtacha muddat noto'g'ri chiqardi.
+ *
+ * O'rtacha kargo + tur bo'yicha (avia va avto muddati bir necha barobar farq
+ * qiladi). Bitta reys bir necha partiyaning tovarini olib kelgan bo'lsa, u
+ * o'rtachaga BIR marta kiradi — u bitta yuk mashinasi.
  */
 function buildShipments(
   batches: ReadonlyArray<{ id: string; items: ReadonlyArray<GroupItem> }>,
@@ -107,16 +124,28 @@ function buildShipments(
   const now = today();
 
   const groupsOf = new Map<string, BatchShipment[]>();
-  const statAcc = new Map<string, { cargoName: string; delivery: BatchDelivery; days: number[]; inTransit: number }>();
+  /** kargo + tur → kelgan jo'natmalar muddati; reysli jo'natmalar reys bo'yicha birlashtiriladi */
+  const statAcc = new Map<
+    string,
+    {
+      cargoName: string;
+      delivery: BatchDelivery;
+      loose: number[];
+      trips: Map<string, number[]>;
+      transitLoose: number;
+      transitTrips: Set<string>;
+    }
+  >();
 
   for (const b of batches) {
     const groups = new Map<string, BatchShipment>();
     for (const it of b.items) {
       const delivery = toDelivery(it.delivery);
-      const key = `${cargoKeyOf(it.cargoName)}|${delivery}`;
+      const key = `${shipKeyOf(it.cargoName, it.trip)}|${delivery}`;
       const g = groups.get(key) ?? {
         cargoName: it.cargoName.trim(),
         delivery,
+        trip: it.trip.trim(),
         items: 0,
         qty: 0,
         status: 'warehouse' as ShipmentStatus,
@@ -139,25 +168,48 @@ function buildShipments(
         if (g.status === 'arrived' && sh.shippedAt && sh.arrivedAt) g.days = daysBetween(sh.shippedAt, sh.arrivedAt);
         if (g.status === 'shipped' && sh.shippedAt) g.days = Math.max(0, daysBetween(sh.shippedAt, now));
       }
-      const acc = statAcc.get(key) ?? { cargoName: g.cargoName, delivery: g.delivery, days: [], inTransit: 0 };
-      if (g.status === 'arrived' && g.days !== null) acc.days.push(g.days);
-      if (g.status === 'shipped') acc.inTransit += 1;
-      statAcc.set(key, acc);
+
+      const statKey = `${cargoKeyOf(g.cargoName)}|${g.delivery}`;
+      const acc = statAcc.get(statKey) ?? {
+        cargoName: g.cargoName,
+        delivery: g.delivery,
+        loose: [],
+        trips: new Map<string, number[]>(),
+        transitLoose: 0,
+        transitTrips: new Set<string>(),
+      };
+      const trip = tripKeyOf(g.trip);
+      if (g.status === 'arrived' && g.days !== null) {
+        if (trip) acc.trips.set(trip, [...(acc.trips.get(trip) ?? []), g.days]);
+        else acc.loose.push(g.days);
+      }
+      if (g.status === 'shipped') {
+        if (trip) acc.transitTrips.add(trip);
+        else acc.transitLoose += 1;
+      }
+      statAcc.set(statKey, acc);
     }
     groupsOf.set(b.id, [...groups.values()]);
   }
 
   const stats: CargoStat[] = [...statAcc.values()]
-    .filter((a) => a.days.length > 0 || a.inTransit > 0)
-    .map((a) => ({
-      cargoName: a.cargoName,
-      delivery: a.delivery,
-      arrived: a.days.length,
-      avgDays: a.days.length ? Math.round((a.days.reduce((x, y) => x + y, 0) / a.days.length) * 10) / 10 : null,
-      minDays: a.days.length ? Math.min(...a.days) : null,
-      maxDays: a.days.length ? Math.max(...a.days) : null,
-      inTransit: a.inTransit,
-    }))
+    .map((a) => {
+      // Har reys — bitta nuqta (bir necha partiyada kiritilgan bo'lsa, ularning o'rtachasi)
+      const days = [
+        ...a.loose,
+        ...[...a.trips.values()].map((list) => Math.round(list.reduce((x, y) => x + y, 0) / list.length)),
+      ];
+      return {
+        cargoName: a.cargoName,
+        delivery: a.delivery,
+        arrived: days.length,
+        avgDays: days.length ? Math.round((days.reduce((x, y) => x + y, 0) / days.length) * 10) / 10 : null,
+        minDays: days.length ? Math.min(...days) : null,
+        maxDays: days.length ? Math.max(...days) : null,
+        inTransit: a.transitLoose + a.transitTrips.size,
+      };
+    })
+    .filter((st) => st.arrived > 0 || st.inTransit > 0)
     .sort((x, y) => y.arrived - x.arrived || x.cargoName.localeCompare(y.cargoName));
 
   // Yo'ldagi jo'natma qachon keladi — shu kargo va turining o'rtachasi bo'yicha
@@ -186,7 +238,7 @@ async function companyShipments(companyId: string) {
   const [batches, ships] = await Promise.all([
     prisma.purchaseBatch.findMany({
       where: { companyId },
-      select: { id: true, items: { select: { cargoName: true, delivery: true, qty: true } } },
+      select: { id: true, items: { select: { cargoName: true, delivery: true, trip: true, qty: true } } },
       take: MAX_BATCHES,
     }),
     prisma.purchaseBatchShipment.findMany({ where: { batch: { companyId } } }),
@@ -234,6 +286,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       priceCny: it.priceCny,
       cargoName: it.cargoName,
       delivery: toDelivery(it.delivery),
+      trip: it.trip,
       weightKg: it.weightKg,
       cargoCost: it.cargoCost,
       priceUzs: rows[i].priceUzs,
@@ -268,7 +321,15 @@ router.get(
       take: MAX_BATCHES,
       include: {
         items: {
-          select: { priceCny: true, cargoCost: true, qty: true, weightKg: true, cargoName: true, delivery: true },
+          select: {
+            priceCny: true,
+            cargoCost: true,
+            qty: true,
+            weightKg: true,
+            cargoName: true,
+            delivery: true,
+            trip: true,
+          },
         },
       },
     });
@@ -437,17 +498,37 @@ router.put(
       throw AppError.badRequest('Kelgan sana jo‘natilgan sanadan oldin bo‘lishi mumkin emas');
     }
 
-    const cargoKey = cargoKeyOf(body.cargoName);
+    const cargoKey = shipKeyOf(body.cargoName, body.trip);
     const data = {
       status: body.status,
       shippedAt: shippedIso ? dayDate(shippedIso) : null,
       arrivedAt: arrivedIso ? dayDate(arrivedIso) : null,
     };
-    await prisma.purchaseBatchShipment.upsert({
-      where: { batchId_cargoKey_delivery: { batchId: id, cargoKey, delivery: body.delivery } },
-      create: { batchId: id, cargoKey, delivery: body.delivery, ...data },
-      update: data,
-    });
+
+    /*
+     * Reys — bitta yuk mashinasi (yoki samolyot). Unda boshqa partiyalarning
+     * tovari ham ketgan bo'lsa, ular ham shu kuni jo'natilgan va shu kuni keladi:
+     * holat va sanalar o'sha partiyalarga ham yoziladi. Reyssiz jo'natma —
+     * faqat shu partiyaniki.
+     */
+    const batchIds = new Set<string>([id]);
+    if (tripKeyOf(body.trip)) {
+      const same = await prisma.purchaseBatchItem.findMany({
+        where: { batch: { companyId: company.id }, delivery: body.delivery, trip: { not: '' } },
+        select: { batchId: true, cargoName: true, trip: true },
+      });
+      for (const it of same) if (shipKeyOf(it.cargoName, it.trip) === cargoKey) batchIds.add(it.batchId);
+    }
+
+    await prisma.$transaction(
+      [...batchIds].map((batchId) =>
+        prisma.purchaseBatchShipment.upsert({
+          where: { batchId_cargoKey_delivery: { batchId, cargoKey, delivery: body.delivery } },
+          create: { batchId, cargoKey, delivery: body.delivery, ...data },
+          update: data,
+        }),
+      ),
+    );
 
     const { byBatch, stats } = await companyShipments(company.id);
     const shipments = byBatch.get(id) ?? [];

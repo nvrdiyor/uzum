@@ -83,7 +83,7 @@ export function ShipmentModal({ batch, onClose }: { batch: BatchSummary | null; 
       ) : batch ? (
         <div className="space-y-3">
           {batch.shipments.map((g) => (
-            <ShipmentEditor key={`${g.cargoName}|${g.delivery}`} batchId={batch.id} shipment={g} />
+            <ShipmentEditor key={`${g.cargoName}|${g.delivery}|${g.trip}`} batchId={batch.id} shipment={g} />
           ))}
         </div>
       ) : null}
@@ -125,6 +125,7 @@ function ShipmentEditor({ batchId, shipment }: { batchId: string; shipment: Batc
       api.put<{ shipments: BatchShipment[]; status: ShipmentStatus; cargoStats: CargoStat[] }>(`/batches/${batchId}/shipment`, {
         cargoName: shipment.cargoName,
         delivery: shipment.delivery,
+        trip: shipment.trip,
         status,
         shippedAt: status === 'warehouse' ? null : shippedAt || null,
         arrivedAt: status === 'arrived' ? arrivedAt || null : null,
@@ -172,6 +173,7 @@ function ShipmentEditor({ batchId, shipment }: { batchId: string; shipment: Batc
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-ink">
               {shipment.cargoName || t('cargo.noName')} · {t(`delivery.${shipment.delivery}`)}
+              {shipment.trip ? <span className="text-brand-ink"> · {t('ship.trip', { n: shipment.trip })}</span> : null}
             </p>
             <p className="tnum text-xs text-muted">{t('ship.items', { n: shipment.items, qty: f.num(shipment.qty) })}</p>
           </div>
@@ -206,6 +208,9 @@ function ShipmentEditor({ batchId, shipment }: { batchId: string; shipment: Batc
       ) : (
         <p className="mt-2 text-xs text-muted">{t('status.chinaHint')}</p>
       )}
+
+      {/* Reys bitta mashina: boshqa partiyalardagi shu reys tovarlari ham shu holatga o'tadi */}
+      {shipment.trip ? <p className="mt-2 text-2xs text-muted">{t('ship.tripShared')}</p> : null}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <p className={cn('text-xs', status === 'arrived' && !shippedAt ? 'text-warn-ink' : 'text-muted')}>

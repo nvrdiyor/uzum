@@ -3,6 +3,11 @@ import { registerNamespace } from '@/i18n';
 /** Ikkala sahifa (ro'yxat va jadval) bitta nom maydonidan foydalanadi */
 registerNamespace('batches', {
   uz: {
+    'th.trip': 'Reys',
+    'th.tripHint': 'Kargo reys raqami. Partiya bir necha reysda kelsa (masalan avto 50 va 51), har reys alohida kuzatiladi va kargo muddatiga alohida kiradi.',
+    'ph.trip': '№',
+    'ship.trip': '{n}-reys',
+    'ship.tripShared': 'Shu reysda kelgan boshqa partiyalar tovari ham shu holat va sanalarga o‘tadi.',
     'col.status': 'Holat',
     'status.warehouse': 'Omborda',
     'status.shipped': 'Yo‘lda',
@@ -149,6 +154,11 @@ registerNamespace('batches', {
     notFound: 'Partiya topilmadi',
   },
   ru: {
+    'th.trip': 'Рейс',
+    'th.tripHint': 'Номер рейса карго. Если партия едет несколькими рейсами (например авто 50 и 51), каждый рейс отслеживается и входит в срок карго отдельно.',
+    'ph.trip': '№',
+    'ship.trip': 'рейс {n}',
+    'ship.tripShared': 'Товары других партий этого рейса получат тот же статус и даты.',
     'col.status': 'Статус',
     'status.warehouse': 'На складе',
     'status.shipped': 'В пути',
@@ -294,6 +304,11 @@ registerNamespace('batches', {
     notFound: 'Партия не найдена',
   },
   en: {
+    'th.trip': 'Trip',
+    'th.tripHint': 'Cargo trip number. If a batch travels on several trips (e.g. truck 50 and 51), each trip is tracked and counted in the cargo average separately.',
+    'ph.trip': '№',
+    'ship.trip': 'trip {n}',
+    'ship.tripShared': 'Goods of other batches on this trip get the same status and dates.',
     'col.status': 'Status',
     'status.warehouse': 'In warehouse',
     'status.shipped': 'On the way',

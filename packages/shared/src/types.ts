@@ -926,6 +926,8 @@ export interface BatchItemInput {
   priceCny: number;
   cargoName: string;
   delivery: BatchDelivery;
+  /** Kargo reys raqami; bo'sh — ko'rsatilmagan. Har reys alohida jo'natma */
+  trip: string;
   weightKg: number;
   /** Kargo haqi, so'm */
   cargoCost: number;
@@ -977,6 +979,8 @@ export interface BatchShipment {
   /** Qatorlardagi yozilishi (birinchi uchragani); bo'sh — kargo ko'rsatilmagan */
   cargoName: string;
   delivery: BatchDelivery;
+  /** Reys raqami (qatorlardagi yozilishi); bo'sh — ko'rsatilmagan */
+  trip: string;
   /** Shu jo'natmadagi qatorlar soni */
   items: number;
   qty: number;
@@ -1010,7 +1014,10 @@ export interface BatchSummary {
 export interface CargoStat {
   cargoName: string;
   delivery: BatchDelivery;
-  /** Ikkala sanasi kiritilgan, kelgan jo'natmalar soni */
+  /**
+   * Ikkala sanasi kiritilgan, kelgan jo'natmalar soni. Bitta reys bir necha
+   * partiyaning tovarini olib kelgan bo'lsa ham — bitta (o'rtacha ikki marta sanalmaydi)
+   */
   arrived: number;
   avgDays: number | null;
   minDays: number | null;

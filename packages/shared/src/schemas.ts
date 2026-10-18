@@ -131,6 +131,7 @@ export const batchItemSchema = z.object({
   priceCny: z.coerce.number().min(0).max(10_000_000).default(0),
   cargoName: z.string().trim().max(60).default(''),
   delivery: z.enum(['avia', 'avto']).default('avto'),
+  trip: z.string().trim().max(30).default(''),
   weightKg: z.coerce.number().min(0).max(1_000_000).default(0),
   cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
 });
@@ -157,6 +158,7 @@ const isoDay = z
 export const batchShipmentSchema = z.object({
   cargoName: z.string().trim().max(60).default(''),
   delivery: z.enum(['avia', 'avto']),
+  trip: z.string().trim().max(30).default(''),
   status: z.enum(['warehouse', 'shipped', 'arrived']),
   shippedAt: isoDay.nullable().optional(),
   arrivedAt: isoDay.nullable().optional(),
