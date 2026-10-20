@@ -4,6 +4,8 @@
  *  GET   /stats                 → platforma bo'yicha umumiy ko'rsatkichlar (MRR, sinxron holati)
  *  GET   /users                 → foydalanuvchilar (qidiruv + sahifalash)
  *  PATCH /users/:id             → rol va holatni o'zgartirish
+ *  GET   /users/:id/delete-preview → o'chirilsa nima yo'qolishi (kompaniyalar, buyurtmalar)
+ *  DELETE /users/:id            → foydalanuvchini va u yagona a'zo bo'lgan kompaniyalarni o'chirish
  *  GET   /companies             → kompaniyalar (tarif, do'konlar, egasi)
  *  GET   /invoices              → barcha hisob-fakturalar
  *  POST  /invoices/:id/approve  → qo'lda to'lovni tasdiqlash (tarif faollashadi)
@@ -370,6 +372,115 @@ router.patch(
       status: updated.status,
       message: `${fullName(updated)} yangilandi`,
     });
+  }),
+);
+
+// ─────────────────────────── DELETE /users/:id ───────────────────────────
+
+interface UserDeleteCompany {
+  id: string;
+  name: string;
+  /** Kompaniyadagi a'zolar soni (shu foydalanuvchi bilan) */
+  members: number;
+  stores: number;
+  orders: number;
+  paidInvoices: number;
+  /** true — foydalanuvchi yagona a'zo, kompaniya butun ma'lumoti bilan o'chadi; false — faqat a'zolik olib tashlanadi */
+  deleted: boolean;
+}
+
+interface UserDeletePreview {
+  id: string;
+  name: string;
+  telegramId: string;
+  companies: UserDeleteCompany[];
+  /** O'chirib bo'lmasa — sababi (o'zini o'chirish, to'langan to'lovlar) */
+  blockedReason: string | null;
+}
+
+/**
+ * Foydalanuvchi o'chirilganda nima yo'qolishini hisoblaydi. Foydalanuvchi yagona
+ * a'zo bo'lgan kompaniya (do'konlar, buyurtmalar, Uzum ulanishi) ham o'chadi —
+ * aks holda egasiz kompaniya sinxronlanishda qolib ketardi. To'langan
+ * hisob-fakturasi bor kompaniya o'chirilmaydi: to'lov tarixi va daromad
+ * statistikasi yo'qolmasligi kerak.
+ */
+async function userDeletePreview(id: string, adminId: string): Promise<UserDeletePreview> {
+  const target = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      memberships: {
+        orderBy: { createdAt: 'asc' },
+        include: { company: { include: { _count: { select: { memberships: true, stores: true } } } } },
+      },
+    },
+  });
+  if (!target) throw AppError.notFound('Foydalanuvchi topilmadi');
+
+  const companies = await Promise.all(
+    target.memberships.map(async (m): Promise<UserDeleteCompany> => {
+      const [orders, paidInvoices] = await Promise.all([
+        prisma.order.count({ where: { store: { companyId: m.companyId } } }),
+        prisma.invoice.count({ where: { companyId: m.companyId, status: 'paid' } }),
+      ]);
+      return {
+        id: m.companyId,
+        name: m.company.name,
+        members: m.company._count.memberships,
+        stores: m.company._count.stores,
+        orders,
+        paidInvoices,
+        deleted: m.company._count.memberships === 1,
+      };
+    }),
+  );
+
+  let blockedReason: string | null = null;
+  if (target.id === adminId) blockedReason = 'O‘zingizni o‘chira olmaysiz';
+  else if (companies.some((c) => c.deleted && c.paidInvoices > 0))
+    blockedReason = 'Bu foydalanuvchi to‘lov qilgan — to‘lov tarixi saqlanishi uchun o‘chirib bo‘lmaydi. Uning o‘rniga bloklang.';
+
+  return { id: target.id, name: fullName(target), telegramId: target.telegramId, companies, blockedReason };
+}
+
+router.get(
+  '/users/:id/delete-preview',
+  ah(async (req, res) => {
+    const { user: admin } = ctx(req);
+    res.json(await userDeletePreview(String(req.params.id), admin.id));
+  }),
+);
+
+router.delete(
+  '/users/:id',
+  ah(async (req, res) => {
+    const { user: admin } = ctx(req);
+    const preview = await userDeletePreview(String(req.params.id), admin.id);
+    if (preview.blockedReason) throw AppError.badRequest(preview.blockedReason);
+
+    const companyIds = preview.companies.filter((c) => c.deleted).map((c) => c.id);
+    // Sessiyalar, a'zoliklar, bildirishnomalar va murojaatlar sxemadagi Cascade bilan birga o'chadi
+    await prisma.$transaction([
+      prisma.user.updateMany({ where: { referredById: preview.id }, data: { referredById: null } }),
+      prisma.company.deleteMany({ where: { id: { in: companyIds } } }),
+      prisma.user.delete({ where: { id: preview.id } }),
+    ]);
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'admin.user_delete',
+        entity: 'user',
+        entityId: preview.id,
+        meta: JSON.stringify({
+          name: preview.name,
+          telegramId: preview.telegramId,
+          companies: preview.companies.map((c) => ({ id: c.id, name: c.name, deleted: c.deleted })),
+        }),
+      },
+    });
+
+    res.json({ ok: true, id: preview.id, deletedCompanies: companyIds.length, message: `${preview.name} o‘chirildi` });
   }),
 );
 

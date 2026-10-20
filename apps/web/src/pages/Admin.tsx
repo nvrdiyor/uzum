@@ -13,6 +13,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -91,6 +92,18 @@ registerNamespace('admin', {
     'users.empty': 'Foydalanuvchi topilmadi',
     'users.emptyHint': 'Qidiruvni o‘zgartiring',
     'users.never': 'Hech qachon',
+    'users.action.delete': 'O‘chirish',
+    'users.del.title': 'Foydalanuvchini o‘chirish',
+    'users.del.desc': '{name} (Telegram ID {tg}) butunlay o‘chiriladi: kirish sessiyalari, bildirishnomalari va murojaatlari. Buni qaytarib bo‘lmaydi.',
+    'users.del.companies': 'Kompaniyalari',
+    'users.del.noCompanies': 'Kompaniyasi yo‘q — faqat hisobning o‘zi o‘chadi.',
+    'users.del.companyGone': 'Butunlay o‘chadi',
+    'users.del.companyKept': 'Qoladi — boshqa a’zolari bor, faqat a’zolik olinadi',
+    'users.del.counts': '{stores} ta do‘kon · {orders} ta buyurtma',
+    'users.del.relogin': 'Bu odam Telegram orqali qayta kirsa, yangi bo‘sh hisob ochiladi.',
+    'users.del.confirm': 'Ha, o‘chirish',
+    'users.deleted': 'Foydalanuvchi o‘chirildi',
+    'users.deleteErr': 'O‘chirib bo‘lmadi',
 
     'comp.search': 'Kompaniya nomi',
     'comp.col.name': 'Kompaniya',
@@ -207,6 +220,18 @@ registerNamespace('admin', {
     'users.empty': 'Пользователи не найдены',
     'users.emptyHint': 'Измените поисковый запрос',
     'users.never': 'Никогда',
+    'users.action.delete': 'Удалить',
+    'users.del.title': 'Удалить пользователя',
+    'users.del.desc': '{name} (Telegram ID {tg}) будет удалён полностью: сессии входа, уведомления и обращения. Отменить нельзя.',
+    'users.del.companies': 'Компании',
+    'users.del.noCompanies': 'Компаний нет — удаляется только сама учётная запись.',
+    'users.del.companyGone': 'Удаляется полностью',
+    'users.del.companyKept': 'Остаётся — есть другие участники, убирается только членство',
+    'users.del.counts': 'магазинов: {stores} · заказов: {orders}',
+    'users.del.relogin': 'Если человек снова войдёт через Telegram, будет создана новая пустая учётная запись.',
+    'users.del.confirm': 'Да, удалить',
+    'users.deleted': 'Пользователь удалён',
+    'users.deleteErr': 'Не удалось удалить',
 
     'comp.search': 'Название компании',
     'comp.col.name': 'Компания',
@@ -323,6 +348,18 @@ registerNamespace('admin', {
     'users.empty': 'No users found',
     'users.emptyHint': 'Try a different search',
     'users.never': 'Never',
+    'users.action.delete': 'Delete',
+    'users.del.title': 'Delete user',
+    'users.del.desc': '{name} (Telegram ID {tg}) will be deleted completely: sign-in sessions, notifications and support tickets. This cannot be undone.',
+    'users.del.companies': 'Companies',
+    'users.del.noCompanies': 'No companies — only the account itself is deleted.',
+    'users.del.companyGone': 'Deleted completely',
+    'users.del.companyKept': 'Kept — has other members, only the membership is removed',
+    'users.del.counts': '{stores} stores · {orders} orders',
+    'users.del.relogin': 'If this person signs in with Telegram again, a new empty account is created.',
+    'users.del.confirm': 'Yes, delete',
+    'users.deleted': 'User deleted',
+    'users.deleteErr': 'Could not delete',
 
     'comp.search': 'Company name',
     'comp.col.name': 'Company',
@@ -432,6 +469,15 @@ interface AdminUserRow {
   companiesCount?: number;
   lastLoginAt?: string | null;
   createdAt?: string | null;
+}
+
+/** O'chirishdan oldin: nima yo'qolishi (API: GET /admin/users/:id/delete-preview) */
+interface UserDeletePreview {
+  id: string;
+  name: string;
+  telegramId: string;
+  companies: { id: string; name: string; members: number; stores: number; orders: number; paidInvoices: number; deleted: boolean }[];
+  blockedReason: string | null;
 }
 
 interface AdminCompanyRow {
@@ -731,6 +777,25 @@ function UsersTab() {
     onError: (err) => toast.error(t('users.updateErr'), errText(err)),
   });
 
+  const selfId = useSession((s) => s.me?.user.id);
+  const [delId, setDelId] = useState<string | null>(null);
+  const preview = useQuery({
+    queryKey: ['admin-user-delete', delId],
+    queryFn: () => api.get<UserDeletePreview>(`/admin/users/${delId}/delete-preview`),
+    enabled: Boolean(delId),
+    staleTime: 0,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.del<{ ok: boolean }>(`/admin/users/${id}`),
+    onSuccess: () => {
+      toast.success(t('users.deleted'));
+      setDelId(null);
+      void qc.invalidateQueries({ queryKey: ['admin-users'] });
+      void qc.invalidateQueries({ queryKey: ['admin-stats'] });
+    },
+    onError: (err) => toast.error(t('users.deleteErr'), errText(err)),
+  });
+
   const columns: Column<AdminUserRow>[] = [
     {
       key: 'user',
@@ -798,7 +863,7 @@ function UsersTab() {
       key: 'status',
       header: t('users.col.status'),
       align: 'center',
-      width: 220,
+      width: 260,
       render: (u) => {
         const blocked = u.status === 'blocked';
         /*
@@ -819,6 +884,19 @@ function UsersTab() {
             >
               {blocked ? t('users.action.unblock') : t('users.action.block')}
             </Button>
+            {u.id !== selfId ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="px-2 text-muted hover:text-danger-ink"
+                icon={<Trash2 className="h-4 w-4" />}
+                aria-label={t('users.action.delete')}
+                title={t('users.action.delete')}
+                onClick={() => setDelId(u.id)}
+              />
+            ) : (
+              <span className="w-8" aria-hidden />
+            )}
           </div>
         );
       },
@@ -855,6 +933,65 @@ function UsersTab() {
           />
         )}
       </div>
+
+      <Modal open={Boolean(delId)} onClose={() => setDelId(null)} title={t('users.del.title')} size="sm">
+        {preview.isLoading || !preview.data ? (
+          preview.isError ? (
+            <ErrorState message={errText(preview.error)} onRetry={() => void preview.refetch()} />
+          ) : (
+            <Skeleton className="h-32 w-full" />
+          )
+        ) : (
+          <>
+            <p className="text-sm text-ink-soft">
+              {t('users.del.desc', { name: preview.data.name, tg: preview.data.telegramId })}
+            </p>
+            <div className="mt-4">
+              <p className="text-xs font-medium text-muted">{t('users.del.companies')}</p>
+              {preview.data.companies.length === 0 ? (
+                <p className="mt-1.5 text-sm text-ink-soft">{t('users.del.noCompanies')}</p>
+              ) : (
+                <ul className="mt-1.5 space-y-2">
+                  {preview.data.companies.map((c) => (
+                    <li key={c.id} className="rounded-xl border border-line bg-surface-2/60 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-ink">{c.name}</span>
+                        <Badge tone={c.deleted ? 'danger' : 'muted'}>
+                          {c.deleted ? t('users.del.companyGone') : t('users.del.companyKept')}
+                        </Badge>
+                      </div>
+                      <p className="tnum mt-1 text-xs text-muted">
+                        {t('users.del.counts', { stores: f.num(c.stores), orders: f.num(c.orders) })}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {preview.data.blockedReason ? (
+              <p className="mt-4 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger-ink">
+                {preview.data.blockedReason}
+              </p>
+            ) : (
+              <p className="mt-4 text-xs text-muted">{t('users.del.relogin')}</p>
+            )}
+          </>
+        )}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDelId(null)}>
+            {t('btn.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Trash2 className="h-4 w-4" />}
+            disabled={!preview.data || Boolean(preview.data.blockedReason)}
+            loading={remove.isPending}
+            onClick={() => delId && remove.mutate(delId)}
+          >
+            {t('users.del.confirm')}
+          </Button>
+        </div>
+      </Modal>
     </Card>
   );
 }
