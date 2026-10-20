@@ -36,6 +36,7 @@ import {
   type PayoutRulesRequest,
   SCHEDULE_FEE,
 } from '@savdoiq/shared';
+import { env } from '../env.js';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
@@ -127,12 +128,22 @@ router.get(
       where: { storeId: { in: storeIds }, status: { in: EFFECTIVE_STATUSES } },
       select: {
         uzumOrderId: true,
+        status: true,
         orderedAt: true,
         deliveredAt: true,
         items: { select: { title: true, revenue: true, commission: true, payout: true, withdrawn: true, status: true } },
       },
       orderBy: { deliveredAt: 'desc' },
     });
+
+    /*
+     * Eng yaqin ikki to'lov sanasi. Muddati o'tgan, lekin Uzum hali ochmagan
+     * buyurtma eng yaqin to'lovga ulgurmaydi deb olinadi (20.10.2026: 09.10
+     * kechqurun qabul qilingan ikki buyurtma 19.10 da ochilishi kerak edi,
+     * Uzum ularni 21.10 to'loviga qo'shmadi — kabinet 234 526 ko'rsatdi).
+     */
+    const firstPayout = nextPayoutDate(tomorrow, schedule);
+    const secondPayout = nextPayoutDate(addDays(firstPayout, 1), schedule);
 
     const rows: AcceptedRow[] = [];
     /** Yo'ldagi buyurtmalar: sotilgan, lekin xaridor hali qabul qilmagan */
@@ -185,24 +196,38 @@ router.get(
       const paid = rest < 1;
 
       /*
-       * Ochilish ANIQ SOAT bilan: qabul vaqti + 10 × 24 soat (live'da
-       * `dateIssued` millisekundgacha aniq). Buyurtma holatiga tayanilmaydi:
-       * demo generatori yetkazilganni darhol 'delivered' qiladi.
+       * Ochilganmi — UZUMNING O'ZI aytadi: pul ushlab turilgan davrda
+       * buyurtma PROCESSING, ochilgach TO_WITHDRAW ('delivered'). Ilgari
+       * "qabul + 10 × 24 soat o'tdi — ochilgan" deb hisoblanardi, lekin Uzum
+       * pulni o'z vaqtida chiqaradi: 20.10.2026 da 09.10 kechqurun qabul
+       * qilingan ikki buyurtma (199 700) hali ushlangan, 10.10 kunduzgilari
+       * esa ochilgan edi — jadvaldagi 21.10 summasi shu farqqa oshib chiqdi.
+       * Soat (`unlockTs`) faqat hali ushlangan pul qachon ochilishini taxmin
+       * qilish uchun.
        */
       const unlockTs = o.deliveredAt.getTime() + holdMs;
-      const isUnlocked = unlockTs <= nowTs;
-      const hoursLeft = isUnlocked ? 0 : Math.ceil((unlockTs - nowTs) / 3_600_000);
+      // Demo generatori ushlab turish holatini bermaydi — u yerda soat bo'yicha
+      const held = env.uzum.mode === 'demo' ? unlockTs > nowTs : o.status === 'new' || o.status === 'processing';
+      const isUnlocked = !held;
+      const overdue = held && unlockTs <= nowTs;
+      const hoursLeft = isUnlocked || overdue ? 0 : Math.ceil((unlockTs - nowTs) / 3_600_000);
       const daysLeft = Math.ceil(hoursLeft / 24);
       const acceptedAt = parseISODate(todayInBusinessTz(o.deliveredAt));
-      const unlockAt = parseISODate(todayInBusinessTz(new Date(unlockTs)));
+      // Muddati o'tgan bo'lsa — ochilishi bugundan keyin kutiladi
+      const unlockAt = overdue ? today : parseISODate(todayInBusinessTz(new Date(unlockTs)));
 
       /*
        * To'lov sanasi — ochilgan kundan KEYINGI birinchi jadval kuni: to'lov
-       * 00:00 da o'tadi, kun ichida ochilgan pul unga ulgurmaydi. To'lanmay
-       * qolgan eski pul esa eng yaqin kelgusi sanaga o'tadi.
+       * 00:00 da o'tadi, kun ichida ochilgan pul unga ulgurmaydi. Ochilgan,
+       * lekin to'lanmagan pul eng yaqin sanaga; muddati o'tib ham ushlangan
+       * pul undan keyingisiga.
        */
       const earliest = addDays(unlockAt, 1);
-      const payoutAt = nextPayoutDate(!paid && earliest.getTime() < tomorrow.getTime() ? tomorrow : earliest, schedule);
+      const payoutAt = isUnlocked
+        ? firstPayout
+        : overdue
+          ? secondPayout
+          : nextPayoutDate(earliest.getTime() < tomorrow.getTime() ? tomorrow : earliest, schedule);
 
       rows.push({
         uzumOrderId: o.uzumOrderId,
@@ -218,6 +243,7 @@ router.get(
         daysLeft,
         hoursLeft,
         unlockTime: new Date(unlockTs).toISOString(),
+        ...(overdue ? { overdue: true } : {}),
         paid,
         coveredByFees: false,
       });
@@ -328,7 +354,19 @@ router.get(
     });
     const deliveryFreeNow = lastDelivery !== null && Math.abs(lastDelivery.amount) < 1;
 
-    let paidSoFar = 0;
+    /*
+     * Har sana summasi:
+     *   eng yaqin sana = Uzum HOZIR ochgan pul (balans − Uzum ushlab turgani;
+     *                    xizmat to'lovlari va yechib olingan ayirilgan) +
+     *                    shu sanagacha ochiladigan ushlangan buyurtmalar
+     *   keyingilari    = o'sha sanaga tushadigan ushlangan buyurtmalar
+     * Xizmat to'lovlari ochilgan puldan ko'p bo'lsa (manfiy), qarz keyingi
+     * sanaga o'tadi. Ilgari asos "balans − yo'ldagilar − soat bo'yicha
+     * kutilayotganlar" edi va Uzum hali ochmagan pul ham eng yaqin sanaga
+     * qo'shilib ketardi.
+     */
+    // Jonli do'konda = Uzum ochgan pul (balans − Uzum ushlab turgani)
+    let carry = balance.total - inTransit - pending;
     const planDays: PayoutPlanDay[] = planDates.map((d) => {
       const date = toISODate(d);
       const acceptedUntil = toISODate(addDays(d, -(holdDays + 1)));
@@ -336,10 +374,10 @@ router.get(
       if (takesTransit) transitShown = true;
       const mine = open.filter((r) => r.payoutAt === date);
       const gross = round(mine.reduce((sum, r) => sum + r.amount, 0));
-      const lockedAfter = open.filter((r) => r.unlockAt >= date).reduce((sum, r) => sum + r.amount, 0);
-      const collected = balance.total - inTransit - lockedAfter;
-      const amount = Math.max(0, round(collected - paidSoFar));
-      paidSoFar += amount;
+      const incoming = mine.filter((r) => !r.unlocked).reduce((sum, r) => sum + r.amount, 0);
+      const due = carry + incoming;
+      const amount = Math.max(0, round(due));
+      carry = due < 0 ? due : 0;
 
       /*
        * Haq BITTA emas: jadval o'rtada almashsa, eski sana eski jadval,
@@ -366,13 +404,20 @@ router.get(
       };
     });
 
-    const next = days.find((d) => !d.unlocked);
-    // Eng yaqin ochilishning aniq vaqti — kartada soati bilan ko'rsatiladi
-    const nextAt =
-      rows
-        .filter((r) => !r.unlocked)
-        .map((r) => r.unlockTime)
-        .sort()[0] ?? null;
+    /*
+     * Eng yaqin ochilish — kelajakdagi eng erta soat. Muddati o'tib ham
+     * ushlangan buyurtmalar bunga kirmaydi: ularning soati o'tmishda.
+     */
+    const nowIso = new Date(nowTs).toISOString();
+    const upcoming = open.filter((r) => !r.unlocked && !r.overdue && r.unlockTime > nowIso);
+    const nextAt = upcoming.map((r) => r.unlockTime).sort()[0] ?? null;
+    const nextDay = nextAt ? upcoming.find((r) => r.unlockTime === nextAt)?.unlockAt ?? null : null;
+    const next = nextDay
+      ? {
+          date: nextDay,
+          amount: round(upcoming.filter((r) => r.unlockAt === nextDay).reduce((sum, r) => sum + r.amount, 0)),
+        }
+      : null;
 
     // Uzum o'tkazgan to'lovlar — sinxron `withdrawnProfit` o'sishidan yozib boradi
     const history = await listPayoutHistory(storeIds);

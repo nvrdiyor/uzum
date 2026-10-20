@@ -1621,6 +1621,11 @@ export interface PayoutOrder {
   hoursLeft: number;
   /** Ochilishning aniq vaqti (ISO) — qabul vaqti + 10 × 24 soat */
   unlockTime: string | null;
+  /**
+   * 10 kunlik muddat o'tgan, lekin Uzum pulni hali ochmagan (buyurtma hali
+   * PROCESSING). Bunday pul eng yaqin to'lovga kirmaydi — keyingisiga o'tadi.
+   */
+  overdue?: boolean;
 }
 
 /** Uzum o'tkazgan bitta to'lov */

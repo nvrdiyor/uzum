@@ -83,6 +83,8 @@ registerNamespace('payout', {
     'ord.all': 'Hammasi',
     'ord.payOn': 'To‘lov: {date}',
     'ord.unlockOn': 'Ochiladi: {date}',
+    'ord.overdue': 'Uzum hali ochmagan',
+    'ord.overdueHint': '10 kunlik muddat o‘tgan, lekin Uzum pulni hali chiqarmagan — eng yaqin to‘lovga kirmaydi, keyingisiga o‘tadi',
     'ord.soldOn': 'Sotilgan: {date}',
     'ord.none': 'Bu holatda buyurtma yo‘q',
     'list.more': 'Yana {n} ta ko‘rsatish',
@@ -188,6 +190,8 @@ registerNamespace('payout', {
     'ord.all': 'Все',
     'ord.payOn': 'Выплата: {date}',
     'ord.unlockOn': 'Откроется: {date}',
+    'ord.overdue': 'Uzum ещё не открыл',
+    'ord.overdueHint': '10 дней прошло, но Uzum ещё не выпустил деньги — в ближайшую выплату не войдут, перейдут в следующую',
     'ord.soldOn': 'Продан: {date}',
     'ord.none': 'В этом статусе заказов нет',
     'list.more': 'Показать ещё {n}',
@@ -293,6 +297,8 @@ registerNamespace('payout', {
     'ord.all': 'All',
     'ord.payOn': 'Payout: {date}',
     'ord.unlockOn': 'Unlocks: {date}',
+    'ord.overdue': 'Not yet released by Uzum',
+    'ord.overdueHint': 'The 10-day hold has passed but Uzum has not released the money yet — it moves to the following payout',
     'ord.soldOn': 'Sold: {date}',
     'ord.none': 'No orders in this state',
     'list.more': 'Show {n} more',
@@ -744,6 +750,11 @@ function OrderList({ orders }: { orders: PayoutOrder[] }) {
                   <span className="tnum whitespace-nowrap text-sm font-medium text-ink">№{o.uzumOrderId ?? '—'}</span>
                   {o.state === 'ready' ? (
                     <Badge tone="brand">{t('ord.ready')}</Badge>
+                  ) : o.overdue ? (
+                    // Muddati o'tgan, lekin Uzum pulni hali ochmagan
+                    <Badge tone="warn" title={t('ord.overdueHint')}>
+                      {t('ord.overdue')}
+                    </Badge>
                   ) : o.state === 'waiting' ? (
                     <Badge tone="warn" title={o.unlockTime ? f.dateTime(o.unlockTime) : undefined}>
                       {o.hoursLeft < 24 ? t('ord.hours', { n: o.hoursLeft }) : t('ord.days', { n: o.daysLeft })}
@@ -764,7 +775,7 @@ function OrderList({ orders }: { orders: PayoutOrder[] }) {
                   {f.money(o.amount)}
                 </p>
                 <p className="tnum mt-0.5 whitespace-nowrap text-2xs text-muted">
-                  {o.state === 'ready' && o.payoutAt
+                  {(o.state === 'ready' || o.overdue) && o.payoutAt
                     ? t('ord.payOn', { date: f.dateShort(o.payoutAt) })
                     : o.state === 'waiting' && o.unlockAt
                       ? t('ord.unlockOn', { date: f.dateShort(o.unlockAt) })
