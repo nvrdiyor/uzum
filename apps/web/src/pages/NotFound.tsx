@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Compass, LifeBuoy } from 'lucide-react';
+import { ArrowLeft, Compass, LifeBuoy } from '@/components/icons';
 import { Button } from '@/components/ui';
 import { registerNamespace, useT } from '@/i18n';
 import { useSession } from '@/store/session';

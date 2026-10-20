@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, BellRing, Gift, KeyRound, PackageSearch, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowLeft, BellRing, Gift, KeyRound, PackageSearch, ShieldCheck, Sparkles, TrendingUp } from '@/components/icons';
 import type { LoginResponse, TelegramAuthPayload } from '@savdoiq/shared';
 import { Button, Card, Segmented, toast } from '@/components/ui';
 import { registerNamespace, useT } from '@/i18n';

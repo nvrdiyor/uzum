@@ -14,7 +14,7 @@ import {
   Star,
   ThumbsUp,
   Wand2,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { ReviewRow, ReviewsResponse } from '@savdoiq/shared';
 import {
   Badge,

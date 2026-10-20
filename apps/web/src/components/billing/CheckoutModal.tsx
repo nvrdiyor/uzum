@@ -16,7 +16,7 @@ import {
   Landmark,
   ShieldCheck,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import { APP, planPrice, type InvoiceRow, type PlanPublic } from '@savdoiq/shared';
 import { Badge, Button, Modal, Segmented, toast } from '@/components/ui';
 import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';

@@ -13,7 +13,7 @@ import {
   PartyPopper,
   Play,
   RefreshCw,
-} from 'lucide-react';
+} from '@/components/icons';
 import { APP, SYNC_STEPS, formatDuration, type SyncStatus } from '@savdoiq/shared';
 import { Button, ErrorState, ProgressRing, Skeleton } from '@/components/ui';
 import { BOT_URL as BOT_URL_SHARED } from '@/lib/bot';

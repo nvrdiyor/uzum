@@ -12,7 +12,7 @@ import {
   PackageSearch,
   Rows3,
   ShoppingBag,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { ProductCard, ProductsResponse } from '@savdoiq/shared';
 import {
   Badge,

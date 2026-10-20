@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History, Loader2, PlayCircle, RefreshCw } from 'lucide-react';
+import { History, Loader2, PlayCircle, RefreshCw } from '@/components/icons';
 import type { SyncStatus } from '@savdoiq/shared';
 import { SYNC_STEPS, formatDuration } from '@savdoiq/shared';
 import {

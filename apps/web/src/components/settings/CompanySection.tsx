@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Building2, Coins, Lock, Percent, Save } from 'lucide-react';
+import { AlertTriangle, Building2, Coins, Lock, Percent, Save } from '@/components/icons';
 import type { CompanySummary } from '@savdoiq/shared';
 import {
   Badge,

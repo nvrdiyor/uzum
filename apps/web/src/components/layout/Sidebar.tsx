@@ -1,5 +1,5 @@
 import { NavLink, Link } from 'react-router-dom';
-import { ChevronLeft, Lock, Rocket, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, Lock, Rocket, ShieldCheck } from '@/components/icons';
 import { NAV } from '@/lib/nav';
 import { useT } from '@/i18n';
 import { useUi } from '@/store/ui';

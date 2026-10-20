@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, User } from '@/components/icons';
 import type { LoginResponse } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/store/session';

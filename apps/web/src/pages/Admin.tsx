@@ -17,7 +17,7 @@ import {
   Trash2,
   Users,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { InvoiceRow, Paginated, PlanId } from '@savdoiq/shared';
 import { PLAN_ORDER, formatDuration } from '@savdoiq/shared';
 import {

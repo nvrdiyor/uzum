@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Download, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from 'lucide-react';
+import { Boxes, Download, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from '@/components/icons';
 import type { StockRow, StocksResponse } from '@savdoiq/shared';
 import {
   Button,
@@ -343,6 +343,8 @@ export default function Stocks() {
       header: t('col.costValue'),
       align: 'right',
       hideOnMobile: true,
+      // Telefondagi kartada ham ko'rinsin
+      mobile: 'field',
       sortable: true,
       sortValue: (r) => r.costValue,
       render: (r) => f.money(r.costValue),
@@ -352,6 +354,7 @@ export default function Stocks() {
       header: t('col.payoutValue'),
       align: 'right',
       hideOnMobile: true,
+      mobile: 'field',
       sortable: true,
       sortValue: (r) => r.payoutValue,
       render: (r) => (
@@ -412,7 +415,7 @@ export default function Stocks() {
 
       <PlanGate feature="stocks_fbo_fbs">
         <div className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
             <StatCard
               label={t('kpi.units')}
               value={isLoading ? '—' : f.num(totals?.units ?? 0)}

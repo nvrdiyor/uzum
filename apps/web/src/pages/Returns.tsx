@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Coins, Download, Percent, Receipt, Undo2 } from 'lucide-react';
+import { AlertTriangle, Coins, Download, Percent, Receipt, Undo2 } from '@/components/icons';
 import { eachDay, type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';

@@ -9,7 +9,7 @@ import {
   PackageX,
   Percent,
   Snowflake,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { IlliquidResponse, IlliquidRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';

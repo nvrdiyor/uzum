@@ -2,7 +2,7 @@ import { forwardRef, useId, useMemo, type ButtonHTMLAttributes, type HTMLAttribu
 import { useT } from '@/i18n';
 // Faqat sof hisob-kitob (Recharts yo'q) — grafik kutubxonasi asosiy to'plamga tortilmaydi
 import { downsample, smoothPath } from '@/components/charts/series';
-import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────── Amount ───────────────────────────
@@ -21,6 +21,8 @@ export function Amount({ value, className }: { value: string; className?: string
   return (
     <span className={className}>
       {m[1]}
+      {/* Joy yetmasa valyuta keyingi qatorga o'tadi, raqamning o'zi bo'linmaydi */}
+      <wbr />
       <span className="ml-1 font-sans text-[0.55em] font-semibold tracking-normal text-muted">{m[3]}</span>
     </span>
   );

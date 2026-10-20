@@ -17,7 +17,7 @@ import {
   Store,
   Trash2,
   UserRound,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { UzumAccountSummary } from '@savdoiq/shared';
 import {
   Badge,

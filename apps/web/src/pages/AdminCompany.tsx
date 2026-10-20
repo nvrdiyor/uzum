@@ -21,7 +21,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { AdminCompanyDetail, AdminCompanySkuRow, Paginated } from '@savdoiq/shared';
 import {
   Badge,

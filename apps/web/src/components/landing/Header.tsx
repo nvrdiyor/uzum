@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogIn, Menu, Moon, Sun, X } from 'lucide-react';
+import { LogIn, Menu, Moon, Sun, X } from '@/components/icons';
 import { Button, IconButton } from '@/components/ui';
 import { useLangStore, useT, type Lang } from '@/i18n';
 import { useUi } from '@/store/ui';

@@ -11,7 +11,7 @@ import {
   Send,
   CheckCheck,
   XCircle,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { NotificationRow } from '@savdoiq/shared';
 import { APP } from '@savdoiq/shared';
 import {

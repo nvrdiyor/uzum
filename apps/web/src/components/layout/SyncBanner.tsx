@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw } from '@/components/icons';
 import type { SyncStatus } from '@savdoiq/shared';
 import { formatDuration } from '@savdoiq/shared';
 import { api } from '@/lib/api';

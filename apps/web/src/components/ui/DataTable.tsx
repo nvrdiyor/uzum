@@ -1,13 +1,41 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox, TrendingUp } from '@/components/icons';
+import { useIsDesktop } from '@/hooks/useMediaQuery';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { Button, EmptyState, SkeletonRows } from './primitives';
+import { Button, EmptyState, Select, SkeletonRows } from './primitives';
 
 registerNamespace('table', {
-  uz: { more: 'Yana {n} ta ko‘rsatish', shown: '{shown} / {total} qator' },
-  ru: { more: 'Показать ещё {n}', shown: '{shown} из {total} строк' },
-  en: { more: 'Show {n} more', shown: '{shown} of {total} rows' },
+  uz: {
+    more: 'Yana {n} ta ko‘rsatish',
+    shown: '{shown} / {total} qator',
+    details: 'Batafsil ({n})',
+    less: 'Yig‘ish',
+    sortBy: 'Saralash',
+    sortNone: 'Odatiy tartib',
+    sortAsc: 'O‘sish bo‘yicha',
+    sortDesc: 'Kamayish bo‘yicha',
+  },
+  ru: {
+    more: 'Показать ещё {n}',
+    shown: '{shown} из {total} строк',
+    details: 'Подробнее ({n})',
+    less: 'Свернуть',
+    sortBy: 'Сортировка',
+    sortNone: 'По умолчанию',
+    sortAsc: 'По возрастанию',
+    sortDesc: 'По убыванию',
+  },
+  en: {
+    more: 'Show {n} more',
+    shown: '{shown} of {total} rows',
+    details: 'Details ({n})',
+    less: 'Collapse',
+    sortBy: 'Sort',
+    sortNone: 'Default order',
+    sortAsc: 'Ascending',
+    sortDesc: 'Descending',
+  },
 });
 
 /**
@@ -29,8 +57,34 @@ export interface Column<T> {
   sortValue?: (row: T) => number | string;
   className?: string;
   headerClassName?: string;
-  /** Mobil ko'rinishda yashirish */
+  /** Mobil ko'rinishda yashirish (kartada "Batafsil" ostiga tushadi) */
   hideOnMobile?: boolean;
+  /**
+   * Telefondagi karta ichida o'rni. Berilmasa: birinchi ustun — sarlavha,
+   * sarlavhasi bo'sh yoki `actions` ustun — tugmalar qatori, `hideOnMobile` —
+   * "Batafsil" ostida, qolgani — asosiy maydonlar.
+   */
+  mobile?: MobileRole;
+}
+
+type MobileRole = 'title' | 'field' | 'detail' | 'actions' | 'hidden';
+
+/**
+ * Har ustunning kartadagi o'rni. Belgilash katakchasi (`select`) sarlavha
+ * yonida chapda turadi; sarlavha — undan keyingi birinchi ustun.
+ */
+function mobileRoles<T>(columns: Column<T>[]): (MobileRole | 'select')[] {
+  let titled = columns.some((c) => c.mobile === 'title');
+  return columns.map((c) => {
+    if (c.mobile) return c.mobile;
+    if (c.key === 'select') return 'select';
+    if (!titled) {
+      titled = true;
+      return 'title';
+    }
+    if (c.key === 'actions' || c.key === 'action' || c.header === '' || c.header == null) return 'actions';
+    return c.hideOnMobile ? 'detail' : 'field';
+  });
 }
 
 export interface DataTableProps<T> {
@@ -116,6 +170,11 @@ export function DataTable<T>({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [limit, setLimit] = useState(ROWS_STEP);
   const { ref: scrollRef, edges } = useEdgeScroll();
+  /*
+   * Telefonda (md dan tor) jadval o'rniga kartalar: 640 px'lik jadval 375 px
+   * ekranda yon tomonga surilib, ustunlar kesilib qolardi.
+   */
+  const isDesktop = useIsDesktop();
 
   // Ro'yxat almashsa (filtr, davr) yana boshidan 100 ta
   useEffect(() => setLimit(ROWS_STEP), [rows]);
@@ -154,6 +213,132 @@ export function DataTable<T>({
 
   if (!rows.length) {
     return <>{empty ?? <EmptyState icon={<Inbox className="h-6 w-6" />} title="Ma’lumot yo‘q" />}</>;
+  }
+
+  const moreBar =
+    hidden > 0 ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 md:px-5">
+        <p className="tnum text-xs text-muted">
+          {t('shown', { shown: f.num(visible.length), total: f.num(sorted.length) })}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          icon={<ChevronDown className="h-3.5 w-3.5" />}
+          onClick={() => setLimit((n) => n + ROWS_STEP * 2)}
+        >
+          {t('more', { n: f.num(Math.min(hidden, ROWS_STEP * 2)) })}
+        </Button>
+      </div>
+    ) : null;
+
+  const pager =
+    pagination && pagination.pages > 1 ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+        <p className="text-xs text-muted">
+          {pagination.total} {' '}
+          <span className="opacity-70">·</span> {pagination.page} / {pagination.pages}
+        </p>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pagination.page <= 1}
+            onClick={() => pagination.onPage(pagination.page - 1)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          {pageNumbers(pagination.page, pagination.pages).map((p, idx) =>
+            p === '…' ? (
+              <span key={`gap-${idx}`} className="px-1 text-xs text-muted">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => pagination.onPage(p as number)}
+                className={cn(
+                  'h-8 min-w-8 rounded-lg px-2 text-xs font-semibold transition-colors',
+                  p === pagination.page ? 'bg-brand text-on-brand' : 'bg-surface-2 text-muted hover:text-ink',
+                )}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pagination.page >= pagination.pages}
+            onClick={() => pagination.onPage(pagination.page + 1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
+  if (!isDesktop) {
+    const sortables = localSort ? columns.filter((c) => c.sortable && c.sortValue) : [];
+    return (
+      <div className={cn('w-full', className)}>
+        {sortables.length > 0 ? (
+          <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+            <span className="shrink-0 text-xs text-muted">{t('sortBy')}</span>
+            <Select
+              value={sortKey ?? ''}
+              onChange={(e) => setSortKey(e.target.value || null)}
+              className="h-9 min-w-0 flex-1 py-1.5 text-xs"
+              aria-label={t('sortBy')}
+            >
+              <option value="">{t('sortNone')}</option>
+              {sortables.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {typeof c.header === 'string' ? c.header : c.key}
+                </option>
+              ))}
+            </Select>
+            {sortKey ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 shrink-0 px-2.5"
+                aria-label={sortDir === 'asc' ? t('sortAsc') : t('sortDesc')}
+                title={sortDir === 'asc' ? t('sortAsc') : t('sortDesc')}
+                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              >
+                {sortDir === 'asc' ? <TrendingUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        <ul className="divide-y divide-line/70">
+          {visible.map((row, i) => (
+            <MobileRow
+              key={rowKey(row, i)}
+              row={row}
+              index={i}
+              columns={columns}
+              onRowClick={onRowClick}
+              detailsLabel={(n) => t('details', { n })}
+              lessLabel={t('less')}
+            />
+          ))}
+        </ul>
+        {footer ? (
+          // Jami qatori: md:table-cell bilan yashirilgan kataklar telefonda ko'rinmaydi
+          <div className="overflow-x-auto border-t border-line bg-surface-2/60">
+            <table className="w-full border-collapse text-sm">
+              <tbody>
+                <tr className="font-semibold text-ink">{footer}</tr>
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {moreBar}
+        {pager}
+      </div>
+    );
   }
 
   return (
@@ -258,67 +443,115 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {hidden > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3">
-          <p className="tnum text-xs text-muted">
-            {t('shown', { shown: f.num(visible.length), total: f.num(sorted.length) })}
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<ChevronDown className="h-3.5 w-3.5" />}
-            onClick={() => setLimit((n) => n + ROWS_STEP * 2)}
-          >
-            {t('more', { n: f.num(Math.min(hidden, ROWS_STEP * 2)) })}
-          </Button>
-        </div>
-      ) : null}
-
-      {pagination && pagination.pages > 1 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
-          <p className="text-xs text-muted">
-            {pagination.total} {' '}
-            <span className="opacity-70">·</span> {pagination.page} / {pagination.pages}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pagination.page <= 1}
-              onClick={() => pagination.onPage(pagination.page - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            {pageNumbers(pagination.page, pagination.pages).map((p, idx) =>
-              p === '…' ? (
-                <span key={`gap-${idx}`} className="px-1 text-xs text-muted">
-                  …
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => pagination.onPage(p as number)}
-                  className={cn(
-                    'h-8 min-w-8 rounded-lg px-2 text-xs font-semibold transition-colors',
-                    p === pagination.page ? 'bg-brand text-on-brand' : 'bg-surface-2 text-muted hover:text-ink',
-                  )}
-                >
-                  {p}
-                </button>
-              ),
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pagination.page >= pagination.pages}
-              onClick={() => pagination.onPage(pagination.page + 1)}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {moreBar}
+      {pager}
     </div>
+  );
+}
+
+/**
+ * Telefondagi bitta qator — karta: tepada sarlavha ustuni, ostida "nom — qiymat"
+ * juftlari ikki ustunda, `hideOnMobile` ustunlar "Batafsil" ostida, tugmalar pastda.
+ * Ustunlarning o'z `render`i ishlatiladi — sahifalar kodi o'zgarmaydi.
+ */
+function MobileRow<T>({
+  row,
+  index,
+  columns,
+  onRowClick,
+  detailsLabel,
+  lessLabel,
+}: {
+  row: T;
+  index: number;
+  columns: Column<T>[];
+  onRowClick?: (row: T) => void;
+  detailsLabel: (n: number) => string;
+  lessLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const roles = mobileRoles(columns);
+  const pick = (role: MobileRole | 'select') => columns.filter((_, ci) => roles[ci] === role);
+  const selects = pick('select');
+  const title = pick('title');
+  const fields = pick('field');
+  const details = pick('detail');
+  const actions = pick('actions');
+
+  const field = (c: Column<T>) => (
+    <div key={c.key} className="min-w-0">
+      <dt className="truncate text-2xs font-medium text-muted">{c.header}</dt>
+      {/* Jadvalda o'ngga tekislangan qiymatlar kartada chapda turadi */}
+      <dd className="mt-0.5 min-w-0 break-words text-sm text-ink-soft [&_.justify-end]:justify-start [&_.text-right]:text-left">
+        {c.render(row, index)}
+      </dd>
+    </div>
+  );
+
+  const clickable = Boolean(onRowClick);
+  return (
+    <li
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => onRowClick?.(row) : undefined}
+      onKeyDown={
+        clickable
+          ? (e: KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onRowClick?.(row);
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        'px-4 py-3.5',
+        clickable &&
+          'cursor-pointer transition-colors focus-visible:bg-surface-2/70 focus-visible:outline-none active:bg-surface-2/70',
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {selects.map((c) => (
+          // Katakcha bosilganda karta ochilib ketmasin
+          <div key={c.key} className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+            {c.render(row, index)}
+          </div>
+        ))}
+        {title.map((c) => (
+          <div key={c.key} className="min-w-0 flex-1 text-sm text-ink">
+            {c.render(row, index)}
+          </div>
+        ))}
+      </div>
+      {fields.length ? <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">{fields.map(field)}</dl> : null}
+      {details.length ? (
+        <>
+          {open ? <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5">{details.map(field)}</dl> : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+            aria-expanded={open}
+            className="mt-2.5 inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+          >
+            {open ? lessLabel : detailsLabel(details.length)}
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+          </button>
+        </>
+      ) : null}
+      {actions.length ? (
+        // Tugmalar bosilganda karta (qator) ochilib ketmasin
+        <div className="mt-3 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {actions.map((c) => (
+            <div key={c.key} className="[&_.justify-center]:justify-start [&_.justify-end]:justify-start">
+              {c.render(row, index)}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </li>
   );
 }
 

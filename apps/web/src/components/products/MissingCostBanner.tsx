@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/components/icons';
 import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';

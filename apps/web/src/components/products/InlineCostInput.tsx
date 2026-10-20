@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from '@/components/icons';
 import { cn, groupDigits } from '@/lib/utils';
 
 const BASE =

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Clock3, Info, Scale } from 'lucide-react';
+import { Clock3, Info, Scale } from '@/components/icons';
 import type { StockBalanceRow, StockBalanceState, StockBalanceSummary, StuckOrderRow } from '@savdoiq/shared';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { Check, Globe, Moon, Palette, PanelLeftClose, Sun } from 'lucide-react';
+import { Check, Globe, Moon, Palette, PanelLeftClose, Sun } from '@/components/icons';
 import type { Lang } from '@savdoiq/shared';
 import { Card, CardBody, CardHeader, Divider, Select, Toggle } from '@/components/ui';
 import { useUi } from '@/store/ui';

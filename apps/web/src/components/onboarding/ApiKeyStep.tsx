@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { UzumAccountSummary } from '@savdoiq/shared';
 import { Button, Input } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';

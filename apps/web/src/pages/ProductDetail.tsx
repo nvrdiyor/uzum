@@ -11,7 +11,7 @@ import {
   Star,
   TrendingUp,
   Undo2,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   Badge,
   Button,

@@ -9,7 +9,7 @@ import {
   Truck,
   Warehouse as WarehouseIcon,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import { DEFAULTS, type StocksResponse } from '@savdoiq/shared';
 import {
   Button,

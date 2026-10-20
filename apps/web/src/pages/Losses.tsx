@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Coins, Download, FileText, Hash, Info, PackageX, ShieldCheck } from 'lucide-react';
+import { Boxes, Coins, Download, FileText, Hash, Info, PackageX, ShieldCheck } from '@/components/icons';
 import type { LossRow, LossesResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';

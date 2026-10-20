@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Archive, Box, CalendarDays, Coins, Download, PieChart, Snowflake } from 'lucide-react';
+import { Archive, Box, CalendarDays, Coins, Download, PieChart, Snowflake } from '@/components/icons';
 import type { DashboardResponse, StorageResponse, StorageRow } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';

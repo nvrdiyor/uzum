@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { CalendarRange, Clock, Download, Inbox, MapPin, TrendingUp, Truck } from 'lucide-react';
+import { CalendarRange, Clock, Download, Inbox, MapPin, TrendingUp, Truck } from '@/components/icons';
 import type { DeliveryType, OrderRow, OrderStatus, SalesAnalyticsResponse } from '@savdoiq/shared';
 import {
   Badge,
@@ -443,6 +443,8 @@ export default function Sales() {
         key: 'date',
         header: t('col.date'),
         hideOnMobile: true,
+        // Telefondagi kartada ham ko'rinsin
+        mobile: 'field',
         render: (row) => <span className="tnum whitespace-nowrap text-xs">{f.dateTime(row.orderedAt)}</span>,
         sortValue: (row) => row.orderedAt,
         sortable: true,

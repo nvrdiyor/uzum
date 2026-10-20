@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AtSign, Clock3, Globe, Lock, Phone, ShieldCheck, UserRound } from 'lucide-react';
+import { AtSign, Clock3, Globe, Lock, Phone, ShieldCheck, UserRound } from '@/components/icons';
 import type { Lang } from '@savdoiq/shared';
 import {
   Avatar,

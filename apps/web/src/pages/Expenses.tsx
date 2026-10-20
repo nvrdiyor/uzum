@@ -11,7 +11,7 @@ import {
   Trash2,
   TrendingDown,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import { EXPENSE_CATEGORIES, type ExpenseCategory, type FinanceResponse } from '@savdoiq/shared';
 import {
   Badge,

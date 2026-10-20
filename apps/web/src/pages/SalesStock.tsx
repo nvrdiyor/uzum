@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Boxes, CalendarClock, Coins, Download, Inbox, PackageCheck, ShoppingCart, Wallet } from 'lucide-react';
+import { Boxes, CalendarClock, Coins, Download, Inbox, PackageCheck, ShoppingCart, Wallet } from '@/components/icons';
 import type { SalesStockResponse, SalesStockRow } from '@savdoiq/shared';
 import {
   Badge,

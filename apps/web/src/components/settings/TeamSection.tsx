@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AtSign, Crown, Lock, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { AtSign, Crown, Lock, Sparkles, Trash2, UserPlus, Users } from '@/components/icons';
 import {
   Avatar,
   Badge,

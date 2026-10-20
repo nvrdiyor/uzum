@@ -3,7 +3,7 @@
  */
 
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check } from '@/components/icons';
 import { planPrice, type FeatureAccess, type FeatureId, type PlanPublic } from '@savdoiq/shared';
 import { Button } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';

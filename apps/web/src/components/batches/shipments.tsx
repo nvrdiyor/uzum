@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plane, Ship, Truck } from 'lucide-react';
+import { Plane, Ship, Truck } from '@/components/icons';
 import type { BatchListResponse, BatchShipment, BatchSummary, CargoStat, ShipmentStatus } from '@savdoiq/shared';
 import { Badge, Button, Card, CardHeader, Input, Modal, Segmented, toast, type Tone } from '@/components/ui';
 import { api } from '@/lib/api';

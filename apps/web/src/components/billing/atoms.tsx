@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Check, Clock, Crown, Eye, Minus, Rocket, Sparkles } from 'lucide-react';
+import { Check, Clock, Crown, Eye, Minus, Rocket, Sparkles } from '@/components/icons';
 import type { FeatureAccess, PlanId } from '@savdoiq/shared';
 import { cn } from '@/lib/utils';
 

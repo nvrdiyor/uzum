@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, ChevronRight, Globe, LogOut, Menu, Moon, Settings, Sun, User as UserIcon, Zap } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, Globe, LogOut, Menu, Moon, Settings, Sun, User as UserIcon, Zap } from '@/components/icons';
 import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { useLangStore, useT, type Lang } from '@/i18n';

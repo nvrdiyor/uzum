@@ -12,7 +12,7 @@ import {
   Sparkles,
   Star,
   TrendingUp,
-} from 'lucide-react';
+} from '@/components/icons';
 import { Button } from '@/components/ui';
 import { registerNamespace, useT } from '@/i18n';
 import {

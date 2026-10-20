@@ -11,7 +11,7 @@ import {
   Target,
   TrendingUp,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { UnitEconomicsResponse, UnitEconomicsRow } from '@savdoiq/shared';
 import {
   Badge,

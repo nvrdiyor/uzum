@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, ShieldAlert } from '@/components/icons';
 import { Button, Card } from '@/components/ui';
 import { registerNamespace, useT } from '@/i18n';
 import { useSession } from '@/store/session';

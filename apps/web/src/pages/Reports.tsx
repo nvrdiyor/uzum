@@ -8,7 +8,7 @@ import {
   Receipt,
   ShoppingBag,
   TrendingUp,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { MonthlyReportResponse, TopProductRow } from '@savdoiq/shared';
 import {
   Button,

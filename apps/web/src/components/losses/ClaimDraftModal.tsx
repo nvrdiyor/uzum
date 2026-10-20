@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy, ExternalLink, FileText } from 'lucide-react';
+import { Check, Copy, ExternalLink, FileText } from '@/components/icons';
 import { api } from '@/lib/api';
 import { copyToClipboard } from '@/lib/utils';
 import { useT } from '@/i18n';

@@ -30,14 +30,14 @@ import {
   Settings,
   Ship,
   Boxes,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/components/icons';
 import type { FeatureId } from '@savdoiq/shared';
 
 export interface NavItem {
   to: string;
   labelKey: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   feature?: FeatureId;
   badge?: 'new' | 'beta';
   /** Tez kirish paneli (mobil pastki menyu) uchun */

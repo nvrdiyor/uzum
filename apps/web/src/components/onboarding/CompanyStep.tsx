@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
-import { ArrowRight, Building2, Percent } from 'lucide-react';
+import { ArrowRight, Building2, Percent } from '@/components/icons';
 import type { CompanySummary } from '@savdoiq/shared';
 import { Button, Input } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';

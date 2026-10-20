@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Crown, Rocket, Sparkles } from 'lucide-react';
+import { Clock, Crown, Rocket, Sparkles } from '@/components/icons';
 import { PLANS, PLAN_ORDER, planPrice, pickLocalized, type PlanId } from '@savdoiq/shared';
 import { Button, CheckItem, Segmented } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';

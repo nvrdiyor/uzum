@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { Package, Percent, TrendingUp, Wallet } from 'lucide-react';
+import { Package, Percent, TrendingUp, Wallet } from '@/components/icons';
 import { StatCard } from '@/components/ui';
 import { CHART_COLORS } from '@/lib/theme';
 import { useFormat, useT } from '@/i18n';

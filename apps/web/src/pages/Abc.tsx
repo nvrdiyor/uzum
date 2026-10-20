@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Layers3, PieChart as PieIcon, X } from 'lucide-react';
+import { Download, Layers3, PieChart as PieIcon, X } from '@/components/icons';
 import type { AbcResponse, AbcRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';

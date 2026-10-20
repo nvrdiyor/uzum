@@ -9,7 +9,7 @@ import {
   TrendingUp,
   PackageSearch,
   Tag,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { DashboardResponse, TopProductRow } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';

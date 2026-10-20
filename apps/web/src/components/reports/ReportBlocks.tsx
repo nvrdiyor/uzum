@@ -13,7 +13,7 @@ import {
   Truck,
   Undo2,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   EXPENSE_CATEGORIES,
   type DeliveryType,

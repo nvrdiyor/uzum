@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/components/icons';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 

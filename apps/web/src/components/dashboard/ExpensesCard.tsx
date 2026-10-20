@@ -1,4 +1,4 @@
-import { Receipt } from 'lucide-react';
+import { Receipt } from '@/components/icons';
 import { EXPENSE_CATEGORIES, type DashboardResponse } from '@savdoiq/shared';
 import { DonutChart, type DonutDatum } from '@/components/charts';
 import { Card, CardBody, CardHeader, EmptyState } from '@/components/ui';

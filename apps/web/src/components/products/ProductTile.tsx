@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, ImageOff, Star } from 'lucide-react';
+import { ArrowRight, ImageOff, Star } from '@/components/icons';
 import type { ProductCard } from '@savdoiq/shared';
 import { ProgressBar } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';

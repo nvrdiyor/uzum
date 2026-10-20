@@ -8,7 +8,7 @@ import {
   ReceiptText,
   Sparkles,
   Table2,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   APP,
   PLANS,

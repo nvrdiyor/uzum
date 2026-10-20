@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Bell, Building2, KeyRound, Palette, UserRound, Users } from 'lucide-react';
+import { Bell, Building2, KeyRound, Palette, UserRound, Users } from '@/components/icons';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { SECTION_IDS, type SectionId } from './types';

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, Megaphone, Percent, TrendingUp } from 'lucide-react';
+import { CheckCircle2, Megaphone, Percent, TrendingUp } from '@/components/icons';
 import type { PromoRow, PromoSkuRow, PromosResponse } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';

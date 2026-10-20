@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, Building2, Clock3, KeyRound, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, Clock3, KeyRound, RefreshCw, Sparkles } from '@/components/icons';
 import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';

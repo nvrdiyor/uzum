@@ -1,4 +1,4 @@
-import { Banknote, Boxes, Gauge } from 'lucide-react';
+import { Banknote, Boxes, Gauge } from '@/components/icons';
 import type { DashboardResponse } from '@savdoiq/shared';
 import { Amount, Card, CardBody, CardHeader, Delta, ProgressBar, ProgressRing } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';

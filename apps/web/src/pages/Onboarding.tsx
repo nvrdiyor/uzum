@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LifeBuoy } from 'lucide-react';
+import { LifeBuoy } from '@/components/icons';
 import { APP } from '@savdoiq/shared';
 import { toast } from '@/components/ui';
 import { OnboardStepper, type OnboardStepKey } from '@/components/onboarding/Stepper';

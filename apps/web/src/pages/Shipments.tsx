@@ -15,7 +15,7 @@ import {
   Trash2,
   Truck,
   X,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { Paginated, ProductsResponse, ShipmentItemRow, ShipmentRow } from '@savdoiq/shared';
 import {
   Badge,

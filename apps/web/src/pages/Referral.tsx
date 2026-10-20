@@ -12,7 +12,7 @@ import {
   Share2,
   Users,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { ReferralResponse } from '@savdoiq/shared';
 import {
   Badge,

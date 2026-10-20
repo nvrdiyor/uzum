@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, Check, ChevronDown, Lock, Store } from 'lucide-react';
+import { Calendar, Check, ChevronDown, Lock, Store } from '@/components/icons';
 import { getPlan, presetPeriod, toISODate, toBusinessDate } from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
 import { usePlan, useStores } from '@/store/session';

@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/components/icons';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { FadeUp } from './primitives';

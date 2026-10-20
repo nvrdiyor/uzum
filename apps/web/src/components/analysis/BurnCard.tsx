@@ -1,4 +1,4 @@
-import { Flame, TrendingDown } from 'lucide-react';
+import { Flame, TrendingDown } from '@/components/icons';
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
 

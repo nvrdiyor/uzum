@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import { Clock3, ShieldCheck, Wallet } from 'lucide-react';
+import { Clock3, ShieldCheck, Wallet } from '@/components/icons';
 import type { LossesResponse, LossRow } from '@savdoiq/shared';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';

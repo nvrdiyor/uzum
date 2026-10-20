@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Settings as SettingsIcon, Sparkles } from 'lucide-react';
+import { Settings as SettingsIcon, Sparkles } from '@/components/icons';
 import { Badge, Button, PageHeader } from '@/components/ui';
 import { SectionNav } from '@/components/settings/SectionNav';
 import { ProfileSection } from '@/components/settings/ProfileSection';

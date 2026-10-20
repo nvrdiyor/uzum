@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Lightbulb, PackagePlus, TrendingDown } from 'lucide-react';
+import { Boxes, Lightbulb, PackagePlus, TrendingDown } from '@/components/icons';
 import { addDays, parseISODate, toBusinessDate, toISODate, type StockRow } from '@savdoiq/shared';
 import { Button, Drawer, ErrorState, ProductCell, Skeleton, EmptyState } from '@/components/ui';
 import { LinesChart, CHART_COLORS } from '@/components/charts';

@@ -12,7 +12,7 @@ import {
   TrendingUp,
   Wallet,
   Wallet2,
-} from 'lucide-react';
+} from '@/components/icons';
 import { EXPENSE_CATEGORIES, deltaPct, type FinanceResponse } from '@savdoiq/shared';
 import {
   Button,

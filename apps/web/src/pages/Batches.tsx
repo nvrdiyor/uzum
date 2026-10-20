@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, ChevronDown, ChevronRight, ChevronUp, CircleCheck, GripVertical, Plus, Trash2, Truck, Warehouse, Wallet } from 'lucide-react';
+import { Boxes, ChevronDown, ChevronRight, ChevronUp, CircleCheck, GripVertical, Plus, Trash2, Truck, Warehouse, Wallet } from '@/components/icons';
 import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary, ShipmentStatus } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
@@ -26,6 +26,7 @@ import { parseAmount } from '@/components/batches/shared';
 import { BatchEtaCell, BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
 import { cn } from '@/lib/utils';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
+import { useIsDesktop } from '@/hooks/useMediaQuery';
 
 function CreateModal({ open, onClose: close, nextNo }: { open: boolean; onClose: () => void; nextNo: number }) {
   const t = useT('batches');
@@ -163,6 +164,8 @@ export default function Batches() {
   const f = useFormat();
   const navigate = useNavigate();
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
+  // Telefonda 10 ustunli jadval o'rniga kartalar
+  const isDesktop = useIsDesktop();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<BatchSummary | null>(null);
@@ -341,6 +344,105 @@ export default function Batches() {
                 ) : undefined
               }
             />
+          ) : !isDesktop ? (
+            <>
+              <ul className="divide-y divide-line/70">
+                {visible.map((b, i) => (
+                  <li
+                    key={b.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/batches/${b.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && e.key === 'Enter') navigate(`/batches/${b.id}`);
+                    }}
+                    className="cursor-pointer px-4 py-3.5 transition-colors focus-visible:bg-surface-2/60 focus-visible:outline-none active:bg-surface-2/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-ink">{b.name}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {f.date(b.createdAt)} · 1 ¥ = {f.num(b.rate, 2)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <p className="tnum whitespace-nowrap text-right font-bold text-ink" title={t('col.totalHint')}>
+                          {f.num(listTotal(b))}
+                        </p>
+                        <ChevronRight className="h-4 w-4 text-muted" />
+                      </div>
+                    </div>
+                    {/* Holat va kelish — bosilsa jo'natmalar oynasi, partiya ochilmaydi */}
+                    <div className="mt-3 grid grid-cols-2 gap-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="min-w-0">
+                        <p className="text-2xs font-medium text-muted">{t('col.status')}</p>
+                        <div className="mt-1">
+                          <BatchStatusCell batch={b} onClick={canEdit ? () => setShipId(b.id) : undefined} />
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-2xs font-medium text-muted">{t('col.eta')}</p>
+                        <div className="mt-1">
+                          <BatchEtaCell batch={b} />
+                        </div>
+                      </div>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {(
+                        [
+                          [t('col.items'), t('items', { n: b.totals.items })],
+                          [t('col.cny'), f.num(b.totals.priceCny, 2)],
+                          [t('col.goods'), f.num(b.totals.goodsUzs)],
+                          [t('col.cargo'), f.num(b.totals.cargoUzs)],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label} className="min-w-0">
+                          <dt className="truncate text-2xs font-medium text-muted">{label}</dt>
+                          <dd className="tnum mt-0.5 text-ink-soft">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {canEdit ? (
+                      <div className="mt-2 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        {canReorder ? (
+                          <>
+                            <IconButton
+                              label={t('row.moveUp')}
+                              disabled={i === 0}
+                              className="h-9 w-9 disabled:pointer-events-none disabled:opacity-30"
+                              onClick={() => move(i, i - 1)}
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </IconButton>
+                            <IconButton
+                              label={t('row.moveDown')}
+                              disabled={i === visible.length - 1}
+                              className="h-9 w-9 disabled:pointer-events-none disabled:opacity-30"
+                              onClick={() => move(i, i + 1)}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </IconButton>
+                          </>
+                        ) : null}
+                        <IconButton label={t('delete.title')} className="h-9 w-9 hover:text-danger" onClick={() => setToDelete(b)}>
+                          <Trash2 className="h-4 w-4" />
+                        </IconButton>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {/* Ko'rinib turgan partiyalar bo'yicha jami */}
+              <div className="flex items-center justify-between gap-3 border-t border-line bg-surface-2/60 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">{t('row.totals')}</p>
+                  <p className="tnum text-xs text-muted">
+                    {t('items', { n: foot.items })} · {f.num(foot.cny, 2)} ¥
+                  </p>
+                </div>
+                <p className="tnum whitespace-nowrap font-extrabold text-ink">{f.num(foot.total)}</p>
+              </div>
+            </>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1040px] text-sm">

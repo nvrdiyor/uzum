@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw } from '@/components/icons';
 
 /**
  * Marshrut xatolari uchun chegara.

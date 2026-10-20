@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, Filter, Info, PackageCheck, Percent, ShoppingBag, Undo2, XCircle } from 'lucide-react';
+import { ArrowDown, Filter, Info, PackageCheck, Percent, ShoppingBag, Undo2, XCircle } from '@/components/icons';
 import type { FunnelResponse, FunnelStepId } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { registerNamespace, useFormat, useT } from '@/i18n';

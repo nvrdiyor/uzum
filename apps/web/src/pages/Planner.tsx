@@ -11,7 +11,7 @@ import {
   TrendingDown,
   TrendingUp,
   Truck,
-} from 'lucide-react';
+} from '@/components/icons';
 import type { PlannerResponse, PlannerRow } from '@savdoiq/shared';
 import {
   Badge,

@@ -1,4 +1,4 @@
-import { Store } from 'lucide-react';
+import { Store } from '@/components/icons';
 import type { DashboardResponse } from '@savdoiq/shared';
 import { Card, CardBody, CardHeader, EmptyState, ProgressBar } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
@@ -24,13 +24,14 @@ export function StoresCard({ data }: { data: DashboardResponse }) {
           <EmptyState className="py-10" icon={<Store className="h-6 w-6" />} title={t('stores.empty')} hint={t('stores.emptyHint')} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[420px] border-collapse text-sm">
+            {/* Telefonda ulush ustuni yashirin — u progress chizig'ida ko'rinib turadi */}
+            <table className="w-full border-collapse text-sm sm:min-w-[420px]">
               <thead>
                 <tr>
                   <th className="table-head border-b border-line px-3 py-2.5 text-left">{t('stores.col.store')}</th>
-                  <th className="table-head border-b border-line px-3 py-2.5 text-right">{t('stores.col.orders')}</th>
+                  <th className="table-head hidden border-b border-line px-3 py-2.5 text-right sm:table-cell">{t('stores.col.orders')}</th>
                   <th className="table-head border-b border-line px-3 py-2.5 text-right">{t('stores.col.revenue')}</th>
-                  <th className="table-head border-b border-line px-3 py-2.5 text-right">{t('stores.col.share')}</th>
+                  <th className="table-head hidden border-b border-line px-3 py-2.5 text-right sm:table-cell">{t('stores.col.share')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -41,10 +42,14 @@ export function StoresCard({ data }: { data: DashboardResponse }) {
                       <td className="px-3 py-3">
                         <p className="truncate font-medium text-ink">{r.title}</p>
                         <ProgressBar className="mt-1.5 max-w-[180px]" value={(r.revenue / max) * 100} />
+                        {/* Telefonda buyurtmalar soni nom ostida — alohida ustun sig'maydi */}
+                        <p className="tnum mt-1 text-xs text-muted sm:hidden">
+                          {t('stores.col.orders')}: {f.num(r.orders)}
+                        </p>
                       </td>
-                      <td className="tnum px-3 py-3 text-right text-ink-soft">{f.num(r.orders)}</td>
-                      <td className="tnum px-3 py-3 text-right font-semibold text-ink">{f.money(r.revenue, data.currency)}</td>
-                      <td className="tnum px-3 py-3 text-right text-muted">{f.pct(share)}</td>
+                      <td className="tnum hidden px-3 py-3 text-right text-ink-soft sm:table-cell">{f.num(r.orders)}</td>
+                      <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink">{f.money(r.revenue, data.currency)}</td>
+                      <td className="tnum hidden px-3 py-3 text-right text-muted sm:table-cell">{f.pct(share)}</td>
                     </tr>
                   );
                 })}

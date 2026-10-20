@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Trophy } from 'lucide-react';
+import { ArrowRight, Trophy } from '@/components/icons';
 import type { TopProductRow } from '@savdoiq/shared';
 import { Badge, Card, CardHeader, DataTable, EmptyState, ProductCell, ProgressBar, type Column } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';

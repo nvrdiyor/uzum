@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, Sparkles } from 'lucide-react';
+import { Lock, Sparkles } from '@/components/icons';
 import type { FeatureId } from '@savdoiq/shared';
 import { useFeature } from '@/store/session';
 import { useT } from '@/i18n';

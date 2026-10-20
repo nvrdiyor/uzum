@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from '@/components/icons';
 import { IconButton } from '@/components/ui';
 import { registerNamespace, useLangStore, useT, type Lang } from '@/i18n';
 import { useUi } from '@/store/ui';

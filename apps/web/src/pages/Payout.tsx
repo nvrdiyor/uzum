@@ -8,7 +8,7 @@ import {
   Receipt,
   Settings2,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   PAYOUT_MODES,
   SCHEDULE_FEE,

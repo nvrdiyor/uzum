@@ -1,4 +1,4 @@
-import { Scale } from 'lucide-react';
+import { Scale } from '@/components/icons';
 import { Card, CardHeader, Delta, EmptyState, SkeletonRows } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -46,18 +46,19 @@ export function PnlTable({
         <EmptyState icon={<Scale className="h-6 w-6" />} title={t('pnl.empty')} hint={t('pnl.emptyHint')} />
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-sm">
+          {/* Telefonda: modda, joriy davr va o'zgarish — oldingi davr va ulush kattaroq ekranda */}
+          <table className="w-full border-collapse text-sm sm:min-w-[620px]">
             <thead>
               <tr>
-                <th className="table-head border-b border-line px-4 py-3 text-left">{t('pnl.col.item')}</th>
-                <th className="table-head border-b border-line px-4 py-3 text-right">
+                <th className="table-head border-b border-line px-2 py-3 sm:px-4 text-left">{t('pnl.col.item')}</th>
+                <th className="table-head border-b border-line px-2 py-3 sm:px-4 text-right">
                   {periodLabel ?? t('pnl.col.current')}
                 </th>
-                <th className="table-head border-b border-line px-4 py-3 text-right">
+                <th className="table-head hidden border-b border-line px-2 py-3 sm:px-4 text-right sm:table-cell">
                   {previousLabel ?? t('pnl.col.previous')}
                 </th>
-                <th className="table-head border-b border-line px-4 py-3 text-right">{t('pnl.col.delta')}</th>
-                <th className="table-head hidden border-b border-line px-4 py-3 text-right md:table-cell">
+                <th className="table-head border-b border-line px-2 py-3 sm:px-4 text-right">{t('pnl.col.delta')}</th>
+                <th className="table-head hidden border-b border-line px-2 py-3 sm:px-4 text-right md:table-cell">
                   {t('pnl.col.share')}
                 </th>
               </tr>
@@ -83,11 +84,11 @@ export function PnlTable({
                   >
                     <td
                       className={cn(
-                        'px-4 py-3',
-                        isTotal ? 'font-display text-base font-extrabold' : isSubtotal ? 'font-display' : '',
+                        'px-2 py-3 sm:px-4',
+                        isTotal ? 'font-display text-sm font-extrabold sm:text-base' : isSubtotal ? 'font-display' : '',
                       )}
                     >
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 sm:gap-2">
                         <span
                           className={cn(
                             'h-1.5 w-1.5 shrink-0 rounded-full',
@@ -100,26 +101,26 @@ export function PnlTable({
 
                     <td
                       className={cn(
-                        'tnum whitespace-nowrap px-4 py-3 text-right',
+                        'tnum whitespace-nowrap px-2 py-3 sm:px-4 text-right',
                         isCost || negative ? 'text-danger' : 'text-ink',
-                        isTotal && 'font-display text-base font-extrabold',
+                        isTotal && 'font-display text-sm font-extrabold sm:text-base',
                         isSubtotal && 'font-display font-bold',
                       )}
                     >
                       {isCost ? cost(line.current) : money(line.current)}
                     </td>
 
-                    <td className={cn('tnum whitespace-nowrap px-4 py-3 text-right text-muted')}>
+                    <td className="tnum hidden whitespace-nowrap px-2 py-3 sm:px-4 text-right text-muted sm:table-cell">
                       {isCost ? cost(line.previous) : money(line.previous)}
                     </td>
 
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-2 py-3 sm:px-4 text-right">
                       <span className="inline-flex justify-end">
-                        <Delta value={line.deltaPct} invert={isCost} />
+                        <Delta value={line.deltaPct} invert={isCost} className="max-sm:px-1.5 max-sm:text-[11px]" />
                       </span>
                     </td>
 
-                    <td className="tnum hidden px-4 py-3 text-right text-muted md:table-cell">
+                    <td className="tnum hidden px-2 py-3 sm:px-4 text-right text-muted md:table-cell">
                       {line.share > 0 ? f.pct(line.share) : '—'}
                     </td>
                   </tr>

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Calendar, Hash, MapPin, Package } from 'lucide-react';
+import { Calendar, Hash, MapPin, Package } from '@/components/icons';
 import type { OrderRow } from '@savdoiq/shared';
 import { Drawer } from '@/components/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';

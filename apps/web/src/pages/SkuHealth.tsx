@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Ban, HeartPulse, PackageX, RotateCcw, Search, ShieldAlert } from 'lucide-react';
+import { Ban, HeartPulse, PackageX, RotateCcw, Search, ShieldAlert } from '@/components/icons';
 import type { SkuHealthIssue, SkuHealthResponse, SkuHealthRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';

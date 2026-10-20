@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Info } from '@/components/icons';
 import type { TelegramAuthPayload } from '@savdoiq/shared';
 import { Skeleton } from '@/components/ui';
 import { api } from '@/lib/api';

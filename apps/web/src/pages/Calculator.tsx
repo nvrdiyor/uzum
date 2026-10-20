@@ -15,7 +15,7 @@ import {
   Trash2,
   TrendingUp,
   Truck,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   calcUnitEconomics,
   type ProductsResponse,

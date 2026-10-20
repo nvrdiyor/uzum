@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Coins, HandCoins, ImageOff, Package, Tag, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Coins, HandCoins, ImageOff, Package, Tag, Wallet } from '@/components/icons';
 import type { ProductProfitMoney, ProductProfitResponse, ProductProfitRow } from '@savdoiq/shared';
 import {
   Amount,

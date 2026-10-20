@@ -47,7 +47,8 @@ export function StatCard({
       className={cn(
         // flex-col + pastdagi mt-auto: qatordagi barcha kartochkalarda
         // o'zgarish chipi va sparkline bir sathda turadi
-        'card card-hover relative flex flex-col overflow-hidden p-5',
+        // container: raqam o'lchami karta kengligiga moslashadi (telefonda 2 ustun)
+        'card card-hover relative flex flex-col overflow-hidden p-4 [container-type:inline-size] sm:p-5',
         onClick && 'cursor-pointer',
         className,
       )}
@@ -70,12 +71,13 @@ export function StatCard({
                 {icon}
               </span>
             ) : null}
-            <p className="truncate eyebrow-lg">{label}</p>
+            {/* Telefonda tor kartada sarlavha ikki qatorgacha — kesilib ma'nosi yo'qolmasin */}
+            <p className="line-clamp-2 eyebrow-lg sm:truncate">{label}</p>
           </div>
           {loading ? (
             <Skeleton className="mt-3 h-8 w-32" />
           ) : (
-            <p className="tnum mt-3 font-display text-[26px] font-bold leading-[1.15] tracking-[-0.02em] text-ink">
+            <p className="tnum mt-3 font-display text-[clamp(17px,12.5cqi,26px)] font-bold leading-[1.15] tracking-[-0.02em] text-ink">
               {typeof value === 'string' ? <Amount value={value} /> : value}
             </p>
           )}
@@ -129,7 +131,15 @@ const GRID_COLS: Record<number, string> = {
 export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
   const count = Children.toArray(children).filter(Boolean).length;
   return (
-    <div className={cn('grid gap-4', GRID_COLS[count] ?? 'sm:grid-cols-2 xl:grid-cols-4', className)}>
+    <div
+      className={cn(
+        'grid gap-3 sm:gap-4',
+        // Telefonda ikki ustun; toq qolgan oxirgi kartochka butun qatorni oladi
+        count >= 2 && 'grid-cols-2 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2',
+        GRID_COLS[count] ?? 'sm:grid-cols-2 xl:grid-cols-4',
+        className,
+      )}
+    >
       {children}
     </div>
   );

@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Building2, CalendarClock, Store, Users } from 'lucide-react';
+import { Building2, CalendarClock, Store, Users } from '@/components/icons';
 import type { MeResponse, SubscriptionSummary } from '@savdoiq/shared';
 import { Badge, ProgressBar, Skeleton, type Tone } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';

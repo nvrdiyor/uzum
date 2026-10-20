@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, CheckCircle2, Info, ShieldAlert, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Info, ShieldAlert, Sparkles } from '@/components/icons';
 import type { Insight } from '@savdoiq/shared';
 import { LEVEL_TONE } from '@/lib/theme';
 import { useT } from '@/i18n';

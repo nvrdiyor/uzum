@@ -6,7 +6,7 @@
  * bo'limida turadi. Uzum'dagi kartochkaga tegilmaydi, sotuv tarixi saqlanadi.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2 } from '@/components/icons';
 import type { ProductCard } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { registerNamespace, useT } from '@/i18n';

@@ -14,7 +14,7 @@ import {
   Sparkles,
   Truck,
   Wallet,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   calcImportPrice,
   maxCostForPrice,

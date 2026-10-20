@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgeCheck, ExternalLink, ScanBarcode, ShieldAlert, X } from 'lucide-react';
+import { BadgeCheck, ExternalLink, ScanBarcode, ShieldAlert, X } from '@/components/icons';
 import { api } from '@/lib/api';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { useDebounced } from '@/components/sales/useDebounced';

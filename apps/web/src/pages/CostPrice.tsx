@@ -8,7 +8,7 @@ import {
   Save,
   Tags,
   Undo2,
-} from 'lucide-react';
+} from '@/components/icons';
 import { DEFAULTS } from '@savdoiq/shared';
 import type { ProductsResponse } from '@savdoiq/shared';
 import {

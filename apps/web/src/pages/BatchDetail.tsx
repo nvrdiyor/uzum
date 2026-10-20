@@ -30,7 +30,7 @@ import {
   Truck,
   Undo2,
   X,
-} from 'lucide-react';
+} from '@/components/icons';
 import {
   BATCH_MAX_EXTRAS,
   BATCH_MAX_ITEMS,
