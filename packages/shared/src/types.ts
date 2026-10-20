@@ -642,13 +642,32 @@ export interface StockRow {
   total: number;
   costValue: number;
   retailValue: number;
+  /** Kutilayotgan tushum: qoldiq hammasi joriy narxda sotilsa, Uzum komissiyasi va logistikasidan keyin */
+  payoutValue: number;
+  /** Bir donadan tushum */
+  payoutPerUnit: number;
+  /** Komissiya va logistika shu SKU sotuvidan ('sales') yoki taxmin ('estimate') */
+  payoutSource: 'sales' | 'estimate';
+  /** Kutilayotgan foyda: tushum − tannarx − soliq; tannarx kiritilmagan bo'lsa null */
+  profitValue: number | null;
   avgDaily: number;
   daysLeft: number | null;
   status: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
 }
 
 export interface StocksResponse {
-  totals: { units: number; costValue: number; retailValue: number; skuCount: number };
+  totals: {
+    units: number;
+    costValue: number;
+    retailValue: number;
+    skuCount: number;
+    /** Kutilayotgan tushum (jami) */
+    payoutValue: number;
+    /** Kutilayotgan foyda — faqat tannarxi kiritilgan SKU'lar bo'yicha */
+    profitValue: number;
+    /** Qoldig'i bor, tannarxi kiritilmagan dona — foydaga kirmagan */
+    unitsNoCost: number;
+  };
   rows: Paginated<StockRow>;
 }
 

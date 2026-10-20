@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Download, Layers, PackageSearch, Tag, Wallet } from 'lucide-react';
+import { Boxes, Download, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from 'lucide-react';
 import type { StockRow, StocksResponse } from '@savdoiq/shared';
 import {
   Button,
@@ -18,7 +18,6 @@ import {
   Segmented,
   SkeletonRows,
   StatCard,
-  StatGrid,
   toast,
   type Column,
 } from '@/components/ui';
@@ -41,9 +40,14 @@ registerNamespace('stocks', {
     'kpi.cost': 'Tannarx bo‘yicha qiymat',
     'kpi.costHint': 'Omborda muzlagan kapital',
     'kpi.retail': 'Chakana qiymat',
-    'kpi.retailHint': 'Joriy narxlarda potentsial tushum',
+    'kpi.retailHint': 'Joriy narxlarda, Uzum ushlab qolishidan oldin',
     'kpi.skus': 'SKU soni',
     'kpi.skusHint': 'Qoldiqli pozitsiyalar',
+    'kpi.payout': 'Kutilayotgan tushum',
+    'kpi.payoutHint': 'Hammasi joriy narxda sotilsa, Uzum komissiyasi va logistikasidan keyin sizga tushadi',
+    'kpi.profit': 'Kutilayotgan foyda',
+    'kpi.profitHint': 'Tushum − tannarx − soliq',
+    'kpi.noCostUnits': '{n} dona tannarxsiz — foydaga kirmagan',
     'filter.all': 'Barchasi',
     'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
     'chart.byStatus': 'Holat bo‘yicha taqsimot',
@@ -61,6 +65,9 @@ registerNamespace('stocks', {
     'col.inTransit': 'Yo‘lda',
     'col.total': 'Jami',
     'col.costValue': 'Tannarx qiymati',
+    'col.payoutValue': 'Kutilayotgan tushum',
+    'payout.unit': '1 donadan: {v}',
+    'payout.estimate': '1 donadan ≈ {v} — bu SKU hali sotilmagan, komissiya va logistika taxminiy',
     'col.avgDaily': 'Kunlik sotuv',
     'col.daysLeft': 'Yetadi',
     'col.status': 'Holat',
@@ -77,9 +84,14 @@ registerNamespace('stocks', {
     'kpi.cost': 'Стоимость по себестоимости',
     'kpi.costHint': 'Замороженный на складе капитал',
     'kpi.retail': 'Розничная стоимость',
-    'kpi.retailHint': 'Потенциальная выручка по текущим ценам',
+    'kpi.retailHint': 'По текущим ценам, до удержаний Uzum',
     'kpi.skus': 'Количество SKU',
     'kpi.skusHint': 'Позиции с остатком',
+    'kpi.payout': 'Ожидаемая выручка',
+    'kpi.payoutHint': 'Если всё продать по текущей цене — придёт вам после комиссии и логистики Uzum',
+    'kpi.profit': 'Ожидаемая прибыль',
+    'kpi.profitHint': 'Выручка − себестоимость − налог',
+    'kpi.noCostUnits': '{n} шт. без себестоимости — не учтены в прибыли',
     'filter.all': 'Все',
     'search.placeholder': 'Поиск по названию или SKU',
     'chart.byStatus': 'Распределение по статусам',
@@ -97,6 +109,9 @@ registerNamespace('stocks', {
     'col.inTransit': 'В пути',
     'col.total': 'Всего',
     'col.costValue': 'Себестоимость',
+    'col.payoutValue': 'Ожидаемая выручка',
+    'payout.unit': 'за 1 шт.: {v}',
+    'payout.estimate': 'за 1 шт. ≈ {v} — SKU ещё не продавался, комиссия и логистика оценочные',
     'col.avgDaily': 'Продаж в день',
     'col.daysLeft': 'Хватит на',
     'col.status': 'Статус',
@@ -113,9 +128,14 @@ registerNamespace('stocks', {
     'kpi.cost': 'Cost value',
     'kpi.costHint': 'Capital frozen in the warehouse',
     'kpi.retail': 'Retail value',
-    'kpi.retailHint': 'Potential revenue at current prices',
+    'kpi.retailHint': 'At current prices, before Uzum deductions',
     'kpi.skus': 'SKU count',
     'kpi.skusHint': 'Positions with stock',
+    'kpi.payout': 'Expected payout',
+    'kpi.payoutHint': 'If everything sells at the current price — what you receive after Uzum commission and logistics',
+    'kpi.profit': 'Expected profit',
+    'kpi.profitHint': 'Payout − cost − tax',
+    'kpi.noCostUnits': '{n} units without cost price — not in profit',
     'filter.all': 'All',
     'search.placeholder': 'Search by name or SKU',
     'chart.byStatus': 'Distribution by status',
@@ -133,6 +153,9 @@ registerNamespace('stocks', {
     'col.inTransit': 'In transit',
     'col.total': 'Total',
     'col.costValue': 'Cost value',
+    'col.payoutValue': 'Expected payout',
+    'payout.unit': 'per unit: {v}',
+    'payout.estimate': 'per unit ≈ {v} — this SKU has not sold yet, commission and logistics are estimated',
     'col.avgDaily': 'Daily sales',
     'col.daysLeft': 'Cover',
     'col.status': 'Status',
@@ -225,9 +248,10 @@ export default function Stocks() {
         (acc, r) => {
           acc.total += r.total;
           acc.costValue += r.costValue;
+          acc.payoutValue += r.payoutValue;
           return acc;
         },
-        { total: 0, costValue: 0 },
+        { total: 0, costValue: 0, payoutValue: 0 },
       ),
     [filtered],
   );
@@ -324,6 +348,26 @@ export default function Stocks() {
       render: (r) => f.money(r.costValue),
     },
     {
+      key: 'payoutValue',
+      header: t('col.payoutValue'),
+      align: 'right',
+      hideOnMobile: true,
+      sortable: true,
+      sortValue: (r) => r.payoutValue,
+      render: (r) => (
+        <span
+          className={r.total > 0 ? 'tnum text-ink' : 'tnum text-muted'}
+          title={
+            r.payoutPerUnit > 0
+              ? t(r.payoutSource === 'estimate' ? 'payout.estimate' : 'payout.unit', { v: f.money(r.payoutPerUnit) })
+              : undefined
+          }
+        >
+          {f.money(r.payoutValue)}
+        </span>
+      ),
+    },
+    {
       key: 'avgDaily',
       header: t('col.avgDaily'),
       align: 'right',
@@ -368,7 +412,7 @@ export default function Stocks() {
 
       <PlanGate feature="stocks_fbo_fbs">
         <div className="space-y-5">
-          <StatGrid>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
               label={t('kpi.units')}
               value={isLoading ? '—' : f.num(totals?.units ?? 0)}
@@ -394,6 +438,26 @@ export default function Stocks() {
               loading={isLoading}
             />
             <StatCard
+              label={t('kpi.payout')}
+              value={isLoading ? '—' : f.money(totals?.payoutValue ?? 0)}
+              hint={t('kpi.payoutHint')}
+              icon={<HandCoins className="h-5 w-5" />}
+              tone="brand"
+              loading={isLoading}
+            />
+            <StatCard
+              label={t('kpi.profit')}
+              value={isLoading ? '—' : f.money(totals?.profitValue ?? 0)}
+              hint={
+                (totals?.unitsNoCost ?? 0) > 0
+                  ? t('kpi.noCostUnits', { n: f.num(totals?.unitsNoCost ?? 0) })
+                  : t('kpi.profitHint')
+              }
+              icon={<TrendingUp className="h-5 w-5" />}
+              tone={(totals?.profitValue ?? 0) < 0 ? 'danger' : 'violet'}
+              loading={isLoading}
+            />
+            <StatCard
               label={t('kpi.skus')}
               value={isLoading ? '—' : f.num(totals?.skuCount ?? 0)}
               hint={t('kpi.skusHint')}
@@ -401,7 +465,7 @@ export default function Stocks() {
               tone="warn"
               loading={isLoading}
             />
-          </StatGrid>
+          </div>
 
           {isError ? (
             <Card>
@@ -531,6 +595,9 @@ export default function Stocks() {
                         <td className="tnum px-4 py-3 text-right">{f.num(visibleTotals.total)}</td>
                         <td className="tnum hidden px-4 py-3 text-right md:table-cell">
                           {f.money(visibleTotals.costValue)}
+                        </td>
+                        <td className="tnum hidden px-4 py-3 text-right md:table-cell">
+                          {f.money(visibleTotals.payoutValue)}
                         </td>
                         <td className="hidden px-4 py-3 md:table-cell" />
                         <td className="px-4 py-3" />

@@ -1,7 +1,8 @@
 /**
  * Qoldiqlar moduli — /api/v1/stocks
  *
- *  GET /              → StocksResponse (FBO/FBS/o'z ombori kesimida qoldiq va uning qiymati)
+ *  GET /              → StocksResponse (FBO/FBS/o'z ombori kesimida qoldiq, uning qiymati,
+ *                       hammasi sotilsa kutilayotgan tushum va foyda)
  *  GET /sales-stock   → SalesStockResponse (sotuv + qoldiq: nima qancha sotildi va qancha qoldi)
  *  GET /warehouse     → o'z ombori kesimi: SKU bo'yicha qoldiq, band, yo'lda, qiymat, hajm
  *  GET /history       → ?skuId= bo'yicha oxirgi 60 kunlik qoldiq tarixi
@@ -40,6 +41,7 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
+import { estimateStockValue, stockLineValue } from '../services/stock-value.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -107,6 +109,8 @@ const STOCK_SORT: Record<string, (r: StockRow) => SortValue> = {
   inTransit: (r) => r.inTransit,
   costValue: (r) => r.costValue,
   retailValue: (r) => r.retailValue,
+  payoutValue: (r) => r.payoutValue,
+  profitValue: (r) => r.profitValue ?? Number.NEGATIVE_INFINITY,
   avgDaily: (r) => r.avgDaily,
   daysLeft: (r) => r.daysLeft ?? Number.MAX_SAFE_INTEGER,
   title: (r) => r.title,
@@ -130,6 +134,14 @@ router.get(
       getLastSaleDates(storeIds),
     ]);
 
+    // Hammasi sotilsa qancha tushadi — komissiya va logistika SKU'ning haqiqiy sotuvidan
+    const { lines } = await estimateStockValue(
+      storeIds,
+      [...catalog.values()],
+      (skuId) => stocks.get(skuId)?.total ?? 0,
+      company.taxRate,
+    );
+
     const search = range.search?.toLowerCase();
     const rows: StockRow[] = [];
 
@@ -139,6 +151,8 @@ router.get(
       const avg = avgDaily.get(skuId) ?? 0;
       const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
       if (onlyStatus && state.status !== onlyStatus) continue;
+      const line = lines.get(skuId);
+      const value = stockLineValue(info, st.total, line, company.taxRate);
 
       rows.push({
         skuId,
@@ -156,6 +170,10 @@ router.get(
         costValue: round(st.total * (info.purchasePrice + info.extraCost)),
         // Sotuv narxi bo'yicha qiymat — potentsial tushum
         retailValue: round(st.total * info.price),
+        payoutValue: round(value.payout),
+        payoutPerUnit: round(line?.payoutPerUnit ?? 0),
+        payoutSource: line?.source ?? 'estimate',
+        profitValue: value.profit === null ? null : round(value.profit),
         avgDaily: round(avg, 2),
         daysLeft: state.daysLeft,
         status: state.status,
@@ -168,10 +186,16 @@ router.get(
     let units = 0;
     let costValue = 0;
     let retailValue = 0;
+    let payoutValue = 0;
+    let profitValue = 0;
+    let unitsNoCost = 0;
     for (const r of rows) {
       units += r.total;
       costValue += r.costValue;
       retailValue += r.retailValue;
+      payoutValue += r.payoutValue;
+      if (r.profitValue !== null) profitValue += r.profitValue;
+      else unitsNoCost += r.total;
     }
 
     const payload: StocksResponse = {
@@ -181,6 +205,9 @@ router.get(
         retailValue: round(retailValue),
         // Faqat omborda qoldig'i bor SKU sanaladi — KPI jadval bilan mos bo'lsin
         skuCount: rows.filter((r) => r.total > 0).length,
+        payoutValue: round(payoutValue),
+        profitValue: round(profitValue),
+        unitsNoCost,
       },
       rows: paginate(rows, range.page, range.pageSize),
     };

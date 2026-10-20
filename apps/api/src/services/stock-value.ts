@@ -53,6 +53,26 @@ export interface StockValueTotals {
 }
 
 /**
+ * Bitta SKU qoldig'ining qiymati. `profit` — tannarx kiritilmagan bo'lsa null
+ * (foydani tannarxsiz hisoblab bo'lmaydi).
+ */
+export function stockLineValue(
+  s: StockValueSku,
+  units: number,
+  line: StockValueLine | undefined,
+  taxRatePct: number,
+): { cost: number; retail: number; payout: number; profit: number | null } {
+  const payout = units * (line?.payoutPerUnit ?? 0);
+  const unitCost = s.purchasePrice + s.extraCost;
+  return {
+    cost: s.purchasePrice > 0 ? units * unitCost : 0,
+    retail: units * s.price,
+    payout,
+    profit: s.purchasePrice > 0 ? payout - units * unitCost - (units * s.price * taxRatePct) / 100 : null,
+  };
+}
+
+/**
  * Har SKU uchun bir donadan tushum. `stockOf` — SKU qoldig'i (dona).
  * Sotuvi bo'lmagan SKU'larda kompaniya o'rtachasi ishlatiladi.
  */
@@ -104,19 +124,19 @@ export async function estimateStockValue(
       companyLogistics ||
       DEFAULTS.logisticsPerUnit;
     const payoutPerUnit = s.price > 0 ? Math.max(0, s.price * (1 - commissionPct / 100) - logisticsPerUnit) : 0;
-    lines.set(s.id, { payoutPerUnit, commissionPct, logisticsPerUnit, source: fromSales ? 'sales' : 'estimate' });
+    const line: StockValueLine = { payoutPerUnit, commissionPct, logisticsPerUnit, source: fromSales ? 'sales' : 'estimate' };
+    lines.set(s.id, line);
 
     const units = stockOf(s.id);
     if (units <= 0) continue;
+    const v = stockLineValue(s, units, line, taxRatePct);
     totals.units += units;
-    totals.retail += units * s.price;
-    totals.payout += units * payoutPerUnit;
+    totals.retail += v.retail;
+    totals.payout += v.payout;
+    totals.cost += v.cost;
     if (s.price <= 0) totals.skusNoPrice += 1;
-    const unitCost = s.purchasePrice + s.extraCost;
-    if (s.purchasePrice > 0) {
-      totals.cost += units * unitCost;
-      totals.profit += units * (payoutPerUnit - unitCost - (s.price * taxRatePct) / 100);
-    } else {
+    if (v.profit !== null) totals.profit += v.profit;
+    else {
       totals.unitsNoCost += units;
       totals.skusNoCost += 1;
     }
