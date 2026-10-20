@@ -37,6 +37,23 @@ if ! git diff --quiet "$OLD_HEAD" HEAD -- package.json package-lock.json 'apps/*
   npm install --no-audit --no-fund 2>&1 | tail -3
 fi
 
+# Lock fayl Windows'da yaratiladi va unda Linux binarlari bo'lmaydi (npm/cli#4828):
+# rollup/esbuild'ning linux-x64 paketi yo'q yoki versiyasi mos kelmasa — yig'ish
+# "Cannot find module @rollup/rollup-linux-x64-gnu" bilan yiqiladi (20.10.2026).
+# Versiyasi aynan o'rnatilgan rollup/esbuild bilan bir xil, lock o'zgarmaydi.
+native_need=()
+for pair in "rollup:@rollup/rollup-linux-x64-gnu" "esbuild:@esbuild/linux-x64"; do
+  main="${pair%%:*}"
+  bin="${pair#*:}"
+  want="$(node -p "require('$main/package.json').version" 2>/dev/null || true)"
+  have="$(node -p "require('$bin/package.json').version" 2>/dev/null || true)"
+  if [ -n "$want" ] && [ "$want" != "$have" ]; then native_need+=("$bin@$want"); fi
+done
+if [ "${#native_need[@]}" -gt 0 ]; then
+  log "Linux binarlari o'rnatilmoqda: ${native_need[*]}"
+  npm install --no-save --no-audit --no-fund "${native_need[@]}" 2>&1 | tail -2
+fi
+
 log "Prisma provayderi PostgreSQL ga o'tkazilmoqda"
 npm run db:use-postgres >/dev/null
 grep -q 'provider = "postgresql"' packages/db/prisma/schema.prisma || {
