@@ -23,9 +23,19 @@ log() { printf '\n\033[36m▸ %s\033[0m\n' "$*"; }
 ok()  { printf '\033[32m✔ %s\033[0m\n' "$*"; }
 
 log "Kod yangilanmoqda"
+OLD_HEAD="$(git rev-parse HEAD)"
 git checkout -- packages/db/prisma/schema.prisma
+# Serverdagi `npm install` lock faylni o'zgartirib qo'yadi — pull to'xtamasin
+git checkout -- package-lock.json
 git pull -q origin main
 ok "$(git log --oneline -1)"
+
+# Paketlar o'zgargan bo'lsa (yangi kutubxona qo'shilgan/olingan) — o'rnatiladi,
+# aks holda yig'ish "modul topilmadi" bilan yiqiladi
+if ! git diff --quiet "$OLD_HEAD" HEAD -- package.json package-lock.json 'apps/*/package.json' 'packages/*/package.json'; then
+  log "Paketlar o'rnatilmoqda"
+  npm install --no-audit --no-fund 2>&1 | tail -3
+fi
 
 log "Prisma provayderi PostgreSQL ga o'tkazilmoqda"
 npm run db:use-postgres >/dev/null
