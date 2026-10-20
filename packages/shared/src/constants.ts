@@ -227,3 +227,13 @@ export const DEFAULT_PAYOUT_MODE: PayoutMode = 'biweekly';
 export const DEFAULT_HOLD_DAYS = 10;
 /** Tezkor (erta) yechib olish xizmat haqi */
 export const DEFAULT_EARLY_FEE_PCT = 2.5;
+
+/**
+ * Tovarning Uzum Market'dagi sahifasi. Uzum `/product/<ID>` ni o'zi to'liq
+ * manzilga (nom-ID) yo'naltiradi, `skuId` esa kerakli variantni ochadi.
+ * Sotuvchi API'sidagi productId / skuId bozordagi bilan bir xil.
+ */
+export function uzumProductUrl(productId: string, skuId?: string | null): string {
+  const base = `https://uzum.uz/uz/product/${encodeURIComponent(productId)}`;
+  return skuId ? `${base}?skuId=${encodeURIComponent(skuId)}` : base;
+}

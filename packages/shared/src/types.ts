@@ -1755,3 +1755,61 @@ export interface PayoutCalendarResponse {
     checks: PayoutCheck[];
   };
 }
+
+// ─────────────────────────── Admin: kompaniya ichi ───────────────────────────
+
+/** GET /admin/companies/:id — kompaniya nimadan iborat (faqat o'qish) */
+export interface AdminCompanyDetail {
+  id: string;
+  name: string;
+  createdAt: string;
+  onboarded: boolean;
+  /** Seed yaratgan namunaviy kompaniya (haqiqiy mijoz emas) */
+  demo: boolean;
+  plan: PlanId;
+  planActive: boolean;
+  expiresAt: string | null;
+  members: { id: string; name: string; username: string | null; telegramId: string; role: string }[];
+  /** Uzum kabinetlari — kalitning o'zi qaytarilmaydi */
+  cabinets: { id: string; label: string; status: string; lastSyncAt: string | null; lastError: string | null }[];
+  stores: {
+    id: string;
+    title: string;
+    uzumShopId: string | null;
+    status: string;
+    products: number;
+    skus: number;
+    orders: number;
+    lastOrderAt: string | null;
+  }[];
+  totals: {
+    products: number;
+    /** Arxivda bo'lmagan SKU'lar */
+    skus: number;
+    /** Tannarxi kiritilgan (arxivda bo'lmagan) SKU'lar */
+    withCost: number;
+    stockUnits: number;
+    /** Qoldiq × tannarx (tannarxi bor SKU'lar bo'yicha) */
+    stockCost: number;
+  };
+}
+
+/** GET /admin/companies/:id/products — bitta SKU qatori */
+export interface AdminCompanySkuRow {
+  id: string;
+  productId: string;
+  title: string;
+  /** Variant nomi (rang, o'lcham) — mahsulot nomi bilan bir xil bo'lsa null */
+  variant: string | null;
+  sku: string;
+  imageUrl: string | null;
+  storeTitle: string;
+  price: number;
+  oldPrice: number;
+  purchasePrice: number;
+  extraCost: number;
+  stock: number;
+  archived: boolean;
+  /** Uzum Market'dagi sahifa (tovar Uzum ID'si bo'lmasa null) */
+  uzumUrl: string | null;
+}

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   CreditCard,
+  Eye,
   Gift,
   LayoutDashboard,
   Megaphone,
@@ -106,6 +107,9 @@ registerNamespace('admin', {
     'users.deleteErr': 'O‘chirib bo‘lmadi',
 
     'comp.search': 'Kompaniya nomi',
+    'comp.open': 'Ichini ko‘rish',
+    'comp.noOwner': 'Egasi yo‘q',
+    'users.del.demo': 'demo',
     'comp.col.name': 'Kompaniya',
     'comp.col.plan': 'Tarif',
     'comp.col.expires': 'Muddat',
@@ -234,6 +238,9 @@ registerNamespace('admin', {
     'users.deleteErr': 'Не удалось удалить',
 
     'comp.search': 'Название компании',
+    'comp.open': 'Открыть',
+    'comp.noOwner': 'Без владельца',
+    'users.del.demo': 'демо',
     'comp.col.name': 'Компания',
     'comp.col.plan': 'Тариф',
     'comp.col.expires': 'Срок',
@@ -362,6 +369,9 @@ registerNamespace('admin', {
     'users.deleteErr': 'Could not delete',
 
     'comp.search': 'Company name',
+    'comp.open': 'Open',
+    'comp.noOwner': 'No owner',
+    'users.del.demo': 'demo',
     'comp.col.name': 'Company',
     'comp.col.plan': 'Plan',
     'comp.col.expires': 'Expires',
@@ -476,7 +486,16 @@ interface UserDeletePreview {
   id: string;
   name: string;
   telegramId: string;
-  companies: { id: string; name: string; members: number; stores: number; orders: number; paidInvoices: number; deleted: boolean }[];
+  companies: {
+    id: string;
+    name: string;
+    members: number;
+    stores: number;
+    orders: number;
+    paidInvoices: number;
+    deleted: boolean;
+    demo: boolean;
+  }[];
   blockedReason: string | null;
 }
 
@@ -489,8 +508,7 @@ interface AdminCompanyRow {
   daysLeft?: number | null;
   membersCount?: number;
   storesCount?: number;
-  ownerName?: string | null;
-  ownerUsername?: string | null;
+  owner?: { id: string; name: string; telegramId: string } | null;
   createdAt?: string | null;
 }
 
@@ -955,7 +973,10 @@ function UsersTab() {
                   {preview.data.companies.map((c) => (
                     <li key={c.id} className="rounded-xl border border-line bg-surface-2/60 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-sm font-medium text-ink">{c.name}</span>
+                        <span className="min-w-0 truncate text-sm font-medium text-ink">
+                          {c.name}
+                          {c.demo ? <span className="ml-1.5 text-xs font-normal text-muted">({t('users.del.demo')})</span> : null}
+                        </span>
                         <Badge tone={c.deleted ? 'danger' : 'muted'}>
                           {c.deleted ? t('users.del.companyGone') : t('users.del.companyKept')}
                         </Badge>
@@ -1056,10 +1077,10 @@ function CompaniesTab() {
       header: t('comp.col.name'),
       render: (c) => (
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">{c.name}</p>
-          <p className="truncate text-xs text-muted">
-            {c.ownerName || (c.ownerUsername ? `@${c.ownerUsername}` : c.id)}
-          </p>
+          <Link to={`/admin/companies/${c.id}`} className="block truncate text-sm font-medium text-ink hover:text-brand-ink hover:underline">
+            {c.name}
+          </Link>
+          <p className="truncate text-xs text-muted">{c.owner?.name ?? t('comp.noOwner')}</p>
         </div>
       ),
     },
@@ -1114,8 +1135,13 @@ function CompaniesTab() {
       key: 'actions',
       header: '',
       align: 'right',
-      width: 150,
+      width: 260,
       render: (c) => (
+        <div className="flex items-center justify-end gap-2">
+        <Link to={`/admin/companies/${c.id}`} className="btn-ghost gap-1.5 rounded-lg px-3 py-1.5 text-xs">
+          <Eye className="h-3.5 w-3.5" />
+          {t('comp.open')}
+        </Link>
         <Button
           size="sm"
           variant="outline"
@@ -1128,6 +1154,7 @@ function CompaniesTab() {
         >
           {t('comp.grant')}
         </Button>
+        </div>
       ),
     },
   ];

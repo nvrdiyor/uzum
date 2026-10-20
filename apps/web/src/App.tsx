@@ -55,6 +55,7 @@ const Referral = lazyPage(() => import('@/pages/Referral'), '/referral');
 const Pricing = lazyPage(() => import('@/pages/Pricing'), '/pricing');
 const Settings = lazyPage(() => import('@/pages/Settings'), '/settings');
 const Admin = lazyPage(() => import('@/pages/Admin'), '/admin');
+const AdminCompany = lazyPage(() => import('@/pages/AdminCompany'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -185,6 +186,7 @@ export default function App() {
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/companies/:id" element={<AdminCompany />} />
             </Route>
           </Route>
 

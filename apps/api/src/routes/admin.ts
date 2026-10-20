@@ -7,6 +7,8 @@
  *  GET   /users/:id/delete-preview → o'chirilsa nima yo'qolishi (kompaniyalar, buyurtmalar)
  *  DELETE /users/:id            → foydalanuvchini va u yagona a'zo bo'lgan kompaniyalarni o'chirish
  *  GET   /companies             → kompaniyalar (tarif, do'konlar, egasi)
+ *  GET   /companies/:id         → kompaniya ichi: a'zolar, kabinetlar, do'konlar, jami tovar/qoldiq
+ *  GET   /companies/:id/products → tovarlar: narx, tannarx, qoldiq, Uzum Market havolasi
  *  GET   /invoices              → barcha hisob-fakturalar
  *  POST  /invoices/:id/approve  → qo'lda to'lovni tasdiqlash (tarif faollashadi)
  *  POST  /companies/:id/grant   → tarifni qo'lda berish (plan, months)
@@ -28,12 +30,16 @@ import {
   formatMoney,
   getPlan,
   round,
+  uzumProductUrl,
+  type AdminCompanyDetail,
+  type AdminCompanySkuRow,
   type InvoiceRow,
   type Paginated,
   type PlanId,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { ctx, requireAdmin, requireAuth } from '../lib/auth.js';
+import { getLatestStocks } from '../services/common.js';
 import { notifyUser } from '../services/notify.js';
 import { activatePlan, markInvoicePaid } from './billing.js';
 
@@ -72,6 +78,12 @@ function planOf(sub: { plan: string; status: string; expiresAt: Date } | null | 
 }
 
 const daysAgo = (days: number): Date => new Date(Date.now() - days * 86_400_000);
+
+/**
+ * Seed yaratgan namunaviy kompaniya (`demo_co_lootbox`, `demo_co_samarqand`).
+ * Undagi "to'langan" hisob-fakturalar ham namunaviy — haqiqiy pul emas.
+ */
+const isDemoCompany = (id: string): boolean => id.startsWith('demo_co_');
 
 // ─────────────────────────── GET /stats ───────────────────────────
 
@@ -387,6 +399,8 @@ interface UserDeleteCompany {
   paidInvoices: number;
   /** true — foydalanuvchi yagona a'zo, kompaniya butun ma'lumoti bilan o'chadi; false — faqat a'zolik olib tashlanadi */
   deleted: boolean;
+  /** Seed yaratgan namunaviy kompaniya — to'lovlari ham namunaviy, o'chirishga to'sqinlik qilmaydi */
+  demo: boolean;
 }
 
 interface UserDeletePreview {
@@ -403,7 +417,8 @@ interface UserDeletePreview {
  * a'zo bo'lgan kompaniya (do'konlar, buyurtmalar, Uzum ulanishi) ham o'chadi —
  * aks holda egasiz kompaniya sinxronlanishda qolib ketardi. To'langan
  * hisob-fakturasi bor kompaniya o'chirilmaydi: to'lov tarixi va daromad
- * statistikasi yo'qolmasligi kerak.
+ * statistikasi yo'qolmasligi kerak. Seed'dagi namunaviy kompaniyalar bundan
+ * mustasno — ularning to'lovlari haqiqiy pul emas.
  */
 async function userDeletePreview(id: string, adminId: string): Promise<UserDeletePreview> {
   const target = await prisma.user.findUnique({
@@ -431,13 +446,14 @@ async function userDeletePreview(id: string, adminId: string): Promise<UserDelet
         orders,
         paidInvoices,
         deleted: m.company._count.memberships === 1,
+        demo: isDemoCompany(m.companyId),
       };
     }),
   );
 
   let blockedReason: string | null = null;
   if (target.id === adminId) blockedReason = 'O‘zingizni o‘chira olmaysiz';
-  else if (companies.some((c) => c.deleted && c.paidInvoices > 0))
+  else if (companies.some((c) => c.deleted && !c.demo && c.paidInvoices > 0))
     blockedReason = 'Bu foydalanuvchi to‘lov qilgan — to‘lov tarixi saqlanishi uchun o‘chirib bo‘lmaydi. Uning o‘rniga bloklang.';
 
   return { id: target.id, name: fullName(target), telegramId: target.telegramId, companies, blockedReason };
@@ -563,6 +579,169 @@ router.get(
       page,
       pageSize,
       pages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+    res.json(payload);
+  }),
+);
+
+// ─────────────────────────── GET /companies/:id ───────────────────────────
+
+/** Kompaniya do'konlarining arxivda yashirilmagan SKU'lari (tovar ma'lumoti bilan) */
+async function companySkus(storeIds: string[]) {
+  if (storeIds.length === 0) return [];
+  return prisma.sku.findMany({
+    where: { storeId: { in: storeIds }, NOT: { archived: true, product: { hidden: true } } },
+    include: {
+      product: { select: { id: true, title: true, imageUrl: true, uzumProductId: true } },
+      store: { select: { title: true } },
+    },
+    orderBy: [{ product: { title: 'asc' } }, { title: 'asc' }],
+  });
+}
+
+router.get(
+  '/companies/:id',
+  ah(async (req, res) => {
+    const company = await prisma.company.findUnique({
+      where: { id: String(req.params.id) },
+      include: {
+        subscription: true,
+        memberships: { orderBy: { createdAt: 'asc' }, include: { user: true } },
+        uzumAccounts: { orderBy: { createdAt: 'asc' } },
+        stores: { orderBy: { createdAt: 'asc' }, include: { _count: { select: { products: true, skus: true } } } },
+      },
+    });
+    if (!company) throw AppError.notFound('Kompaniya topilmadi');
+
+    const storeIds = company.stores.map((s) => s.id);
+    const [orderStats, skus, stocks] = await Promise.all([
+      storeIds.length
+        ? prisma.order.groupBy({
+            by: ['storeId'],
+            where: { storeId: { in: storeIds } },
+            _count: { _all: true },
+            _max: { orderedAt: true },
+          })
+        : Promise.resolve([]),
+      companySkus(storeIds),
+      getLatestStocks(storeIds),
+    ]);
+    const ordersOf = new Map(orderStats.map((o) => [o.storeId, o]));
+
+    let withCost = 0;
+    let stockUnits = 0;
+    let stockCost = 0;
+    const live = skus.filter((s) => !s.archived);
+    for (const s of live) {
+      const units = stocks.get(s.id)?.total ?? 0;
+      stockUnits += units;
+      if (s.purchasePrice > 0) {
+        withCost += 1;
+        stockCost += units * s.purchasePrice;
+      }
+    }
+
+    const info = planOf(company.subscription);
+    const payload: AdminCompanyDetail = {
+      id: company.id,
+      name: company.name,
+      createdAt: company.createdAt.toISOString(),
+      onboarded: company.onboarded,
+      demo: isDemoCompany(company.id),
+      plan: info.plan,
+      planActive: info.active,
+      expiresAt: iso(company.subscription?.expiresAt),
+      members: company.memberships.map((m) => ({
+        id: m.user.id,
+        name: fullName(m.user),
+        username: m.user.username,
+        telegramId: m.user.telegramId,
+        role: m.role,
+      })),
+      cabinets: company.uzumAccounts.map((a) => ({
+        id: a.id,
+        label: a.label,
+        status: a.status,
+        lastSyncAt: iso(a.lastSyncAt),
+        lastError: a.lastError,
+      })),
+      stores: company.stores.map((s) => ({
+        id: s.id,
+        title: s.title,
+        uzumShopId: s.uzumShopId,
+        status: s.status,
+        products: s._count.products,
+        skus: s._count.skus,
+        orders: ordersOf.get(s.id)?._count._all ?? 0,
+        lastOrderAt: iso(ordersOf.get(s.id)?._max.orderedAt),
+      })),
+      totals: {
+        products: new Set(live.map((s) => s.productId)).size,
+        skus: live.length,
+        withCost,
+        stockUnits,
+        stockCost: round(stockCost),
+      },
+    };
+    res.json(payload);
+  }),
+);
+
+// ─────────────────────────── GET /companies/:id/products ───────────────────────────
+
+router.get(
+  '/companies/:id/products',
+  ah(async (req, res) => {
+    const { page, pageSize, search } = pageParams(req);
+    const q = req.query as Record<string, string | undefined>;
+    const company = await prisma.company.findUnique({
+      where: { id: String(req.params.id) },
+      select: { stores: { select: { id: true } } },
+    });
+    if (!company) throw AppError.notFound('Kompaniya topilmadi');
+
+    const storeIds = company.stores.map((s) => s.id);
+    const [skus, stocks] = await Promise.all([companySkus(storeIds), getLatestStocks(storeIds)]);
+
+    /*
+     * Qidiruv va filtr xotirada: Postgres'da `contains` katta-kichik harfni
+     * farqlaydi, SQLite'da esa `mode: insensitive` yo'q. Bitta kompaniyaning
+     * SKU'lari bir necha mingdan oshmaydi.
+     */
+    const term = search?.toLowerCase();
+    const filtered = skus.filter((s) => {
+      // archived — faqat arxivdagilar; noCost — tannarxi kiritilmagan; aks holda sotuvdagilar
+      const pass =
+        q.filter === 'archived' ? s.archived : !s.archived && (q.filter !== 'noCost' || s.purchasePrice <= 0);
+      if (!pass) return false;
+      if (!term) return true;
+      return [s.product.title, s.title, s.sku, s.barcode ?? '', s.product.uzumProductId ?? '']
+        .some((v) => v.toLowerCase().includes(term));
+    });
+
+    const items: AdminCompanySkuRow[] = filtered.slice((page - 1) * pageSize, page * pageSize).map((s) => ({
+      id: s.id,
+      productId: s.productId,
+      title: s.product.title,
+      variant: s.title && s.title !== s.product.title ? s.title : null,
+      sku: s.sku,
+      imageUrl: s.imageUrl ?? s.product.imageUrl,
+      storeTitle: s.store.title,
+      price: round(s.price),
+      oldPrice: round(s.oldPrice),
+      purchasePrice: round(s.purchasePrice),
+      extraCost: round(s.extraCost),
+      stock: stocks.get(s.id)?.total ?? 0,
+      archived: s.archived,
+      uzumUrl: s.product.uzumProductId ? uzumProductUrl(s.product.uzumProductId, s.uzumSkuId) : null,
+    }));
+
+    const payload: Paginated<AdminCompanySkuRow> = {
+      items,
+      total: filtered.length,
+      page,
+      pageSize,
+      pages: Math.max(1, Math.ceil(filtered.length / pageSize)),
     };
     res.json(payload);
   }),
