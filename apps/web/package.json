@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@phosphor-icons/react": "^2.1.7",
     "@savdoiq/shared": "*",
     "@tanstack/react-query": "^5.66.0",
     "clsx": "^2.1.1",
@@ -22,6 +21,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
