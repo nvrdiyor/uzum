@@ -592,8 +592,15 @@ export function ProductCell({
         )}
       </div>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">{title}</p>
-        {subtitle ? <p className="truncate text-xs text-muted">{subtitle}</p> : null}
+        {/* Uzun nom kesiladi — to'liq nomi sichqoncha olib borilganda ko'rinadi */}
+        <p className="truncate text-sm font-medium text-ink" title={typeof title === 'string' ? title : undefined}>
+          {title}
+        </p>
+        {subtitle ? (
+          <p className="truncate text-xs text-muted" title={typeof subtitle === 'string' ? subtitle : undefined}>
+            {subtitle}
+          </p>
+        ) : null}
       </div>
     </div>
   );

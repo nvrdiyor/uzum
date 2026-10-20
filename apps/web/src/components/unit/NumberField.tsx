@@ -62,7 +62,10 @@ export function NumberField({
     <div className={cn('group relative min-w-0', className)}>
       <label htmlFor={id} className="label mb-1.5 flex items-center gap-1.5">
         {icon ? <span className="text-muted">{icon}</span> : null}
-        <span className="truncate">{label}</span>
+        {/* Tor ustunda kesilsa — to'liq nomi izohda */}
+        <span className="truncate" title={typeof label === 'string' ? label : undefined}>
+          {label}
+        </span>
       </label>
       <div className="relative">
         <input

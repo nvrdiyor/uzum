@@ -71,8 +71,8 @@ export function StatCard({
                 {icon}
               </span>
             ) : null}
-            {/* Telefonda tor kartada sarlavha ikki qatorgacha — kesilib ma'nosi yo'qolmasin */}
-            <p className="line-clamp-2 eyebrow-lg sm:truncate">{label}</p>
+            {/* Sarlavha ikki qatorgacha — tor kartada kesilib ma'nosi yo'qolmasin */}
+            <p className="line-clamp-2 eyebrow-lg">{label}</p>
           </div>
           {loading ? (
             <Skeleton className="mt-3 h-8 w-32" />

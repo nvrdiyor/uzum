@@ -61,11 +61,14 @@ export function ProductTile({ product, coverDays }: { product: ProductCard; cove
             <span className="truncate">{t(`state.${state}`)}</span>
           </span>
 
+          {/* Sharhlar soni izohda — tor kartochkada holat nishoni ("Buyurtma kerak") kesilib qolardi */}
           {product.rating > 0 ? (
-            <span className="chip shrink-0 border border-line bg-surface/95 text-ink">
+            <span
+              className="pointer-events-auto chip shrink-0 border border-line bg-surface/95 text-ink"
+              title={`★ ${f.num(product.rating, 1)} · ${f.num(product.reviewsCount)}`}
+            >
               <Star className="h-3 w-3 text-warn" />
               <span className="tnum">{f.num(product.rating, 1)}</span>
-              <span className="text-muted">· {f.num(product.reviewsCount)}</span>
             </span>
           ) : null}
         </div>

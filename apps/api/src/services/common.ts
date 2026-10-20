@@ -3,6 +3,7 @@
  * BU FAYLNI O'ZGARTIRMANG — barcha route modullari shunga tayanadi.
  */
 import { prisma } from '@savdoiq/db';
+import type { Prisma } from '@savdoiq/db';
 import {
   STOCK_THRESHOLDS,
   addDays,
@@ -85,6 +86,11 @@ export async function getStoreTitles(companyId: string): Promise<Map<string, str
  * ro'yxatlariga aralashmaydi. Buyurtma va to'lovlar esa haqiqiy pul harakati —
  * ular katalogdan emas, o'z yozuvidan nom oladi va jami summalarda qoladi.
  */
+const SKU_INFO_INCLUDE = {
+  product: { select: { id: true, title: true, category: true, imageUrl: true } },
+  store: { select: { id: true, title: true } },
+} as const;
+
 export async function getSkuCatalog(storeIds: string[], includeArchived = false): Promise<Map<string, SkuInfo>> {
   if (storeIds.length === 0) return new Map();
   const skus = await prisma.sku.findMany({
@@ -93,36 +99,53 @@ export async function getSkuCatalog(storeIds: string[], includeArchived = false)
       NOT: { archived: true, product: { hidden: true } },
       ...(includeArchived ? {} : { archived: false }),
     },
-    include: {
-      product: { select: { id: true, title: true, category: true, imageUrl: true } },
-      store: { select: { id: true, title: true } },
-    },
+    include: SKU_INFO_INCLUDE,
   });
-  return new Map(
-    skus.map((s) => [
-      s.id,
-      {
-        id: s.id,
-        sku: s.sku,
-        title: s.title || s.product.title,
-        imageUrl: s.imageUrl ?? s.product.imageUrl ?? null,
-        price: s.price,
-        purchasePrice: s.purchasePrice,
-        extraCost: s.extraCost,
-        volumeL: s.volumeL,
-        weightGr: s.weightGr,
-        productId: s.productId,
-        productTitle: s.product.title,
-        category: s.product.category,
-        storeId: s.storeId,
-        storeTitle: s.store.title,
-        archived: s.archived,
-        createdAt: s.createdAt,
-        commissionPct: s.commissionPct,
-        storagePerItem: s.storagePerItem,
-      } satisfies SkuInfo,
-    ]),
-  );
+  return new Map(skus.map((s) => [s.id, toSkuInfo(s)]));
+}
+
+/**
+ * Davrda SOTILGAN, lekin katalogda yo'q (yashirilgan/arxivdagi) SKU'larni
+ * qo'shadi. Sotuv — haqiqiy pul: "Sotuv va qoldiq", Unit-iqtisod kabi sotuv
+ * jamlamalari Boshqaruv paneli va Moliyadagi tushum bilan teng chiqishi kerak
+ * (20.10.2026: yashirilgan tovarning 28 000 so'mlik sotuvi tushib qolardi).
+ */
+export async function withSoldSkus(
+  catalog: Map<string, SkuInfo>,
+  soldSkuIds: Iterable<string>,
+  storeIds: string[],
+): Promise<Map<string, SkuInfo>> {
+  const missing = [...new Set(soldSkuIds)].filter((id) => !catalog.has(id));
+  if (missing.length === 0) return catalog;
+  const extra = await prisma.sku.findMany({
+    where: { id: { in: missing }, storeId: { in: storeIds } },
+    include: SKU_INFO_INCLUDE,
+  });
+  for (const s of extra) catalog.set(s.id, toSkuInfo(s));
+  return catalog;
+}
+
+function toSkuInfo(s: Prisma.SkuGetPayload<{ include: typeof SKU_INFO_INCLUDE }>): SkuInfo {
+  return {
+    id: s.id,
+    sku: s.sku,
+    title: s.title || s.product.title,
+    imageUrl: s.imageUrl ?? s.product.imageUrl ?? null,
+    price: s.price,
+    purchasePrice: s.purchasePrice,
+    extraCost: s.extraCost,
+    volumeL: s.volumeL,
+    weightGr: s.weightGr,
+    productId: s.productId,
+    productTitle: s.product.title,
+    category: s.product.category,
+    storeId: s.storeId,
+    storeTitle: s.store.title,
+    archived: s.archived,
+    createdAt: s.createdAt,
+    commissionPct: s.commissionPct,
+    storagePerItem: s.storagePerItem,
+  };
 }
 
 /** Har bir SKU uchun eng so'nggi qoldiq */

@@ -44,6 +44,7 @@ import {
   getLatestStocks,
   getSkuCatalog,
   getStoreIds,
+  withSoldSkus,
   type SalesAgg,
   type SkuInfo,
 } from '../services/common.js';
@@ -205,6 +206,8 @@ router.get(
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       storageBySku(storeIds, range.from, range.toExclusive),
     ]);
+    // Arxivdagi/yashirilgan, lekin davrda sotilgan SKU ham jamlamaga kiradi
+    await withSoldSkus(catalog, sales.keys(), storeIds);
 
     // Sotuvsiz SKU'lar uchun kompaniya o'rtachasi (bo'lmasa — platforma taxminlari)
     let allRevenue = 0;

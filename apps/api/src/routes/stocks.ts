@@ -35,6 +35,7 @@ import {
   getLatestStocks,
   getSkuCatalog,
   getStoreIds,
+  withSoldSkus,
   stockState,
   type SalesAgg,
   type SkuInfo,
@@ -247,6 +248,8 @@ router.get(
       getAvgDaily(storeIds, AVG_WINDOW),
       getLastSaleDates(storeIds),
     ]);
+    // Yashirilgan tovar ham davrda sotilgan bo'lsa — jami tushum boshqa sahifalar bilan teng chiqsin
+    await withSoldSkus(catalog, sales.keys(), storeIds);
 
     const search = range.search?.toLowerCase();
     const rows: SalesStockRow[] = [];

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Boxes, CalendarClock, Coins, Download, Inbox, PackageCheck, ShoppingCart, Wallet } from '@/components/icons';
+import { Boxes, Coins, Download, Inbox, PackageCheck, ShoppingCart, TrendingUp, Wallet } from '@/components/icons';
 import type { SalesStockResponse, SalesStockRow } from '@savdoiq/shared';
 import {
   Badge,
@@ -47,7 +47,7 @@ registerNamespace('salesStock', {
     'kpi.stockHint': 'FBO + FBS + o‘z ombori',
     'kpi.revenue': 'Tushum',
     'kpi.payout': 'To‘lovga',
-    'kpi.profit': 'Sof foyda',
+    'kpi.profit': 'Tovarlar bo‘yicha foyda',
     'unit': 'dona',
     'seg.all': 'Barchasi',
     'seg.critical': 'Kritik',
@@ -87,7 +87,7 @@ registerNamespace('salesStock', {
     'kpi.stockHint': 'FBO + FBS + свой склад',
     'kpi.revenue': 'Выручка',
     'kpi.payout': 'К выплате',
-    'kpi.profit': 'Чистая прибыль',
+    'kpi.profit': 'Прибыль по товарам',
     'unit': 'шт',
     'seg.all': 'Все',
     'seg.critical': 'Критично',
@@ -127,7 +127,7 @@ registerNamespace('salesStock', {
     'kpi.stockHint': 'FBO + FBS + own warehouse',
     'kpi.revenue': 'Revenue',
     'kpi.payout': 'Payout',
-    'kpi.profit': 'Net profit',
+    'kpi.profit': 'Profit on goods',
     'unit': 'pcs',
     'seg.all': 'All',
     'seg.critical': 'Critical',
@@ -440,7 +440,7 @@ export default function SalesStock() {
               <StatCard
                 label={t('kpi.profit')}
                 value={f.money(totals?.netProfit ?? 0)}
-                icon={<CalendarClock className="h-5 w-5" />}
+                icon={<TrendingUp className="h-5 w-5" />}
                 tone={(totals?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
                 loading={isLoading}
               />

@@ -135,7 +135,8 @@ export function MoneyFlow({
           </div>
         </div>
 
-        <div className="min-w-0 sm:text-right">
+        {/* ml-auto: tor kartada keyingi qatorga tushsa ham o'ng chetda turadi — matni o'ngga tekislangan */}
+        <div className="min-w-0 sm:ml-auto sm:text-right">
           <p className="eyebrow-lg">{t('revenue')}</p>
           <p className="tnum mt-2 font-display text-[22px] font-bold leading-none tracking-[-0.02em] text-ink sm:text-2xl">
             <Amount value={f.money(revenue, data.currency)} />
@@ -177,7 +178,7 @@ export function MoneyFlow({
               <p className="tnum mt-1.5 text-[17px] font-semibold leading-6 text-ink">
                 <Amount value={f.money(s.amount, data.currency)} />
               </p>
-              <p className="truncate text-xs text-muted">{s.hint}</p>
+              <p className="line-clamp-2 text-xs text-muted">{s.hint}</p>
             </li>
           ))}
         </ul>

@@ -62,11 +62,16 @@ export function ExpensesCard({ data }: { data: DashboardResponse }) {
             />
             <ul className="space-y-2.5">
               {rows.map((r) => (
-                <li key={r.id} className="flex items-center gap-3">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{r.label}</span>
-                  <span className="tnum shrink-0 text-sm font-semibold text-ink">{f.money(r.amount, data.currency)}</span>
-                  <span className="tnum w-12 shrink-0 text-right text-xs text-muted">{f.pct(r.share)}</span>
+                // Ikki qavat: nom va ulush tepada, summa ostida — tor kartada nom kesilmasin
+                <li key={r.id} className="flex items-start gap-3">
+                  <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm text-ink-soft">{r.label}</span>
+                      <span className="tnum shrink-0 text-xs text-muted">{f.pct(r.share)}</span>
+                    </div>
+                    <p className="tnum text-sm font-semibold text-ink">{f.money(r.amount, data.currency)}</p>
+                  </div>
                 </li>
               ))}
             </ul>

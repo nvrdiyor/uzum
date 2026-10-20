@@ -252,13 +252,21 @@ async function collectOrderStats(storeIds: string[], from: Date, toExclusive: Da
     select: { status: true, deliveryType: true },
   });
 
+  /*
+   * Muvaffaqiyatli = bekor qilinmagan va qaytarilmagan (boshqa sahifalardagi
+   * "faol buyurtma" bilan bir xil). Ilgari faqat 'delivered' sanalardi — jonli
+   * Uzumda bu "pul chiqarildi" degani va qabuldan ~10 kun keyin qo'yiladi,
+   * shuning uchun joriy oy hisobotida 42 tadan 6 tasi "muvaffaqiyatli" (14%)
+   * chiqib, qizil ogohlantirish berardi.
+   */
+
   for (const o of rows) {
     stats.total += 1;
     if (o.status === 'canceled') stats.canceled += 1;
     else if (o.status === 'returned') stats.returned += 1;
     else {
       stats.active += 1;
-      if (o.status === 'delivered') stats.success += 1;
+      stats.success += 1;
     }
 
     const type = (DELIVERY_TYPES as string[]).includes(o.deliveryType)
@@ -267,7 +275,7 @@ async function collectOrderStats(storeIds: string[], from: Date, toExclusive: Da
     const bucket = stats.byDelivery.get(type);
     if (bucket) {
       bucket.orders += 1;
-      if (o.status === 'delivered') bucket.success += 1;
+      if (o.status !== 'canceled' && o.status !== 'returned') bucket.success += 1;
     }
   }
 
@@ -430,7 +438,7 @@ function buildInsights(inp: InsightInput): Insight[] {
       id: 'avg_check',
       level: 'info',
       title: `O‘rtacha chek ${money(inp.avgCheck)}`,
-      body: `Davrda ${num(inp.ordersTotal)} ta buyurtma, ${num(inp.ordersSuccess)} tasi yetkazildi. To‘plam va qo‘shimcha savdo chekni oshiradi.`,
+      body: `Davrda ${num(inp.ordersTotal)} ta buyurtma, ${num(inp.ordersSuccess)} tasi muvaffaqiyatli. To‘plam va qo‘shimcha savdo chekni oshiradi.`,
       link: '/sales',
       metric: 'avgCheck',
     },

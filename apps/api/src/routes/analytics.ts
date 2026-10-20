@@ -129,6 +129,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
       id: true,
       storeId: true,
       status: true,
+      deliveredAt: true,
       items: {
         select: {
           skuId: true,
@@ -153,7 +154,14 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
     else if (o.status === 'returned') t.ordersReturned += 1;
     else {
       t.ordersActive += 1;
-      if (o.status === 'delivered') t.ordersDelivered += 1;
+      /*
+       * Sotib olingan = xaridor QABUL QILGAN (kabinetdagi "Qabul sanasi").
+       * Uzumning 'delivered' (TO_WITHDRAW) holati esa pul chiqarilganini
+       * bildiradi va qabuldan ~10 kun keyin qo'yiladi — u bilan sanalsa
+       * joriy oyning qabul qilingan buyurtmalari sotib olish darajasidan
+       * tushib qolardi, bekor/qaytganlari esa darhol kirardi.
+       */
+      if (o.deliveredAt) t.ordersDelivered += 1;
     }
 
     let orderRevenue = 0;
@@ -523,7 +531,7 @@ router.get(
     const prevRoi = pct(prevNet, investedIn(prev.cogs, prev.otherCost));
     const curAvgCheck = safeDiv(cur.revenue, cur.ordersActive);
     const prevAvgCheck = safeDiv(prev.revenue, prev.ordersActive);
-    // Sotib olish darajasi: yetkazilgan / (yetkazilgan + qaytarilgan + bekor qilingan)
+    // Sotib olish darajasi: qabul qilingan / (qabul qilingan + qaytarilgan + bekor qilingan); yo'ldagilar kirmaydi
     const curBuyoutBase = cur.ordersDelivered + cur.ordersReturned + cur.ordersCanceled;
     const prevBuyoutBase = prev.ordersDelivered + prev.ordersReturned + prev.ordersCanceled;
     const curBuyout = pct(cur.ordersDelivered, curBuyoutBase);
