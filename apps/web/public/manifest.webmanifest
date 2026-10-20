@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "SavdoIQ — Uzum Market analitikasi",
+  "short_name": "SavdoIQ",
+  "description": "Uzum Market sotuvchilari uchun analitika: sotuv, foyda, qoldiq va tannarx.",
+  "lang": "uz",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F1115",
+  "theme_color": "#0F1115",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

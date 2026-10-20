@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "uz.savdoiq.app",
+      "sha256_cert_fingerprints": [
+        "F3:95:CE:67:EE:A7:E3:30:D0:9A:7F:1A:EE:5F:A7:3C:62:13:84:04:2F:FD:8A:24:BF:28:B1:99:6E:04:CF:C3"
+      ]
+    }
+  }
+]
