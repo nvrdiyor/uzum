@@ -8,7 +8,7 @@
  *  DELETE /users/:id            → foydalanuvchini va u yagona a'zo bo'lgan kompaniyalarni o'chirish
  *  GET   /companies             → kompaniyalar (tarif, do'konlar, egasi)
  *  GET   /companies/:id         → kompaniya ichi: a'zolar, kabinetlar, do'konlar, jami tovar/qoldiq
- *  GET   /companies/:id/products → tovarlar: narx, tannarx, qoldiq, Uzum Market havolasi
+ *  GET   /companies/:id/products → tovarlar: narx, tannarx, qoldiq, kutilayotgan tushum, Uzum Market havolasi
  *  GET   /invoices              → barcha hisob-fakturalar
  *  POST  /invoices/:id/approve  → qo'lda to'lovni tasdiqlash (tarif faollashadi)
  *  POST  /companies/:id/grant   → tarifni qo'lda berish (plan, months)
@@ -40,6 +40,7 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { ctx, requireAdmin, requireAuth } from '../lib/auth.js';
 import { getLatestStocks } from '../services/common.js';
+import { estimateStockValue } from '../services/stock-value.js';
 import { notifyUser } from '../services/notify.js';
 import { activatePlan, markInvoicePaid } from './billing.js';
 
@@ -628,18 +629,9 @@ router.get(
     ]);
     const ordersOf = new Map(orderStats.map((o) => [o.storeId, o]));
 
-    let withCost = 0;
-    let stockUnits = 0;
-    let stockCost = 0;
     const live = skus.filter((s) => !s.archived);
-    for (const s of live) {
-      const units = stocks.get(s.id)?.total ?? 0;
-      stockUnits += units;
-      if (s.purchasePrice > 0) {
-        withCost += 1;
-        stockCost += units * s.purchasePrice;
-      }
-    }
+    // Qoldiq — "Qoldiqlar" sahifasidagidek arxivdagi (yashirilmagan) SKU'lar bilan birga
+    const value = await estimateStockValue(storeIds, skus, (skuId) => stocks.get(skuId)?.total ?? 0, company.taxRate);
 
     const info = planOf(company.subscription);
     const payload: AdminCompanyDetail = {
@@ -678,9 +670,14 @@ router.get(
       totals: {
         products: new Set(live.map((s) => s.productId)).size,
         skus: live.length,
-        withCost,
-        stockUnits,
-        stockCost: round(stockCost),
+        withCost: live.filter((s) => s.purchasePrice > 0).length,
+        stockUnits: value.totals.units,
+        stockCost: round(value.totals.cost),
+        stockRetail: round(value.totals.retail),
+        stockPayout: round(value.totals.payout),
+        stockProfit: round(value.totals.profit),
+        stockUnitsNoCost: value.totals.unitsNoCost,
+        stockSkusNoCost: value.totals.skusNoCost,
       },
     };
     res.json(payload);
@@ -696,12 +693,14 @@ router.get(
     const q = req.query as Record<string, string | undefined>;
     const company = await prisma.company.findUnique({
       where: { id: String(req.params.id) },
-      select: { stores: { select: { id: true } } },
+      select: { taxRate: true, stores: { select: { id: true } } },
     });
     if (!company) throw AppError.notFound('Kompaniya topilmadi');
 
     const storeIds = company.stores.map((s) => s.id);
     const [skus, stocks] = await Promise.all([companySkus(storeIds), getLatestStocks(storeIds)]);
+    const stockOf = (skuId: string): number => stocks.get(skuId)?.total ?? 0;
+    const { lines } = await estimateStockValue(storeIds, skus, stockOf, company.taxRate);
 
     /*
      * Qidiruv va filtr xotirada: Postgres'da `contains` katta-kichik harfni
@@ -719,22 +718,31 @@ router.get(
         .some((v) => v.toLowerCase().includes(term));
     });
 
-    const items: AdminCompanySkuRow[] = filtered.slice((page - 1) * pageSize, page * pageSize).map((s) => ({
-      id: s.id,
-      productId: s.productId,
-      title: s.product.title,
-      variant: s.title && s.title !== s.product.title ? s.title : null,
-      sku: s.sku,
-      imageUrl: s.imageUrl ?? s.product.imageUrl,
-      storeTitle: s.store.title,
-      price: round(s.price),
-      oldPrice: round(s.oldPrice),
-      purchasePrice: round(s.purchasePrice),
-      extraCost: round(s.extraCost),
-      stock: stocks.get(s.id)?.total ?? 0,
-      archived: s.archived,
-      uzumUrl: s.product.uzumProductId ? uzumProductUrl(s.product.uzumProductId, s.uzumSkuId) : null,
-    }));
+    const items: AdminCompanySkuRow[] = filtered.slice((page - 1) * pageSize, page * pageSize).map((s) => {
+      const stock = stockOf(s.id);
+      const line = lines.get(s.id);
+      const payoutPerUnit = line?.payoutPerUnit ?? 0;
+      return {
+        id: s.id,
+        productId: s.productId,
+        title: s.product.title,
+        variant: s.title && s.title !== s.product.title ? s.title : null,
+        sku: s.sku,
+        imageUrl: s.imageUrl ?? s.product.imageUrl,
+        storeTitle: s.store.title,
+        price: round(s.price),
+        oldPrice: round(s.oldPrice),
+        purchasePrice: round(s.purchasePrice),
+        extraCost: round(s.extraCost),
+        stock,
+        stockCost: s.purchasePrice > 0 ? round(stock * (s.purchasePrice + s.extraCost)) : 0,
+        payoutPerUnit: round(payoutPerUnit),
+        stockPayout: round(stock * payoutPerUnit),
+        payoutSource: line?.source ?? 'estimate',
+        archived: s.archived,
+        uzumUrl: s.product.uzumProductId ? uzumProductUrl(s.product.uzumProductId, s.uzumSkuId) : null,
+      };
+    });
 
     const payload: Paginated<AdminCompanySkuRow> = {
       items,

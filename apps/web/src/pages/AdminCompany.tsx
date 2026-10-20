@@ -18,7 +18,9 @@ import {
   ShieldAlert,
   Store,
   Tag,
+  TrendingUp,
   Users,
+  Wallet,
 } from 'lucide-react';
 import type { AdminCompanyDetail, AdminCompanySkuRow, Paginated } from '@savdoiq/shared';
 import {
@@ -61,7 +63,12 @@ registerNamespace('adminCompany', {
     'kpi.stock': 'Qoldiq',
     'kpi.stockHint': 'Uzum omborlari + o‘z ombori, dona',
     'kpi.stockCost': 'Qoldiq tannarxi',
-    'kpi.stockCostHint': 'Qoldiq × tannarx (tannarxi borlar)',
+    'kpi.stockCostHint': 'Qoldiq × (tannarx + qo‘shimcha xarajat)',
+    'kpi.noCostUnits': '{n} dona tannarxsiz — hisobga kirmagan',
+    'kpi.payout': 'Kutilayotgan tushum',
+    'kpi.payoutHint': 'Hammasi joriy narxda sotilsa, Uzum komissiyasi va logistikasidan keyin. Narx bo‘yicha: {v}',
+    'kpi.profit': 'Kutilayotgan foyda',
+    'kpi.profitHint': 'Tushum − tannarx − soliq',
 
     'members.title': 'A’zolar',
     'role.owner': 'Egasi',
@@ -92,6 +99,10 @@ registerNamespace('adminCompany', {
     'col.price': 'Narx',
     'col.cost': 'Tannarx',
     'col.stock': 'Qoldiq',
+    'col.payout': 'Kutilayotgan tushum',
+    'stock.cost': 'tannarx: {v}',
+    'payout.unit': '1 donadan: {v}',
+    'payout.estimate': 'Bu SKU hali sotilmagan — komissiya va logistika taxminiy',
     'col.uzum': 'Uzum Market',
     'cost.none': 'Kiritilmagan',
     'cost.extra': '+{v} qo‘shimcha',
@@ -117,7 +128,12 @@ registerNamespace('adminCompany', {
     'kpi.stock': 'Остаток',
     'kpi.stockHint': 'Склады Uzum + свой склад, шт.',
     'kpi.stockCost': 'Остаток по себестоимости',
-    'kpi.stockCostHint': 'Остаток × себестоимость (где указана)',
+    'kpi.stockCostHint': 'Остаток × (себестоимость + доп. расходы)',
+    'kpi.noCostUnits': '{n} шт. без себестоимости — не учтены',
+    'kpi.payout': 'Ожидаемая выручка',
+    'kpi.payoutHint': 'Если всё продать по текущей цене, после комиссии и логистики Uzum. По цене: {v}',
+    'kpi.profit': 'Ожидаемая прибыль',
+    'kpi.profitHint': 'Выручка − себестоимость − налог',
 
     'members.title': 'Участники',
     'role.owner': 'Владелец',
@@ -148,6 +164,10 @@ registerNamespace('adminCompany', {
     'col.price': 'Цена',
     'col.cost': 'Себестоимость',
     'col.stock': 'Остаток',
+    'col.payout': 'Ожидаемая выручка',
+    'stock.cost': 'себест.: {v}',
+    'payout.unit': 'за 1 шт.: {v}',
+    'payout.estimate': 'Этот SKU ещё не продавался — комиссия и логистика оценочные',
     'col.uzum': 'Uzum Market',
     'cost.none': 'Не указана',
     'cost.extra': '+{v} доп.',
@@ -173,7 +193,12 @@ registerNamespace('adminCompany', {
     'kpi.stock': 'Stock',
     'kpi.stockHint': 'Uzum warehouses + own warehouse, units',
     'kpi.stockCost': 'Stock at cost',
-    'kpi.stockCostHint': 'Stock × cost price (where entered)',
+    'kpi.stockCostHint': 'Stock × (cost price + extra costs)',
+    'kpi.noCostUnits': '{n} units without cost price — not counted',
+    'kpi.payout': 'Expected payout',
+    'kpi.payoutHint': 'If everything sells at the current price, after Uzum commission and logistics. At price: {v}',
+    'kpi.profit': 'Expected profit',
+    'kpi.profitHint': 'Payout − cost − tax',
 
     'members.title': 'Members',
     'role.owner': 'Owner',
@@ -204,6 +229,10 @@ registerNamespace('adminCompany', {
     'col.price': 'Price',
     'col.cost': 'Cost price',
     'col.stock': 'Stock',
+    'col.payout': 'Expected payout',
+    'stock.cost': 'cost: {v}',
+    'payout.unit': 'per unit: {v}',
+    'payout.estimate': 'This SKU has not sold yet — commission and logistics are estimated',
     'col.uzum': 'Uzum Market',
     'cost.none': 'Not entered',
     'cost.extra': '+{v} extra',
@@ -311,7 +340,7 @@ function CompanyView() {
         <Skeleton className="h-14 w-72" />
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           label={t('kpi.products')}
           value={c ? f.num(c.totals.products) : '—'}
@@ -339,9 +368,33 @@ function CompanyView() {
         <StatCard
           label={t('kpi.stockCost')}
           value={c ? f.money(c.totals.stockCost) : '—'}
-          hint={t('kpi.stockCostHint')}
+          hint={
+            c && c.totals.stockUnitsNoCost > 0
+              ? t('kpi.noCostUnits', { n: f.num(c.totals.stockUnitsNoCost) })
+              : t('kpi.stockCostHint')
+          }
           icon={<Coins className="h-5 w-5" />}
           tone="violet"
+          loading={detail.isLoading}
+        />
+        <StatCard
+          label={t('kpi.payout')}
+          value={c ? f.money(c.totals.stockPayout) : '—'}
+          hint={c ? t('kpi.payoutHint', { v: f.money(c.totals.stockRetail) }) : undefined}
+          icon={<Wallet className="h-5 w-5" />}
+          tone="brand"
+          loading={detail.isLoading}
+        />
+        <StatCard
+          label={t('kpi.profit')}
+          value={c ? f.money(c.totals.stockProfit) : '—'}
+          hint={
+            c && c.totals.stockUnitsNoCost > 0
+              ? t('kpi.noCostUnits', { n: f.num(c.totals.stockUnitsNoCost) })
+              : t('kpi.profitHint')
+          }
+          icon={<TrendingUp className="h-5 w-5" />}
+          tone={c && c.totals.stockProfit < 0 ? 'danger' : 'info'}
           loading={detail.isLoading}
         />
       </div>
@@ -523,7 +576,32 @@ function ProductsCard({ companyId, multiStore }: { companyId: string; multiStore
       key: 'stock',
       header: t('col.stock'),
       align: 'right',
-      render: (r) => <span className={cn('tnum', r.stock === 0 && 'text-muted')}>{f.num(r.stock)}</span>,
+      render: (r) => (
+        <div className="text-right">
+          <p className={cn('tnum text-sm', r.stock === 0 ? 'text-muted' : 'text-ink')}>{f.num(r.stock)}</p>
+          {r.stock > 0 && r.stockCost > 0 ? (
+            <p className="tnum whitespace-nowrap text-xs text-muted">{t('stock.cost', { v: f.money(r.stockCost) })}</p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: 'payout',
+      header: t('col.payout'),
+      align: 'right',
+      render: (r) => (
+        <div className="text-right" title={r.payoutSource === 'estimate' ? t('payout.estimate') : undefined}>
+          <p className={cn('tnum whitespace-nowrap text-sm', r.stock > 0 ? 'font-medium text-ink' : 'text-muted')}>
+            {r.stock > 0 ? f.money(r.stockPayout) : '—'}
+          </p>
+          {r.payoutPerUnit > 0 ? (
+            <p className="tnum whitespace-nowrap text-xs text-muted">
+              {r.payoutSource === 'estimate' ? '≈ ' : ''}
+              {t('payout.unit', { v: f.money(r.payoutPerUnit) })}
+            </p>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'uzum',

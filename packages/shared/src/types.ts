@@ -1789,8 +1789,17 @@ export interface AdminCompanyDetail {
     /** Tannarxi kiritilgan (arxivda bo'lmagan) SKU'lar */
     withCost: number;
     stockUnits: number;
-    /** Qoldiq × tannarx (tannarxi bor SKU'lar bo'yicha) */
+    /** Qoldiq × (tannarx + qo'shimcha xarajat) — tannarxi bor SKU'lar bo'yicha */
     stockCost: number;
+    /** Qoldiq × joriy narx */
+    stockRetail: number;
+    /** Kutilayotgan tushum: hammasi joriy narxda sotilsa Uzum komissiya va logistikadan keyin to'laydigan summa */
+    stockPayout: number;
+    /** Kutilayotgan foyda: tushum − tannarx − soliq (faqat tannarxi kiritilganlar) */
+    stockProfit: number;
+    /** Qoldig'i bor, tannarxi kiritilmagan — foydaga kirmagan */
+    stockUnitsNoCost: number;
+    stockSkusNoCost: number;
   };
 }
 
@@ -1809,6 +1818,14 @@ export interface AdminCompanySkuRow {
   purchasePrice: number;
   extraCost: number;
   stock: number;
+  /** Qoldiq × (tannarx + qo'shimcha); tannarx kiritilmagan bo'lsa 0 */
+  stockCost: number;
+  /** Bir donadan tushum: narx − Uzum komissiyasi − logistika */
+  payoutPerUnit: number;
+  /** Qoldiq × bir donadan tushum */
+  stockPayout: number;
+  /** Komissiya va logistika shu SKU'ning sotuvidan ('sales') yoki taxmin ('estimate') */
+  payoutSource: 'sales' | 'estimate';
   archived: boolean;
   /** Uzum Market'dagi sahifa (tovar Uzum ID'si bo'lmasa null) */
   uzumUrl: string | null;
