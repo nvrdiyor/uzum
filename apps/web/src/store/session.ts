@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MeResponse, FeatureId, FeatureAccess, PlanId } from '@savdoiq/shared';
+import { resolvePlan, type MeResponse, type FeatureId, type FeatureAccess, type PlanId } from '@savdoiq/shared';
 import { api, getCompanyId, setCompanyId, setToken, getToken } from '@/lib/api';
 
 interface SessionState {
@@ -76,21 +76,13 @@ export function useFeature(feature: FeatureId): FeatureAccess {
   return useSession((s) => s.me?.features?.[feature] ?? 'off');
 }
 
-/** Obuna hozir amal qiladimi (holati faol va muddati o'tmagan) */
-function isSubActive(sub: { status?: string; expiresAt?: string | null } | null | undefined): boolean {
-  if (!sub) return false;
-  if (sub.status && sub.status !== 'active') return false;
-  if (sub.expiresAt && new Date(sub.expiresAt).getTime() <= Date.now()) return false;
-  return true;
-}
-
 /**
- * Joriy tarif. Muddati tugagan bo'lsa `trial` qaytariladi — server ham shunday
- * ishlaydi. Ilgari sayt eski tarifni amaldagi deb hisoblab, davr tanlagichi
- * va bo'limlarni serverdan kengroq ochib berardi.
+ * Joriy tarif. Server bilan bir xil qoida (`resolvePlan`): muddati tugagan
+ * yoki bekor qilingan obuna — 'expired'. Ilgari sayt eski tarifni amaldagi
+ * deb hisoblab, davr tanlagichi va bo'limlarni serverdan kengroq ochib berardi.
  */
 export function usePlan(): PlanId {
-  return useSession((s) => (isSubActive(s.me?.subscription) ? (s.me!.subscription!.plan as PlanId) : 'trial'));
+  return useSession((s) => resolvePlan(s.me?.subscription));
 }
 
 export function useIsAdmin(): boolean {

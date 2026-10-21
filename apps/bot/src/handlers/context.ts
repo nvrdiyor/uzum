@@ -97,13 +97,22 @@ function readFlow(telegramId: string): FlowStep | null {
  * so'ng bazadagi haqiqiy holat bo'yicha aniqlanadi.
  */
 export function resolveStep(state: SpState, telegramId: string): FlowStep {
-  const temp = readFlow(telegramId);
-  if (temp === 'api_key_update') return temp;
-
   const { user, company } = state;
+
+  const temp = readFlow(telegramId);
+  if (temp === 'api_key_update' && isCompanyOwner(state)) return temp;
+
   if (!user) return 'lang';
   if (!user.phone) return 'phone';
   if (!company) return 'company';
+
+  /*
+   * Kompaniya nomi, soliq stavkasi va API kalit — EGANING qadamlari (saytda ham
+   * PATCH /company va kabinet qo'shish faqat egaga ochiq). Taklif qilingan a'zo
+   * ularni bajarmaydi: ilgari menejer yoki kuzatuvchi o'z kalitini yuborib,
+   * egasining kabinetini begona do'kon bilan almashtirib qo'ya olardi.
+   */
+  if (!isCompanyOwner(state)) return 'idle';
 
   switch (company.onboardStep) {
     case 'company':
@@ -115,6 +124,11 @@ export function resolveStep(state: SpState, telegramId: string): FlowStep {
     default:
       return 'idle';
   }
+}
+
+/** Foydalanuvchi joriy kompaniyaning egasimi (API kalit va soliq faqat egaga) */
+export function isCompanyOwner(state: SpState): boolean {
+  return state.company?.role === 'owner';
 }
 
 // ─────────────────────────── Foydalanuvchini yuklash ───────────────────────────

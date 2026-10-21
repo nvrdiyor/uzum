@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { prisma } from '@savdoiq/db';
 import type { Company, Membership, Subscription, User } from '@savdoiq/db';
-import { SESSION_DAYS, featureAccess, getPlan, type FeatureId, type PlanId } from '@savdoiq/shared';
+import { SESSION_DAYS, featureAccess, getPlan, resolvePlan, type FeatureId, type PlanId } from '@savdoiq/shared';
 import { AppError } from './errors.js';
 import { hashToken, randomToken } from './crypto.js';
 
@@ -109,14 +109,14 @@ export const requireCompany: RequestHandler = (req, _res, next) => {
       if (!chosen) return next(AppError.forbidden('Bu kompaniyaga ruxsatingiz yo‘q'));
 
       const subscription = chosen.company.subscription ?? null;
-      const active = subscription && subscription.expiresAt.getTime() > Date.now() && subscription.status === 'active';
 
       req.ctx = {
         ...req.ctx!,
         company: chosen.company,
         membership: chosen,
         subscription,
-        plan: active ? (subscription!.plan as PlanId) : 'trial',
+        // `/auth/me` bilan bir xil qoida: muddati tugagan obuna — 'expired', 'trial' emas
+        plan: resolvePlan(subscription),
       };
       next();
     } catch (err) {

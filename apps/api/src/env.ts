@@ -73,6 +73,14 @@ export const env = {
     telegramId: process.env.ADMIN_TELEGRAM_ID ?? '-1',
   },
 
+  /**
+   * Ishlab chiqarishda "Demo rejimda kirish" faqat shu bayroq bilan ochiladi
+   * (va faqat UZUM_MODE=demo bo'lganda). Ilgari UZUM_MODE=demo ning o'zi yetarli
+   * edi — setup-server.sh esa aynan shuni yozadi, ya'ni haqiqiy sayt ham demo
+   * kirishni ochib qo'yardi.
+   */
+  demoLogin: bool(process.env.DEMO_LOGIN, false),
+
   uzum: {
     baseUrl: process.env.UZUM_API_BASE ?? 'https://api-seller.uzum.uz/api/seller-openapi',
     /** demo — real API'siz ishlash (namunaviy ma'lumot generatsiya qilinadi) */

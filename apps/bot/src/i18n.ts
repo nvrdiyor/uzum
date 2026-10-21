@@ -112,6 +112,7 @@ export interface Messages {
   set_saved: string;
   set_api_ask: string;
   set_api_done: string;
+  set_api_owner_only: string;
   set_lang_ask: string;
   on: string;
   off: string;
@@ -295,6 +296,8 @@ const uz: Messages = {
   set_api_ask:
     'Yangi <b>Uzum API kalitini</b> yuboring.\n\nseller.uzum.uz → Mening profilim → API kalitlar\n\nBekor qilish uchun /cancel',
   set_api_done: '✅ Kalit yangilandi. Ma’lumotlar qayta yig‘ilmoqda.',
+  set_api_owner_only:
+    '🔑 Uzum API kalitini faqat kompaniya egasi ulaydi va yangilaydi. Kalit kerak bo‘lsa, kompaniya egasiga murojaat qiling.',
   set_lang_ask: 'Qaysi tilda davom etamiz?',
   on: 'yoqilgan',
   off: 'o‘chirilgan',
@@ -532,6 +535,8 @@ const ru: Messages = {
   set_api_ask:
     'Отправьте новый <b>API-ключ Uzum</b>.\n\nseller.uzum.uz → Мой профиль → API-ключи\n\nДля отмены — /cancel',
   set_api_done: '✅ Ключ обновлён. Данные пересобираются.',
+  set_api_owner_only:
+    '🔑 API-ключ Uzum подключает и обновляет только владелец компании. Если ключ нужен, обратитесь к владельцу.',
   set_lang_ask: 'На каком языке продолжим?',
   on: 'включено',
   off: 'выключено',

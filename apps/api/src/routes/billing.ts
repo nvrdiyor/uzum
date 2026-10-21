@@ -26,6 +26,7 @@ import {
   formatMoney,
   getPlan,
   planPrice,
+  resolvePlan,
   round,
   subscribeSchema,
   type FeatureId,
@@ -115,15 +116,13 @@ const toInvoiceRow = (inv: DbInvoice): InvoiceRow => ({
 const daysLeftOf = (expiresAt: Date): number =>
   Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000));
 
-/** Kompaniyaning joriy tarifi (obuna muddati o'tgan bo'lsa — trial) */
+/** Kompaniyaning joriy tarifi (obuna muddati o'tgan bo'lsa — 'expired', hech bir kartochka joriy emas) */
 async function currentPlanOf(companyId: string): Promise<PlanId> {
   const sub = await prisma.subscription.findUnique({
     where: { companyId },
-    select: { plan: true, status: true, expiresAt: true },
+    select: { plan: true, status: true, expiresAt: true, canceledAt: true },
   });
-  if (!sub) return 'trial';
-  const active = sub.status === 'active' && sub.expiresAt.getTime() > Date.now();
-  return active ? getPlan(sub.plan).id : 'trial';
+  return resolvePlan(sub);
 }
 
 /** Tarifni ommaviy ko'rinishga aylantiradi */
@@ -255,10 +254,14 @@ export async function activatePlan(
     },
   });
 
-  // Sinxronizatsiya oralig'i tarifga bog'liq
+  /*
+   * Sinxronizatsiya oralig'i tarifga bog'liq. Navbatdagi avto-sinxron darhol
+   * qaytadi: muddati tugagan kompaniyada rejalashtiruvchi uni bir sutkaga
+   * surib qo'ygan bo'ladi ('expired' oralig'i), to'lovdan keyin esa kutish kerak emas.
+   */
   await prisma.uzumAccount.updateMany({
     where: { companyId },
-    data: { syncIntervalM: target.limits.syncIntervalMinutes },
+    data: { syncIntervalM: target.limits.syncIntervalMinutes, nextSyncAt: now },
   });
 
   await prisma.auditLog.create({

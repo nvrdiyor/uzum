@@ -293,7 +293,8 @@ export default function Sales() {
      * (mobil internetda odatiy hol) `?order=` saqlanib qoladi — sahifani
      * yangilash yetarli bo'ladi.
      */
-    if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+    // 402 — tarif yopiq (masalan, obuna tugagan): Telegramdagi buyurtma havolasi shu yerga olib keladi
+    if (err instanceof ApiError && (err.status === 404 || err.status === 403 || err.isPlanLimit)) {
       toast.error(err.message);
       clearDeepLink();
     } else {

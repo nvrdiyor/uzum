@@ -241,6 +241,32 @@ export function hasFeature(plan: string | null | undefined, feature: FeatureId):
   return featureAccess(plan, feature) === 'full';
 }
 
+/** Tarifni aniqlash uchun obunaning kerakli maydonlari (bazadagi yozuv ham, API javobi ham mos) */
+export interface PlanSubscription {
+  plan: string;
+  status: string;
+  expiresAt: Date | string;
+  canceledAt?: Date | string | null;
+}
+
+/**
+ * Obunaning AMALDAGI tarifi — server, sinxron ishchisi va sayt uchun yagona qoida.
+ *
+ * Ilgari har joy o'zicha hisoblardi: `/auth/me` muddati tugaganni 'expired'
+ * derdi, so'rovlarni tekshiruvchi `requireCompany` esa 'trial' — sinovda
+ * deyarli hamma narsa ochiq. Natijada sayt bo'limlarni yopib ko'rsatardi,
+ * API esa to'lovni to'xtatgan mijozga ma'lumotni berishda davom etardi.
+ *
+ * Obuna yozuvi umuman yo'q — hali ochilmagan: sinov beriladi. Muddati
+ * tugagan yoki bekor qilingan obuna — 'expired'.
+ */
+export function resolvePlan(sub: PlanSubscription | null | undefined, now: number = Date.now()): PlanId {
+  if (!sub) return 'trial';
+  const expiresAt = new Date(sub.expiresAt).getTime();
+  const alive = sub.status === 'active' && !sub.canceledAt && expiresAt > now;
+  return alive ? getPlan(sub.plan).id : 'expired';
+}
+
 export function isPlanAtLeast(plan: string | null | undefined, min: PlanId): boolean {
   return PLAN_ORDER.indexOf(getPlan(plan).id) >= PLAN_ORDER.indexOf(min);
 }

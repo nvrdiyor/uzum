@@ -8,6 +8,7 @@ import type { Contact } from 'grammy/types';
 import {
   clearFlow,
   escapeHtml,
+  isCompanyOwner,
   loadCompany,
   refreshState,
   resolveStep,
@@ -218,6 +219,13 @@ async function handleApiKey(ctx: BotContext, text: string, isUpdate: boolean): P
     await ctx.reply(t(ctx, 'need_company'));
     return;
   }
+  // Ikkinchi qatlam: `resolveStep` a'zoni bu qadamga olib kelmaydi, lekin kalit
+  // kompaniya kabinetini almashtiradi — tekshiruv shu yerda ham turishi shart
+  if (!isCompanyOwner(ctx.sp)) {
+    clearFlow(ctx.sp.user ? ctx.sp.user.telegramId : '');
+    await ctx.reply(t(ctx, 'set_api_owner_only'), { reply_markup: mainMenu(ctx.sp.lang) });
+    return;
+  }
 
   const key = text.trim();
   if (key.length < MIN_API_KEY_LEN || /\s/.test(key)) {
@@ -306,8 +314,12 @@ export async function onCancel(ctx: BotContext): Promise<void> {
   await ctx.reply(t(ctx, 'canceled'), { reply_markup: mainMenu(ctx.sp.lang) });
 }
 
-/** Sozlamalardan «API kalitni yangilash» bosilganda */
+/** Sozlamalardan «API kalitni yangilash» bosilganda (faqat kompaniya egasi) */
 export async function askApiKeyUpdate(ctx: BotContext): Promise<void> {
+  if (!isCompanyOwner(ctx.sp)) {
+    await ctx.reply(t(ctx, ctx.sp.company ? 'set_api_owner_only' : 'need_company'));
+    return;
+  }
   const telegramId = ctx.from ? String(ctx.from.id) : '';
   if (telegramId) setFlow(telegramId, 'api_key_update');
   await promptStep(ctx, 'api_key_update');

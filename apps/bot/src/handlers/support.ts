@@ -121,8 +121,12 @@ export function parseTicketCode(text: string): string {
 /** Bo'shliqsiz uzun token — savol emas, kalit bo'lishi ehtimoli yuqori */
 export function looksLikeApiKey(text: string): boolean {
   const value = text.trim();
-  if (value.length < KEY_MIN_LEN || /s/.test(value)) return false;
+  // `\s` — bo'shliq. Ilgari teskari chiziq yo'qolib `/s/` bo'lib qolgan edi: "s" harfi
+  // bor har qanday kalit savol deb hisoblanib, operatorlarga ochiq matnda ketardi
+  if (value.length < KEY_MIN_LEN || /\s/.test(value)) return false;
   if (!/^[A-Za-z0-9._~+/=-]+$/.test(value)) return false;
+  // Sxemasiz havola ("seller.uzum.uz/integration", "t.me/savdoiqbot") — savol, kalit emas
+  if (/^([a-z0-9-]+\.)+(uz|com|ru|net|org|io|me|app)(\/|$)/i.test(value)) return false;
   // Uzun qo'shma o'zbekcha so'z ham bo'shliqsiz bo'lishi mumkin — kalitda esa
   // deyarli har doim raqam yoki xizmat belgisi uchraydi
   return /[0-9._~+/=-]/.test(value);

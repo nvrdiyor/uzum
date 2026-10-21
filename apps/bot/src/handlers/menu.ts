@@ -36,7 +36,8 @@ async function requireCompany(ctx: BotContext): Promise<string | null> {
     return null;
   }
   if (!company.hasApiKey) {
-    await ctx.reply(t(ctx, 'need_api_key'));
+    // A'zo kalitni o'zi ulay olmaydi — /start ga yuborish uni aylanib qaytarardi
+    await ctx.reply(t(ctx, company.role === 'owner' ? 'need_api_key' : 'set_api_owner_only'));
     return null;
   }
   return company.id;

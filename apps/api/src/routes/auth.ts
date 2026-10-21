@@ -27,6 +27,7 @@ import {
   botCodeSchema,
   featureAccess,
   getPlan,
+  resolvePlan,
   telegramAuthSchema,
   type AuthUser,
   type CompanySummary,
@@ -154,18 +155,12 @@ export function toSubscriptionSummary(s: Subscription | null): SubscriptionSumma
   };
 }
 
-/** Aktiv tarif: muddati o'tgan yoki bekor qilingan obuna → 'trial' */
+/**
+ * Aktiv tarif: muddati o'tgan yoki bekor qilingan obuna → 'expired'.
+ * Qoida `@savdoiq/shared` dagi `resolvePlan` da — `requireCompany` ham shuni ishlatadi.
+ */
 export function activePlan(s: Subscription | null): PlanId {
-  // Obuna yozuvi yo'q — hali ochilmagan, sinov beriladi
-  if (!s) return 'trial';
-  const active = s.status === 'active' && !s.canceledAt && s.expiresAt.getTime() > Date.now();
-  if (active) return getPlan(s.plan).id;
-  /*
-   * Muddati tugagan yoki bekor qilingan obuna 'expired' bo'ladi — ilgari
-   * 'trial' ga qaytarilardi va sinovda deyarli hamma narsa ochiq bo'lgani
-   * uchun to'lovni to'xtatgan mijoz bemalol ishlab yuraverardi.
-   */
-  return 'expired';
+  return resolvePlan(s);
 }
 
 /**
@@ -607,8 +602,21 @@ router.post(
 
 // ─────────────────────────── POST /demo ───────────────────────────
 
-/** Demo kirish faqat demo rejimida yoki ishlab chiqish muhitida ochiq */
-const demoLoginEnabled = (): boolean => env.uzum.mode === 'demo' || !env.isProd;
+/**
+ * Demo kirish ishlab chiqish muhitida ochiq. Ishlab chiqarishda — faqat
+ * DEMO_LOGIN=true VA UZUM_MODE=demo bo'lganda (alohida namoyish serveri).
+ *
+ * Ilgari UZUM_MODE=demo ning o'zi yetarli edi, setup-server.sh esa haqiqiy
+ * serverga ham aynan shuni yozadi — sayt istalgan tashrif buyuruvchiga
+ * demo tugmasini ochib qo'yardi.
+ */
+const demoLoginEnabled = (): boolean => !env.isProd || (env.demoLogin && env.uzum.mode === 'demo');
+
+/**
+ * Seed yaratadigan namunaviy foydalanuvchilar (packages/db/src/seed.ts → DEMO_USERS).
+ * Demo kirish hisobni FAQAT shular orasidan tanlaydi.
+ */
+const SEED_TELEGRAM_IDS = [DEMO_TELEGRAM_ID, '100000002', '100000003'];
 
 /** Demo foydalanuvchi uchun kompaniya + sinov obunasi (a'zolik bo'lmasa) */
 async function ensureDemoCompany(userId: string): Promise<void> {
@@ -632,8 +640,12 @@ async function ensureDemoCompany(userId: string): Promise<void> {
 /**
  * Demo kirish — bot tokeni bo'lmaganda ham saytni to'liq sinab ko'rish uchun.
  * Avval seed yaratgan demo foydalanuvchi (telegramId `100000001`) qidiriladi; u
- * kompaniya egasi bo'lmasa (owner'ga tegishli amallar yopiq qolmasligi uchun) egalik
- * huquqiga ega birinchi hisob olinadi. Hech kim topilmasa yangi DEMO hisob ochiladi.
+ * kompaniya egasi bo'lmasa (owner'ga tegishli amallar yopiq qolmasligi uchun) seed'dagi
+ * egalardan eng yuqori tariflisi olinadi. Hech kim topilmasa yangi DEMO hisob ochiladi.
+ *
+ * HAQIQIY mijoz hisobi hech qachon tanlanmaydi. Ilgari zaxira sifatida bazadagi
+ * istalgan egaga (eng qimmat tariflisiga) yoki umuman birinchi foydalanuvchiga
+ * kiritilardi — "Demo" tugmasi begona sotuvchining kabinetini ochib berardi.
  */
 router.post(
   '/demo',
@@ -650,10 +662,12 @@ router.post(
 
     if (owns === 0) {
       const ownerships = await prisma.membership.findMany({
-        where: { role: 'owner', user: { status: 'active' } },
+        where: {
+          role: 'owner',
+          user: { status: 'active', role: { not: 'admin' }, telegramId: { in: SEED_TELEGRAM_IDS } },
+        },
         include: { user: true, company: { include: { subscription: true } } },
         orderBy: { createdAt: 'asc' },
-        take: 50,
       });
       // Demo'da barcha bo'limlar ochiq bo'lishi uchun eng yuqori aktiv tarifli hisob tanlanadi
       const rank = (m: (typeof ownerships)[number]): number =>
@@ -662,7 +676,7 @@ router.post(
         (acc, m) => (acc === null || rank(m) > rank(acc) ? m : acc),
         null,
       );
-      user = best?.user ?? user ?? (await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } }));
+      user = best?.user ?? user;
     }
 
     if (!user) {
@@ -682,6 +696,10 @@ router.post(
 
     if (user.status === 'blocked') {
       throw AppError.forbidden('Demo hisob bloklangan');
+    }
+    // Seed'da 100000001 — platforma administratori: demo tugmasi admin panelini ochmasin
+    if (user.role === 'admin') {
+      throw AppError.forbidden('Demo hisob topilmadi — namunaviy ma’lumotni qayta yarating (npm run db:seed)');
     }
 
     await ensureDemoCompany(user.id);

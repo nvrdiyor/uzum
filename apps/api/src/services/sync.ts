@@ -28,6 +28,7 @@ import {
   formatMoney,
   getPlan,
   hasFeature,
+  resolvePlan,
   round,
   todayInBusinessTz,
   type LossKind,
@@ -70,6 +71,8 @@ type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
 
 /** Progress necha millisekundda bir marta yangilanadi */
 const TICK_MS = 2_000;
+/** Obunasi tugagan kabinet shu oraliqda qayta tekshiriladi (avto-sinxron qilinmaydi), daqiqa */
+const LAPSED_RECHECK_MINUTES = 60;
 /** Nechta urinishdan keyin job 'failed' bo'ladi */
 const MAX_ATTEMPTS = 3;
 /** Qayta urinishlar orasidagi kutish (urinish raqamiga ko'paytiriladi) */
@@ -211,11 +214,14 @@ function toStepId(value: string | null | undefined): SyncStepId {
   return VALID_STEPS.has(value ?? '') ? (value as SyncStepId) : 'queued';
 }
 
-/** Obuna faol bo'lsa uning tarifi, aks holda 'trial' */
+/**
+ * Obuna faol bo'lsa uning tarifi, aks holda 'expired' (`requireCompany` va
+ * `/auth/me` bilan bir xil qoida — `resolvePlan`). Ilgari bu yerda ham 'trial'
+ * qaytarilardi: muddati tugagan kompaniya qo'lda sinxronda sinov tarixini va
+ * sinovdagi bo'limlar xabarlarini olardi.
+ */
 function activePlanId(subscription: Subscription | null | undefined): PlanId {
-  if (!subscription) return 'trial';
-  const alive = subscription.status === 'active' && subscription.expiresAt.getTime() > Date.now();
-  return alive ? (subscription.plan as PlanId) : 'trial';
+  return resolvePlan(subscription);
 }
 
 /** `SyncJob` yozuvini API shartnomasidagi `SyncStatus` ga o'giradi */
@@ -378,6 +384,21 @@ export async function scheduleRecurring(): Promise<number> {
       if (!company) continue;
 
       const planId = activePlanId(company.subscription);
+
+      /*
+       * Obuna tugagan bo'lsa avto-sinxron to'xtaydi (foydalanuvchi qo'lda boshlashi
+       * mumkin), lekin kabinet har soatda qayta tekshiriladi. 'expired' tarifining
+       * sutkalik oralig'i bu yerda olinmaydi: obuna qaysi yo'l bilan tiklansa ham
+       * (sayt, to'lov webhook'i yoki botdagi /grant) sinxron bir soat ichida qaytadi.
+       */
+      if (!company.subscription || planId === 'expired') {
+        await prisma.uzumAccount.update({
+          where: { id: account.id },
+          data: { nextSyncAt: nextAutoSyncAt(now, LAPSED_RECHECK_MINUTES) },
+        });
+        continue;
+      }
+
       const intervalMinutes = getPlan(planId).limits.syncIntervalMinutes;
 
       // Keyingi vaqtni darhol suramiz — takroriy navbatga qo'yishning oldini oladi
@@ -388,13 +409,6 @@ export async function scheduleRecurring(): Promise<number> {
           syncIntervalM: intervalMinutes,
         },
       });
-
-      // Obuna tugagan bo'lsa avto-sinxron to'xtaydi (foydalanuvchi qo'lda boshlashi mumkin)
-      const alive =
-        company.subscription &&
-        company.subscription.status === 'active' &&
-        company.subscription.expiresAt.getTime() > now.getTime();
-      if (!alive) continue;
 
       const busy = await prisma.syncJob.findFirst({
         where: { companyId: account.companyId, status: { in: ['queued', 'running'] } },
@@ -1231,7 +1245,8 @@ async function prepareRun(job: SyncJob, type: SyncJobType): Promise<SyncRun> {
     accountId: account.id,
     type,
     planId,
-    syncIntervalMinutes: plan.limits.syncIntervalMinutes,
+    // Muddati tugagan bo'lsa sutkalik oraliq emas: sinxron davomida to'lov kelsa, keyingisi sutkaga surilmasin
+    syncIntervalMinutes: planId === 'expired' ? LAPSED_RECHECK_MINUTES : plan.limits.syncIntervalMinutes,
     taxRate: company.taxRate,
     from,
     to,
