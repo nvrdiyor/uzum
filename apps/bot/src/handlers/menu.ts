@@ -2,7 +2,7 @@
  * Doimiy menyu tugmalari: bugungi hisobot, qoldiqlar, saytga kirish, tarif, referal.
  * Sozlamalar alohida faylda (handlers/settings.ts).
  */
-import { formatDate, formatMoney, formatNumber } from '@savdoiq/shared';
+import { formatDate, formatMoney, formatNumber, hasFeature } from '@savdoiq/shared';
 import { escapeHtml, t, type BotContext } from './context.js';
 import { loginKeyboard, mainMenu, pricingKeyboard, siteKeyboard } from './keyboards.js';
 import {
@@ -33,6 +33,19 @@ async function requireCompany(ctx: BotContext): Promise<string | null> {
   }
   if (!company) {
     await ctx.reply(t(ctx, 'need_company'), { reply_markup: mainMenu(ctx.sp.lang) });
+    return null;
+  }
+  /*
+   * Obuna tugagan (yoki bekor qilingan) kompaniya — sayt va API bilan bir xil
+   * qoida: hisobotlar o'rniga tarifni yangilash taklifi. Ilgari bot tarifni
+   * umuman tekshirmasdi va to'lovni to'xtatgan mijoz raqamlarni shu yerdan
+   * olishda davom etardi.
+   */
+  if (!hasFeature(company.plan, 'telegram_notifications')) {
+    await ctx.reply(t(ctx, 'plan_locked_reports'), {
+      parse_mode: 'HTML',
+      reply_markup: pricingKeyboard(ctx.sp.lang),
+    });
     return null;
   }
   if (!company.hasApiKey) {

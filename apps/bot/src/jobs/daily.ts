@@ -7,11 +7,12 @@
  * ishga tushsa ham xabar ikki marta ketmaydi.
  */
 import type { Bot } from 'grammy';
+import { hasFeature, resolvePlan } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { env } from '../lib/env.js';
-import { toBotLang } from '../i18n.js';
+import { toBotLang, tr } from '../i18n.js';
 import { clampMessage, sleep, type BotContext } from '../handlers/context.js';
-import { siteKeyboard } from '../handlers/keyboards.js';
+import { pricingKeyboard, siteKeyboard } from '../handlers/keyboards.js';
 import {
   buildCriticalStocks,
   buildDayReport,
@@ -30,13 +31,38 @@ const SEND_DELAY_MS = 60;
 /** Takrorlanishni oldini oluvchi belgi */
 const AUDIT_ACTION = 'bot.daily_report';
 
+/**
+ * Obunasi tugagan kompaniyaga hisobot o'rniga tarifni yangilash taklifi
+ * shu kunlarda boradi (tugagan kundan keyingi N-kun, Toshkent kuni bo'yicha),
+ * 30-kundan keyin — jim. Har kuni emas: to'lamagan mijozga har ertalab
+ * "to'lang" deyish spam bo'lardi. 0-kunda taklif yo'q: API
+ * (subscription-alerts) "tarif muddati tugadi" xabarini tugashdan oldingi
+ * oxirgi sutkada alohida yuboradi.
+ */
+const LOCKED_OFFER_DAYS = new Set([1, 3, 7, 14, 30]);
+
 /** Xotiradagi belgi — bazaga ortiqcha so'rov bo'lmasligi uchun */
 let lastRunDay: string | null = null;
 
 interface DailyStats {
   sent: number;
+  /** Hisobot o'rniga yuborilgan tarif taklifi */
+  offers: number;
   failed: number;
   skipped: number;
+}
+
+type SubRow = { plan: string; status: string; expiresAt: Date; canceledAt: Date | null };
+
+/** Obuna qaysi kundan beri yopiq: bekor qilingan bo'lsa — o'sha kundan, aks holda tugash kunidan */
+function lockedSinceKey(sub: SubRow): string {
+  const since = sub.canceledAt && sub.canceledAt < sub.expiresAt ? sub.canceledAt : sub.expiresAt;
+  return localDateKey(since);
+}
+
+/** Ikki 'YYYY-MM-DD' kalit orasidagi kunlar (b − a) */
+function daysBetweenKeys(a: string, b: string): number {
+  return Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 }
 
 /** Shu kun uchun hisobot allaqachon yuborilganmi */
@@ -53,7 +79,7 @@ async function alreadySent(dayKey: string): Promise<boolean> {
  * Bir kompaniya uchun hisob faqat bir marta hisoblanadi (keshlanadi).
  */
 export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): Promise<DailyStats> {
-  const stats: DailyStats = { sent: 0, failed: 0, skipped: 0 };
+  const stats: DailyStats = { sent: 0, offers: 0, failed: 0, skipped: 0 };
   const range = yesterdayRange(now);
 
   const users = await prisma.user.findMany({
@@ -77,6 +103,14 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
   });
   const connected = new Set(accounts.map((a) => a.companyId));
 
+  // Tarif — sayt va API bilan bir xil qoida (`resolvePlan`)
+  const subs = await prisma.subscription.findMany({
+    where: { companyId: { in: companyIds } },
+    select: { companyId: true, plan: true, status: true, expiresAt: true, canceledAt: true },
+  });
+  const subByCompany = new Map<string, SubRow>(subs.map((s) => [s.companyId, s]));
+  const todayKey = localDateKey(now);
+
   const cache = new Map<string, { report: DayReport; alert: StockAlert }>();
 
   for (const user of users) {
@@ -84,6 +118,31 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
     const chatId = user.botChatId;
     if (!companyId || !chatId || !connected.has(companyId)) {
       stats.skipped += 1;
+      continue;
+    }
+
+    /*
+     * Obuna tugagan — raqamlar yuborilmaydi. Ilgari bot tarifni tekshirmasdi:
+     * sayt va API yopilgan bo'lsa ham kechagi tushum va foyda har ertalab
+     * Telegramga kelaverardi.
+     */
+    const sub = subByCompany.get(companyId) ?? null;
+    if (!hasFeature(resolvePlan(sub, now.getTime()), 'telegram_notifications')) {
+      const lang = toBotLang(user.languageCode);
+      if (!sub || !LOCKED_OFFER_DAYS.has(daysBetweenKeys(lockedSinceKey(sub), todayKey))) {
+        stats.skipped += 1;
+        continue;
+      }
+      try {
+        await bot.api.sendMessage(chatId, tr(lang, 'plan_locked_digest'), {
+          parse_mode: 'HTML',
+          reply_markup: pricingKeyboard(lang),
+        });
+        stats.offers += 1;
+      } catch {
+        stats.failed += 1;
+      }
+      await sleep(SEND_DELAY_MS);
       continue;
     }
 
@@ -143,7 +202,9 @@ async function tick(bot: Bot<BotContext>): Promise<void> {
   });
 
   // eslint-disable-next-line no-console
-  console.log(`[bot] kunlik hisobot ${dayKey}: yuborildi ${stats.sent}, xato ${stats.failed}`);
+  console.log(
+    `[bot] kunlik hisobot ${dayKey}: yuborildi ${stats.sent}, tarif taklifi ${stats.offers}, xato ${stats.failed}`,
+  );
 }
 
 /** Kunlik hisobot jarayonini ishga tushiradi */

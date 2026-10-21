@@ -942,6 +942,15 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
   let changeBudget = CHANGE_NOTIFY_LIMIT;
   let acceptBudget = ACCEPT_NOTIFY_LIMIT;
   const acceptedSince = new Date(Date.now() - ACCEPT_NOTIFY_MAX_AGE_MS);
+  /*
+   * Obuna tugagan: har buyurtma haqidagi xabar o'rniga sinxron oxirida bitta
+   * taklif. Ilgari tarif tekshirilmasdi — sayt va API yopiq bo'lsa ham har bir
+   * sotuv, bekor qilish va topshirish Telegramga summasi bilan kelaverardi.
+   */
+  const orderNotices = hasFeature(run.planId, 'telegram_notifications');
+  /** Obuna tugaganda: shu sinxronda birinchi marta yuklangan buyurtmalar va o'zgarishlar bormi */
+  let lockedNewOrders = 0;
+  let lockedChanged = false;
 
   for (const store of run.stores) {
     const orders = await client.getOrders(store.uzumShopId, run.from, run.to);
@@ -955,6 +964,16 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
     setDetail(`${run.totals.orders} ta buyurtma yuklandi`);
 
     if (!collectNew) continue;
+    if (!orderNotices) {
+      /*
+       * `res.created` — vaqt filtrisiz. `newSalesTotal` esa faqat so'nggi 6 soatdagi
+       * sotuvlarni sanaydi (soatlik avto-sinxron uchun): obunasi tugagan kompaniya
+       * faqat qo'lda, ko'pincha kunlar oralab sinxronlaydi va son kam chiqardi.
+       */
+      lockedNewOrders += res.created;
+      lockedChanged ||= res.changesTotal + res.acceptedTotal > 0;
+      continue;
+    }
     /*
      * Xabar sinxron natijasiga ta'sir qilmaydi: xato bo'lsa bosqich baribir
      * muvaffaqiyatli hisoblanadi, aks holda bitta yiqilgan xabar butun
@@ -968,6 +987,37 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
       log(`job ${run.jobId}: buyurtma xabari yuborilmadi — ${errorMessage(err)}`);
     }
   }
+
+  if (lockedNewOrders > 0 || lockedChanged) {
+    try {
+      await notifyLockedOrders(run, lockedNewOrders, lockedChanged);
+    } catch (err) {
+      log(`job ${run.jobId}: tarif taklifi yuborilmadi — ${errorMessage(err)}`);
+    }
+  }
+}
+
+/**
+ * Obunasi tugagan kompaniyaga: buyurtmalarda yangilik borligi — faqat soni,
+ * tafsilotsiz (mahsulot, summa, buyurtma raqami yo'q) — va tarifni yangilash
+ * taklifi. Bitta sinxronda bitta xabar. Sotuv xabarlari bilan bir xil
+ * sozlamaga (`notifyOrders`) bo'ysunadi.
+ *
+ * O'zgarishlar soni yozilmaydi: hisoblagich buyurtmani emas, pozitsiyani sanaydi.
+ */
+async function notifyLockedOrders(run: SyncRun, newOrders: number, changed: boolean): Promise<void> {
+  const what =
+    newOrders > 0
+      ? `${newOrders} ta yangi buyurtma yuklandi${changed ? ', mavjudlarida esa o‘zgarishlar bor' : ''}`
+      : 'buyurtmalaringizda o‘zgarishlar (bekor qilish, qaytarish yoki topshirish) aniqlandi';
+  await notifyCompanyOwners(run.companyId, {
+    type: 'warning',
+    requireFlag: 'notifyOrders',
+    title: 'Buyurtmalarda yangilik bor',
+    body: `Oxirgi sinxronda ${what}. Obuna muddati tugagani uchun tafsilotlar va har bir buyurtma haqidagi xabarlar to‘xtatilgan — tarifni yangilasangiz, darhol qaytadi.`,
+    link: '/pricing',
+    buttonText: 'Tarifni yangilash',
+  });
 }
 
 /** 6. Moliya: xarajatlar va pullik saqlash */

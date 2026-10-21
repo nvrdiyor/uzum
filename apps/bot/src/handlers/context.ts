@@ -9,6 +9,7 @@
  * Bu fayl faqat yordamchi: bu yerda hech qanday `bot.on(...)` ro'yxatga olinmaydi.
  */
 import type { Context } from 'grammy';
+import { resolvePlan, type PlanId } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { env, isAdmin } from '../lib/env.js';
 import { randomReferralCode } from '../crypto.js';
@@ -50,6 +51,8 @@ export interface BotCompany {
   onboarded: boolean;
   role: string;
   hasApiKey: boolean;
+  /** Amaldagi tarif — sayt va API bilan bir xil qoida (`resolvePlan`) */
+  plan: PlanId;
 }
 
 export interface SpState {
@@ -177,7 +180,18 @@ export async function loadCompany(userId: string): Promise<BotCompany | null> {
   const membership = await prisma.membership.findFirst({
     where: { userId },
     orderBy: { createdAt: 'asc' },
-    include: { company: { select: { id: true, name: true, taxRate: true, onboardStep: true, onboarded: true } } },
+    include: {
+      company: {
+        select: {
+          id: true,
+          name: true,
+          taxRate: true,
+          onboardStep: true,
+          onboarded: true,
+          subscription: { select: { plan: true, status: true, expiresAt: true, canceledAt: true } },
+        },
+      },
+    },
   });
   if (!membership) return null;
 
@@ -191,6 +205,7 @@ export async function loadCompany(userId: string): Promise<BotCompany | null> {
     onboarded: membership.company.onboarded,
     role: membership.role,
     hasApiKey: accounts > 0,
+    plan: resolvePlan(membership.company.subscription),
   };
 }
 

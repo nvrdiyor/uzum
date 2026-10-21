@@ -82,6 +82,10 @@ export interface Messages {
   billing_until: string;
   billing_days: string;
   billing_expired: string;
+  /** Obuna tugaganda «Bugungi hisobot» / «Qoldiqlar» o'rniga */
+  plan_locked_reports: string;
+  /** Obuna tugaganda kunlik hisobot o'rniga (siyrak, kunlik emas) */
+  plan_locked_digest: string;
   billing_none: string;
   billing_card: string;
   btn_pricing: string;
@@ -267,6 +271,14 @@ const uz: Messages = {
   billing_until: 'Amal qiladi: <b>{date}</b> gacha',
   billing_days: 'Qolgan muddat: <b>{days} kun</b>',
   billing_expired: '⚠️ Tarif muddati tugagan. Yangilash uchun quyidagi tugmani bosing.',
+  plan_locked_reports:
+    '🔒 <b>Obuna muddati tugagan</b>\n\n'
+    + 'Bugungi hisobot va qoldiqlar vaqtincha yopiq. Ma’lumotlaringiz saqlanib turibdi — '
+    + 'tarifni yangilasangiz, hammasi darhol qaytadi.',
+  plan_locked_digest:
+    '📊 <b>Kunlik hisobot to‘xtatildi</b>\n\n'
+    + 'Obuna muddati tugagani uchun hisobot yuborilmayapti. Sotuvlar, foyda va qoldiqlaringiz '
+    + 'saqlanib turibdi — tarifni yangilasangiz, hisobot ertadan yana keladi.',
   billing_none: 'Sizda hali faol tarif yo‘q.',
   billing_card: '\n💳 To‘lov kartasi: <code>{card}</code> ({owner})',
   btn_pricing: '💎 Tarifni yangilash',
@@ -506,6 +518,14 @@ const ru: Messages = {
   billing_until: 'Действует до: <b>{date}</b>',
   billing_days: 'Осталось: <b>{days} дн.</b>',
   billing_expired: '⚠️ Срок тарифа истёк. Нажмите кнопку ниже для продления.',
+  plan_locked_reports:
+    '🔒 <b>Срок подписки истёк</b>\n\n'
+    + 'Отчёт за сегодня и остатки временно закрыты. Ваши данные сохранены — '
+    + 'продлите тариф, и всё сразу вернётся.',
+  plan_locked_digest:
+    '📊 <b>Ежедневный отчёт приостановлен</b>\n\n'
+    + 'Срок подписки истёк, поэтому отчёт не отправляется. Продажи, прибыль и остатки '
+    + 'сохранены — продлите тариф, и отчёт снова придёт со следующего дня.',
   billing_none: 'У вас пока нет активного тарифа.',
   billing_card: '\n💳 Карта для оплаты: <code>{card}</code> ({owner})',
   btn_pricing: '💎 Продлить тариф',
