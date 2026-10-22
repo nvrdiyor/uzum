@@ -19,6 +19,7 @@ import {
 } from './endpoints.js';
 import {
   UzumHttp,
+  describeUzumError,
   isRecord,
   isTemporaryUzumError,
   toUzumApiError,
@@ -396,7 +397,7 @@ export class LiveUzumClient implements UzumClient {
    * Eng yengil endpoint (`/v1/shops`) bilan kalitni tekshiradi.
    * Xatolik matni foydalanuvchiga ko'rsatiladigan darajada tushunarli bo'lishi shart.
    */
-  async verify(): Promise<{ ok: boolean; message?: string; temporary?: boolean }> {
+  async verify(): Promise<{ ok: boolean; message?: string; temporary?: boolean; diagnostic?: string }> {
     try {
       // Tekshiruv tez javob berishi kerak — ko'pi bilan bitta qayta urinish
       const retries = Math.min(1, this.http.retryCount);
@@ -411,7 +412,12 @@ export class LiveUzumClient implements UzumClient {
       return { ok: true, message: `Ulanish muvaffaqiyatli — ${shops.length} ta do‘kon topildi` };
     } catch (err) {
       const e = toUzumApiError(err);
-      return { ok: false, message: uzumErrorMessage(e), temporary: isTemporaryUzumError(e) };
+      return {
+        ok: false,
+        message: uzumErrorMessage(e),
+        temporary: isTemporaryUzumError(e),
+        diagnostic: describeUzumError(e),
+      };
     }
   }
 
@@ -1218,6 +1224,6 @@ export class LiveUzumClient implements UzumClient {
   private warn(what: string, err: unknown): void {
     const e = toUzumApiError(err);
     // eslint-disable-next-line no-console
-    console.warn(`[uzum] ${what}: ${e.code} — ${e.message}`);
+    console.warn(`[uzum] ${what}: ${e.code} — ${describeUzumError(e)}`);
   }
 }

@@ -303,8 +303,9 @@ export interface UzumClient {
    * API kalitni tekshirish (sinxronizatsiyaning `auth` bosqichi).
    * `temporary` — tekshiruv o'tmadi, lekin sabab kalitda emas (aloqa uzilgan,
    * Uzum javob bermayapti yoki so'rovni tarmoq darajasida rad etyapti).
+   * `diagnostic` — faqat log uchun: endpoint, HTTP status va Uzum javobi.
    */
-  verify(): Promise<{ ok: boolean; message?: string; temporary?: boolean }>;
+  verify(): Promise<{ ok: boolean; message?: string; temporary?: boolean; diagnostic?: string }>;
   getShops(): Promise<UzumShop[]>;
   getProducts(shopId: string): Promise<UzumProduct[]>;
   getStocks(shopId: string): Promise<UzumStock[]>;

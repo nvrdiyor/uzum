@@ -39,6 +39,7 @@ import {
 import { env } from '../env.js';
 import { decryptSecret } from '../lib/crypto.js';
 import { createUzumClient } from '../uzum/client.js';
+import { UzumApiError, describeUzumError } from '../uzum/http.js';
 import type { UzumClient } from '../uzum/types.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
@@ -190,6 +191,22 @@ const errorMessage = (err: unknown): string =>
 function log(message: string): void {
   // eslint-disable-next-line no-console
   console.log(`[sync] ${message}`);
+}
+
+/**
+ * Xatoga log uchun texnik tafsilot biriktiradi (endpoint, HTTP status, Uzum
+ * javobi). Foydalanuvchiga ko'rinadigan matn va xatti-harakat o'zgarmaydi —
+ * faqat `failJob` logi qatoriga qo'shiladi.
+ */
+function withDiagnostic<T extends Error>(err: T, diagnostic: string | undefined): T {
+  if (diagnostic) Object.assign(err, { diagnostic });
+  return err;
+}
+
+function diagnosticOf(err: unknown): string | null {
+  if (err instanceof UzumApiError) return describeUzumError(err);
+  const value = err instanceof Error ? (err as Error & { diagnostic?: unknown }).diagnostic : undefined;
+  return typeof value === 'string' && value ? value : null;
 }
 
 /** Bekor qilinganda tashlanadi (xato emas — foydalanuvchi to'xtatgan) */
@@ -634,8 +651,8 @@ async function stepAuth(run: SyncRun, setDetail: (t: string) => void): Promise<v
     const message = check.message ?? 'Uzum API kaliti qabul qilinmadi';
     // Aloqa uzilishi yoki Uzum to'sig'i kalitning aybi emas: kabinet faol qoladi,
     // keyingi rejali sinxron o'zi qayta urinadi. Faqat haqiqiy rad etish — "yaroqsiz".
-    if (check.temporary) throw new Error(message);
-    throw new UzumAuthError(message);
+    if (check.temporary) throw withDiagnostic(new Error(message), check.diagnostic);
+    throw withDiagnostic(new UzumAuthError(message), check.diagnostic);
   }
 
   run.client = client;
@@ -1401,7 +1418,12 @@ async function finishJob(run: SyncRun): Promise<void> {
 }
 
 /** Xatolik: 3 martagacha qayta urinish, keyin 'failed' */
-async function failJob(job: SyncJob, run: SyncRun | null, err: unknown): Promise<void> {
+async function failJob(
+  job: SyncJob,
+  run: SyncRun | null,
+  err: unknown,
+  failedStep: SyncStepId | null = null,
+): Promise<void> {
   const jobId = job.id;
   const accountId = run?.accountId ?? job.uzumAccountId ?? null;
 
@@ -1417,6 +1439,9 @@ async function failJob(job: SyncJob, run: SyncRun | null, err: unknown): Promise
   const message = errorMessage(err);
   const attempts = job.attempts + 1;
   const canRetry = attempts < MAX_ATTEMPTS;
+  // Faqat log qatori uchun: "[auth] GET /v1/shops → HTTP 503: ..."
+  const diagnostic = diagnosticOf(err);
+  const detail = diagnostic ? ` [${failedStep ?? 'tayyorlash'}] ${diagnostic}` : '';
 
   if (canRetry) {
     await prisma.syncJob.update({
@@ -1430,7 +1455,7 @@ async function failJob(job: SyncJob, run: SyncRun | null, err: unknown): Promise
         startedAt: null,
       },
     });
-    log(`job ${jobId} xato: ${message} — qayta urinish ${attempts}/${MAX_ATTEMPTS}`);
+    log(`job ${jobId} xato: ${message} — qayta urinish ${attempts}/${MAX_ATTEMPTS}${detail}`);
     return;
   }
 
@@ -1477,13 +1502,15 @@ async function failJob(job: SyncJob, run: SyncRun | null, err: unknown): Promise
     });
   }
 
-  log(`job ${jobId} muvaffaqiyatsiz: ${message}`);
+  log(`job ${jobId} muvaffaqiyatsiz: ${message}${detail}`);
 }
 
 /** Bitta jobni to'liq bajaradi. Hech qachon exception tashlamaydi. */
 async function runJob(job: SyncJob): Promise<void> {
   const type: SyncJobType = job.type === 'incremental' ? 'incremental' : 'full';
   let run: SyncRun | null = null;
+  /** Qaysi bosqichda yiqildi — faqat log uchun */
+  let failedStep: SyncStepId | null = null;
 
   try {
     run = await prepareRun(job, type);
@@ -1496,13 +1523,15 @@ async function runJob(job: SyncJob): Promise<void> {
 
     for (let i = 0; i < SYNC_STEPS.length; i += 1) {
       const step = SYNC_STEPS[i];
+      failedStep = step.id;
       await runStep(current, i, (setDetail) => executeStep(step.id, current, setDetail));
     }
 
+    failedStep = null;
     await finishJob(current);
   } catch (err) {
     try {
-      await failJob(job, run, err);
+      await failJob(job, run, err, failedStep);
     } catch (inner) {
       log(`job ${job.id} holatini yozib bo‘lmadi: ${errorMessage(inner)}`);
     }

@@ -102,6 +102,11 @@ export class UzumApiError extends Error {
   readonly retryAfterMs: number | null;
   /** Javob tanasi yoki asl xato (nosozlikni tekshirish uchun) */
   readonly details?: unknown;
+  /**
+   * Qaysi so'rovda yiqildi ("GET /v1/shops") — faqat log uchun. Klient
+   * qo'yadi; query qatori yozilmaydi (sanalar va ro'yxatlar logni to'ldirardi).
+   */
+  endpoint: string | null = null;
 
   constructor(params: {
     status: number;
@@ -209,6 +214,74 @@ export function toUzumApiError(err: unknown): UzumApiError {
     retryable: false,
     details: err,
   });
+}
+
+/** Log qatori uchun: bitta qator, uzunligi chegaralangan */
+function oneLine(value: string, max = 200): string {
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** HTML sahifadan sarlavha (masalan Cloudflare "Error 400"), bo'lmasa matnning boshi */
+function htmlSummary(html: string): string {
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1];
+  return oneLine(title || html.replace(/<[^<>]*>/g, ' '), 120);
+}
+
+/**
+ * Tarmoq xatosining tub sababi: kod (undici: UND_ERR_CONNECT_TIMEOUT,
+ * ECONNREFUSED, ENOTFOUND...), kod bo'lmasa — eng ichki sababning matni.
+ * `fetch` o'zi faqat "fetch failed" deydi, haqiqiy sabab `cause` ichida.
+ */
+function causeOf(details: unknown): string | null {
+  let cur: unknown = details;
+  let message: string | null = null;
+  for (let depth = 0; depth < 4 && cur && typeof cur === 'object'; depth += 1) {
+    const { code, message: text, cause } = cur as { code?: unknown; message?: unknown; cause?: unknown };
+    if (typeof code === 'string' && code) return code;
+    if (depth > 0 && typeof text === 'string' && text) message = oneLine(text, 120);
+    cur = cause;
+  }
+  return message;
+}
+
+/**
+ * Xatoning texnik tavsifi — FAQAT log uchun (foydalanuvchiga `uzumErrorMessage`).
+ * Masalan: `GET /v1/shops → HTTP 503: Internal service is not available`.
+ * 2026-10-22 da sinxron bir necha soat "Uzum serverida vaqtinchalik xatolik"
+ * deb yiqildi va logdan na status, na endpoint, na Uzum javobi bilinardi —
+ * sabab (Uzum tarmog'i butunlay o'chgani) tarmoq tekshiruvlari bilan topildi.
+ * Kalit yozilmaydi: u faqat sarlavhada ketadi, bu yerda esa yo'l va javob tanasi.
+ */
+export function describeUzumError(err: UzumApiError): string {
+  const where = err.endpoint ?? 'Uzum API';
+  switch (err.code) {
+    case 'timeout':
+      return `${where} → ${err.message}`;
+    case 'network': {
+      const cause = causeOf(err.details);
+      return `${where} → ${err.message}${cause ? ` (${cause})` : ''}`;
+    }
+    case 'blocked':
+      return `${where} → HTTP ${err.status}, HTML${typeof err.details === 'string' && err.details ? `: ${htmlSummary(err.details)}` : ''}`;
+    case 'invalid_response':
+    case 'unknown':
+      return `${where} → ${oneLine(err.message)}`;
+    default: {
+      const body = err.details;
+      // HTML sahifa (masalan nginx "502 Bad Gateway") — butun teg emas, sarlavhasi
+      const text =
+        typeof body === 'string'
+          ? /^\s*</.test(body)
+            ? htmlSummary(body)
+            : body
+          : body !== undefined && body !== null
+            ? JSON.stringify(body)
+            : '';
+      const status = err.status === 200 ? 'HTTP 200, successful=false' : `HTTP ${err.status}`;
+      return `${where} → ${status}${text ? `: ${oneLine(text)}` : ''}`;
+    }
+  }
 }
 
 /** Xatoni foydalanuvchiga ko'rsatiladigan o'zbekcha matnga aylantiradi */
@@ -420,6 +493,7 @@ export class UzumHttp {
         return await this.once(path, opts);
       } catch (err) {
         lastError = toUzumApiError(err);
+        lastError.endpoint ??= `${opts.method ?? 'GET'} ${path}`;
 
         // Token formati: avval prefikssiz, 401/403 bo'lsa bir marta `Bearer` bilan sinaymiz
         // Tarmoq to'sig'ida (HTML 403) token formati aybdor emas — qayta sinash foydasiz
@@ -547,6 +621,8 @@ export class UzumHttp {
           code: 'blocked',
           message: `Uzum tarmog‘i so‘rovni rad etdi (HTTP ${response.status}, HTML javob)`,
           retryable: false,
+          // Faqat log uchun (`describeUzumError` sahifa sarlavhasini oladi)
+          details: text.slice(0, 2_000),
         });
       }
       throw UzumApiError.fromStatus(
