@@ -43,6 +43,8 @@ export const FEATURE_IDS = [
   'expenses',
   'promos',
   'sku_health',
+  /** Kartochka SEO: audit bali, kalit so'zlar, bepul AI chatbot uchun so'rov */
+  'card_seo',
   'reviews_autoreply',
   'telegram_notifications',
   'referral',

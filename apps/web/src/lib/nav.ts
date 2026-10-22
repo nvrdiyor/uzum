@@ -30,6 +30,7 @@ import {
   Settings,
   Ship,
   Boxes,
+  Wand2,
   type AppIcon,
 } from '@/components/icons';
 import type { FeatureId } from '@savdoiq/shared';
@@ -67,6 +68,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/products', labelKey: 'nav.products', icon: Package, feature: 'products_assortment', primary: true },
       { to: '/sku-health', labelKey: 'nav.skuHealth', icon: HeartPulse, feature: 'sku_health' },
+      { to: '/cards', labelKey: 'nav.cards', icon: Wand2, feature: 'card_seo' },
       { to: '/abc', labelKey: 'nav.abc', icon: PieChart, feature: 'abc_analysis' },
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
       { to: '/batches', labelKey: 'nav.batches', icon: Boxes, feature: 'cost_price' },

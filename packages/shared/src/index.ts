@@ -4,6 +4,7 @@ export * from './constants.js';
 export * from './calc.js';
 export * from './format.js';
 export * from './schemas.js';
+export * from './card-seo.js';
 
 export const APP = {
   name: 'SavdoIQ',

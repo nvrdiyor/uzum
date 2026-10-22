@@ -297,12 +297,81 @@ model Product {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  skus    Sku[]
-  reviews Review[]
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  skus         Sku[]
+  reviews      Review[]
+  cardContents CardContent[]
+  cardKeywords CardKeyword[]
+  cardDrafts   CardDraft[]
 
   @@unique([storeId, uzumProductId])
   @@index([storeId])
+}
+
+// ─────────────────────────── Kartochka SEO ───────────────────────────
+
+/// Kartochka matni tillar bo'yicha. Seller API faqat bitta tildagi nomni beradi —
+/// tavsif va ikkinchi til nomini sotuvchi o'zi joylaydi (yoki qoralamadan qo'llanadi)
+model CardContent {
+  id              String   @id @default(cuid())
+  productId       String
+  /// ru | uz
+  lang            String
+  title           String   @default("")
+  descriptionHtml String   @default("")
+  /// manual — sotuvchi joylagan · draft — qo'llangan qoralamadan
+  source          String   @default("manual")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, lang])
+}
+
+/// Kartochka kalit so'zi. Talab (ko'rishlar) faqat sotuvchi import qilgan bo'lsa —
+/// Uzum'da rasmiy ochiq chastota manbasi yo'q, biz uni o'ylab topmaymiz
+model CardKeyword {
+  id        String   @id @default(cuid())
+  productId String
+  /// normallashtirilgan (kichik harf, apostrof bir xil)
+  text      String
+  demand    Int?
+  /// seller — qo'lda · auto — kod taklifi · import — jadvaldan
+  source    String   @default("seller")
+  /// active | excluded
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, text])
+  @@index([productId])
+}
+
+/// Yangi matn qoralamasi (bepul AI chatbot javobidan yoki qo'lda). Uzum'ga
+/// avtomatik yozilmaydi: sotuvchi kabinetga o'zi qo'yadi va "qo'ydim" deb belgilaydi
+model CardDraft {
+  id              String    @id @default(cuid())
+  productId       String
+  lang            String
+  title           String    @default("")
+  descriptionHtml String    @default("")
+  /// JSON massiv (qisqa afzalliklar)
+  usp             String    @default("[]")
+  /// ai_chat | manual
+  source          String    @default("ai_chat")
+  /// draft | applied
+  status          String    @default("draft")
+  scoreBefore     Int?
+  scoreAfter      Int?
+  createdById     String?
+  appliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
 }
 
 model Sku {
@@ -649,6 +718,8 @@ model Review {
 
   @@unique([storeId, uzumReviewId])
   @@index([storeId, publishedAt])
+  // Kartochka va mahsulot tafsiloti sharhlarni mahsulot bo'yicha o'qiydi — indekssiz Postgres butun jadvalni ko'rib chiqardi
+  @@index([productId, publishedAt])
 }
 
 model Notification {

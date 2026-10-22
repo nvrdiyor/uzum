@@ -11,6 +11,7 @@ import {
   Star,
   TrendingUp,
   Undo2,
+  Wand2,
 } from '@/components/icons';
 import {
   Badge,
@@ -55,6 +56,7 @@ import { cn } from '@/lib/utils';
 registerNamespace('productDetail', {
   uz: {
     back: 'Mahsulotlarga qaytish',
+    cardSeo: 'Kartochka SEO',
     subtitle: '{sku} SKU · {cat}',
     notFound: 'Mahsulot topilmadi',
     notFoundHint: 'Bu mahsulot o‘chirilgan yoki sizga tegishli emas',
@@ -148,6 +150,7 @@ registerNamespace('productDetail', {
   },
   ru: {
     back: 'К товарам',
+    cardSeo: 'SEO карточки',
     subtitle: '{sku} SKU · {cat}',
     notFound: 'Товар не найден',
     notFoundHint: 'Товар удалён или не принадлежит вам',
@@ -241,6 +244,7 @@ registerNamespace('productDetail', {
   },
   en: {
     back: 'Back to products',
+    cardSeo: 'Card SEO',
     subtitle: '{sku} SKUs · {cat}',
     notFound: 'Product not found',
     notFoundHint: 'It was removed or does not belong to you',
@@ -584,6 +588,10 @@ export default function ProductDetail() {
                 <span className="opacity-80">· {t('info.reviews', { n: f.num(product.reviewsCount) })}</span>
               </Badge>
             ) : null}
+            <Link to={`/cards/${product.id}`} className="btn-outline gap-1.5 rounded-lg px-3 py-1.5 text-xs">
+              <Wand2 className="h-3.5 w-3.5" />
+              {t('cardSeo')}
+            </Link>
             <ProductVisibilityButton product={product} variant="button" />
           </span>
         }

@@ -4,6 +4,7 @@
  */
 
 import type { PlanId, FeatureAccess, FeatureId } from './plans.js';
+import type { CardAuditResult, CardLang, CardSectionId } from './card-seo.js';
 
 export type Lang = 'uz' | 'ru' | 'en';
 export type DeliveryType = 'FBO' | 'FBS' | 'DBS';
@@ -1853,4 +1854,132 @@ export interface AdminCompanySkuRow {
   archived: boolean;
   /** Uzum Market'dagi sahifa (tovar Uzum ID'si bo'lmasa null) */
   uzumUrl: string | null;
+}
+
+// ─────────────────────────── Kartochka SEO (/cards) ───────────────────────────
+
+/** Kartochka matni qayerdan: Seller API (faqat nom), sotuvchi joylagan yoki qo'llangan qoralama */
+export type CardContentSource = 'seller_api' | 'manual' | 'draft';
+
+export interface CardContentDto {
+  lang: CardLang;
+  title: string;
+  descriptionHtml: string;
+  source: CardContentSource;
+  /** Seller API'dan kelgan (saqlanmagan) nomda null */
+  updatedAt: string | null;
+}
+
+export interface CardKeywordDto {
+  id: string;
+  text: string;
+  /** Faqat sotuvchi import qilgan talab (ko'rishlar); taxmin emas */
+  demand: number | null;
+  source: 'seller' | 'auto' | 'import';
+  status: 'active' | 'excluded';
+}
+
+export interface CardDraftDto {
+  id: string;
+  lang: CardLang;
+  title: string;
+  descriptionHtml: string;
+  usp: string[];
+  /** ai_chat — bepul chatbot javobidan; manual — sotuvchi o'zi yozgan */
+  source: 'ai_chat' | 'manual';
+  /** applied — sotuvchi Uzum kabinetiga qo'ydim deb belgilagan */
+  status: 'draft' | 'applied';
+  scoreBefore: number | null;
+  scoreAfter: number | null;
+  createdAt: string;
+  appliedAt: string | null;
+}
+
+/** Ballni qayta hisoblash uchun matndan tashqari ma'lumotlar (sayt jonli hisoblaydi) */
+export interface CardAuditContext {
+  category: string | null;
+  reviews: { count: number; rating: number; answered: number | null } | null;
+  health: { blocked: boolean; returnedPct: number | null; hasImage: boolean } | null;
+}
+
+export interface CardListRow {
+  productId: string;
+  title: string;
+  imageUrl: string | null;
+  category: string | null;
+  storeTitle: string;
+  uzumUrl: string | null;
+  score: number;
+  /** Bo'lim bo'yicha foiz (0..100); ma'lumot yo'q bo'lsa null */
+  sections: Record<CardSectionId, number | null>;
+  /** Oxirgi 30 kun (Toshkent kuni) */
+  revenue30: number;
+  profit30: number;
+  units30: number;
+  stock: number;
+  /** Ustuvorlik: 30 kunlik tushum × ballgacha yetmagan ulush × omborda borligi */
+  opportunity: number;
+  titleLangs: CardLang[];
+  descriptionLangs: CardLang[];
+  keywordsCount: number;
+  draftStatus: 'none' | 'draft' | 'applied';
+  appliedAt: string | null;
+}
+
+export interface CardListResponse extends Paginated<CardListRow> {
+  totals: {
+    cards: number;
+    avgScore: number;
+    /** Ball 60 dan past */
+    lowScore: number;
+    withDescription: number;
+    applied: number;
+  };
+}
+
+export interface CardReviewInsights {
+  count: number;
+  rating: number;
+  answered: number;
+  /** [1★, 2★, 3★, 4★, 5★] */
+  distribution: number[];
+  /** Sharhlardagi "Afzalliklari:" qismlari */
+  pros: string[];
+  /** Sharhlardagi "Kamchiliklari:" qismlari va past baholi sharhlar */
+  cons: string[];
+  recent: { rating: number; text: string; date: string }[];
+}
+
+export interface CardImpact {
+  appliedAt: string;
+  /** Qo'llashdan oldingi va keyingi teng kunlar (ko'pi bilan 14) */
+  days: number;
+  before: { revenue: number; units: number; orders: number };
+  after: { revenue: number; units: number; orders: number };
+}
+
+export interface CardDetailResponse {
+  product: {
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    category: string | null;
+    brand: string | null;
+    storeTitle: string;
+    uzumProductId: string | null;
+    uzumUrl: string | null;
+    blocked: boolean;
+    returnedPct: number;
+    /** Variant nomlari — AI so'roviga fakt sifatida beriladi */
+    skuTitles: string[];
+  };
+  contents: CardContentDto[];
+  keywords: CardKeywordDto[];
+  drafts: CardDraftDto[];
+  reviews: CardReviewInsights;
+  sales: { revenue30: number; profit30: number; units30: number; stock: number };
+  auditContext: CardAuditContext;
+  /** Server hisoblagan joriy ball (sayt matn o'zgarganda o'zi qayta hisoblaydi) */
+  audit: CardAuditResult;
+  impact: CardImpact | null;
 }

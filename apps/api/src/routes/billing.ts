@@ -70,6 +70,7 @@ const FEATURE_LABELS: Record<FeatureId, string> = {
   expenses: 'Xarajatlar hisobi',
   promos: 'Aksiyalar va ularning foydasi',
   sku_health: 'SKU holati (blok, brak, qaytarishlar)',
+  card_seo: 'Kartochka SEO (audit, kalit so‘zlar, bepul AI uchun so‘rov)',
   reviews_autoreply: 'Sharhlarga avto-javob',
   telegram_notifications: 'Telegram bildirishnomalar',
   referral: 'Referal dasturi',
