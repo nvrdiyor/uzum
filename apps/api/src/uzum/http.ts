@@ -300,7 +300,12 @@ export function uzumErrorMessage(err: UzumApiError): string {
     case 'timeout':
       return 'Uzum API javob bermadi (vaqt tugadi) — keyinroq urinib ko‘ring';
     case 'network':
-      return 'Uzum API bilan aloqa yo‘q — internet aloqasini tekshiring';
+      /*
+       * Bu so'rovni sotuvchining brauzeri emas, SavdoIQ serveri yuboradi —
+       * "internetni tekshiring" degan maslahat noto'g'ri. 2026-10-22 da Uzum
+       * tarmog'i soatlab ishlamaganda sotuvchilarga aynan shu chiqqan edi.
+       */
+      return 'Uzum serveriga ulanib bo‘lmadi — muammo Uzum tomonida, kalitingiz yoki internetingizga bog‘liq emas';
     case 'server_error':
       return 'Uzum serverida vaqtinchalik xatolik — keyinroq urinib ko‘ring';
     case 'bad_request':
