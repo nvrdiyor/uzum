@@ -6,8 +6,9 @@
  * `any` ishlatilmaydi — `unknown` + tekshiruv.
  */
 
-import { EXPENSE_CATEGORIES, type ExpenseCategory, type Lang } from '@savdoiq/shared';
+import { EXPENSE_CATEGORIES, formatMonthShort, type ExpenseCategory, type Lang } from '@savdoiq/shared';
 import type { Tone } from '@/components/ui';
+import { COST_COLORS } from '@/lib/theme';
 import { isRecord, normalizeExpenses, normalizeSummary } from './normalize';
 import type { ExpenseList, ExpenseRow, SummaryCell } from './types';
 
@@ -40,28 +41,56 @@ export function emptyByCategory(): Record<ExpenseCategory, number> {
   );
 }
 
-/** Kategoriya rangi (grafiklar uchun) */
+/*
+ * Kategoriya ranglari — COST_COLORS (lib/theme) bilan bir xil: Moliyadagi
+ * "Tushum qayerga ketdi", Xarajatlar sahifasi va Unit-iqtisod chiziqlarida
+ * bitta modda bitta rangda. Ilgari bu yerda shared'dagi qotirilgan HEX
+ * olinardi: komissiya qizil ("zarar" bo'lib o'qilardi), soliq foyda bilan
+ * bir xil yashil edi va yorug' mavzuda ochiq ranglar oq fonda yo'qolardi.
+ * Ish haqi ham shu xaritada (COST_COLORS.salary) — Oylik hisobot bilan bir xil.
+ */
+const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
+  commission: COST_COLORS.commission,
+  logistics: COST_COLORS.logistics,
+  marketing: COST_COLORS.marketing,
+  storage: COST_COLORS.storage,
+  tax: COST_COLORS.tax,
+  salary: COST_COLORS.salary,
+  other: COST_COLORS.other,
+};
+
+/** Kategoriya rangi (grafik, nuqta, chiziq uchun) */
 export function categoryColor(id: ExpenseCategory): string {
-  return EXPENSE_CATEGORIES.find((c) => c.id === id)?.color ?? '#94a3b8';
+  return CATEGORY_COLOR[id] ?? COST_COLORS.other;
 }
 
-/** Kategoriya nishoni uchun dizayn tokeni */
+/**
+ * Kategoriyaning ma'no ohangi (kartochka aksenti, ikonka plitkasi uchun) —
+ * rang bilan bir oilada: komissiya Uzum ulushi (binafsha), logistika va
+ * saqlash tovar harakati (ko'k), reklama va soliq e'tibor talab qiladi
+ * (za'faron). Qizil (danger) bu yerda YO'Q — xarajat zarar emas.
+ */
 export const CATEGORY_TONE: Record<ExpenseCategory, Tone> = {
-  commission: 'danger',
-  logistics: 'warn',
-  marketing: 'info',
-  storage: 'violet',
-  tax: 'brand',
+  commission: 'violet',
+  logistics: 'info',
+  marketing: 'warn',
+  storage: 'info',
+  tax: 'warn',
   salary: 'info',
   other: 'muted',
 };
 
-/** '2026-09' → 'sen 26' */
+/**
+ * '2026-09' → 'sen 2026'.
+ *
+ * Oy nomi umumiy formatlagichning o'z ro'yxatidan. Ilgari Intl 'uz-UZ'
+ * ishlatilardi — Chrome'da o'zbekcha qisqa oy nomlari yo'q va jadval
+ * sarlavhasida "26 M10" chiqardi (2026-10-24).
+ */
 export function monthLabel(month: string, lang: Lang): string {
   const d = new Date(`${month}-01T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return month;
-  const locale = lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-US' : 'uz-UZ';
-  return new Intl.DateTimeFormat(locale, { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(d);
+  return `${formatMonthShort(d, lang)} ${d.getUTCFullYear()}`;
 }
 
 /** Davrdagi kunlar soni (ikkala chekka ham kiradi) */

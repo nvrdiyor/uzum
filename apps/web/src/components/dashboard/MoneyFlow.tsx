@@ -13,10 +13,14 @@
  * Uchala raqam serverdagi tayyor ko'rsatkichlarning ayirmasi — yangi hisob
  * yo'q, shuning uchun ular boshqa kartochkalar bilan doim mos keladi.
  * Rang ma'no bildiradi: binafsha — Uzum'niki, firuza — sizniki.
+ *
+ * Sahifaning YAGONA HeroCard'i: sof foyda — sotuvchi birinchi qaraydigan
+ * raqam. Zarar davrida yorug'lik qizil bo'ladi (qizil faqat zarar uchun).
  */
 import type { ReactNode } from 'react';
 import type { DashboardResponse } from '@savdoiq/shared';
-import { Amount, Delta } from '@/components/ui';
+import { PiggyBank } from '@/components/icons';
+import { Amount, Delta, HeroCard } from '@/components/ui';
 import { useCountUp } from '@/hooks/useCountUp';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -35,6 +39,8 @@ registerNamespace('moneyFlow', {
     mine: 'Sizga qoldi',
     mineHint: 'sof foyda',
     bar: 'Tushum taqsimoti',
+    payout: 'To‘lovga',
+    payoutHint: 'Uzum hisobingizga o‘tkazadigan summa: tushum − komissiya va yetkazish',
   },
   ru: {
     profit: 'Чистая прибыль',
@@ -49,6 +55,8 @@ registerNamespace('moneyFlow', {
     mine: 'Осталось вам',
     mineHint: 'чистая прибыль',
     bar: 'Распределение выручки',
+    payout: 'К выплате',
+    payoutHint: 'Сумма, которую Uzum переведёт на ваш счёт: выручка − комиссия и доставка',
   },
   en: {
     profit: 'Net profit',
@@ -63,6 +71,8 @@ registerNamespace('moneyFlow', {
     mine: 'You kept',
     mineHint: 'net profit',
     bar: 'Where revenue went',
+    payout: 'Payout',
+    payoutHint: 'What Uzum transfers to your account: revenue − commission and delivery',
   },
 });
 
@@ -117,13 +127,24 @@ export function MoneyFlow({
   const keptPct = revenue > 0 ? f.pct((mine / revenue) * 100, 1) : f.pct(0, 1);
 
   return (
-    <section className={cn('card relative flex flex-col overflow-hidden p-5 sm:p-7', className)}>
+    <HeroCard
+      tone={loss ? 'danger' : 'brand'}
+      className={cn('flex flex-col overflow-hidden p-5 sm:p-7', className)}
+      role="region"
+      aria-label={loss ? t('loss') : t('profit')}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5">
         <div className="min-w-0">
-          <p className="eyebrow-lg">{loss ? t('loss') : t('profit')}</p>
+          {/* Yonidagi KPI kartochkalari bilan bir xil: ohang plitkasi + nom */}
+          <div className="flex items-center gap-2.5">
+            <span className="icon-tile h-8 w-8 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4" aria-hidden>
+              <PiggyBank />
+            </span>
+            <p className="eyebrow-lg">{loss ? t('loss') : t('profit')}</p>
+          </div>
           <p
             className={cn(
-              'tnum mt-2 font-title text-[32px] font-semibold leading-none tracking-[-0.03em] sm:text-[44px]',
+              'tnum mt-3 font-title text-[32px] font-semibold leading-none tracking-[-0.03em] sm:text-[44px]',
               loss ? 'text-danger-ink' : 'text-ink',
             )}
           >
@@ -137,13 +158,23 @@ export function MoneyFlow({
 
         {/* ml-auto: tor kartada keyingi qatorga tushsa ham o'ng chetda turadi — matni o'ngga tekislangan */}
         <div className="min-w-0 sm:ml-auto sm:text-right">
-          <p className="eyebrow-lg">{t('revenue')}</p>
-          <p className="tnum mt-2 font-display text-[22px] font-bold leading-none tracking-[-0.02em] text-ink sm:text-2xl">
+          <p className="eyebrow-lg sm:leading-8">{t('revenue')}</p>
+          <p className="tnum mt-3 font-display text-[22px] font-bold leading-none tracking-[-0.02em] text-ink sm:text-2xl">
             <Amount value={f.money(revenue, data.currency)} />
           </p>
           <div className="mt-3 flex sm:justify-end">
             <Delta value={data.revenue.deltaPct} />
           </div>
+          {/*
+            Tushum → to'lovga → sof foyda: pul hikoyasining o'rta bo'g'ini.
+            Ilgari `data.payout` kelardi-yu, hech qayerda ko'rsatilmasdi.
+          */}
+          <p className="mt-3 text-[13px] text-muted" title={t('payoutHint')}>
+            {t('payout')}:{' '}
+            <span className="tnum whitespace-nowrap font-semibold text-ink-soft">
+              <Amount value={f.money(data.payout.value, data.currency)} />
+            </span>
+          </p>
         </div>
       </div>
 
@@ -170,13 +201,21 @@ export function MoneyFlow({
         <ul className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-3">
           {segments.map((s) => (
             <li key={s.key} className="min-w-0">
+              {/*
+                Uch ustunda ulush summa yonida: nom yonida turganda ruschada
+                "Себестоимость и налог" sig'masdan kesilardi. Telefonda (bir
+                ustun) ulush nom qatorining o'ng chetida.
+              */}
               <div className="flex items-center gap-2 text-[13px] font-medium text-ink-soft">
                 <span className={cn('h-2 w-2 shrink-0 rounded-full', s.fill)} />
-                <span className="truncate">{s.label}</span>
-                <span className="tnum ml-auto text-muted sm:ml-0">{f.pct(s.share * 100, 0)}</span>
+                <span className="truncate" title={s.label}>
+                  {s.label}
+                </span>
+                <span className="tnum ml-auto shrink-0 text-muted sm:hidden">{f.pct(s.share * 100, 0)}</span>
               </div>
-              <p className="tnum mt-1.5 text-[17px] font-semibold leading-6 text-ink">
+              <p className="tnum mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[17px] font-semibold leading-6 text-ink">
                 <Amount value={f.money(s.amount, data.currency)} />
+                <span className="hidden text-xs font-medium text-muted sm:inline">{f.pct(s.share * 100, 0)}</span>
               </p>
               <p className="line-clamp-2 text-xs text-muted">{s.hint}</p>
             </li>
@@ -185,6 +224,6 @@ export function MoneyFlow({
       </div>
 
       {footer ? <div className="mt-6 border-t border-line pt-4 text-xs text-muted">{footer}</div> : null}
-    </section>
+    </HeroCard>
   );
 }

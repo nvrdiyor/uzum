@@ -7,8 +7,8 @@ import { Fragment } from 'react';
 import type { FeatureAccess, FeatureId, PlanPublic } from '@savdoiq/shared';
 import { useFormat, useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { AccessMark } from './atoms';
-import { FEATURE_GROUPS, FEATURE_LABELS } from './features';
+import { AccessMark, SoonChip, historyLimitText } from './atoms';
+import { COMING_SOON_FEATURES, FEATURE_GROUPS, FEATURE_LABELS } from './features';
 
 export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; currentPlan?: string | null }) {
   const t = useT('pricing');
@@ -26,7 +26,7 @@ export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; curr
       value: (p) => (p.limits.cabinets >= 100 ? '∞' : f.num(p.limits.cabinets)),
     },
     { key: 'members', label: t('limit.members'), value: (p) => f.num(p.limits.members) },
-    { key: 'history', label: t('limit.history'), value: (p) => t('limit.historyValue', { n: p.limits.historyDays }) },
+    { key: 'history', label: t('limit.history'), value: (p) => historyLimitText(t, p.limits.historyDays) },
     {
       key: 'sync',
       label: t('limit.sync'),
@@ -109,6 +109,7 @@ export function CompareTable({ plans, currentPlan }: { plans: PlanPublic[]; curr
                     className="sticky left-0 z-10 bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-soft"
                   >
                     {FEATURE_LABELS[id][lang]}
+                    {COMING_SOON_FEATURES.has(id) ? <SoonChip label={t('access.soon')} /> : null}
                   </th>
                   {plans.map((p) => (
                     <td key={p.id} className="px-3 py-2.5 text-center">

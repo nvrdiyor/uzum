@@ -41,6 +41,7 @@ import { decryptSecret } from '../lib/crypto.js';
 import { createUzumClient } from '../uzum/client.js';
 import { UzumApiError, describeUzumError } from '../uzum/http.js';
 import type { UzumClient } from '../uzum/types.js';
+import { itemCostChanged, itemCostFields } from './item-cost.js';
 import { notifyCompanyOwners } from './notify.js';
 import { earlyFeeFrom, recordPayout } from './payout-history.js';
 import { getPayoutRules } from './payout-schedule.js';
@@ -241,8 +242,11 @@ function activePlanId(subscription: Subscription | null | undefined): PlanId {
   return resolvePlan(subscription);
 }
 
+/** Kabinetlardan olinadigan yangilik vaqtlari (SyncStatus.lastSuccessAt / nextSyncAt) */
+type SyncFreshness = Pick<SyncStatus, 'lastSuccessAt' | 'nextSyncAt'>;
+
 /** `SyncJob` yozuvini API shartnomasidagi `SyncStatus` ga o'giradi */
-function toSyncStatus(job: SyncJob, firstRun: boolean): SyncStatus {
+function toSyncStatus(job: SyncJob, firstRun: boolean, freshness: SyncFreshness): SyncStatus {
   const raw = job.status as JobStatus;
   // Shartnomada 'canceled' yo'q — bekor qilingan job bo'sh (idle) holat sifatida ko'rsatiladi
   const status: SyncStatus['status'] =
@@ -261,6 +265,7 @@ function toSyncStatus(job: SyncJob, firstRun: boolean): SyncStatus {
     finishedAt: job.finishedAt ? job.finishedAt.toISOString() : null,
     etaSeconds: Math.max(0, Math.round(job.etaSeconds)),
     firstRun,
+    ...freshness,
   };
 }
 
@@ -269,10 +274,27 @@ function toSyncStatus(job: SyncJob, firstRun: boolean): SyncStatus {
  * Job umuman bo'lmasa — bo'sh (`idle`) holat; qolgan vaqt noma'lum (0).
  */
 export async function getSyncStatus(companyId: string): Promise<SyncStatus> {
-  const [job, doneCount] = await Promise.all([
+  const [job, doneCount, accounts] = await Promise.all([
     prisma.syncJob.findFirst({ where: { companyId }, orderBy: { createdAt: 'desc' } }),
     prisma.syncJob.count({ where: { companyId, status: 'done' } }),
+    prisma.uzumAccount.findMany({ where: { companyId }, select: { status: true, lastSyncAt: true, nextSyncAt: true } }),
   ]);
+
+  /*
+   * lastSyncAt faqat muvaffaqiyatli sinxronda yoziladi (finishJob) — shuning
+   * uchun "ma'lumot qachon yangilandi" uchun aynan shu olinadi. Keyingi
+   * sinxron — faol kabinetlarning eng yaqini.
+   */
+  let lastSuccess: Date | null = null;
+  let nextSync: Date | null = null;
+  for (const a of accounts) {
+    if (a.lastSyncAt && (!lastSuccess || a.lastSyncAt > lastSuccess)) lastSuccess = a.lastSyncAt;
+    if (a.status === 'active' && a.nextSyncAt && (!nextSync || a.nextSyncAt < nextSync)) nextSync = a.nextSyncAt;
+  }
+  const freshness: SyncFreshness = {
+    lastSuccessAt: lastSuccess ? lastSuccess.toISOString() : null,
+    nextSyncAt: nextSync ? nextSync.toISOString() : null,
+  };
 
   if (!job) {
     return {
@@ -288,13 +310,14 @@ export async function getSyncStatus(companyId: string): Promise<SyncStatus> {
       finishedAt: null,
       etaSeconds: 0,
       firstRun: true,
+      ...freshness,
     };
   }
 
   // "Birinchi yig'ish" — muvaffaqiyatli tugagan sinxron hali bo'lmagan
   // (yoki hozirgi jobning o'zi shu birinchi muvaffaqiyatli sinxron).
   const firstRun = doneCount <= (job.status === 'done' ? 1 : 0);
-  return toSyncStatus(job, firstRun);
+  return toSyncStatus(job, firstRun, freshness);
 }
 
 // ─────────────────────────── Navbat ───────────────────────────
@@ -1129,6 +1152,11 @@ const RECALC_UPDATE_LIMIT = 2_000;
  *     cogs = qty * sku.purchasePrice, otherCost = qty * sku.extraCost
  *     netProfit = payout - cogs - otherCost - revenue * taxRate / 100
  * Hajm cheklangan (eng yangi yozuvlar birinchi) — keyingi sinxronlarda qolganlari yetkaziladi.
+ *
+ * Formula `item-cost.ts` da — sotuvchi tannarxni saqlaganda products.ts o'sha
+ * SKU'ning BUTUN tarixini aynan shu formula bilan darhol qayta hisoblaydi
+ * (`recalcSkuOrderItems`). Bu bosqich esa Uzum bergan tannarx va boshqa
+ * yo'llar bilan o'zgarganlarini sinxron oynasi ichida tutib qoladi (2026-10-24).
  */
 async function recalcOrderItems(run: SyncRun, storeIds: string[]): Promise<number> {
   const skus = await prisma.sku.findMany({
@@ -1152,17 +1180,12 @@ async function recalcOrderItems(run: SyncRun, storeIds: string[]): Promise<numbe
     const cost = costs.get(it.skuId);
     if (!cost) continue;
 
-    const purchasePrice = round(cost.purchasePrice);
-    const otherCost = round(cost.extraCost * it.qty);
-    if (purchasePrice === round(it.purchasePrice) && otherCost === round(it.otherCost)) continue;
-
-    const netProfit = round(
-      it.payout - purchasePrice * it.qty - otherCost - (it.revenue * run.taxRate) / 100,
-    );
+    const next = itemCostFields(it, cost, run.taxRate);
+    if (!itemCostChanged(it, next)) continue;
 
     await prisma.orderItem.update({
       where: { id: it.id },
-      data: { purchasePrice, otherCost, netProfit },
+      data: next,
     });
     updated += 1;
   }

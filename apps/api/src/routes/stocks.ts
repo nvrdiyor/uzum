@@ -35,6 +35,7 @@ import {
   getLatestStocks,
   getSkuCatalog,
   getStoreIds,
+  isSalesStockVisible,
   withSoldSkus,
   stockState,
   type SalesAgg,
@@ -253,16 +254,34 @@ router.get(
 
     const search = range.search?.toLowerCase();
     const rows: SalesStockRow[] = [];
+    /*
+     * Holatlar soni qidiruvga mos BARCHA SKU bo'yicha, holat filtridan OLDIN
+     * sanaladi. Ilgari mijoz ularni joriy (allaqachon filtrlangan) 50 qatordan
+     * sanardi: "Kritik" bosilsa qolgan tugmalar 0 ga tushib, halqa bitta
+     * qizil aylanaga aylanardi, 50 tadan ortiq SKU'da esa faqat 1-sahifa
+     * sanalardi (2026-10-24).
+     */
+    const statusCounts: Record<StockStatus, number> = { critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
 
     for (const [skuId, info] of catalog) {
       if (!matches(info, search)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       const agg = sales.get(skuId) ?? EMPTY_AGG;
       const avg = avgDaily.get(skuId) ?? 0;
+      /*
+       * Davrda sotuvi ham, qoldig'i ham, so'nggi 30 kunlik sur'ati ham yo'q SKU
+       * jadvalni faqat cho'zadi. Qoida endi holat filtriga bog'liq emas.
+       * Ilgari filtr tanlanganda bu SKU'lar ham qaytarilardi: "Kritik"
+       * ro'yxatiga arxivdagi, allaqachon sotilmay qo'yilgan bo'sh SKU'lar
+       * qo'shilib, son tugmadagidan ko'p chiqardi. Sur'ati bor (yaqinda
+       * sotilgan), lekin qoldig'i tugagan SKU esa haqiqiy "Kritik" —
+       * u "Barchasi"da ham ko'rinadi (2026-10-24). Qoida Excel eksporti bilan
+       * umumiy: fayldagi qatorlar sahifadagi bilan bir xil bo'lsin.
+       */
+      if (!isSalesStockVisible(agg.units, agg.revenue, st.total, avg)) continue;
       const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      statusCounts[state.status] += 1;
       if (onlyStatus && state.status !== onlyStatus) continue;
-      // Sotuvi ham, qoldig'i ham bo'lmagan SKU jadvalni faqat cho'zadi
-      if (agg.units === 0 && st.total === 0 && !onlyStatus) continue;
 
       rows.push({
         skuId,
@@ -293,12 +312,14 @@ router.get(
     let revenue = 0;
     let payout = 0;
     let netProfit = 0;
+    let maxRevenue = 0;
     for (const r of rows) {
       sold += r.sold;
       inStock += r.stockFbo + r.stockFbs + r.stockOwn;
       revenue += r.revenue;
       payout += r.payout;
       netProfit += r.netProfit;
+      maxRevenue = Math.max(maxRevenue, r.revenue);
     }
 
     const payload: SalesStockResponse = {
@@ -310,6 +331,8 @@ router.get(
         payout: round(payout),
         netProfit: round(netProfit),
         skuCount: rows.length,
+        statusCounts,
+        maxRevenue,
       },
       rows: paginate(rows, range.page, range.pageSize),
     };

@@ -6,14 +6,12 @@ import {
   Calculator as CalculatorIcon,
   Coins,
   Download,
-  Percent,
   Scale,
   Target,
-  TrendingUp,
-  Wallet,
 } from '@/components/icons';
 import type { UnitEconomicsResponse, UnitEconomicsRow } from '@savdoiq/shared';
 import {
+  Amount,
   Badge,
   Button,
   Card,
@@ -23,20 +21,24 @@ import {
   Drawer,
   EmptyState,
   ErrorState,
+  HeroCard,
   PageHeader,
   PlanGate,
   PreviewBadge,
   ProductCell,
   SearchInput,
   Segmented,
-  StatCard,
-  StatGrid,
+  Skeleton,
   toast,
   type Column,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
-import { CostSplitBar } from '@/components/unit/CostSplitBar';
+import { PeriodChip } from '@/components/finance/PeriodChip';
+import { CostCoverage } from '@/components/trust/CostCoverage';
+import { DataFreshness } from '@/components/trust/DataFreshness';
+import { CostSplitBar, SplitStrip } from '@/components/unit/CostSplitBar';
 import { PART_COLOR, PART_ORDER, rowParts, type PartKey } from '@/components/unit/types';
+import { useCountUp } from '@/hooks/useCountUp';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -61,7 +63,13 @@ registerNamespace('unitEconomics', {
     'filter.all': 'Barchasi',
     'filter.loss': 'Zararli',
     'filter.profit': 'Foydali',
+    'view.compact': 'Qisqa',
+    'view.full': 'Barcha ustunlar',
+    'view.hint': 'Xarajat moddalari alohida ustunlarda — jadval yon tomonga suriladi',
+    'legend.title': 'Narx taqsimoti:',
     'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
+    'col.split': 'Narx taqsimoti',
+    'col.soldShort': '{n} dona',
     'col.product': 'Mahsulot',
     'col.price': 'Narx',
     'col.cost': 'Tannarx',
@@ -120,7 +128,13 @@ registerNamespace('unitEconomics', {
     'filter.all': 'Все',
     'filter.loss': 'Убыточные',
     'filter.profit': 'Прибыльные',
+    'view.compact': 'Кратко',
+    'view.full': 'Все столбцы',
+    'view.hint': 'Статьи расходов в отдельных столбцах — таблица прокручивается вбок',
+    'legend.title': 'Структура цены:',
     'search.placeholder': 'Поиск по названию или SKU',
+    'col.split': 'Структура цены',
+    'col.soldShort': '{n} шт.',
     'col.product': 'Товар',
     'col.price': 'Цена',
     'col.cost': 'Себестоимость',
@@ -179,7 +193,13 @@ registerNamespace('unitEconomics', {
     'filter.all': 'All',
     'filter.loss': 'Loss-making',
     'filter.profit': 'Profitable',
+    'view.compact': 'Compact',
+    'view.full': 'All columns',
+    'view.hint': 'Each cost in its own column — the table scrolls sideways',
+    'legend.title': 'Price split:',
     'search.placeholder': 'Search by name or SKU',
+    'col.split': 'Price split',
+    'col.soldShort': '{n} pcs',
     'col.product': 'Product',
     'col.price': 'Price',
     'col.cost': 'Cost',
@@ -224,7 +244,28 @@ registerNamespace('unitEconomics', {
 
 const PAGE_SIZE = 25;
 
+/**
+ * "Sport krossovka Runner Air — 41" → nom va variant ("41").
+ *
+ * SKU nomi mahsulot nomi + variantdan iborat. Tor ustunda nom oxiridan
+ * kesilib, aynan variant yo'qolardi — to'rtta "Sport krossovka Runner Air…"
+ * qatorini faqat SKU kodidan ajratish mumkin edi (2026-10-24).
+ */
+function splitVariant(title: string): { base: string; variant: string | null } {
+  const at = title.lastIndexOf(' — ');
+  if (at <= 0) return { base: title, variant: null };
+  const variant = title.slice(at + 3).trim();
+  return variant ? { base: title.slice(0, at), variant } : { base: title, variant: null };
+}
+
 type RowFilter = 'all' | 'loss' | 'profit';
+/**
+ * Jadval ko'rinishi. 'compact' — xarajat moddalari bitta rangli chiziqda,
+ * jadval 1366 px'ga sig'adi. Ilgari 13 ustun bir qatorda turardi va shu
+ * kenglikda Foyda, Marja, ROI ekrandan tashqarida qolib, sahifaning asosiy
+ * javobini ko'rish uchun jadvalni yon tomonga surish kerak edi (2026-10-23).
+ */
+type ColumnsView = 'compact' | 'full';
 
 export default function UnitEconomics() {
   const t = useT('unitEconomics');
@@ -236,6 +277,7 @@ export default function UnitEconomics() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [filter, setFilter] = useState<RowFilter>('all');
+  const [colView, setColView] = useState<ColumnsView>('compact');
   const [active, setActive] = useState<UnitEconomicsRow | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -284,39 +326,127 @@ export default function UnitEconomics() {
     }
   };
 
-  const columns: Column<UnitEconomicsRow>[] = useMemo(
-    () => [
-      {
-        key: 'title',
-        header: t('col.product'),
-        width: 260,
-        sortable: true,
-        sortValue: (r) => r.title,
-        render: (r) => (
-          <>
+  const columns: Column<UnitEconomicsRow>[] = useMemo(() => {
+    const product: Column<UnitEconomicsRow> = {
+      key: 'title',
+      header: t('col.product'),
+      sortable: true,
+      sortValue: (r) => r.title,
+      render: (r) => {
+        const { base, variant } = splitVariant(r.title);
+        return (
+          // max-w: uzun nom ustunni kengaytirib, o'ngdagi Foyda va Marja'ni ekrandan surib chiqarmasin
+          <div className="max-w-[15rem] 2xl:max-w-[20rem]">
             {r.netProfit < 0 ? <span className="sp-loss sr-only" aria-hidden /> : null}
             <ProductCell
-              title={r.title}
+              title={base}
               imageUrl={r.imageUrl}
               size={36}
               subtitle={
                 <span className="flex items-center gap-1.5">
-                  <span className="truncate">{r.sku}</span>
-                  {r.netProfit < 0 ? <span className="font-semibold text-danger">· {t('badge.loss')}</span> : null}
+                  {/* Variant (o'lcham, rang) ajratib yoziladi — nom kesilganda ham ko'rinsin */}
+                  {variant ? <span className="shrink-0 font-semibold text-ink-soft">{variant}</span> : null}
+                  <span className="truncate">{variant ? `· ${r.sku}` : r.sku}</span>
+                  {r.netProfit < 0 ? <span className="shrink-0 font-semibold text-danger">· {t('badge.loss')}</span> : null}
                 </span>
               }
             />
-          </>
-        ),
+          </div>
+        );
       },
-      {
-        key: 'price',
-        header: t('col.price'),
-        align: 'right',
-        sortable: true,
-        sortValue: (r) => r.price,
-        render: (r) => <span className="tnum font-semibold text-ink">{f.money(r.price)}</span>,
-      },
+    };
+    const price: Column<UnitEconomicsRow> = {
+      key: 'price',
+      header: t('col.price'),
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.price,
+      render: (r) => <span className="tnum font-semibold text-ink">{f.money(r.price)}</span>,
+    };
+    // Narx qayerga ketadi — har bo'lak COST_COLORS'da, sichqoncha olib borilganda summasi bilan
+    const split: Column<UnitEconomicsRow> = {
+      key: 'split',
+      header: t('col.split'),
+      hideOnMobile: true,
+      render: (r) => (
+        <SplitStrip
+          className="w-28 2xl:w-36"
+          parts={rowParts(r).map((p) => ({
+            key: p.key,
+            label: t(`part.${p.key}`),
+            value: p.value,
+            color: PART_COLOR[p.key],
+          }))}
+        />
+      ),
+    };
+    const profit: Column<UnitEconomicsRow> = {
+      key: 'netProfit',
+      header: t('col.profit'),
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.netProfit,
+      render: (r) => (
+        <span className={cn('tnum font-display font-extrabold', r.netProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
+          {f.money(r.netProfit)}
+        </span>
+      ),
+    };
+    const margin: Column<UnitEconomicsRow> = {
+      key: 'margin',
+      header: t('col.margin'),
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.margin,
+      render: (r) => (
+        <Badge tone={r.margin < 0 ? 'danger' : 'brand'} className="px-2 py-0.5">
+          <span className="tnum">{f.pct(r.margin)}</span>
+        </Badge>
+      ),
+    };
+    const roi: Column<UnitEconomicsRow> = {
+      key: 'roi',
+      header: t('col.roi'),
+      align: 'right',
+      sortable: true,
+      hideOnMobile: true,
+      sortValue: (r) => r.roi,
+      render: (r) => <span className={cn('tnum', r.roi < 0 ? 'text-danger' : 'text-ink-soft')}>{f.pct(r.roi, 0)}</span>,
+    };
+    // Sotilgan dona — umumiy foyda ostida: alohida ustun qisqa ko'rinishda sig'masdi
+    const total: Column<UnitEconomicsRow> = {
+      key: 'totalProfit',
+      header: t('col.total'),
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.totalProfit,
+      render: (r) => (
+        <div className="leading-tight">
+          <p className={cn('tnum font-semibold', r.totalProfit < 0 ? 'text-danger' : 'text-ink')}>
+            {f.money(r.totalProfit)}
+          </p>
+          <p className="tnum text-2xs text-muted">{t('col.soldShort', { n: f.num(r.unitsSold) })}</p>
+        </div>
+      ),
+    };
+    if (colView === 'compact') return [product, price, split, profit, margin, roi, total];
+
+    const money = (key: 'logistics' | 'storage' | 'tax', header: string): Column<UnitEconomicsRow> => ({
+      key,
+      header,
+      align: 'right',
+      sortable: true,
+      hideOnMobile: true,
+      sortValue: (r) => r[key],
+      render: (r) => <span className="tnum">{f.money(r[key])}</span>,
+    });
+    return [
+      product,
+      price,
+      // To'liq ko'rinishda ham asosiy javob (foyda, marja) birinchi — xarajat ustunlari undan keyin
+      profit,
+      margin,
+      roi,
       {
         key: 'purchasePrice',
         header: t('col.cost'),
@@ -325,11 +455,7 @@ export default function UnitEconomics() {
         hideOnMobile: true,
         sortValue: (r) => r.purchasePrice,
         render: (r) =>
-          r.purchasePrice > 0 ? (
-            <span className="tnum">{f.money(r.purchasePrice)}</span>
-          ) : (
-            <span className="text-warn">—</span>
-          ),
+          r.purchasePrice > 0 ? <span className="tnum">{f.money(r.purchasePrice)}</span> : <span className="text-warn">—</span>,
       },
       {
         key: 'commission',
@@ -345,66 +471,9 @@ export default function UnitEconomics() {
           </div>
         ),
       },
-      {
-        key: 'logistics',
-        header: t('col.logistics'),
-        align: 'right',
-        sortable: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.logistics,
-        render: (r) => <span className="tnum">{f.money(r.logistics)}</span>,
-      },
-      {
-        key: 'storage',
-        header: t('col.storage'),
-        align: 'right',
-        sortable: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.storage,
-        render: (r) => <span className="tnum">{f.money(r.storage)}</span>,
-      },
-      {
-        key: 'tax',
-        header: t('col.tax'),
-        align: 'right',
-        sortable: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.tax,
-        render: (r) => <span className="tnum">{f.money(r.tax)}</span>,
-      },
-      {
-        key: 'netProfit',
-        header: t('col.profit'),
-        align: 'right',
-        sortable: true,
-        sortValue: (r) => r.netProfit,
-        render: (r) => (
-          <span className={cn('tnum font-display font-extrabold', r.netProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
-            {f.money(r.netProfit)}
-          </span>
-        ),
-      },
-      {
-        key: 'margin',
-        header: t('col.margin'),
-        align: 'right',
-        sortable: true,
-        sortValue: (r) => r.margin,
-        render: (r) => (
-          <span className={cn('tnum', r.margin < 0 ? 'text-danger' : 'text-ink-soft')}>{f.pct(r.margin)}</span>
-        ),
-      },
-      {
-        key: 'roi',
-        header: t('col.roi'),
-        align: 'right',
-        sortable: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.roi,
-        render: (r) => (
-          <span className={cn('tnum', r.roi < 0 ? 'text-danger' : 'text-ink-soft')}>{f.pct(r.roi)}</span>
-        ),
-      },
+      money('logistics', t('col.logistics')),
+      money('storage', t('col.storage')),
+      money('tax', t('col.tax')),
       {
         key: 'breakEvenPrice',
         header: t('col.breakEven'),
@@ -414,30 +483,12 @@ export default function UnitEconomics() {
         sortValue: (r) => r.breakEvenPrice,
         render: (r) => <span className="tnum text-muted">{f.money(r.breakEvenPrice)}</span>,
       },
-      {
-        key: 'unitsSold',
-        header: t('col.sold'),
-        align: 'right',
-        sortable: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.unitsSold,
-        render: (r) => <span className="tnum">{f.num(r.unitsSold)}</span>,
-      },
-      {
-        key: 'totalProfit',
-        header: t('col.total'),
-        align: 'right',
-        sortable: true,
-        sortValue: (r) => r.totalProfit,
-        render: (r) => (
-          <span className={cn('tnum font-semibold', r.totalProfit < 0 ? 'text-danger' : 'text-ink')}>
-            {f.money(r.totalProfit)}
-          </span>
-        ),
-      },
-    ],
-    [t, f],
-  );
+      total,
+    ];
+  }, [t, f, colView]);
+
+  /** Jadval ustidagi rang izohi — chiziqdagi bo'laklarni o'qish uchun */
+  const legend = PART_ORDER.map((key) => ({ key, label: t(`part.${key}`), color: PART_COLOR[key] }));
 
   const drawerSegments = useMemo(() => {
     if (!active) return [];
@@ -458,6 +509,13 @@ export default function UnitEconomics() {
         icon={<Scale className="h-5 w-5" />}
         title={t('title')}
         description={t('subtitle')}
+        meta={
+          <>
+            <PeriodChip />
+            <DataFreshness />
+            <CostCoverage />
+          </>
+        }
         badge={<PreviewBadge feature="unit_economics" />}
         actions={
           <>
@@ -493,39 +551,7 @@ export default function UnitEconomics() {
           </Card>
         ) : (
           <div className="space-y-5">
-            <StatGrid>
-              <StatCard
-                label={t('kpi.revenue')}
-                value={f.money(totals?.revenue ?? 0)}
-                hint={t('kpi.revenueHint')}
-                icon={<Wallet className="h-5 w-5" />}
-                loading={unit.isLoading}
-              />
-              <StatCard
-                label={t('kpi.profit')}
-                value={f.money(totals?.profit ?? 0)}
-                hint={t('kpi.profitHint')}
-                icon={<Coins className="h-5 w-5" />}
-                tone={(totals?.profit ?? 0) < 0 ? 'danger' : 'brand'}
-                loading={unit.isLoading}
-              />
-              <StatCard
-                label={t('kpi.margin')}
-                value={f.pct(totals?.margin ?? 0)}
-                hint={t('kpi.marginHint')}
-                icon={<Percent className="h-5 w-5" />}
-                tone="info"
-                loading={unit.isLoading}
-              />
-              <StatCard
-                label={t('kpi.roi')}
-                value={f.pct(totals?.roi ?? 0)}
-                hint={t('kpi.roiHint')}
-                icon={<TrendingUp className="h-5 w-5" />}
-                tone="violet"
-                loading={unit.isLoading}
-              />
-            </StatGrid>
+            <UnitHero totals={totals} loading={unit.isLoading} />
 
             {lossRows.length > 0 && filter !== 'loss' ? (
               <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-danger/25 bg-danger/10 p-4 sm:p-5">
@@ -542,6 +568,7 @@ export default function UnitEconomics() {
 
             <Card>
               <CardHeader
+                icon={<Coins className="h-4 w-4" />}
                 title={t('col.product')}
                 subtitle={t('rows.count', { n: f.num(unit.data?.rows.total ?? 0) })}
                 actions={
@@ -573,7 +600,34 @@ export default function UnitEconomics() {
                 }
               />
 
-              <div className={cn('mt-4', unit.isFetching && !unit.isLoading && 'opacity-70 transition-opacity')}>
+              {/* Rang izohi va ustunlar tanlovi — chiziq bo'laklari nimani bildirishi bir qatorda */}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 px-5">
+                {colView === 'compact' ? (
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs">
+                    <span className="font-medium text-muted">{t('legend.title')}</span>
+                    {legend.map((l) => (
+                      <span key={l.key} className="inline-flex items-center gap-1.5 text-ink-soft">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: l.color }} />
+                        {l.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted">{t('view.hint')}</p>
+                )}
+                <Segmented<ColumnsView>
+                  size="sm"
+                  className="hidden md:inline-flex"
+                  value={colView}
+                  onChange={setColView}
+                  options={[
+                    { value: 'compact', label: t('view.compact') },
+                    { value: 'full', label: t('view.full') },
+                  ]}
+                />
+              </div>
+
+              <div className={cn('mt-3', unit.isFetching && !unit.isLoading && 'opacity-70 transition-opacity')}>
                 <DataTable<UnitEconomicsRow>
                   className="[&_tbody_tr:has(.sp-loss)]:bg-danger/5"
                   columns={columns}
@@ -642,7 +696,7 @@ export default function UnitEconomics() {
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-line bg-surface-2 p-4">
+            <div className="well p-4">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="eyebrow-lg">{t('drawer.price')}</span>
                 <span className="tnum font-display text-xl font-extrabold text-ink">{f.money(active.price)}</span>
@@ -665,7 +719,7 @@ export default function UnitEconomics() {
               />
             </div>
 
-            <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2 p-4">
+            <div className="well flex items-start gap-3 p-4">
               <Target className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -684,13 +738,112 @@ export default function UnitEconomics() {
   );
 }
 
+/** Yon paneldagi kichik statistik plitka — sahifalardagi boshqa ichki plitkalar bilan bir xil `.well` */
 function MiniStat({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-3.5">
+    <div className="well p-3.5">
       <p className="truncate eyebrow">{label}</p>
       <p className={cn('tnum mt-1 font-display text-base font-extrabold', danger ? 'text-danger' : 'text-ink')}>
         {value}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Sahifaning yagona HeroCard'i: tovarlar bo'yicha foyda va uni o'lchaydigan
+ * uch ko'rsatkich. Ilgari to'rtta bir xil KPI kartochkasi edi — bitta
+ * ixcham kartochka jadvalga joy bo'shatadi (sahifaning asosiy qismi — jadval).
+ */
+function UnitHero({ totals, loading }: { totals?: UnitEconomicsResponse['totals']; loading: boolean }) {
+  const t = useT('unitEconomics');
+  const f = useFormat();
+  const profit = totals?.profit ?? 0;
+  const loss = profit < 0;
+  const shown = useCountUp(profit);
+
+  return (
+    <HeroCard tone={loss ? 'danger' : 'brand'} className="p-5 sm:p-6">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)] lg:items-center lg:gap-8">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="icon-tile h-10 w-10 rounded-xl [&_svg]:h-5 [&_svg]:w-5" aria-hidden>
+              <Coins />
+            </span>
+            <div className="min-w-0">
+              <p className="font-display text-[15px] font-semibold leading-5 text-ink">{t('kpi.profit')}</p>
+              <p className="text-xs leading-snug text-muted">{t('kpi.profitHint')}</p>
+            </div>
+          </div>
+          {loading ? (
+            <Skeleton className="mt-4 h-10 w-64 max-w-full" />
+          ) : (
+            <p
+              className={cn(
+                'tnum mt-4 font-title text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[36px]',
+                loss ? 'text-danger-ink' : 'text-ink',
+              )}
+            >
+              <Amount value={f.money(shown)} />
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          <HeroWell
+            className="col-span-2 sm:col-span-1"
+            label={t('kpi.revenue')}
+            value={loading ? null : f.money(totals?.revenue ?? 0)}
+            hint={t('kpi.revenueHint')}
+          />
+          <HeroWell
+            label={t('kpi.margin')}
+            value={loading ? null : f.pct(totals?.margin ?? 0)}
+            hint={t('kpi.marginHint')}
+            danger={(totals?.margin ?? 0) < 0}
+          />
+          <HeroWell
+            label={t('kpi.roi')}
+            value={loading ? null : f.pct(totals?.roi ?? 0)}
+            hint={t('kpi.roiHint')}
+            danger={(totals?.roi ?? 0) < 0}
+          />
+        </div>
+      </div>
+    </HeroCard>
+  );
+}
+
+function HeroWell({
+  label,
+  value,
+  hint,
+  danger,
+  className,
+}: {
+  label: string;
+  /** null — yuklanmoqda */
+  value: string | null;
+  hint: string;
+  danger?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn('well min-w-0 p-3.5', className)}>
+      <p className="eyebrow truncate">{label}</p>
+      {value === null ? (
+        <Skeleton className="mt-2 h-6 w-24" />
+      ) : (
+        <p
+          className={cn(
+            'tnum mt-1 truncate font-display text-lg font-bold leading-6',
+            danger ? 'text-danger' : 'text-ink',
+          )}
+        >
+          <Amount value={value} />
+        </p>
+      )}
+      <p className="mt-1 line-clamp-2 text-2xs leading-snug text-muted">{hint}</p>
     </div>
   );
 }

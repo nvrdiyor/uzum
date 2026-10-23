@@ -2,10 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  BarChart3,
+  Coins,
   LayoutDashboard,
   RefreshCw,
+  ReceiptText,
   Rocket,
   ShoppingCart,
+  Target,
   TrendingUp,
   PackageSearch,
   Tag,
@@ -15,7 +19,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
-import { BarsChart, ChartCard, ScatterMap, TrendChart, type SeriesDef } from '@/components/charts';
+import { ChartCard, TrendChart, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import {
   Button,
@@ -29,12 +33,17 @@ import {
   Skeleton,
   StatCard,
 } from '@/components/ui';
+import { DataFreshness } from '@/components/trust/DataFreshness';
+import { CostCoverage } from '@/components/trust/CostCoverage';
 import { MoneyFlow } from '@/components/dashboard/MoneyFlow';
 import { InsightsBlock } from '@/components/dashboard/InsightsBlock';
 import { MarginRoiCard, PayoutsCard, StockValueCard } from '@/components/dashboard/SummaryRow';
 import { ExpensesCard } from '@/components/dashboard/ExpensesCard';
 import { StoresCard } from '@/components/dashboard/StoresCard';
 import { TopProductsCard } from '@/components/dashboard/TopProductsCard';
+import { ProfitRankList, type ProfitRankRow } from '@/components/dashboard/ProfitRankList';
+import { MarginMap } from '@/components/dashboard/MarginMap';
+import { splitProductName } from '@/components/dashboard/productName';
 import { cn } from '@/lib/utils';
 
 registerNamespace('dashboard', {
@@ -51,7 +60,8 @@ registerNamespace('dashboard', {
     'kpi.operatingHint':
       'Sof foyda hamma xarajatdan keyin hisoblanadi: komissiya, yetkazish, tannarx, soliq, omborga logistika, reklama va saqlash.',
     'kpi.orders': 'Buyurtmalar',
-    'kpi.ordersHint': '{v} dona sotildi',
+    // Yo'ldagi (hali qabul qilinmagan) buyurtmalar ham shu sonda — "sotildi" deyish noto'g'ri edi
+    'kpi.ordersHint': '{v} dona (yo‘ldagilar bilan)',
     'kpi.avgCheck': 'O‘rtacha chek',
     'kpi.avgCheckHint': 'Bitta buyurtmaga o‘rtacha summa',
 
@@ -74,8 +84,9 @@ registerNamespace('dashboard', {
     'stock.title': 'Qoldiq qiymati',
     'stock.subtitle': 'Omborlardagi tovar bahosi',
     'stock.units': '{n} dona zaxirada',
-    'stock.fbo': 'FBO (Uzum ombori)',
-    'stock.fbs': 'FBS (o‘z omboringiz)',
+    'stock.fbo': 'Uzum ombori',
+    'stock.fbs': 'O‘z omboringiz',
+    'stock.pcs': 'dona',
     'stock.hint': 'Qiymat tannarx bo‘yicha hisoblangan — bu muzlatilgan kapital.',
 
     'insights.title': 'Tavsiyalar',
@@ -84,6 +95,16 @@ registerNamespace('dashboard', {
     'insights.view': 'Ko‘rish',
     'insights.empty': 'Hammasi joyida',
     'insights.emptyHint': 'Bu davrda e’tibor talab qiladigan holat topilmadi.',
+    'insights.kind.stock': 'Qoldiq',
+    'insights.kind.loss': 'Zarar',
+    'insights.kind.illiquid': 'Nolikvid',
+    'insights.kind.returns': 'Qaytarish',
+    'insights.kind.profit': 'Foyda',
+    'insights.kind.revenue': 'Tushum',
+    'insights.kind.margin': 'Marja',
+    'insights.kind.buyout': 'Sotib olish',
+    'insights.kind.sync': 'Sinxron',
+    'insights.kind.check': 'O‘rtacha chek',
 
     'ptop.title': 'Qaysi tovar ko‘proq foyda keltiryapti',
     'ptop.subtitle': 'Sof foyda bo‘yicha, davr ichida',
@@ -114,10 +135,7 @@ registerNamespace('dashboard', {
     'stores.subtitle': '{n} ta do‘kon bo‘yicha taqsimot',
     'stores.empty': 'Do‘kon topilmadi',
     'stores.emptyHint': 'Uzum kabinetini ulang — do‘konlar avtomatik chiqadi.',
-    'stores.col.store': 'Do‘kon',
-    'stores.col.orders': 'Buyurtma',
-    'stores.col.revenue': 'Tushum',
-    'stores.col.share': 'Ulush',
+    'stores.orders': '{n} ta buyurtma',
 
     'top.title': 'Top mahsulotlar',
     'top.subtitle': 'Tushum bo‘yicha yetakchilar',
@@ -156,7 +174,7 @@ registerNamespace('dashboard', {
     'kpi.operatingHint':
       'Чистая прибыль считается после всех расходов: комиссия, доставка, себестоимость, налог, логистика на склад, реклама и хранение.',
     'kpi.orders': 'Заказы',
-    'kpi.ordersHint': 'Продано {v} шт.',
+    'kpi.ordersHint': '{v} шт. (включая в пути)',
     'kpi.avgCheck': 'Средний чек',
     'kpi.avgCheckHint': 'Средняя сумма одного заказа',
 
@@ -166,7 +184,8 @@ registerNamespace('dashboard', {
     'payouts.subtitle': 'Переводы от Uzum',
     'payouts.yesterday': 'Выплачено вчера',
     'payouts.today': 'Ожидается сегодня',
-    'payouts.orders': '{n} заказов',
+    // "Заказов: N" — без согласования числа ("1 заказов")
+    'payouts.orders': 'Заказов: {n}',
     'payouts.hint': 'Суммы считаются по доставленным заказам.',
 
     'margin.title': 'Маржа и ROI',
@@ -179,8 +198,9 @@ registerNamespace('dashboard', {
     'stock.title': 'Стоимость остатков',
     'stock.subtitle': 'Товар на складах',
     'stock.units': '{n} шт. в наличии',
-    'stock.fbo': 'FBO (склад Uzum)',
-    'stock.fbs': 'FBS (ваш склад)',
+    'stock.fbo': 'Склад Uzum',
+    'stock.fbs': 'Ваш склад',
+    'stock.pcs': 'шт.',
     'stock.hint': 'Стоимость по себестоимости — это замороженный капитал.',
 
     'insights.title': 'Рекомендации',
@@ -189,6 +209,16 @@ registerNamespace('dashboard', {
     'insights.view': 'Смотреть',
     'insights.empty': 'Всё в порядке',
     'insights.emptyHint': 'За этот период проблем не обнаружено.',
+    'insights.kind.stock': 'Остатки',
+    'insights.kind.loss': 'Убыток',
+    'insights.kind.illiquid': 'Неликвид',
+    'insights.kind.returns': 'Возвраты',
+    'insights.kind.profit': 'Прибыль',
+    'insights.kind.revenue': 'Выручка',
+    'insights.kind.margin': 'Маржа',
+    'insights.kind.buyout': 'Выкуп',
+    'insights.kind.sync': 'Синхронизация',
+    'insights.kind.check': 'Средний чек',
 
     'ptop.title': 'Какой товар приносит больше прибыли',
     'ptop.subtitle': 'По чистой прибыли за период',
@@ -219,10 +249,8 @@ registerNamespace('dashboard', {
     'stores.subtitle': 'Распределение по {n} магазинам',
     'stores.empty': 'Магазины не найдены',
     'stores.emptyHint': 'Подключите кабинет Uzum — магазины появятся автоматически.',
-    'stores.col.store': 'Магазин',
-    'stores.col.orders': 'Заказы',
-    'stores.col.revenue': 'Выручка',
-    'stores.col.share': 'Доля',
+    // "Заказов: N" — без согласования числа ("1 заказов")
+    'stores.orders': 'Заказов: {n}',
 
     'top.title': 'Топ товаров',
     'top.subtitle': 'Лидеры по выручке',
@@ -261,7 +289,7 @@ registerNamespace('dashboard', {
     'kpi.operatingHint':
       'Net profit is after every cost: commission, delivery, cost price, tax, inbound logistics, ads and storage.',
     'kpi.orders': 'Orders',
-    'kpi.ordersHint': '{v} units sold',
+    'kpi.ordersHint': '{v} units (incl. in transit)',
     'kpi.avgCheck': 'Average check',
     'kpi.avgCheckHint': 'Average amount per order',
 
@@ -271,7 +299,7 @@ registerNamespace('dashboard', {
     'payouts.subtitle': 'Transfers from Uzum',
     'payouts.yesterday': 'Paid yesterday',
     'payouts.today': 'Expected today',
-    'payouts.orders': '{n} orders',
+    'payouts.orders': 'Orders: {n}',
     'payouts.hint': 'Amounts are calculated from delivered orders.',
 
     'margin.title': 'Margin & ROI',
@@ -284,8 +312,9 @@ registerNamespace('dashboard', {
     'stock.title': 'Stock value',
     'stock.subtitle': 'Goods sitting in warehouses',
     'stock.units': '{n} units in stock',
-    'stock.fbo': 'FBO (Uzum warehouse)',
-    'stock.fbs': 'FBS (your warehouse)',
+    'stock.fbo': 'Uzum warehouse',
+    'stock.fbs': 'Your warehouse',
+    'stock.pcs': 'units',
     'stock.hint': 'Valued at cost price — this is your frozen capital.',
 
     'insights.title': 'Insights',
@@ -294,6 +323,16 @@ registerNamespace('dashboard', {
     'insights.view': 'View',
     'insights.empty': 'All good',
     'insights.emptyHint': 'Nothing needs your attention in this period.',
+    'insights.kind.stock': 'Stock',
+    'insights.kind.loss': 'Loss',
+    'insights.kind.illiquid': 'Dead stock',
+    'insights.kind.returns': 'Returns',
+    'insights.kind.profit': 'Profit',
+    'insights.kind.revenue': 'Revenue',
+    'insights.kind.margin': 'Margin',
+    'insights.kind.buyout': 'Buyout',
+    'insights.kind.sync': 'Sync',
+    'insights.kind.check': 'Avg check',
 
     'ptop.title': 'Which product earns the most',
     'ptop.subtitle': 'By net profit over the period',
@@ -324,10 +363,7 @@ registerNamespace('dashboard', {
     'stores.subtitle': 'Split across {n} stores',
     'stores.empty': 'No stores found',
     'stores.emptyHint': 'Connect an Uzum cabinet — stores appear automatically.',
-    'stores.col.store': 'Store',
-    'stores.col.orders': 'Orders',
-    'stores.col.revenue': 'Revenue',
-    'stores.col.share': 'Share',
+    'stores.orders': 'Orders: {n}',
 
     'top.title': 'Top products',
     'top.subtitle': 'Revenue leaders',
@@ -357,28 +393,20 @@ registerNamespace('dashboard', {
 
 type MetricKey = 'revenue' | 'profit' | 'orders' | 'units';
 
-/**
- * Tovar yorlig'i: mahsulot nomi va (bo'lsa) variant.
- *
- * SKU nomi ko'pincha faqat rang («ЧЕРН»). Ikki xil tovarning varianti bir xil
- * atalsa, ro'yxatda ikkita «ЧЕРН» turardi va qaysi biri qaysi tovar ekanini
- * bilib bo'lmasdi — shuning uchun asosiy nom mahsulotniki, variant yonida.
- */
+/** Ro'yxat qatori: nom kesiladi, variant esa yonida va hech qachon kesilmaydi */
 function productLabel(r: TopProductRow): { name: string; sub: string } {
-  const product = r.productTitle?.trim();
-  if (!product) return { name: r.title, sub: '' };
-  // Biri ikkinchisining ichida bo'lsa (SKU nomi — mahsulot nomining boshi yoki aksincha), takrorlamaymiz
-  const a = r.title.toLowerCase();
-  const b = product.toLowerCase();
-  if (a.includes(b)) return { name: r.title, sub: '' };
-  if (b.includes(a)) return { name: product, sub: '' };
-  return { name: product, sub: r.title };
+  const { name, variant } = splitProductName(r);
+  return { name, sub: variant };
 }
 
-/** Marja xaritasi nuqtasi: to'liq nom izoh oynasida, qisqasi nuqta yonida (variant oldinda — u kesilmaydi) */
+/**
+ * Marja xaritasi nuqtasi: to'liq nom izoh oynasida, qisqasi nuqta yonida.
+ * Variant oldinda ("41 · Sport krossovka…") — qisqartirishda u kesilmaydi;
+ * ilgari uchta "Sport krossovka R…" bir xil ko'rinardi.
+ */
 function mapLabel(r: TopProductRow): { name: string; label: string } {
-  const { name, sub } = productLabel(r);
-  return sub ? { name: `${name} · ${sub}`, label: `${sub} · ${name}` } : { name, label: name };
+  const { name, variant } = splitProductName(r);
+  return variant ? { name: `${name} · ${variant}`, label: `${variant} · ${name}` } : { name, label: name };
 }
 
 export default function Dashboard() {
@@ -416,10 +444,10 @@ export default function Dashboard() {
     [points],
   );
 
-  /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga */
-  const topByProfit = useMemo(() => {
+  /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga (o'rinsiz) */
+  const topByProfit = useMemo<ProfitRankRow[]>(() => {
     const rows = [...(data?.topProducts ?? [])].filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
-    const head = rows.slice(0, 8).map((r) => ({ ...productLabel(r), profit: Math.round(r.profit) }));
+    const head = rows.slice(0, 8).map((r, i) => ({ ...productLabel(r), profit: Math.round(r.profit), rank: i + 1 }));
     const tail = rows.slice(8).reduce((sum, r) => sum + r.profit, 0);
     return tail > 0 ? [...head, { name: t('ptop.other'), sub: '', profit: Math.round(tail) }] : head;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -456,7 +484,9 @@ export default function Dashboard() {
     if (metric === 'revenue') return [revenue, profit];
     if (metric === 'profit') return [profit];
     if (metric === 'orders') return [{ key: 'orders', name: t('metric.orders'), color: CHART_COLORS.info }];
-    return [{ key: 'units', name: t('metric.units'), color: CHART_COLORS.warn }];
+    // Dona — hajm ko'rsatkichi, buyurtmalar bilan bir rangda. Ilgari sariq (warn) edi,
+    // u esa sahifada "kutilayotgan pul / xavf" ma'nosida band
+    return [{ key: 'units', name: t('metric.units'), color: CHART_COLORS.info }];
   }, [metric, t]);
 
   const header = (
@@ -465,6 +495,13 @@ export default function Dashboard() {
       title={t('title')}
       description={
         data ? `${f.date(data.period.from)} — ${f.date(data.period.to)}` : t('subtitle')
+      }
+      // Raqamlar qanchalik yangi va tannarx qanchasida bor — har raqamning konteksti
+      meta={
+        <>
+          <DataFreshness />
+          <CostCoverage />
+        </>
       }
       actions={
         <IconButton label={t('refresh')} onClick={() => void refetch()} disabled={isFetching}>
@@ -479,23 +516,22 @@ export default function Dashboard() {
       <>
         {header}
         <FilterBar />
-        <div className="space-y-5">
-          {/* Pul oqimi joylashuvi bilan bir xil — ma'lumot kelganda sahifa sakramasin */}
-          <div className="grid gap-4 xl:grid-cols-3">
-            <Skeleton className="h-[320px] w-full rounded-2xl xl:col-span-2" />
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <Skeleton className="h-[152px] w-full rounded-2xl" />
-              <Skeleton className="h-[152px] w-full rounded-2xl" />
+        {/* Tayyor sahifa bilan bir xil tartib va bo'shliqlar — ma'lumot kelganda sahifa sakramasin */}
+        <div className="space-y-4 xl:space-y-5">
+          <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
+            <Skeleton className="h-[400px] w-full rounded-2xl xl:col-span-2" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 xl:gap-5">
+              <Skeleton className="h-[190px] w-full rounded-2xl" />
+              <Skeleton className="h-[190px] w-full rounded-2xl" />
             </div>
           </div>
-          <div className="grid gap-4 lg:grid-cols-3">
+          <InsightsBlock items={[]} loading />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-[260px] w-full" />
+              <Skeleton key={i} className={cn('h-[400px] w-full rounded-2xl', i === 2 && 'md:col-span-2 xl:col-span-1')} />
             ))}
           </div>
-          <InsightsBlock items={[]} loading />
-          <Skeleton className="h-[340px] w-full" />
-          <Skeleton className="h-[320px] w-full" />
+          <Skeleton className="h-[440px] w-full rounded-2xl" />
         </div>
       </>
     );
@@ -545,19 +581,24 @@ export default function Dashboard() {
     );
   }
 
+  // Bitta do'konda "Do'konlar" kartochkasi bitta 100% qatordan iborat bo'lardi — ko'rsatmaymiz
+  const showStores = data.storesBreakdown.length > 1;
+  const prevOrders = data.ordersCount.previous;
+
   return (
     <>
       {header}
       <FilterBar />
 
-      <div className="space-y-5">
+      {/* Bo'shliq hamma joyda bir xil: telefonda 16px, katta ekranda 20px (qatorlar orasi ham, ichi ham) */}
+      <div className="space-y-4 xl:space-y-5">
         {/* Qoldiq bor, sotuv yo'q — nima qilish kerakligini aytamiz */}
         {!hasSales ? (
-          <Card className="border-info/25 bg-info/5 p-5">
+          <Card tone="info" className="p-5">
             <div className="flex flex-wrap gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info-ink">
-                <PackageSearch className="h-5 w-5" />
-              </div>
+              <span className="icon-tile h-10 w-10 rounded-xl [&_svg]:h-5 [&_svg]:w-5" aria-hidden>
+                <PackageSearch />
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="font-display text-base font-bold text-ink">{t('nosales.title')}</p>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
@@ -582,10 +623,12 @@ export default function Dashboard() {
         ) : null}
 
         {/*
-          1. Pul oqimi — sahifaning yagona katta bloki. Tushum va sof foyda
+          1. Pul oqimi — sahifaning yagona HeroCard'i. Tushum va sof foyda
           shu yerda; o'ngda faqat ular bilan takrorlanmaydigan ikki ko'rsatkich.
+          Ikkalasi ham hajm (sotuv) ko'rsatkichi — grafikdagi tushum kabi ko'k;
+          ilgari o'rtacha chek sariq edi, sariq esa "kutilayotgan pul / xavf".
         */}
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
           <MoneyFlow
             className="xl:col-span-2"
             data={data}
@@ -600,42 +643,55 @@ export default function Dashboard() {
               ) : undefined
             }
           />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <StatCard
-            label={t('kpi.orders')}
-            value={f.num(data.ordersCount.value)}
-            delta={data.ordersCount.deltaPct}
-            hint={t('kpi.ordersHint', { v: f.num(data.unitsSold.value) })}
-            icon={<ShoppingCart className="h-5 w-5" />}
-            spark={sparks.orders}
-            tone="info"
-          />
-          <StatCard
-            label={t('kpi.avgCheck')}
-            value={f.money(data.avgCheck.value, data.currency)}
-            delta={data.avgCheck.deltaPct}
-            hint={t('kpi.avgCheckHint')}
-            icon={<TrendingUp className="h-5 w-5" />}
-            spark={sparks.avgCheck}
-            tone="warn"
-          />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 xl:gap-5">
+            <StatCard
+              label={t('kpi.orders')}
+              value={f.num(data.ordersCount.value)}
+              delta={data.ordersCount.deltaPct}
+              previous={prevOrders !== null ? f.num(prevOrders) : undefined}
+              hint={t('kpi.ordersHint', { v: f.num(data.unitsSold.value) })}
+              icon={<ShoppingCart />}
+              spark={sparks.orders}
+              tone="info"
+            />
+            <StatCard
+              label={t('kpi.avgCheck')}
+              value={f.money(data.avgCheck.value, data.currency)}
+              delta={data.avgCheck.deltaPct}
+              // Oldingi davrda buyurtma bo'lmasa o'rtacha chek yo'q — "0 so'm" emas.
+              // Ixcham ("436 ming"): to'liq summa sparkline yonida ikkinchi qatorga tushardi
+              previous={
+                (prevOrders ?? 0) > 0 && data.avgCheck.previous !== null ? f.compact(data.avgCheck.previous) : undefined
+              }
+              hint={t('kpi.avgCheckHint')}
+              icon={<ReceiptText />}
+              spark={sparks.avgCheck}
+              tone="info"
+            />
           </div>
         </div>
 
-        {/* 2. To'lovlar / marja va ROI / qoldiq qiymati */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <PayoutsCard data={data} />
-          <MarginRoiCard data={data} />
-          <StockValueCard data={data} />
-        </div>
-
-        {/* 3. Tavsiyalar */}
+        {/*
+          2. Tavsiyalar — pul ko'rsatkichlaridan keyinoq, birinchi ekranda.
+          Ilgari ular uchinchi qatorda, 1366×768 ekranda ikkinchi sahifada edi.
+        */}
         <PlanGate feature="dashboard_realtime">
           <InsightsBlock items={data.insights} />
         </PlanGate>
 
+        {/*
+          3. To'lovlar / marja va ROI / qoldiq qiymati. 1024px da uchta ustun
+          ~230px bo'lib qolardi — o'rtada ikki ustun, uchinchisi butun qator.
+        */}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
+          <PayoutsCard data={data} />
+          <MarginRoiCard data={data} />
+          <StockValueCard data={data} className="md:col-span-2 xl:col-span-1" />
+        </div>
+
         {/* 4. Asosiy grafik */}
         <ChartCard
+          icon={<BarChart3 />}
           title={t('chart.title')}
           subtitle={t('chart.subtitle')}
           actions={
@@ -665,30 +721,19 @@ export default function Dashboard() {
         </ChartCard>
 
         {/* 5. Qaysi tovar foyda keltiryapti va marja xaritasi */}
-        <div className="grid gap-4 xl:grid-cols-2">
-          <ChartCard title={t('ptop.title')} subtitle={t('ptop.subtitle')}>
+        <div className="grid gap-4 xl:grid-cols-2 xl:gap-5">
+          <ChartCard icon={<Coins />} title={t('ptop.title')} subtitle={t('ptop.subtitle')}>
             {topByProfit.length > 0 ? (
-              <BarsChart
-                data={topByProfit}
-                xKey="name"
-                horizontal
-                series={[{ key: 'profit', name: t('metric.profit'), color: CHART_COLORS.brand, money: true }]}
-              />
+              <ProfitRankList rows={topByProfit} />
             ) : (
               <EmptyState className="py-12" icon={<TrendingUp className="h-6 w-6" />} title={t('ptop.empty')} />
             )}
           </ChartCard>
 
-          <ChartCard title={t('map.title')} subtitle={t('map.subtitle')}>
+          <ChartCard icon={<Target />} title={t('map.title')} subtitle={t('map.subtitle')}>
             {marginMap.points.length > 1 ? (
               <>
-                <ScatterMap
-                  data={marginMap.points}
-                  height={300}
-                  xLabel={t('map.x')}
-                  yLabel={t('map.y')}
-                  medianY={marginMap.avg}
-                />
+                <MarginMap points={marginMap.points} avg={marginMap.avg} xLabel={t('map.x')} yLabel={t('map.y')} />
                 <p className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('map.hint')}</p>
               </>
             ) : (
@@ -697,13 +742,20 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* 5. Xarajatlar va do'konlar */}
-        <div className="grid gap-4 xl:grid-cols-2">
-          <ExpensesCard data={data} />
-          <StoresCard data={data} />
-        </div>
+        {/*
+          6. Xarajatlar (2/3) va do'konlar (1/3) — ustunlar tepadagi uchlik
+          qator bilan bir chiziqda. Bitta do'konda — faqat xarajatlar, butun kenglikda.
+        */}
+        {showStores ? (
+          <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
+            <ExpensesCard data={data} className="xl:col-span-2" />
+            <StoresCard data={data} />
+          </div>
+        ) : (
+          <ExpensesCard data={data} wide />
+        )}
 
-        {/* 6. Top mahsulotlar */}
+        {/* 7. Top mahsulotlar */}
         <TopProductsCard rows={data.topProducts} />
       </div>
     </>

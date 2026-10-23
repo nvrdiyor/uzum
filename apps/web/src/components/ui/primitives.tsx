@@ -1,5 +1,5 @@
 import { forwardRef, useId, useMemo, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
-import { useT } from '@/i18n';
+import { useFormat, useT } from '@/i18n';
 // Faqat sof hisob-kitob (Recharts yo'q) — grafik kutubxonasi asosiy to'plamga tortilmaydi
 import { downsample, smoothPath } from '@/components/charts/series';
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, Search, X } from '@/components/icons';
@@ -15,14 +15,23 @@ const CURRENCY_TAIL = /^(.*\d)(\s+)(so[‘'’ʻ]m|сум|UZS|USD|\$)$/u;
  * Ko'zga birinchi raqam tashlanadi; birlik har kartochkada takrorlangani
  * uchun uni katta yozish shovqin edi. Birlik topilmasa matn o'zgarmaydi.
  */
-export function Amount({ value, className }: { value: string; className?: string }) {
+export function Amount({
+  value,
+  className,
+  nowrap,
+}: {
+  value: string;
+  className?: string;
+  /** Tor plitkada birlik alohida qatorga tushmasin (raqam bilan birga kesiladi) */
+  nowrap?: boolean;
+}) {
   const m = CURRENCY_TAIL.exec(value);
   if (!m) return <span className={className}>{value}</span>;
   return (
-    <span className={className}>
+    <span className={cn(nowrap && 'whitespace-nowrap', className)}>
       {m[1]}
       {/* Joy yetmasa valyuta keyingi qatorga o'tadi, raqamning o'zi bo'linmaydi */}
-      <wbr />
+      {nowrap ? null : <wbr />}
       <span className="ml-1 font-sans text-[0.55em] font-semibold tracking-normal text-muted">{m[3]}</span>
     </span>
   );
@@ -30,9 +39,43 @@ export function Amount({ value, className }: { value: string; className?: string
 
 // ─────────────────────────── Card ───────────────────────────
 
-export function Card({ className, children, hover, ...rest }: HTMLAttributes<HTMLDivElement> & { hover?: boolean }) {
+/**
+ * `tone` — kartochka ma'nosining rangi: tepada ingichka aksent chiziq va
+ * sarlavha ikonkasi shu rangda bo'ladi (index.css: .tone-*, .card-accent).
+ * Berilmasa kartochka tinch qoladi — hamma kartochka rangli bo'lsa, rang
+ * ma'nosini yo'qotadi.
+ */
+export function Card({
+  className,
+  children,
+  hover,
+  tone,
+  accent,
+  ...rest
+}: HTMLAttributes<HTMLDivElement> & { hover?: boolean; tone?: Tone; accent?: boolean }) {
   return (
-    <div className={cn('card', hover && 'card-hover', className)} {...rest}>
+    <div
+      className={cn('card', hover && 'card-hover', tone && `tone-${tone}`, (accent ?? Boolean(tone)) && 'card-accent', className)}
+      {...rest}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Sahifadagi BITTA asosiy kartochka (masalan, sof foyda yoki kalkulyator
+ * natijasi): ohang rangidagi yengil yorug'lik va chegara. Ikkinchisini
+ * qo'shmang — bir nechta "porlayotgan" kartochka hech birini ajratmaydi.
+ */
+export function HeroCard({
+  tone = 'brand',
+  className,
+  children,
+  ...rest
+}: HTMLAttributes<HTMLDivElement> & { tone?: Tone }) {
+  return (
+    <div className={cn('hero-card relative', `tone-${tone}`, className)} {...rest}>
       {children}
     </div>
   );
@@ -44,18 +87,26 @@ export function CardHeader({
   icon,
   actions,
   className,
+  tone,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   icon?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /** Ikonka plitkasi rangi; berilmasa kartochkaning ohangi (yoki brend) olinadi */
+  tone?: Tone;
 }) {
   return (
     <div className={cn('card-head flex flex-wrap items-start justify-between gap-3 px-5 pt-5', className)}>
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-soft [&_svg]:h-4 [&_svg]:w-4">
+          /*
+            Ilgari kulrang chegarali quti edi — 37 sahifada bir xil kulrang
+            belgi turib, kartochkalarni bir-biridan ajratmasdi. Endi ohang
+            rangidagi plitka: kartochka nima haqida ekani birinchi qarashda ko'rinadi.
+          */
+          <div className={cn('icon-tile mt-0.5 h-9 w-9 rounded-[10px] [&_svg]:h-[18px] [&_svg]:w-[18px]', tone && `tone-${tone}`)}>
             {icon}
           </div>
         ) : null}
@@ -180,16 +231,26 @@ export function Badge({
 export function Delta({
   value,
   className,
-  suffix = '%',
+  suffix,
+  unit = 'pct',
   invert = false,
 }: {
   value: number | null | undefined;
   className?: string;
+  /** Qo'lda berilgan birlik (berilsa `unit` e'tiborga olinmaydi) */
   suffix?: string;
+  /**
+   * 'pct' — nisbiy o'zgarish (%), 'pp' — foiz punkti. Marja, ROI, xarid va
+   * qaytarish ulushi uchun 'pp': marja 20% dan 25% ga chiqsa bu "+5 p.p.",
+   * "+25%" emas — ilgari ikkalasi ham "%" bilan chiqib, sotuvchini adashtirardi.
+   */
+  unit?: 'pct' | 'pp';
   /** Kamayish yaxshi bo'lgan holatlar uchun (masalan, xarajat) */
   invert?: boolean;
 }) {
   const t = useT('common');
+  const f = useFormat();
+  const tail = suffix ?? (unit === 'pp' ? ` ${t('common.pp')}` : '%');
 
   /*
    * Taqqoslash uchun oldingi davr ma'lumoti yo'q.
@@ -226,7 +287,8 @@ export function Delta({
       ) : (
         <ArrowDownRight className="h-3 w-3" />
       )}
-      {`${positive ? '+' : ''}${value.toFixed(1)}${suffix}`}
+      {/* Til bo'yicha o'nlik belgi: ilgari toFixed nuqta qo'yardi ("12.4%"), qolgan raqamlar esa vergul bilan edi */}
+      {`${positive ? '+' : ''}${f.num(value, 1)}${tail}`}
     </span>
   );
 }
@@ -369,7 +431,14 @@ export function Segmented<T extends string>({
               // shrink-0 + nowrap: tor ekranda tugmalar sinmaydi, qator suriladi
               'shrink-0 whitespace-nowrap rounded-lg font-semibold transition-[background-color,color,box-shadow] duration-150',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
-              active ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink',
+              /*
+                Faol tab brend rangida. Ilgari u kulrang sirt edi va qorong'i
+                mavzuda fon bilan ~1,1:1 kontrastda turib, qaysi tab tanlangani
+                deyarli ko'rinmasdi.
+              */
+              active
+                ? 'bg-brand/12 text-brand-ink shadow-[inset_0_0_0_1px_rgb(var(--c-brand)/0.32)]'
+                : 'text-muted hover:bg-surface/60 hover:text-ink',
             )}
           >
             {o.label}
@@ -387,48 +456,81 @@ export function Segmented<T extends string>({
 
 // ─────────────────────────── Progress ───────────────────────────
 
+const BAR_TONE: Record<Tone, string> = {
+  brand: 'bg-brand',
+  info: 'bg-info',
+  warn: 'bg-warn',
+  danger: 'bg-danger',
+  muted: 'bg-muted',
+  violet: 'bg-violet',
+};
+
 export function ProgressBar({
   value,
   className,
   tone = 'brand',
   showLabel,
+  marker,
+  markerLabel,
 }: {
   value: number;
   className?: string;
   tone?: Tone;
   showLabel?: boolean;
+  /**
+   * 0..100 dagi tik belgisi — masalan oylik maqsadda "bugungi sur'at":
+   * oyning 60% o'tgan bo'lsa belgi 60% da turadi va chiziq undan orqada
+   * qolgani darhol ko'rinadi.
+   */
+  marker?: number | null;
+  markerLabel?: string;
 }) {
   const pct = Math.max(0, Math.min(100, value));
-  const bar: Record<Tone, string> = {
-    brand: 'bg-brand',
-    info: 'bg-info',
-    warn: 'bg-warn',
-    danger: 'bg-danger',
-    muted: 'bg-muted',
-    violet: 'bg-violet',
-  };
+  const mark = marker === null || marker === undefined ? null : Math.max(0, Math.min(100, marker));
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-        <div
-          className={cn('h-full rounded-full transition-[width] duration-700 ease-spring', bar[tone])}
-          style={{ width: `${pct}%` }}
-        />
+      <div className="relative h-2 flex-1 rounded-full bg-surface-3">
+        <div className="h-full overflow-hidden rounded-full">
+          <div
+            className={cn('h-full rounded-full transition-[width] duration-700 ease-spring', BAR_TONE[tone])}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {mark !== null ? (
+          <span
+            className="absolute -top-1 h-4 w-0.5 -translate-x-1/2 rounded-full bg-ink/70"
+            style={{ left: `${mark}%` }}
+            title={markerLabel}
+            aria-hidden
+          />
+        ) : null}
       </div>
       {showLabel ? <span className="tnum w-10 text-right text-xs text-muted">{Math.round(pct)}%</span> : null}
     </div>
   );
 }
 
+const RING_TONE: Record<Tone, string> = {
+  brand: 'rgb(var(--c-brand))',
+  info: 'rgb(var(--c-info))',
+  warn: 'rgb(var(--c-warn))',
+  danger: 'rgb(var(--c-danger))',
+  muted: 'rgb(var(--c-muted))',
+  violet: 'rgb(var(--c-violet))',
+};
+
 export function ProgressRing({
   value,
   size = 120,
   stroke = 10,
+  tone = 'brand',
   children,
 }: {
   value: number;
   size?: number;
   stroke?: number;
+  /** Ilgari halqa doim brend rangida edi — past marja ham "yashil" ko'rinardi */
+  tone?: Tone;
   children?: ReactNode;
 }) {
   const pct = Math.max(0, Math.min(100, value));
@@ -443,7 +545,7 @@ export function ProgressRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="rgb(var(--c-brand))"
+          stroke={RING_TONE[tone]}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
@@ -551,6 +653,32 @@ export function Avatar({ src, name, size = 36 }: { src?: string | null; name?: s
     >
       {letters}
     </div>
+  );
+}
+
+/**
+ * Reytingdagi o'rin (top mahsulotlar): 1 — oltin, 2 — kumush, 3 — bronza,
+ * qolganlari tinch. Raqamning o'zi oddiy matnda yo'qolib ketardi.
+ */
+export function RankBadge({ rank, className }: { rank: number; className?: string }) {
+  const style =
+    rank === 1
+      ? 'bg-warn/15 text-warn-ink shadow-[inset_0_0_0_1px_rgb(var(--c-warn)/0.35)]'
+      : rank === 2
+        ? 'bg-surface-3 text-ink-soft shadow-[inset_0_0_0_1px_rgb(var(--c-border-strong))]'
+        : rank === 3
+          ? 'bg-[rgb(var(--sc-2)/0.14)] text-ink-soft shadow-[inset_0_0_0_1px_rgb(var(--sc-2)/0.4)]'
+          : 'bg-surface-2 text-muted';
+  return (
+    <span
+      className={cn(
+        'tnum inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-lg px-1.5 text-xs font-bold',
+        style,
+        className,
+      )}
+    >
+      {rank}
+    </span>
   );
 }
 

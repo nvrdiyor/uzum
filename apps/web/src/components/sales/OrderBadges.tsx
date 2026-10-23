@@ -44,12 +44,19 @@ registerNamespace('salesMeta', {
   },
 });
 
+/*
+ * Holat ranglari Sotuv voronkasi va Oylik hisobot bilan bir xil: yo'ldagi
+ * (jarayondagi) buyurtma — neytral, bekor — za'faron, qaytarish — qizil
+ * (yagona haqiqiy yo'qotish). Ilgari qaytarish binafsha edi, binafsha esa
+ * "Uzum ulushi" degani; bekor qilish qizil bo'lib, qaytarishdan og'irroq
+ * ko'rinardi.
+ */
 export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
   new: 'info',
-  processing: 'warn',
+  processing: 'muted',
   delivered: 'brand',
-  canceled: 'danger',
-  returned: 'violet',
+  canceled: 'warn',
+  returned: 'danger',
 };
 
 // Rang ma'nosi butun saytda bir xil: binafsha — Uzum (FBO = Uzum ombori), firuza — sotuvchining o'zi

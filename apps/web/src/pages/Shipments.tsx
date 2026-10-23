@@ -43,6 +43,8 @@ import {
   type Tone,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { NEUTRAL_TONE } from '@/components/stock/common';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { useStores } from '@/store/session';
@@ -351,12 +353,17 @@ function toRows(payload: ShipmentsPayload | undefined): ShipmentRow[] {
   return Array.isArray(payload) ? payload : payload.items;
 }
 
+/**
+ * Holat ranglari ma'no bo'yicha: rejada — ko'k (logistika), yo'lda — sariq
+ * (hali kelmagan tovar), qabul qilingan — brend, qoralama va bekor qilingan —
+ * kulrang. Qizil faqat yo'qotish uchun: bekor qilingan yetkazma zarar emas.
+ */
 const STATUS_TONE: Record<ShipmentStatus, Tone> = {
   draft: 'muted',
   planned: 'info',
   in_transit: 'warn',
   accepted: 'brand',
-  canceled: 'danger',
+  canceled: 'muted',
 };
 
 /** Ketma-ket holat zanjiri */
@@ -452,8 +459,12 @@ export default function Shipments() {
       header: t('col.code'),
       render: (r) => (
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand-ink">
-            <Truck className="h-4 w-4" />
+          {/* Plitka yetkazma holati rangida — ro'yxatda qaysi biri yo'lda ekani darhol ko'rinadi */}
+          <span
+            className={cn('icon-tile h-8 w-8 rounded-lg [&_svg]:h-4 [&_svg]:w-4', `tone-${STATUS_TONE[r.status]}`)}
+            aria-hidden
+          >
+            <Truck />
           </span>
           <span className="font-semibold text-ink">{r.code}</span>
           {r.source === 'uzum' ? (
@@ -533,9 +544,11 @@ export default function Shipments() {
     <>
       <PageHeader
         icon={<Truck className="h-5 w-5" />}
+        tone="info"
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="shipments" />}
+        meta={<DataFreshness />}
         actions={
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
             {t('btn.create')}
@@ -556,12 +569,14 @@ export default function Shipments() {
           </Card>
         ) : (
           <div className="space-y-5">
+            {/* KPI ranglari jadvaldagi holat nishonlari bilan bir xil: yo'lda — sariq, qabul — brend */}
             <StatGrid>
               <StatCard
                 label={t('kpi.total')}
                 value={f.num(totals.count)}
                 hint={t('kpi.totalHint')}
                 icon={<Package className="h-5 w-5" />}
+                className={NEUTRAL_TONE}
                 loading={shipments.isLoading}
               />
               <StatCard
@@ -571,6 +586,7 @@ export default function Shipments() {
                 icon={<Truck className="h-5 w-5" />}
                 tone="warn"
                 loading={shipments.isLoading}
+                onClick={totals.transit > 0 ? () => setFilter('in_transit') : undefined}
               />
               <StatCard
                 label={t('kpi.accepted')}
@@ -585,13 +601,15 @@ export default function Shipments() {
                 value={f.money(totals.value)}
                 hint={t('kpi.valueHint')}
                 icon={<Boxes className="h-5 w-5" />}
-                tone="info"
+                className={NEUTRAL_TONE}
                 loading={shipments.isLoading}
               />
             </StatGrid>
 
             <Card className="overflow-hidden">
               <CardHeader
+                icon={<Truck />}
+                tone="info"
                 title={t('table.title')}
                 actions={
                   <div className="max-w-full overflow-x-auto no-scrollbar">

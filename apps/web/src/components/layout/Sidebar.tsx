@@ -77,7 +77,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {NAV.map((group) => (
           <div key={group.titleKey} className="mb-4">
             {!rail ? (
-              <p className="mb-1 px-2.5 text-xs font-medium text-muted">{t(group.titleKey)}</p>
+              <p className="eyebrow mb-1.5 px-2.5 text-muted/80">{t(group.titleKey)}</p>
             ) : (
               <div className="mx-auto mb-2 h-px w-6 bg-line" />
             )}
@@ -99,8 +99,13 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         cn(
                           'focusable group relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[14px] transition-colors duration-150',
                           rail && 'h-10 justify-center px-0',
+                          /*
+                            Faol band brend rangida. Ilgari u kulrang sirt edi —
+                            qorong'i mavzuda fon bilan deyarli bir xil bo'lib,
+                            qaysi sahifada turganingiz faqat 3px chiziqdan bilinardi.
+                          */
                           isActive
-                            ? 'bg-surface-2 font-semibold text-ink shadow-[inset_0_0_0_1px_rgb(var(--c-border))]'
+                            ? 'bg-brand/10 font-semibold text-ink shadow-[inset_0_0_0_1px_rgb(var(--c-brand)/0.22)]'
                             : 'font-medium text-ink-soft hover:bg-surface-2/70 hover:text-ink',
                         )
                       }

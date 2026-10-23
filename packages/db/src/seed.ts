@@ -47,6 +47,14 @@ const money = (n: number): number => Math.round(n);
 /** Narxni `step` ga karrali qilib yaxlitlash */
 const roundTo = (n: number, step: number): number => Math.round(n / step) * step;
 
+/**
+ * Vitrina tafsilotlari (qaytarish sababi, yangi salbiy sharh, ochiq yo'qotish)
+ * uchun alohida oqim. Ular asosiy oqimdan olinsa, keyingi hamma buyurtma va
+ * summalar siljib, demo raqamlari har tuzatishda boshqacha chiqardi.
+ */
+const detailRand = mulberry32(SEED + 1);
+const pickDetail = <T>(list: readonly T[]): T => list[Math.floor(detailRand() * list.length)];
+
 // ─────────────────────────── Sana yordamchilari ───────────────────────────
 
 const DAY_MS = 86_400_000;
@@ -72,8 +80,6 @@ const timeInDay = (day: Date): Date =>
   new Date(day.getTime() + (rInt(6, 21) * 3600 + rInt(0, 59) * 60 + rInt(0, 59)) * 1000);
 
 const addHours = (d: Date, h: number): Date => new Date(d.getTime() + h * 3_600_000);
-
-const ymKey = (d: Date): string => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 
 // ─────────────────────────── Shifrlash (apps/api/src/lib/crypto.ts bilan mos) ───────────────────────────
 
@@ -209,6 +215,35 @@ const RETURN_REASONS = [
   'Товар с дефектом',
 ];
 
+/** Kiyim-poyabzalda eng ko'p uchraydigan sabab */
+const SIZE_CAUSE = 'Не подошёл размер';
+const SIZED_CATEGORIES = new Set(['Kiyim', 'Poyabzal', 'Bolalar tovarlari']);
+/**
+ * Pozitsiyadagi qaytarish sababi (OrderItem.returnCause). Uzum uni ruscha asl
+ * matnda yuboradi, eng ko'pi "Клиент не указал причину". Ilgari demo
+ * pozitsiyalarida sabab yo'q edi va "Qaytarishlar" sahifasida 100% "Sabab
+ * ko'rsatilmagan" chiqardi (2026-10-24).
+ *
+ * Faqat jonli do'konda ko'rilgan matnlar (docs/UZUM-API.md 7.5) — "Qaytarishlar"
+ * sahifasi (Returns.tsx REASON_RULES) aynan shularni tarjima qiladi. Ilgari bu
+ * yerda "Товар с дефектом" va "Не соответствует описанию" ham bor edi: ular
+ * tasdiqlanmagan va uz/en interfeysda qaytarishlarning ~25% i ruscha xom matn
+ * bo'lib chiqardi (2026-10-24).
+ */
+const RETURN_CAUSES = [
+  'Клиент не указал причину',
+  'Клиент не указал причину',
+  'Клиент не указал причину',
+  'Клиент не указал причину',
+  SIZE_CAUSE,
+  'Товара не оказалось в заказе',
+] as const;
+/** Topshirilishidan oldin bekor qilinganini Uzum aynan shu matn bilan beradi (uzum/live.ts classifyReturn) */
+const CANCEL_BEFORE_RECEIPT_CAUSE = 'Отменён до получения';
+
+const returnCauseFor = (category: string): string =>
+  SIZED_CATEGORIES.has(category) && detailRand() < 0.55 ? SIZE_CAUSE : pickDetail(RETURN_CAUSES);
+
 const LOSS_TYPES = ['lost', 'damaged', 'shortage'] as const;
 const LOSS_NOTES: Record<(typeof LOSS_TYPES)[number], string> = {
   lost: 'Ombor inventarizatsiyasida topilmadi',
@@ -226,6 +261,7 @@ interface GenSku {
   productId: string;
   sku: string;
   title: string;
+  category: string;
   price: number;
   purchasePrice: number;
   commissionPct: number;
@@ -473,7 +509,12 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
     def.variants.forEach((variant, vi) => {
       const skuId = `demo_sk_${spec.key}_${String(pi + 1).padStart(2, '0')}_${vi + 1}`;
       const price = roundTo(rFloat(def.minPrice, def.maxPrice), 1000);
-      const purchasePrice = roundTo(price * rFloat(0.35, 0.6), 100);
+      /*
+       * Tannarx — narxning 30–52% i. Ilgari 35–60% edi: saqlash va soliq ikki
+       * marta ayrilishi to'xtagach demo sof marjasi ~20% chiqdi, vitrina esa
+       * sog'lom do'konni (25–30%) ko'rsatishi kerak (2026-10-24).
+       */
+      const purchasePrice = roundTo(price * rFloat(0.3, 0.52), 100);
       const oldPrice = roundTo(price * rFloat(1.06, 1.32), 1000);
       const code = `${spec.key.slice(0, 3).toUpperCase()}-${String(pi + 1).padStart(2, '0')}${String(vi + 1).padStart(2, '0')}`;
 
@@ -536,6 +577,7 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         productId,
         sku: code,
         title: def.title,
+        category: def.category,
         price,
         purchasePrice,
         commissionPct: def.commissionPct,
@@ -588,7 +630,6 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
   let itemSeq = 0;
   let totalRevenue = 0;
   let totalNet = 0;
-  const taxByMonth = new Map<string, number>();
 
   for (let d = 0; d < HISTORY_DAYS; d += 1) {
     const day = dateOfIndex(d);
@@ -668,6 +709,12 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
           netProfit,
           status: status === 'returned' ? 'returned' : status === 'canceled' ? 'canceled' : 'delivered',
           returnedAt,
+          returnCause:
+            status === 'returned'
+              ? returnCauseFor(sku.category)
+              : status === 'canceled'
+                ? CANCEL_BEFORE_RECEIPT_CAUSE
+                : null,
           orderedAt,
         });
 
@@ -682,8 +729,6 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
           sku.totalUnits += qty;
           totalRevenue += revenue;
           totalNet += netProfit;
-          const mk = ymKey(day);
-          taxByMonth.set(mk, (taxByMonth.get(mk) ?? 0) + tax);
         }
 
         // Qaytarish yozuvi
@@ -724,7 +769,11 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
   }
 
   // ── Qoldiq snapshot'lari (oxirgi 60 kun) ──
+  /** SKU → kunlik FBO qoldig'i (tarix indeksi bo'yicha) — pullik saqlash shundan hisoblanadi */
+  const fboByDay = new Map<string, number[]>();
   for (const sku of skus) {
+    const fboHistory = new Array<number>(HISTORY_DAYS).fill(0);
+    fboByDay.set(sku.id, fboHistory);
     const avgDaily = Math.max(0.15, sku.totalUnits / HISTORY_DAYS);
     let stock: number;
     if (sku.stockKind === 'excess') stock = Math.round(avgDaily * rFloat(150, 260)) + rInt(40, 120);
@@ -759,6 +808,7 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       const fbs = Math.round(stock * 0.2);
       const own = Math.max(0, stock - fbo - fbs);
       const reserved = Math.min(fbo, Math.round(sold * rFloat(0.8, 2.2)));
+      fboHistory[d] = fbo;
 
       stockRows.push({
         id: `demo_ss_${sku.id}_${d}`,
@@ -775,17 +825,29 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
     }
   }
 
-  // ── Pullik saqlash (oxirgi 45 kun, ortiqcha qoldiqli SKU'lar bo'yicha) ──
-  const storageSkus = skus.filter((s) => s.stockKind === 'excess' || chance(0.22));
-  const storageByMonth = new Map<string, number>();
-  for (const sku of storageSkus) {
-    for (let d = HISTORY_DAYS - 45; d < HISTORY_DAYS; d += 1) {
-      const day = dateOfIndex(d);
-      const snap = stockRows[stockRows.length - 1];
-      void snap;
-      const qty = Math.max(0, Math.round((sku.totalUnits / HISTORY_DAYS) * rFloat(90, 190)));
+  /*
+   * ── Pullik saqlash (qoldiq snapshot'lari bor oxirgi 60 kun) ──
+   * To'lov faqat Uzum omboridagi (FBO) qoldiqning ~60 kunlik sotuvdan
+   * ortig'iga olinadi — bepul muddatdan oshib uzoq yotgan donalar. Ilgari dona
+   * soni qoldiqdan qat'i nazar tasodifiy olinardi: qoldig'i 0 bo'lgan qozon
+   * oyiga 6 mln saqlash "to'lardi", oddiy SKU'larning 22% i ham to'lardi (2026-10-24).
+   *
+   * Ilgari faqat oxirgi 45 kun yozilardi. Saqlash endi faqat StorageFee'dan
+   * olingani uchun taqqoslash davri (masalan "Oxirgi 30 kun"ning oldingi 30
+   * kuni) saqlashning faqat yarmini olardi: oldingi davr sof foydasi ~10 mln
+   * ga oshib, o'sish +20% o'rniga +7% bo'lib chiqardi (2026-10-24).
+   */
+  const FREE_STORAGE_DAYS = 60;
+  for (const sku of skus) {
+    const avgDaily = Math.max(0.15, sku.totalUnits / HISTORY_DAYS);
+    const freeQty = Math.ceil(avgDaily * FREE_STORAGE_DAYS);
+    const fboHistory = fboByDay.get(sku.id) ?? [];
+    for (let d = HISTORY_DAYS - STOCK_DAYS; d < HISTORY_DAYS; d += 1) {
+      const qty = Math.max(0, (fboHistory[d] ?? 0) - freeQty);
       if (qty === 0) continue;
+      const day = dateOfIndex(d);
       const volume = Math.round(qty * sku.volumeL * 100) / 100;
+      // 120 so'm/l/kun — ilovadagi DEFAULTS.storagePerLiterPerDay bilan bir xil
       const amount = money(volume * 120);
       storageFeeRows.push({
         id: `demo_sf_${sku.id}_${d}`,
@@ -797,8 +859,6 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         amount,
         createdAt: addHours(day, 4),
       });
-      const mk = ymKey(day);
-      storageByMonth.set(mk, (storageByMonth.get(mk) ?? 0) + amount);
     }
   }
 
@@ -828,6 +888,34 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         createdAt: happenedAt,
       });
     }
+  }
+
+  /*
+   * Yangi, da'vosi hali yuborilmagan yo'qotish — har kompaniyada albatta bitta.
+   * Ilgari ochiq yozuv borligi tasodifga bog'liq edi va ular asosan 1–3 oy
+   * oldingi edi: demo'da shu hafta da'vo yuboriladigan yo'qotish yo'q edi (2026-10-24).
+   */
+  {
+    const storeId = storeIds[0];
+    const inStock = skus.filter((s) => s.storeId === storeId && s.stockKind !== 'out');
+    const sku = inStock.reduce((best, s) => (s.totalUnits > best.totalUnits ? s : best), inStock[0]);
+    const qty = 2;
+    const happenedAt = addHours(dayAt(-3), 6 + Math.floor(detailRand() * 10));
+    lossRows.push({
+      id: `demo_ls_${storeId}_fresh`,
+      storeId,
+      skuId: sku.id,
+      type: 'lost',
+      scheme: 'FBO',
+      qty,
+      amount: money(sku.price * qty),
+      compensated: 0,
+      status: 'open',
+      happenedAt,
+      claimSentAt: null,
+      note: LOSS_NOTES.lost,
+      createdAt: happenedAt,
+    });
   }
 
   // ── Sharhlar (30% javobsiz) ──
@@ -865,7 +953,46 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
     productReviewStats.set(sku.productId, st);
   }
 
-  // ── Xarajatlar: marketing / ombor / soliq ──
+  /*
+   * Kechagi javobsiz salbiy (2 yulduz) sharh — eng ko'p sotilgan tovarda, har
+   * kompaniyada albatta bitta. Ilgari javobsiz 1–2 yulduzli sharhlar tasodifan
+   * chiqardi va 1–3 oy oldingi edi, joriy oy filtrida ko'rinmasdi (2026-10-24).
+   */
+  {
+    const sku = skus.reduce((best, s) => (s.totalUnits > best.totalUnits ? s : best), skus[0]);
+    const publishedAt = addHours(dayAt(-1), 9 + Math.floor(detailRand() * 10));
+    const rating = 2;
+    reviewSeq += 1;
+    reviewRows.push({
+      id: `demo_rv_${spec.key}_${String(reviewSeq).padStart(4, '0')}`,
+      storeId: sku.storeId,
+      productId: sku.productId,
+      skuId: sku.id,
+      uzumReviewId: `RV-${index + 1}-${String(reviewSeq).padStart(4, '0')}`,
+      rating,
+      text: pickDetail(REVIEW_NEGATIVE),
+      author: pickDetail(REVIEW_AUTHORS),
+      publishedAt,
+      answered: false,
+      answerText: null,
+      answeredAt: null,
+      autoAnswered: false,
+      createdAt: publishedAt,
+    });
+    const st = productReviewStats.get(sku.productId) ?? { sum: 0, count: 0 };
+    st.sum += rating;
+    st.count += 1;
+    productReviewStats.set(sku.productId, st);
+  }
+
+  /*
+   * ── Xarajatlar: faqat marketing ──
+   * Saqlash va aylanma soliq Expense sifatida YOZILMAYDI. Ilgari ular har
+   * oyning 1-kuniga yozilardi va ikki marta ayrilardi: saqlash StorageFee'dan
+   * ham olinadi (services/pnl.ts), soliq esa pozitsiya netProfit'ida allaqachon
+   * bor. Demo marjasi ~1% ga tushib, oy boshida −36 mln ustun chiqardi
+   * (2026-10-24). Haqiqiy sinxron ham saqlashni Expense'ga yozmaydi (uzum/live.ts).
+   */
   let expenseSeq = 0;
   for (let d = HISTORY_DAYS - 90; d < HISTORY_DAYS; d += 1) {
     if (!chance(0.34)) continue;
@@ -881,36 +1008,6 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       note: pick(['Uzum reklama kampaniyasi', 'Telegram kanal reklamasi', 'Instagram targeting', 'Blogger bilan hamkorlik']),
       source: 'manual',
       createdAt: addHours(day, 10),
-    });
-  }
-
-  for (const [mk, amount] of storageByMonth) {
-    const first = new Date(`${mk}-01T00:00:00.000Z`);
-    expenseSeq += 1;
-    expenseRows.push({
-      id: `demo_ex_${spec.key}_st_${mk}`,
-      companyId,
-      storeId: storeIds[0],
-      date: first,
-      category: 'storage',
-      amount: money(amount),
-      note: `Pullik saqlash (${mk})`,
-      source: 'auto',
-      createdAt: addHours(first, 5),
-    });
-  }
-
-  for (const [mk, amount] of taxByMonth) {
-    const first = new Date(`${mk}-01T00:00:00.000Z`);
-    expenseRows.push({
-      id: `demo_ex_${spec.key}_tx_${mk}`,
-      companyId,
-      date: first,
-      category: 'tax',
-      amount: money(amount),
-      note: `Aylanma soliq ${spec.taxRate}% (${mk})`,
-      source: 'auto',
-      createdAt: addHours(first, 6),
     });
   }
 
@@ -1033,11 +1130,13 @@ function buildExtras(results: CompanyResult[]): void {
     });
   };
 
+  // Havolalar App.tsx dagi haqiqiy sahifalarga olib borishi kerak. Ilgari /billing, /sync,
+  // /admin/billing edi — bunday sahifa yo'q, "Ochish" 404 ko'rsatardi (2026-10-24).
   notify('demo_nt_o1_1', OWNER1_ID, 'stock', 'Qoldiq tugayapti', '4 ta SKU bo‘yicha qoldiq 7 kundan kam qoldi', '/stocks', 3, false);
   notify('demo_nt_o1_2', OWNER1_ID, 'report', 'Kunlik hisobot tayyor', 'Kechagi sotuv va foyda hisoboti', '/dashboard', 14, true);
-  notify('demo_nt_o1_3', OWNER1_ID, 'billing', 'Sinov muddati tugayapti', 'Sinov tarifi 5 kundan keyin tugaydi — tarifni tanlang', '/billing', 20, false);
+  notify('demo_nt_o1_3', OWNER1_ID, 'billing', 'Sinov muddati tugayapti', 'Sinov tarifi 5 kundan keyin tugaydi — tarifni tanlang', '/pricing', 20, false);
   notify('demo_nt_o1_4', OWNER1_ID, 'review', 'Javobsiz sharhlar', '9 ta sharh javobsiz qoldi', '/reviews', 30, false);
-  notify('demo_nt_o1_5', OWNER1_ID, 'sync', 'Sinxronizatsiya yakunlandi', 'Barcha ma’lumotlar yangilandi', '/sync', 3, true);
+  notify('demo_nt_o1_5', OWNER1_ID, 'sync', 'Sinxronizatsiya yakunlandi', 'Barcha ma’lumotlar yangilandi', '/settings#uzum', 3, true);
 
   notify('demo_nt_o2_1', OWNER2_ID, 'stock', 'Ortiqcha qoldiq', '6 ta SKU bo‘yicha qoldiq 90 kundan ortiq', '/stocks', 5, false);
   notify('demo_nt_o2_2', OWNER2_ID, 'order', 'Bugungi sotuvlar', 'Bugun 24 ta buyurtma qabul qilindi', '/sales', 2, false);
@@ -1045,7 +1144,7 @@ function buildExtras(results: CompanyResult[]): void {
   notify('demo_nt_o2_4', OWNER2_ID, 'loss', 'Yangi yo‘qotish', 'Omborda 3 dona tovar topilmadi', '/losses', 40, true);
 
   notify('demo_nt_ad_1', ADMIN_ID, 'info', 'Yangi kompaniya', 'SAMARQAND SAVDO Biznes tarifini faollashtirdi', '/admin', 8, false);
-  notify('demo_nt_ad_2', ADMIN_ID, 'billing', 'To‘lov qabul qilindi', 'Biznes tarif — 400 000 so‘m', '/admin/billing', 8, true);
+  notify('demo_nt_ad_2', ADMIN_ID, 'billing', 'To‘lov qabul qilindi', 'Biznes tarif — 400 000 so‘m', '/admin', 8, true);
 
   // Admin — ikkinchi kompaniyada menejer (Biznes tarifi bir nechta a'zoga ruxsat beradi)
   membershipRows.push({

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Ban, HeartPulse, PackageX, RotateCcw, Search, ShieldAlert } from '@/components/icons';
+import { Ban, HeartPulse, PackageX, RotateCcw, Search, ShieldAlert, ShieldCheck } from '@/components/icons';
 import type { SkuHealthIssue, SkuHealthResponse, SkuHealthRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
@@ -8,8 +8,11 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
 import { useDebounced } from '@/components/sales/useDebounced';
+import { NEUTRAL_TONE, SkuNameCell } from '@/components/stock/common';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Badge,
+  Button,
   Card,
   CardHeader,
   DataTable,
@@ -18,7 +21,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   SearchInput,
   Segmented,
   StatCard,
@@ -60,6 +62,9 @@ registerNamespace('skuHealth', {
     'issue.ok': 'Yaxshi',
     'empty.title': 'SKU topilmadi',
     'empty.hint': 'Qidiruvni o‘zgartiring yoki filtrni oching',
+    'empty.allGood': 'Muammoli SKU yo‘q',
+    'empty.allGoodHint': 'Barcha {n} ta SKU tartibda: bloklash, brak, yo‘qolgan tovar va ko‘p qaytarish topilmadi',
+    'empty.showAll': 'Barchasini ko‘rish',
     hint: 'Ma’lumot Uzum katalogidan: bloklash sababi, brak va yo‘qolgan donalar hamda qaytarishlar ulushi.',
   },
   ru: {
@@ -92,6 +97,9 @@ registerNamespace('skuHealth', {
     'issue.ok': 'Хорошо',
     'empty.title': 'SKU не найдены',
     'empty.hint': 'Измените поиск или снимите фильтр',
+    'empty.allGood': 'Проблемных SKU нет',
+    'empty.allGoodHint': 'Все {n} SKU в порядке: блокировок, брака, потерь и частых возвратов нет',
+    'empty.showAll': 'Показать все',
     hint: 'Данные из каталога Uzum: причина блокировки, брак и потери, доля возвратов.',
   },
   en: {
@@ -124,17 +132,26 @@ registerNamespace('skuHealth', {
     'issue.ok': 'Good',
     'empty.title': 'No SKUs found',
     'empty.hint': 'Change the search or clear the filter',
+    'empty.allGood': 'No problem SKUs',
+    'empty.allGoodHint': 'All {n} SKUs are fine: no blocks, defects, missing units or frequent returns',
+    'empty.showAll': 'Show all',
     hint: 'From the Uzum catalogue: blocking reason, defective and missing units, and the return rate.',
   },
 });
 
+/**
+ * Muammo nishonlari ma'no bo'yicha: qizil — pul yo'qotilgan yoki sotuv
+ * to'xtagan (bloklangan, brak, yo'qolgan), sariq — xavf (ko'p qaytarish,
+ * tannarx yo'q — foyda noto'g'ri), kulrang — arxiv. Ilgari "yo'qolgan" sariq,
+ * "tannarx yo'q" esa ko'k (ombor rangi) edi.
+ */
 const ISSUE_TONE: Record<SkuHealthIssue, Tone> = {
   blocked: 'danger',
   archived: 'muted',
   high_returns: 'warn',
   defected: 'danger',
-  missing: 'warn',
-  no_cost: 'info',
+  missing: 'danger',
+  no_cost: 'warn',
   ok: 'brand',
 };
 
@@ -164,12 +181,16 @@ export default function SkuHealth() {
 
   const rows = data?.rows.items ?? [];
   const totals = data?.totals;
+  /** Muammolilar filtri bo'sh va qidiruv yo'q — barcha SKU tartibda */
+  const allGood = !isLoading && filter === 'issues' && !search && rows.length === 0 && (totals?.healthy ?? 0) > 0;
 
   const columns: Column<SkuHealthRow>[] = [
     {
       key: 'title',
       header: t('col.product'),
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
+      render: (r) => (
+        <SkuNameCell className="md:min-w-[13rem] md:max-w-[20rem]" title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />
+      ),
     },
     {
       key: 'issues',
@@ -210,7 +231,7 @@ export default function SkuHealth() {
       header: t('col.missing'),
       align: 'right',
       render: (r) => (
-        <span className={cn('tnum', r.qtyMissing > 0 ? 'text-warn-ink font-semibold' : 'text-muted')}>
+        <span className={cn('tnum', r.qtyMissing > 0 ? 'text-danger font-semibold' : 'text-muted')}>
           {f.num(r.qtyMissing)}
         </span>
       ),
@@ -246,9 +267,15 @@ export default function SkuHealth() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="sku_health" />}
+        meta={<DataFreshness />}
       />
 
       <PlanGate feature="sku_health">
+        {/*
+          Muammo yo'q bo'lsa kartochka kulrang — "0 bloklangan" yashil "hammasi
+          zo'r" yoki qizil "xavf" deb o'qilmasin; raqam paydo bo'lganda o'z
+          ma'nosi rangini oladi (bloklangan, yo'qotish — qizil; qaytarish — sariq).
+        */}
         <StatGrid>
           <StatCard
             label={t('kpi.healthy')}
@@ -263,7 +290,8 @@ export default function SkuHealth() {
             value={f.num(totals?.blocked ?? 0)}
             hint={t('kpi.blockedHint')}
             icon={<Ban className="h-5 w-5" />}
-            tone={totals && totals.blocked > 0 ? 'danger' : undefined}
+            tone="danger"
+            className={totals && totals.blocked > 0 ? undefined : NEUTRAL_TONE}
             loading={isLoading}
           />
           <StatCard
@@ -272,6 +300,7 @@ export default function SkuHealth() {
             hint={t('kpi.returnsHint')}
             icon={<RotateCcw className="h-5 w-5" />}
             tone="warn"
+            className={totals && totals.highReturns > 0 ? undefined : NEUTRAL_TONE}
             loading={isLoading}
           />
           <StatCard
@@ -279,12 +308,13 @@ export default function SkuHealth() {
             value={f.money(totals?.lossValue ?? 0)}
             hint={t('kpi.lossHint')}
             icon={<PackageX className="h-5 w-5" />}
-            tone={totals && totals.lossValue > 0 ? 'danger' : undefined}
+            tone="danger"
+            className={totals && totals.lossValue > 0 ? undefined : NEUTRAL_TONE}
             loading={isLoading}
           />
         </StatGrid>
 
-        <FilterBar>
+        <FilterBar className="mt-5">
           <Segmented<Filter>
             value={filter}
             onChange={setFilter}
@@ -301,8 +331,13 @@ export default function SkuHealth() {
           />
         </FilterBar>
 
-        <Card className="mt-4">
-          <CardHeader icon={<ShieldAlert className="h-4 w-4" />} title={t('title')} subtitle={t('hint')} />
+        <Card>
+          <CardHeader
+            icon={allGood ? <ShieldCheck /> : <ShieldAlert />}
+            tone={allGood ? 'brand' : 'warn'}
+            title={t('title')}
+            subtitle={t('hint')}
+          />
           <DataTable<SkuHealthRow>
             columns={columns}
             rows={rows}
@@ -314,7 +349,27 @@ export default function SkuHealth() {
               total: data?.rows.total ?? 0,
               onPage: setPage,
             }}
-            empty={<EmptyState icon={<Search className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />}
+            empty={
+              /*
+                "Faqat muammolilar" bo'sh va qidiruv yo'q — bu yaxshi xabar, "SKU
+                topilmadi" emas. Ilgari muammosiz do'kon ham xato holatdagidek
+                lupa belgisi bilan "qidiruvni o'zgartiring" ko'rardi.
+              */
+              allGood ? (
+                <EmptyState
+                  icon={<ShieldCheck className="h-6 w-6 text-brand-ink" />}
+                  title={t('empty.allGood')}
+                  hint={t('empty.allGoodHint', { n: f.num(totals?.skus ?? totals?.healthy ?? 0) })}
+                  action={
+                    <Button variant="outline" onClick={() => setFilter('all')}>
+                      {t('empty.showAll')}
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState icon={<Search className="h-6 w-6" />} title={t('empty.title')} hint={t('empty.hint')} />
+              )
+            }
           />
         </Card>
       </PlanGate>

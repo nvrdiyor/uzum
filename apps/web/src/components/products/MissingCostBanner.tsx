@@ -26,11 +26,16 @@ export function MissingCostBanner({
   const value = Math.max(0, Math.round(Number(raw.replace(/\D/g, '')) || 0));
 
   return (
-    <div className="card border-warn/40 bg-warn/5 p-4 sm:p-5">
+    /*
+      Neytral fon, ohang — aksent chiziq va ikonka plitkasida (sariq: xavf —
+      foyda noto'g'ri hisoblanadi). Ilgari bg-warn/5 fon qorong'i mavzuda
+      "loyqa jigarrang" blokka aylanardi.
+    */
+    <div className="card card-accent tone-warn p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn-ink">
-            <AlertTriangle className="h-4 w-4" />
+          <span className="icon-tile mt-0.5 h-9 w-9 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4">
+            <AlertTriangle />
           </span>
           <div className="min-w-0">
             <p className="font-display text-sm font-bold text-ink">{t('cost.missingTitle')}</p>

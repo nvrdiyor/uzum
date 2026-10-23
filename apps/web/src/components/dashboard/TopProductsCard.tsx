@@ -1,26 +1,59 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Trophy } from '@/components/icons';
 import type { TopProductRow } from '@savdoiq/shared';
-import { Badge, Card, CardHeader, DataTable, EmptyState, ProductCell, ProgressBar, type Column } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  DataTable,
+  EmptyState,
+  ProductCell,
+  ProgressBar,
+  RankBadge,
+  type Column,
+} from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-
-function marginTone(margin: number): 'brand' | 'warn' | 'danger' {
-  if (margin >= 20) return 'brand';
-  if (margin >= 8) return 'warn';
-  return 'danger';
-}
+import { splitProductName } from './productName';
+import { marginTone } from './rates';
 
 /** "Top mahsulotlar" — davr bo'yicha eng ko'p tushum keltirganlar */
 export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; loading?: boolean }) {
   const t = useT('dashboard');
   const f = useFormat();
 
+  /*
+   * O'rin — TUSHUM bo'yicha (server shu tartibda yuboradi), jadvaldagi joriy
+   * qator raqami emas: foyda yoki marja bo'yicha saralanganda ham 1-o'rin
+   * 1-o'rinligicha qoladi.
+   */
+  const rank = useMemo(() => new Map(rows.map((r, i) => [r.skuId, i + 1])), [rows]);
+  /*
+   * Ulush chizig'i yetakchiga nisbatan. Ilgari 0–100% shkalada edi va 11,8%
+   * li yetakchi ham deyarli bo'sh chiziq bo'lib ko'rinardi. Aniq foiz yonida.
+   */
+  const maxShare = useMemo(() => Math.max(0, ...rows.map((r) => r.share)), [rows]);
+
   const columns: Column<TopProductRow>[] = [
     {
       key: 'title',
       header: t('top.col.product'),
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
+      /*
+       * max-w: jadval katagi o'z-o'zidan qisqarmaydi — uzun nom ustunni
+       * kengaytirib, 1366px da oxirgi "Ulush" ustuni karta chetidan chiqib
+       * qolardi. Nom kesiladi (to'liq nomi sichqoncha olib borilganda), variant
+       * esa SKU yonida — "Runner Air — 40" va "— 42" kesilib bir xil bo'lib qolmasin.
+       */
+      render: (r) => {
+        const { name, variant } = splitProductName(r);
+        return (
+          <div className="flex min-w-0 max-w-[21rem] items-center gap-3 2xl:max-w-[28rem]">
+            <RankBadge rank={rank.get(r.skuId) ?? 0} />
+            <ProductCell title={name} subtitle={variant ? `${variant} · ${r.sku}` : r.sku} imageUrl={r.imageUrl} />
+          </div>
+        );
+      },
     },
     {
       key: 'units',
@@ -44,7 +77,9 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       align: 'right',
       sortable: true,
       sortValue: (r) => r.profit,
-      render: (r) => <span className={cn('font-semibold', r.profit >= 0 ? 'text-brand-ink' : 'text-danger')}>{f.money(r.profit)}</span>,
+      render: (r) => (
+        <span className={cn('font-semibold', r.profit >= 0 ? 'text-brand-ink' : 'text-danger-ink')}>{f.money(r.profit)}</span>
+      ),
     },
     {
       key: 'margin',
@@ -60,13 +95,13 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       header: t('top.col.share'),
       align: 'right',
       hideOnMobile: true,
-      width: 160,
+      width: 156,
       sortable: true,
       sortValue: (r) => r.share,
       render: (r) => (
         <div className="flex items-center justify-end gap-2">
-          <ProgressBar className="w-20" value={r.share} />
-          <span className="tnum w-12 text-right text-xs text-muted">{f.pct(r.share)}</span>
+          <ProgressBar className="w-16" tone="info" value={maxShare > 0 ? (r.share / maxShare) * 100 : 0} />
+          <span className="tnum w-11 text-right text-xs text-muted">{f.pct(r.share)}</span>
         </div>
       ),
     },
@@ -75,13 +110,13 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
   return (
     <Card>
       <CardHeader
-        icon={<Trophy className="h-4 w-4" />}
+        icon={<Trophy />}
         title={t('top.title')}
         subtitle={t('top.subtitle')}
         actions={
           <Link
             to="/products"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1 rounded-lg text-sm font-semibold text-brand-ink transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
           >
             {t('top.all')}
             <ArrowRight className="h-4 w-4" />

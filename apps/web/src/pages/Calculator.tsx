@@ -31,6 +31,7 @@ import {
   CardHeader,
   EmptyState,
   ErrorState,
+  HeroCard,
   IconButton,
   Input,
   Modal,
@@ -41,6 +42,7 @@ import {
   Select,
   Skeleton,
   toast,
+  type Tone,
 } from '@/components/ui';
 import { CostSplitBar, type SplitSegment } from '@/components/unit/CostSplitBar';
 import { NumberField } from '@/components/unit/NumberField';
@@ -138,6 +140,16 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Nom kiriting',
     'btn.reset': 'Tozalash',
     'reset.done': 'Standart qiymatlar tiklandi',
+    'src.sales': 'Sotuvdan',
+    'src.salesHint': 'Oxirgi 30 kundagi haqiqiy sotuvlaringizdan hisoblandi',
+    'src.catalogue': 'Katalogdan',
+    'src.catalogueHint': 'Uzum katalogidagi shu kategoriya foizi',
+    'src.fees': 'To‘lovdan',
+    'src.feesHint': 'Uzum olgan haqiqiy saqlash to‘lovlaridan hisoblandi',
+    'src.volume': 'Hajmdan',
+    'src.volumeHint': 'Tovar hajmi bo‘yicha taxmin — saqlash to‘lovi hali bo‘lmagan',
+    'src.default': 'Taxmin',
+    'src.defaultHint': 'Ma’lumot yetarli emas — umumiy o‘rtacha qiymat',
   },
   ru: {
     title: 'Юнит-калькулятор',
@@ -218,6 +230,16 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Введите название',
     'btn.reset': 'Сбросить',
     'reset.done': 'Значения по умолчанию восстановлены',
+    'src.sales': 'Из продаж',
+    'src.salesHint': 'Рассчитано по вашим реальным продажам за последние 30 дней',
+    'src.catalogue': 'Из каталога',
+    'src.catalogueHint': 'Процент категории из каталога Uzum',
+    'src.fees': 'Из счетов',
+    'src.feesHint': 'Рассчитано по реальным платежам Uzum за хранение',
+    'src.volume': 'По объёму',
+    'src.volumeHint': 'Оценка по объёму товара — платежей за хранение ещё не было',
+    'src.default': 'Оценка',
+    'src.defaultHint': 'Данных недостаточно — среднее значение',
   },
   en: {
     title: 'Unit calculator',
@@ -298,8 +320,27 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Enter a name',
     'btn.reset': 'Reset',
     'reset.done': 'Default values restored',
+    'src.sales': 'From sales',
+    'src.salesHint': 'Calculated from your real sales over the last 30 days',
+    'src.catalogue': 'Catalogue',
+    'src.catalogueHint': 'The category rate from the Uzum catalogue',
+    'src.fees': 'From fees',
+    'src.feesHint': 'Calculated from the storage fees Uzum actually charged',
+    'src.volume': 'By volume',
+    'src.volumeHint': 'Estimated from the item volume — no storage fees yet',
+    'src.default': 'Estimate',
+    'src.defaultHint': 'Not enough data — a general average',
   },
 });
+
+/** Qiymat manbai belgisining rangi: o'z ma'lumotingiz — brend, Uzum'dan — ko'k, taxmin — kulrang */
+const SOURCE_TONE: Record<string, Tone> = {
+  sales: 'brand',
+  fees: 'brand',
+  catalogue: 'info',
+  volume: 'info',
+  default: 'muted',
+};
 
 interface SkuOption {
   id: string;
@@ -401,6 +442,23 @@ export default function Calculator() {
   /** Joriy narx nol foyda narxidan necha foiz yuqori (manfiy — past, ya'ni zarar) */
   const buffer = input.price > 0 ? ((input.price - result.breakEvenPrice) / input.price) * 100 : 0;
 
+  /*
+   * Qiymat qayerdan olingani. SKU tanlanganda server `source`ni ham qaytaradi
+   * (ilgari u tashlab yuborilardi va sotuvchi "12%" o'zining sotuvidanmi yoki
+   * taxminmi — bilmasdi). Belgi faqat maydon o'zgartirilmagan bo'lsa turadi:
+   * qo'lda yozilgan raqam endi "sotuvdan" emas.
+   */
+  const sourceBadge = (src: keyof NonNullable<UnitDefaultsResponse['source']>, field: keyof UnitCalcInput) => {
+    const kind = defaults.data?.source?.[src];
+    const loaded = defaults.data?.input?.[field];
+    if (!kind || loaded === undefined || draft[field] !== loaded) return undefined;
+    return (
+      <Badge tone={SOURCE_TONE[kind] ?? 'muted'} className="px-1.5 py-0 text-2xs" title={t(`src.${kind}Hint`)}>
+        {t(`src.${kind}`)}
+      </Badge>
+    );
+  };
+
   // ── Narx sezgirligi ──
   const sensitivity = useMemo(
     () =>
@@ -501,8 +559,8 @@ export default function Calculator() {
               <Card className="order-2">
                 <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div className="flex shrink-0 items-center gap-2.5 text-sm font-semibold text-ink">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-surface-2 text-muted">
-                      <Boxes className="h-4 w-4" />
+                    <span className="icon-tile h-9 w-9 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4" aria-hidden>
+                      <Boxes />
                     </span>
                     {t('sku.label')}
                   </div>
@@ -535,7 +593,7 @@ export default function Calculator() {
               {/* Bitta forma: beshta alohida kartochka o'rniga bo'limlar ingichka chiziq bilan ajratilgan */}
               <Card className="order-3">
                 <div className="divide-y divide-line/70">
-                  <FormSection icon={<Coins className="h-4 w-4" />} title={t('section.price')}>
+                  <FormSection icon={<Coins />} tone="brand" title={t('section.price')}>
                     <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                       <NumberField
                         label={t('fld.price')}
@@ -559,12 +617,22 @@ export default function Calculator() {
                     </div>
                   </FormSection>
 
-                  <FormSection icon={<Truck className="h-4 w-4" />} title={t('section.market')}>
-                    <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+                  <FormSection icon={<Truck />} tone="violet" title={t('section.market')}>
+                    {/*
+                      Ustunlar soni chap ustun kengligidan kelib chiqib tanlangan:
+                      lg dan boshlab o'ngda natija paneli turadi va chap ustun torayadi
+                      (1280 px'da ~436 px). Ilgari xl'da 4 ta maydon bir qatorga
+                      tizilardi — har biri ~98 px, so'm qo'shimchasidan keyin raqamga
+                      ~40 px qolib, "13 350" "133", "300" "30C" bo'lib kesilardi.
+                      4 ustun faqat har maydon ≥150 px bo'lganda: md (bir ustunli
+                      tartib) va 2xl (2026-10-24).
+                    */}
+                    <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4">
                       <NumberField
                         label={t('fld.commission')}
                         hint={t('fld.commissionHint')}
                         hintOnFocus
+                        badge={sourceBadge('commission', 'commissionPct')}
                         suffix={t('unit.pct')}
                         value={draft.commissionPct}
                         min={0}
@@ -576,6 +644,7 @@ export default function Calculator() {
                         label={t('fld.logistics')}
                         hint={t('fld.logisticsHint')}
                         hintOnFocus
+                        badge={sourceBadge('logistics', 'logistics')}
                         suffix={t('unit.som')}
                         value={draft.logistics}
                         step={500}
@@ -585,6 +654,7 @@ export default function Calculator() {
                         label={t('fld.storagePerDay')}
                         hint={t('fld.storagePerDayHint')}
                         hintOnFocus
+                        badge={sourceBadge('storage', 'storagePerDay')}
                         suffix={t('unit.som')}
                         value={draft.storagePerDay}
                         step={50}
@@ -604,8 +674,9 @@ export default function Calculator() {
                     </div>
                   </FormSection>
 
-                  <FormSection icon={<Receipt className="h-4 w-4" />} title={t('section.extra')}>
-                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+                  <FormSection icon={<Receipt />} tone="warn" title={t('section.extra')}>
+                    {/* Xuddi shu sabab: 1280–1535 px'da 3 ustun ~136 px bo'lib, yorliqlar kesilardi */}
+                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3">
                       <NumberField
                         label={t('fld.packaging')}
                         hint={t('fld.packagingHint')}
@@ -633,18 +704,19 @@ export default function Calculator() {
                         min={0}
                         max={50}
                         step={0.5}
-                        className="col-span-2 sm:col-span-1"
+                        className="col-span-2 sm:col-span-1 lg:col-span-2 2xl:col-span-1"
                         onChange={(v) => patch('taxPct', v)}
                       />
                     </div>
                   </FormSection>
 
-                  <FormSection icon={<PackageOpen className="h-4 w-4" />} title={t('section.batch')}>
-                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+                  <FormSection icon={<PackageOpen />} tone="info" title={t('section.batch')}>
+                    <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3">
                       <NumberField
                         label={t('fld.buyout')}
                         hint={t('fld.buyoutHint')}
                         hintOnFocus
+                        badge={sourceBadge('buyout', 'buyoutPct')}
                         suffix={t('unit.pct')}
                         value={draft.buyoutPct}
                         min={1}
@@ -669,7 +741,7 @@ export default function Calculator() {
                         value={draft.qty}
                         min={1}
                         step={1}
-                        className="col-span-2 sm:col-span-1"
+                        className="col-span-2 sm:col-span-1 lg:col-span-2 2xl:col-span-1"
                         onChange={(v) => patch('qty', Math.max(1, Math.round(v)))}
                       />
                     </div>
@@ -736,16 +808,27 @@ export default function Calculator() {
 
             {/* ── O'ng ustun: natija (yuqori panel ostida yopishib turadi) ── */}
             <div className="contents lg:sticky lg:top-20 lg:block lg:space-y-4 lg:self-start">
-              <div className="card order-1 overflow-hidden bg-aurora p-5 sm:p-6">
+              {/*
+                Sahifaning yagona HeroCard'i — hisob natijasi. Ilgari o'zining
+                `bg-aurora` foni bor edi; endi boshqa sahifalardagi bosh kartochka
+                bilan bir xil va zararda qizil ohangga o'tadi (zarar — qizilning
+                yagona ma'nosi).
+              */}
+              <HeroCard tone={profitable ? 'brand' : 'danger'} className="order-1 overflow-hidden p-5 sm:p-6">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="eyebrow-lg">{t('res.profit')}</p>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="icon-tile h-9 w-9 rounded-[10px] [&_svg]:h-[18px] [&_svg]:w-[18px]" aria-hidden>
+                      <CalculatorIcon />
+                    </span>
+                    <p className="truncate font-display text-[15px] font-semibold text-ink">{t('res.profit')}</p>
+                  </div>
                   <Badge tone={profitable ? 'brand' : 'danger'} dot>
                     {profitable ? t('res.ok') : t('res.loss')}
                   </Badge>
                 </div>
                 <p
                   className={cn(
-                    'tnum mt-2 font-title text-[34px] font-semibold leading-none tracking-[-0.03em] sm:text-[40px]',
+                    'tnum mt-4 font-title text-[34px] font-semibold leading-none tracking-[-0.03em] sm:text-[40px]',
                     profitable ? 'text-brand-ink' : 'text-danger',
                   )}
                 >
@@ -776,7 +859,7 @@ export default function Calculator() {
                     ? t('res.bufferNeg', { v: f.money(result.breakEvenPrice), n: f.pct(-buffer) })
                     : t('res.buffer', { v: f.money(result.breakEvenPrice), n: f.pct(buffer) })}
                 </p>
-              </div>
+              </HeroCard>
 
               <Card className="order-4">
                 <CardHeader
@@ -854,7 +937,8 @@ export default function Calculator() {
                   {(scenarios.data ?? []).map((s) => {
                     const r = calcUnitEconomics(s.input);
                     return (
-                      <div key={s.id} className="card card-hover flex flex-col gap-3 p-4">
+                      // Kartochka ichidagi kartochka emas — sahifadagi boshqa ichki plitkalar bilan bir xil `.well`
+                      <div key={s.id} className="well flex flex-col gap-3 p-4 transition-colors hover:border-line-strong">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-display text-sm font-bold text-ink">{s.name}</p>
@@ -955,12 +1039,29 @@ export default function Calculator() {
   );
 }
 
-/** Forma bo'limi: kichik sarlavha va maydonlar. Bo'limlar bitta kartochka ichida chiziq bilan ajraladi */
-function FormSection({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+/**
+ * Forma bo'limi: kichik sarlavha va maydonlar. Bo'limlar bitta kartochka ichida chiziq bilan ajraladi.
+ * Ikonka plitkasi bo'lim ma'nosi rangida — "Narx qayerga ketadi" ranglari bilan bir oila:
+ * Uzum xarajatlari binafsha (Uzum ulushi), soliq va qo'shimcha za'faron, partiya va
+ * qaytarish logistikasi ko'k. Ilgari to'rttala belgi bir xil kulrang edi.
+ */
+function FormSection({
+  icon,
+  tone,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  tone: Tone;
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <section className="p-5">
-      <h3 className="mb-3.5 flex items-center gap-2 text-sm font-semibold text-ink">
-        <span className="text-muted">{icon}</span>
+      <h3 className="mb-3.5 flex items-center gap-2.5 text-sm font-semibold text-ink">
+        <span className={cn('icon-tile h-7 w-7 rounded-lg [&_svg]:h-3.5 [&_svg]:w-3.5', `tone-${tone}`)} aria-hidden>
+          {icon}
+        </span>
         {title}
       </h3>
       {children}
@@ -980,7 +1081,7 @@ function MiniStat({
   className?: string;
 }) {
   return (
-    <div className={cn('min-w-0 rounded-xl border border-line bg-surface p-3', className)}>
+    <div className={cn('well min-w-0 p-3', className)}>
       <p className="truncate eyebrow">{label}</p>
       <p
         className={cn(

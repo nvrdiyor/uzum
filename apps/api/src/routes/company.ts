@@ -22,6 +22,7 @@ import {
   companySchema,
   getPlan,
   type CompanySummary,
+  type Lang,
   type PlanId,
   type StoreSummary,
   type SubscriptionSummary,
@@ -31,6 +32,7 @@ import { companyCtx, ctx, requireAuth, requireCompany, requireRole } from '../li
 import { notifyUser } from '../services/notify.js';
 import {
   activePlan,
+  asLang,
   asMemberRole,
   ensureSubscription,
   toCompanySummary,
@@ -108,6 +110,52 @@ const MAX_SETTINGS = 60;
  * uchun chegara shu yerda belgilangan.
  */
 const COMPANY_LIMIT: Record<PlanId, number> = { trial: 1, standard: 2, vip: 20, expired: 1 };
+
+/**
+ * Jamoa bildirishnomalari — qabul qiluvchining tilida (bot xabarlari ham `languageCode`
+ * bo'yicha). Ilgari matnga xom rol kodi tushardi: “Sizga “manager” roli berildi” (2026-10-24).
+ * Rol nomlari saytdagi `team.role.*` bilan bir xil.
+ */
+const ROLE_NAMES: Record<Lang, Record<CompanySummary['role'], string>> = {
+  uz: { owner: 'Egasi', manager: 'Menejer', viewer: 'Kuzatuvchi' },
+  ru: { owner: 'Владелец', manager: 'Менеджер', viewer: 'Наблюдатель' },
+  en: { owner: 'Owner', manager: 'Manager', viewer: 'Viewer' },
+};
+
+const TEAM_TEXT: Record<
+  Lang,
+  {
+    addedTitle: (company: string) => string;
+    addedBody: (role: string) => string;
+    roleTitle: (company: string) => string;
+    roleBody: (role: string) => string;
+  }
+> = {
+  uz: {
+    addedTitle: (c) => `“${c}” jamoasiga qo‘shildingiz`,
+    addedBody: (r) => `Sizga “${r}” roli berildi. Hisobotlarni saytda ko‘rishingiz mumkin.`,
+    roleTitle: (c) => `“${c}” kompaniyasida rolingiz o‘zgardi`,
+    roleBody: (r) => `Yangi rol: ${r}`,
+  },
+  ru: {
+    addedTitle: (c) => `Вас добавили в команду «${c}»`,
+    addedBody: (r) => `Вам назначена роль «${r}». Отчёты доступны на сайте.`,
+    roleTitle: (c) => `Ваша роль в компании «${c}» изменена`,
+    roleBody: (r) => `Новая роль: ${r}`,
+  },
+  en: {
+    addedTitle: (c) => `You were added to the “${c}” team`,
+    addedBody: (r) => `You have the “${r}” role. Reports are available on the website.`,
+    roleTitle: (c) => `Your role in “${c}” has changed`,
+    roleBody: (r) => `New role: ${r}`,
+  },
+};
+
+/** Qabul qiluvchi tilidagi matnlar va rol nomi */
+function teamText(languageCode: string | null | undefined, role: string) {
+  const lang = asLang(languageCode);
+  return { text: TEAM_TEXT[lang], roleName: ROLE_NAMES[lang][asMemberRole(role)] };
+}
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
@@ -383,10 +431,11 @@ router.post(
       include: { user: true },
     });
 
+    const added = teamText(invitee.languageCode, input.role);
     await notifyUser(invitee.id, {
       type: 'info',
-      title: `“${company.name}” jamoasiga qo‘shildingiz`,
-      body: `Sizga “${input.role}” roli berildi. Hisobotlarni saytda ko‘rishingiz mumkin.`,
+      title: added.text.addedTitle(company.name),
+      body: added.text.addedBody(added.roleName),
       link: '/dashboard',
     });
 
@@ -436,10 +485,11 @@ router.patch(
       include: { user: true },
     });
 
+    const changed = teamText(updated.user.languageCode, input.role);
     await notifyUser(updated.userId, {
       type: 'info',
-      title: `“${company.name}” kompaniyasida rolingiz o‘zgardi`,
-      body: `Yangi rol: ${input.role}`,
+      title: changed.text.roleTitle(company.name),
+      body: changed.text.roleBody(changed.roleName),
       link: '/settings',
     });
 

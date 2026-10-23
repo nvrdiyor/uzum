@@ -102,7 +102,7 @@ registerNamespace('landing', {
     'how.s2.t': 'API kalitni yuboring',
     'how.s2.d': 'seller.uzum.uz → Mening profilim → API kalitlar. Kalit shifrlangan holda saqlanadi.',
     'how.s3.t': 'Ma’lumot yig‘iladi',
-    'how.s3.d': 'Platforma buyurtmalar, qoldiq, moliya va sharhlar tarixini to‘liq yig‘ib chiqadi.',
+    'how.s3.d': 'Platforma buyurtmalar, qoldiq, moliya va sharhlar tarixini yig‘ib chiqadi — tarifga qarab 1 yilgacha.',
     'how.s4.t': 'Tayyor analitika',
     'how.s4.d': 'Saytga kiring — barcha hisobotlar to‘ldirilgan holda sizni kutib turadi.',
 
@@ -138,7 +138,10 @@ registerNamespace('landing', {
     'plan.vip.1': 'Standartdagi hamma narsa',
     'plan.vip.2': 'Uzum kabinetlari cheksiz',
     'plan.vip.3': 'API kirish — o‘z tizimingizga ulash',
-    'plan.vip.4': '5 yillik tarix, har 30 daqiqada sinxron',
+    // Ilgari "5 yillik tarix" edi, sinxron esa 365 kundan oshmaydi. Tarix va
+    // sinxron oralig'i Standart bilan bir xil (plans.ts), shuning uchun bu yerda
+    // VIP ning haqiqiy ustunligi — avto-javob limiti (2026-10-24)
+    'plan.vip.4': 'Sharhlarga avto-javob (kuniga 2000 ta)',
     'plan.vip.5': 'Shaxsiy menejer',
 
     'faq.eyebrow': 'Savol-javob',
@@ -250,7 +253,7 @@ registerNamespace('landing', {
     'how.s2.t': 'Отправьте API-ключ',
     'how.s2.d': 'seller.uzum.uz → Мой профиль → API-ключи. Ключ хранится в зашифрованном виде.',
     'how.s3.t': 'Сбор данных',
-    'how.s3.d': 'Платформа выгружает историю заказов, остатков, финансов и отзывов.',
+    'how.s3.d': 'Платформа выгружает историю заказов, остатков, финансов и отзывов — до 1 года, в зависимости от тарифа.',
     'how.s4.t': 'Готовая аналитика',
     'how.s4.d': 'Заходите на сайт — все отчёты уже заполнены и ждут вас.',
 
@@ -286,7 +289,7 @@ registerNamespace('landing', {
     'plan.vip.1': 'Всё из Стандарта',
     'plan.vip.2': 'Безлимит кабинетов Uzum',
     'plan.vip.3': 'Доступ к API — интеграция в свою систему',
-    'plan.vip.4': '5 лет истории, синхронизация каждые 30 минут',
+    'plan.vip.4': 'Автоответы на отзывы (2000 в день)',
     'plan.vip.5': 'Персональный менеджер',
 
     'faq.eyebrow': 'Вопросы и ответы',
@@ -398,7 +401,7 @@ registerNamespace('landing', {
     'how.s2.t': 'Send your API key',
     'how.s2.d': 'seller.uzum.uz → My profile → API keys. The key is stored encrypted.',
     'how.s3.t': 'Data import',
-    'how.s3.d': 'The platform imports your orders, stock, finance and review history.',
+    'how.s3.d': 'The platform imports your orders, stock, finance and review history — up to 1 year, depending on your plan.',
     'how.s4.t': 'Analytics ready',
     'how.s4.d': 'Sign in to the web app — every report is already filled in and waiting.',
 
@@ -434,7 +437,7 @@ registerNamespace('landing', {
     'plan.vip.1': 'Everything in Standard',
     'plan.vip.2': 'Unlimited Uzum cabinets',
     'plan.vip.3': 'API access — plug it into your own systems',
-    'plan.vip.4': '5 years of history, sync every 30 minutes',
+    'plan.vip.4': 'Review auto-replies (2,000 per day)',
     'plan.vip.5': 'A personal manager',
 
     'faq.eyebrow': 'FAQ',

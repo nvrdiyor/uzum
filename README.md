@@ -15,7 +15,7 @@ Uzum seller API kaliti bilan avtomatik sinxronizatsiya va to'liq savdo tahlili.
 | **Boshqaruv paneli** | Tushum, sof foyda, marja, ROI, o'rtacha chek — oldingi davr bilan taqqoslab; avtomatik xulosalar (insights) |
 | **Sotuv tahlili** | Soatlik taqsimot, buyurtmalar jadvali, shahar/kun/yetkazish turi kesimlari |
 | **Sotuv va qoldiq** | Sotuv + qoldiq bir jadvalda, "necha kunga yetadi", oylik potentsial |
-| **Mahsulotlar** | Kartochka/jadval ko'rinishi, ROI, marja, konversiya, SKU tafsilotlari |
+| **Mahsulotlar** | Kartochka/jadval ko'rinishi, ROI, marja, xarid foizi, SKU tafsilotlari |
 | **ABC / XYZ** | Pareto tahlili, 3×3 matritsa, guruhlar bo'yicha tushum ulushi |
 | **Nolikvidlar** | Muzlagan kapital, sotuvsiz kunlar, saqlash xarajati, tavsiyalar |
 | **Tannarx** | Barcha SKU tannarxini tez kiritish, jonli marja/ROI hisobi |

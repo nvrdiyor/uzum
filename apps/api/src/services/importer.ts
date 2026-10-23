@@ -42,6 +42,7 @@ import type {
   UzumStock,
   UzumStorageFee,
 } from '../uzum/types.js';
+import { recalcSkuOrderItems } from './item-cost.js';
 
 // ─────────────────────────── Umumiy tiplar va yordamchilar ───────────────────────────
 
@@ -1011,11 +1012,27 @@ export async function upsertOrders(
   await relinkOrphanItems(storeId);
 
   // Uzum bergan tannarxni bo'sh SKU'larga yozamiz
+  const costFilled: string[] = [];
   for (const [skuId, value] of costFromUzum) {
-    await prisma.sku.updateMany({
+    const { count } = await prisma.sku.updateMany({
       where: { id: skuId, purchasePrice: 0 },
       data: { purchasePrice: value },
     });
+    if (count > 0) costFilled.push(skuId);
+  }
+
+  /*
+   * Tannarx endi ma'lum bo'lgan SKU'ning ESKI pozitsiyalari ham darhol qayta
+   * hisoblanadi. Ilgari ular keyingi to'liq sinxrongacha cogs = 0 bilan
+   * qolardi (sinxron oynasi ~14 kun) va foyda shuncha oshib ko'rinardi
+   * (2026-10-24). Xato bo'lsa import to'xtamaydi — keyingi sinxron baribir tuzatadi.
+   */
+  if (costFilled.length > 0) {
+    try {
+      await recalcSkuOrderItems(costFilled, taxRate);
+    } catch (err) {
+      console.warn('[import] Uzum tannarxidan keyin qayta hisoblash bajarilmadi:', err instanceof Error ? err.message : err);
+    }
   }
 
   return res;

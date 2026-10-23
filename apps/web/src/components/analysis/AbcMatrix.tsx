@@ -40,8 +40,13 @@ export function AbcMatrix({
     cells.find((c) => c.abc === abc && c.xyz === xyz) ?? { abc, xyz, count: 0, revenue: 0 };
 
   return (
+    /*
+      Matritsa o'z ustuniga sig'adi. Ilgari min-w-[440px] edi, ustun esa
+      1366 px'da ~300 px — "C" ustuni gorizontal aylantirish ortida qolib,
+      foydalanuvchi uni umuman ko'rmasdi. Katakdagi yozuvlar 70 px'ga sig'adi.
+    */
     <div className={cn('overflow-x-auto', className)}>
-      <div className="min-w-[440px]">
+      <div className="min-w-[260px]">
         {/* ustun sarlavhalari */}
         <div className="grid grid-cols-[40px_repeat(3,minmax(0,1fr))] gap-2">
           <div />

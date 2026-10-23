@@ -50,7 +50,9 @@ import {
   getSkuCatalog,
   getStoreIds,
   getStoreTitles,
+  isSalesStockVisible,
   stockState,
+  withSoldSkus,
   type SkuInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
@@ -468,6 +470,8 @@ router.get(
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
     ]);
+    // Sahifadagidek: yashirilgan, lekin davrda sotilgan SKU ham faylda — ilgari JAMI tushum sahifadagidan kam chiqardi
+    await withSoldSkus(catalog, sales.keys(), storeIds);
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 16 },
@@ -508,8 +512,8 @@ router.get(
           total,
         };
       })
-      // Sotuvi ham, qoldig'i ham bo'lmagan (arxiv) SKU'lar faylni to'ldirmasin
-      .filter((r) => r.sold > 0 || r.total > 0 || r.revenue !== 0)
+      // Sahifa bilan bir xil qoida (services/common.ts); ilgari sur'ati bor, qoldig'i tugagan SKU faylga tushmasdi
+      .filter((r) => isSalesStockVisible(r.sold, r.revenue, r.total, r.avg))
       .sort((a, b) => b.revenue - a.revenue);
 
     const rows: Cell[][] = list.slice(0, MAX_ROWS).map((r) => [

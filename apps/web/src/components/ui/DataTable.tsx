@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox, TrendingUp } from '@/components/icons';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -60,6 +60,13 @@ export interface Column<T> {
   /** Mobil ko'rinishda yashirish (kartada "Batafsil" ostiga tushadi) */
   hideOnMobile?: boolean;
   /**
+   * Jadvalda faqat shu kenglikdan boshlab ko'rinadi (ikkinchi darajali ustun —
+   * 1366px da jadval gorizontal surilmasin). `hideOnMobile` ning 'md:table-cell'
+   * klassi ilgari qo'shimcha `hidden` ni bekor qilardi, shuning uchun alohida xossa.
+   * Telefondagi kartada bunday ustun "Batafsil" ostida turadi.
+   */
+  hideBelow?: 'lg' | 'xl' | '2xl';
+  /**
    * Telefondagi karta ichida o'rni. Berilmasa: birinchi ustun — sarlavha,
    * sarlavhasi bo'sh yoki `actions` ustun — tugmalar qatori, `hideOnMobile` —
    * "Batafsil" ostida, qolgani — asosiy maydonlar.
@@ -68,6 +75,18 @@ export interface Column<T> {
 }
 
 type MobileRole = 'title' | 'field' | 'detail' | 'actions' | 'hidden';
+
+/** Tailwind klasslari to'liq yozilgan — shablon qatoridan yasalsa CSS'ga chiqmaydi */
+const HIDE_BELOW = {
+  lg: 'hidden lg:table-cell',
+  xl: 'hidden xl:table-cell',
+  '2xl': 'hidden 2xl:table-cell',
+} as const;
+
+function hideClass<T>(c: Column<T>): string | undefined {
+  if (c.hideBelow) return HIDE_BELOW[c.hideBelow];
+  return c.hideOnMobile ? 'hidden md:table-cell' : undefined;
+}
 
 /**
  * Har ustunning kartadagi o'rni. Belgilash katakchasi (`select`) sarlavha
@@ -83,7 +102,7 @@ function mobileRoles<T>(columns: Column<T>[]): (MobileRole | 'select')[] {
       return 'title';
     }
     if (c.key === 'actions' || c.key === 'action' || c.header === '' || c.header == null) return 'actions';
-    return c.hideOnMobile ? 'detail' : 'field';
+    return c.hideOnMobile || c.hideBelow ? 'detail' : 'field';
   });
 }
 
@@ -357,13 +376,16 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   style={{ width: c.width }}
+                  aria-sort={
+                    c.sortable && sortKey === c.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined
+                  }
                   className={cn(
                     'table-head border-b border-line',
                     cellPad,
                     c.align === 'right' && 'whitespace-nowrap text-right',
                     c.align === 'center' && 'whitespace-nowrap text-center',
                     !c.align && 'text-left',
-                    c.hideOnMobile && 'hidden md:table-cell',
+                    hideClass(c),
                     stickyFirstColumn && ci === 0 && 'sticky left-0 z-20 bg-surface-2',
                     c.headerClassName,
                   )}
@@ -384,7 +406,12 @@ export function DataTable<T>({
                       )}
                     >
                       {c.header}
-                      <ArrowUpDown className="h-3 w-3" />
+                      {/* Tanlangan ustunda yo'nalish ko'rinadi — ilgari ikki tomonlama belgi doim bir xil edi */}
+                      {sortKey === c.key ? (
+                        <ArrowDown className={cn('h-3 w-3 transition-transform', sortDir === 'asc' && 'rotate-180')} />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      )}
                     </button>
                   ) : (
                     c.header
@@ -414,9 +441,11 @@ export function DataTable<T>({
                       // uch qatorga tushib ketsa jadval o'qilmay qoladi
                       c.align === 'right' && 'tnum whitespace-nowrap text-right',
                       c.align === 'center' && 'whitespace-nowrap text-center',
-                      c.hideOnMobile && 'hidden md:table-cell',
+                      hideClass(c),
                       // group-hover: mahkamlangan ustun ham qator bilan birga yoritiladi
                       stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface group-hover:bg-surface-2',
+                      // Bosiladigan qator: chap chetda brend chizig'i — "bu qator ochiladi" ishorasi
+                      onRowClick && ci === 0 && 'group-hover:shadow-[inset_2px_0_0_rgb(var(--c-brand))]',
                       c.className,
                     )}
                   >
@@ -565,17 +594,94 @@ function pageNumbers(page: number, pages: number): (number | '…')[] {
   return out;
 }
 
+/** Monogram foni uchun grafik palitrasi — nomdan barqaror tanlanadi (bir mahsulot doim bir rangda) */
+const MONOGRAM_TONES = ['--sc-1', '--sc-2', '--sc-3', '--sc-4', '--sc-5', '--sc-6', '--sc-7', '--sc-8'] as const;
+
+function monogram(name: string): { letters: string; tone: string } {
+  const words = name
+    .split(/[\s\-–—/,.()]+/u)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+  // Raqam bilan boshlangan so'z ("400 ml") harf o'rniga olinmasin: "Shampun 400 ml" → "SM", "S4" emas
+  const alpha = words.filter((w) => /^\p{L}/u.test(w));
+  const pick = alpha.length > 0 ? alpha : words;
+  const letters = (pick.length >= 2 ? `${pick[0]?.[0] ?? ''}${pick[1]?.[0] ?? ''}` : (pick[0] ?? '?').slice(0, 2))
+    .toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return { letters: letters || '?', tone: MONOGRAM_TONES[Math.abs(hash) % MONOGRAM_TONES.length] as string };
+}
+
+/**
+ * Mahsulot rasmi. Rasm yo'q yoki havola eskirgan bo'lsa (Uzum CDN manzili
+ * vaqt o'tib o'chadi) — nomning bosh harflari rangli fonda. Ilgari hamma
+ * qatorda bir xil kulrang "Inbox" belgisi turardi, eskirgan havolada esa
+ * brauzerning "singan rasm" belgisi chiqardi.
+ */
+export function ProductThumb({
+  name,
+  imageUrl,
+  className,
+  style,
+}: {
+  name: string;
+  imageUrl?: string | null;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const [broken, setBroken] = useState(false);
+  if (imageUrl && !broken) {
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        className={cn('h-full w-full object-cover', className)}
+        style={style}
+        loading="lazy"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  const m = monogram(name);
+  return (
+    <div
+      aria-hidden
+      className={cn('flex h-full w-full select-none items-center justify-center font-display font-bold text-ink-soft', className)}
+      style={{
+        background: `rgb(var(${m.tone}) / 0.16)`,
+        boxShadow: `inset 0 0 0 1px rgb(var(${m.tone}) / 0.28)`,
+        ...style,
+      }}
+    >
+      {m.letters}
+    </div>
+  );
+}
+
 /** Jadvaldagi mahsulot ustuni uchun yagona ko'rinish */
 export function ProductCell({
   title,
   subtitle,
   imageUrl,
   size = 40,
+  lines = 1,
+  name,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   imageUrl?: string | null;
   size?: number;
+  /**
+   * Monogram uchun nom — `title` JSX bo'lsa majburiy. Aks holda monogram
+   * izohdan (SKU kodi, do'kon) yasalib, hamma qatorda bir xil "SS" chiqardi.
+   */
+  name?: string;
+  /**
+   * 2 — uzun nom ikki qatorga bo'linadi. Avtomatik kenglikdagi jadvalda bir
+   * qatorli `truncate` ishlamaydi: nom kesilmay, jadvalni 1366px dan kengaytirib
+   * yuborardi.
+   */
+  lines?: 1 | 2;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -583,17 +689,21 @@ export function ProductCell({
         className="shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2"
         style={{ width: size, height: size }}
       >
-        {imageUrl ? (
-          <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted">
-            <Inbox className="h-4 w-4" />
-          </div>
-        )}
+        <ProductThumb
+          name={name ?? (typeof title === 'string' ? title : typeof subtitle === 'string' ? subtitle : '?')}
+          imageUrl={imageUrl}
+          style={{ fontSize: Math.round(size * 0.34) }}
+        />
       </div>
       <div className="min-w-0">
         {/* Uzun nom kesiladi — to'liq nomi sichqoncha olib borilganda ko'rinadi */}
-        <p className="truncate text-sm font-medium text-ink" title={typeof title === 'string' ? title : undefined}>
+        <p
+          className={cn(
+            'text-sm font-medium text-ink',
+            lines === 2 ? 'line-clamp-2 break-words leading-snug' : 'truncate',
+          )}
+          title={typeof title === 'string' ? title : undefined}
+        >
           {title}
         </p>
         {subtitle ? (

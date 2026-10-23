@@ -5,10 +5,13 @@ import {
   CalendarOff,
   Download,
   Eye,
+  Hourglass,
+  Lightbulb,
   Megaphone,
   PackageX,
   Percent,
   Snowflake,
+  Table2,
 } from '@/components/icons';
 import type { IlliquidResponse, IlliquidRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
@@ -28,7 +31,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   SearchInput,
   Segmented,
   Skeleton,
@@ -40,6 +42,8 @@ import {
 } from '@/components/ui';
 import { ZeroAware } from '@/components/ui/ZeroAware';
 import { BurnCard } from '@/components/analysis/BurnCard';
+import { NEUTRAL_TONE, STORAGE_TONE, SkuNameCell } from '@/components/stock/common';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 
 registerNamespace('illiquid', {
   uz: {
@@ -225,6 +229,11 @@ const RECO_COLOR: Record<IlliquidRow['recommendation'], string> = {
 
 const PAGE_SIZE = 25;
 
+/* Kataklar orasi 20 px — olti ustunli jadval 1366 px'da aylantirishsiz sig'adi */
+const PAD = 'pl-2.5 pr-2.5';
+const PAD_FIRST = 'pr-2.5';
+const PAD_LAST = 'pl-2.5';
+
 function daysTone(days: number): string {
   if (days >= 90) return 'text-danger';
   if (days >= 60) return 'text-warn-ink';
@@ -333,14 +342,22 @@ export default function Illiquid() {
     }
   }
 
+  /*
+   * Ustunlar 1366 px'ga sig'adi: qoldiq qiymati — dona ostida, oxirgi sotuv
+   * sanasi — "sotuvsiz" ostida. Ilgari sakkiz ustun bor edi va "Muzlagan
+   * kapital" kesilib, "Tavsiya" umuman ko'rinmasdi — sahifaning asosiy javobi.
+   */
   const columns: Column<IlliquidRow>[] = [
     {
       key: 'product',
       header: t('col.product'),
-      width: '26%',
       sortable: true,
       sortValue: (r) => r.title,
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
+      render: (r) => (
+        <SkuNameCell className="md:min-w-[12rem] md:max-w-[18rem]" title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />
+      ),
+      className: PAD_FIRST,
+      headerClassName: PAD_FIRST,
     },
     {
       key: 'stock',
@@ -348,16 +365,16 @@ export default function Illiquid() {
       align: 'right',
       sortable: true,
       sortValue: (r) => r.stock,
-      render: (r) => f.num(r.stock),
-    },
-    {
-      key: 'stockValue',
-      header: t('col.stockValue'),
-      align: 'right',
-      sortable: true,
-      hideOnMobile: true,
-      sortValue: (r) => r.stockValue,
-      render: (r) => f.money(r.stockValue),
+      render: (r) => (
+        <div className="leading-tight">
+          <span className="font-semibold text-ink">{f.num(r.stock)}</span>
+          <p className="tnum text-2xs text-muted" title={t('col.stockValue')}>
+            {f.money(r.stockValue)}
+          </p>
+        </div>
+      ),
+      className: PAD,
+      headerClassName: PAD,
     },
     {
       key: 'days',
@@ -366,27 +383,24 @@ export default function Illiquid() {
       sortable: true,
       sortValue: (r) => r.daysWithoutSale,
       render: (r) => (
-        <span className={cn('font-semibold', daysTone(r.daysWithoutSale))}>
-          {f.num(r.daysWithoutSale)} {t('common.days')}
-        </span>
-      ),
-    },
-    {
-      key: 'lastSale',
-      header: t('col.lastSale'),
-      align: 'right',
-      hideOnMobile: true,
-      sortable: true,
-      sortValue: (r) => r.lastSaleAt ?? '',
-      render: (r) =>
-        r.lastSaleAt ? (
-          <span className="text-ink-soft">{f.date(r.lastSaleAt)}</span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-muted">
-            <CalendarOff className="h-3.5 w-3.5" />
-            {t('never.sold')}
+        <div className="leading-tight">
+          <span className={cn('font-semibold', daysTone(r.daysWithoutSale))}>
+            {f.num(r.daysWithoutSale)} {t('common.days')}
           </span>
-        ),
+          <p className="tnum text-2xs text-muted" title={t('col.lastSale')}>
+            {r.lastSaleAt ? (
+              f.date(r.lastSaleAt)
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                <CalendarOff className="h-3 w-3" />
+                {t('never.sold')}
+              </span>
+            )}
+          </p>
+        </div>
+      ),
+      className: PAD,
+      headerClassName: PAD,
     },
     {
       key: 'storage',
@@ -395,9 +409,12 @@ export default function Illiquid() {
       hideOnMobile: true,
       sortable: true,
       sortValue: (r) => r.storageCostPerMonth,
+      // Jadvalda rangsiz: qiymat bo'lsa to'q, nol bo'lsa xira — rang KPI va "har kuni yo'qotayotgan" kartochkasida
       render: (r) => (
-        <ZeroAware value={r.storageCostPerMonth} tone="text-warn" text={f.money(r.storageCostPerMonth)} />
+        <ZeroAware value={r.storageCostPerMonth} tone="font-medium text-ink" text={f.money(r.storageCostPerMonth)} />
       ),
+      className: PAD,
+      headerClassName: PAD,
     },
     {
       key: 'frozen',
@@ -405,26 +422,29 @@ export default function Illiquid() {
       align: 'right',
       sortable: true,
       sortValue: (r) => r.frozenCapital,
-      render: (r) => <span className="font-semibold text-ink">{f.money(r.frozenCapital)}</span>,
+      render: (r) => <span className="font-semibold text-warn-ink">{f.money(r.frozenCapital)}</span>,
+      className: PAD,
+      headerClassName: PAD,
     },
     {
       key: 'reco',
       header: t('col.reco'),
-      width: 220,
       sortable: true,
       sortValue: (r) => r.recommendation,
       render: (r) => {
         const Icon = RECO_ICON[r.recommendation];
         return (
-          <div className="min-w-0">
+          <div className="min-w-[10rem] max-w-[15rem]">
             <Badge tone={RECO_TONE[r.recommendation]}>
               <Icon className="h-3 w-3" />
               {t(`reco.${r.recommendation}`)}
             </Badge>
-            <p className="mt-1 text-2xs leading-snug text-muted">{t(`reco.${r.recommendation}.hint`)}</p>
+            <p className="mt-1 whitespace-normal text-2xs leading-snug text-muted">{t(`reco.${r.recommendation}.hint`)}</p>
           </div>
         );
       },
+      className: PAD_LAST,
+      headerClassName: PAD_LAST,
     },
   ];
 
@@ -435,6 +455,7 @@ export default function Illiquid() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="illiquid" />}
+        meta={<DataFreshness />}
         actions={
           <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={onExport}>
             {t('export')}
@@ -461,6 +482,12 @@ export default function Illiquid() {
           </Card>
         ) : (
           <div className="space-y-5">
+            {/*
+              Muzlagan kapital — sariq: bu hali zarar emas, xavf (pul sotilmay
+              turibdi). Haqiqiy yo'qotish — saqlash to'lovi: u pushti (xarajat
+              xaritasidagi saqlash rangi), kunlik summasi esa pastdagi qizil
+              kartochkada. Ilgari saqlash binafsha — Uzum ulushi rangida edi.
+            */}
             <StatGrid>
               <StatCard
                 label={t('kpi.frozen')}
@@ -468,21 +495,21 @@ export default function Illiquid() {
                 hint={t('kpi.frozenHint')}
                 loading={isLoading}
                 icon={<Snowflake className="h-5 w-5" />}
-                tone="danger"
+                tone="warn"
               />
               <StatCard
                 label={t('kpi.units')}
                 value={isLoading ? '' : f.num(totals.units)}
                 loading={isLoading}
                 icon={<PackageX className="h-5 w-5" />}
-                tone="warn"
+                tone="info"
               />
               <StatCard
                 label={t('kpi.skus')}
                 value={isLoading ? '' : f.num(totals.skus)}
                 loading={isLoading}
                 icon={<Archive className="h-5 w-5" />}
-                tone="info"
+                className={NEUTRAL_TONE}
               />
               <StatCard
                 label={t('kpi.storage')}
@@ -490,7 +517,7 @@ export default function Illiquid() {
                 hint={t('kpi.storageHint')}
                 loading={isLoading}
                 icon={<Archive className="h-5 w-5" />}
-                tone="violet"
+                className={STORAGE_TONE}
               />
             </StatGrid>
 
@@ -512,6 +539,8 @@ export default function Illiquid() {
             <div className="grid gap-4 xl:grid-cols-3">
               <ChartCard
                 className="xl:col-span-2"
+                icon={<Hourglass />}
+                tone="warn"
                 title={t('chart.buckets')}
                 subtitle={t('chart.bucketsSub')}
               >
@@ -522,14 +551,15 @@ export default function Illiquid() {
                     data={buckets}
                     xKey="name"
                     height={260}
-                    series={[{ key: 'frozen', name: t('kpi.frozen'), money: true, color: CHART_COLORS.danger }]}
+                    // Muzlagan kapital — KPI bilan bir rangda (sariq: xavf, hali zarar emas)
+                    series={[{ key: 'frozen', name: t('kpi.frozen'), money: true, color: CHART_COLORS.warn }]}
                   />
                 ) : (
                   <EmptyState title={t('empty.title')} hint={t('empty.hint')} />
                 )}
               </ChartCard>
 
-              <ChartCard title={t('chart.reco')} subtitle={t('chart.recoSub')}>
+              <ChartCard icon={<Lightbulb />} tone="muted" title={t('chart.reco')} subtitle={t('chart.recoSub')}>
                 {isLoading ? (
                   <Skeleton className="h-[260px] w-full" />
                 ) : recoData.length ? (
@@ -553,6 +583,8 @@ export default function Illiquid() {
 
             <Card>
               <CardHeader
+                icon={<Table2 />}
+                tone="warn"
                 title={t('table.title')}
                 subtitle={t('table.found', { n: rows.length })}
                 actions={
@@ -580,18 +612,19 @@ export default function Illiquid() {
                   }
                   footer={
                     <>
-                      <td className="px-4 py-3 text-sm">{t('common.total')}</td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.num(totals.units)}</td>
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
-                        {f.money(totals.stockValue)}
+                      <td className="py-3 pl-3 pr-2.5 text-sm md:pl-5">{t('common.total')}</td>
+                      <td className="tnum px-2.5 py-3 text-right text-sm">
+                        {f.num(totals.units)}
+                        <p className="text-2xs font-normal text-muted md:whitespace-nowrap">{f.money(totals.stockValue)}</p>
                       </td>
-                      <td className="px-4 py-3" />
-                      <td className="hidden px-4 py-3 md:table-cell" />
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
+                      <td className="px-2.5 py-3" />
+                      <td className="tnum hidden whitespace-nowrap px-2.5 py-3 text-right text-sm md:table-cell">
                         {f.money(totals.storagePerMonth)}
                       </td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.money(totals.frozen)}</td>
-                      <td className="px-4 py-3" />
+                      <td className="tnum px-2.5 py-3 text-right text-sm text-warn-ink md:whitespace-nowrap">
+                        {f.money(totals.frozen)}
+                      </td>
+                      <td className="py-3 pl-2.5 pr-3 md:pr-5" />
                     </>
                   }
                 />

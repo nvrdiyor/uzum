@@ -8,8 +8,8 @@ import { planPrice, type FeatureAccess, type FeatureId, type PlanPublic } from '
 import { Button } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { FEATURE_LABELS, CARD_FEATURES } from './features';
-import { FeatureLine, LimitRow, PLAN_ICON } from './atoms';
+import { FEATURE_LABELS, CARD_FEATURES, COMING_SOON_FEATURES } from './features';
+import { FeatureLine, LimitRow, PLAN_ICON, SoonChip, historyLimitText } from './atoms';
 
 export type BillingCycle = 'monthly' | 'yearly';
 
@@ -146,7 +146,7 @@ export function PlanCard({
           <LimitRow label={t('limit.stores')} value={f.num(plan.limits.stores)} />
           <LimitRow label={t('limit.cabinets')} value={cabinets} />
           <LimitRow label={t('limit.members')} value={f.num(plan.limits.members)} />
-          <LimitRow label={t('limit.history')} value={t('limit.historyValue', { n: plan.limits.historyDays })} />
+          <LimitRow label={t('limit.history')} value={historyLimitText(t, plan.limits.historyDays)} />
         </div>
 
         {/* Imkoniyatlar */}
@@ -154,6 +154,7 @@ export function PlanCard({
           {CARD_FEATURES.map((id) => (
             <FeatureLine key={id} access={accessOf(id)} previewLabel={t('access.preview')}>
               {labelOf(id)}
+              {COMING_SOON_FEATURES.has(id) ? <SoonChip label={t('access.soon')} /> : null}
             </FeatureLine>
           ))}
         </ul>

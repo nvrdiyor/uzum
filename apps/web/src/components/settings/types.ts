@@ -44,6 +44,7 @@ export interface SyncHistoryRow {
 
 /** GET /company/members — jamoa a'zosi */
 export interface MemberRow {
+  /** A'zolik (membership) id'si — PATCH/DELETE /company/members/:id shu bilan ishlaydi */
   id: string;
   userId?: string;
   role: string;
@@ -53,7 +54,34 @@ export interface MemberRow {
   username?: string | null;
   photoUrl?: string | null;
   phone?: string | null;
+  /** Server hisoblaydi: qator so'rov yuborgan foydalanuvchining o'zimi */
+  isSelf?: boolean;
   createdAt?: string | null;
+}
+
+/**
+ * GET /company/members javobi: `{ members, limit, used, canManage }`.
+ * Ilgari sahifa uni `asItems()` bilan o'qirdi — u faqat `items`/`rows` ni taniydi,
+ * shuning uchun jamoa ro'yxati egasiga ham doim bo'sh chiqardi (2026-10-24).
+ */
+export interface MembersPayload {
+  members: MemberRow[];
+  /** Tarif bo'yicha a'zolar limiti; null — server aytmadi */
+  limit: number | null;
+  used: number | null;
+  /** Joriy foydalanuvchi a'zolarni boshqara oladimi; null — server aytmadi */
+  canManage: boolean | null;
+}
+
+export function asMembers(res: unknown): MembersPayload {
+  const obj = res && typeof res === 'object' && !Array.isArray(res) ? (res as Record<string, unknown>) : {};
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    members: Array.isArray(obj.members) ? (obj.members as MemberRow[]) : asItems<MemberRow>(res),
+    limit: num(obj.limit),
+    used: num(obj.used),
+    canManage: typeof obj.canManage === 'boolean' ? obj.canManage : null,
+  };
 }
 
 export const MEMBER_ROLES = ['owner', 'manager', 'viewer'] as const;

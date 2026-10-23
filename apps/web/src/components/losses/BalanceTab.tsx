@@ -160,15 +160,19 @@ export function BalanceTab({ balance, loading }: { balance?: StockBalanceSummary
         Ranglar tizim bo'yicha: Uzumga tegishli (ombor) — binafsha, kutilayotgan —
         za'faron, yo'qotish — qizil. Nol bo'lgan ixtiyoriy hadlar ko'rsatilmaydi.
       */}
-      <Card className="p-5 sm:p-6">
-        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <div>
-            <h3 className="section-title">{t('bal.title')}</h3>
-            <p className="mt-0.5 text-sm text-muted">{t('bal.subtitle')}</p>
-          </div>
-          {balance?.asOf ? <p className="text-xs text-muted">{t('bal.asOf', { date: f.date(balance.asOf) })}</p> : null}
-        </div>
-        <div className="flex flex-wrap items-start gap-x-5 gap-y-5">
+      {/* Sarlavha boshqa kartochkalardagi kabi CardHeader bilan (belgi plitkasi + sana chipi) */}
+      <Card>
+        <CardHeader
+          icon={<Scale className="h-4 w-4" />}
+          title={t('bal.title')}
+          subtitle={t('bal.subtitle')}
+          actions={
+            balance?.asOf ? (
+              <span className="meta-chip tnum">{t('bal.asOf', { date: f.date(balance.asOf) })}</span>
+            ) : null
+          }
+        />
+        <div className="flex flex-wrap items-start gap-x-5 gap-y-5 p-5 pt-5 sm:px-6 sm:pb-6">
           <Term dot="bg-info" label={t('bal.accepted')} value={f.num(totals.accepted)} hint={t('bal.acceptedHint')} />
           <Op>−</Op>
           <Term dot="bg-brand" label={t('bal.sold')} value={f.num(totals.sold)} hint={t('bal.soldHint')} />

@@ -28,6 +28,7 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
+  ProductThumb,
   ProgressBar,
   Segmented,
   Skeleton,
@@ -36,6 +37,7 @@ import {
   toast,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { useFeature } from '@/store/session';
@@ -402,6 +404,7 @@ export default function Reviews() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="reviews_autoreply" />}
+        meta={<DataFreshness />}
         actions={
           <>
             <Button
@@ -454,12 +457,19 @@ export default function Reviews() {
             ) : null}
 
             {/* ── KPI ── */}
+            {/*
+              Ohanglar: sharhlar soni — ma'lumot (ko'k), reyting — yulduz rangi
+              (za'faron), javob berilgani — bajarilgan ish (firuza), javobsizlari —
+              kutayotgan ish (za'faron). Ilgari javobsiz sharh qizil edi, qizil esa
+              faqat pul yo'qotilganda.
+            */}
             <StatGrid>
               <StatCard
                 label={t('kpi.count')}
                 value={f.num(totals?.count ?? 0)}
                 hint={t('kpi.countHint')}
                 icon={<MessageSquare className="h-5 w-5" />}
+                tone="info"
                 loading={reviews.isLoading}
               />
               <StatCard
@@ -484,7 +494,7 @@ export default function Reviews() {
                 value={f.num(unanswered)}
                 hint={t('kpi.unansweredHint')}
                 icon={<MessageSquareOff className="h-5 w-5" />}
-                tone={unanswered > 0 ? 'danger' : 'brand'}
+                tone={unanswered > 0 ? 'warn' : 'brand'}
                 loading={reviews.isLoading}
               />
             </StatGrid>
@@ -635,14 +645,17 @@ function ReviewCard({
   return (
     <Card className="flex h-full flex-col p-5">
       <div className="flex min-w-0 items-start gap-3">
+        {/*
+          Boshqa jadvallardagi kabi: rasm yo'q yoki havola eskirgan bo'lsa —
+          mahsulot nomining bosh harflari. Ilgari har kartochkada bir xil
+          kulrang "xabar" belgisi turardi va mahsulotlar bir-biridan ajralmasdi.
+        */}
         <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-line bg-surface-2">
-          {review.imageUrl ? (
-            <img src={review.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-muted">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-          )}
+          <ProductThumb
+            name={review.productTitle ?? review.sku ?? '?'}
+            imageUrl={review.imageUrl}
+            style={{ fontSize: 15 }}
+          />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">{review.productTitle ?? t('card.noProduct')}</p>

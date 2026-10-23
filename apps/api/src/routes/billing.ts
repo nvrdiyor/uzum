@@ -59,7 +59,8 @@ const FEATURE_LABELS: Record<FeatureId, string> = {
   losses_report: 'Yo‘qotishlar hisoboti',
   returns_report: 'Qaytarishlar hisoboti',
   paid_storage: 'Pullik saqlash',
-  vgh_report: 'Vazn-gabarit (VGH) hisoboti',
+  // Sahifasi hali yo'q — tarifda "tez kunda" deb ko'rsatiladi (sayt: COMING_SOON_FEATURES)
+  vgh_report: 'Vazn-gabarit (VGH) hisoboti — tez kunda',
   warehouse: 'Ombor boshqaruvi',
   shipments: 'Yetkazmalar',
   planner: 'Yetkazib berish rejalashtiruvchisi',
@@ -78,6 +79,16 @@ const FEATURE_LABELS: Record<FeatureId, string> = {
   api_access: 'Ochiq API',
   priority_support: 'Ustuvor qo‘llab-quvvatlash',
 };
+
+/**
+ * Tarif va to'lovlar sahifasi (joriy tarif, hisob-fakturalar, tarif tanlash):
+ * bildirishnomalar va Click'dan qaytish shu yerga olib boradi.
+ * Ilgari '/settings/billing' edi — saytda bunday sahifa yo'q, shuning uchun
+ * to'lovdan keyin foydalanuvchi 404 ko'rardi (2026-10-24). Allaqachon
+ * yuborilgan eski havolalar uchun saytda /settings/billing → /pricing
+ * yo'naltirishi ham bor (apps/web/src/App.tsx).
+ */
+const BILLING_PAGE = '/pricing';
 
 /** Hisob-faktura holatlari (bazadagi matnni xavfsiz keltirish uchun) */
 const INVOICE_STATUSES = ['pending', 'paid', 'failed', 'canceled'] as const;
@@ -278,7 +289,7 @@ export async function activatePlan(
     type: 'success',
     title: `“${target.name}” tarifi faollashtirildi`,
     body: `Obuna ${days !== undefined ? `${days} kunga` : `${months ?? 1} oyga`} uzaytirildi. Amal qilish muddati: ${expiresAt.toISOString().slice(0, 10)}.`,
-    link: '/settings/billing',
+    link: BILLING_PAGE,
   });
 }
 
@@ -340,7 +351,7 @@ export async function markInvoicePaid(
     type: 'success',
     title: 'To‘lov qabul qilindi',
     body: `${formatMoney(invoice.amount, 'uz')} to‘lovingiz tasdiqlandi. “${getPlan(invoice.plan).name}” tarifi ${invoice.months} oyga faollashdi.`,
-    link: '/settings/billing',
+    link: BILLING_PAGE,
   });
 
   return { invoice: toInvoiceRow(updated), alreadyPaid: false };
@@ -412,7 +423,7 @@ function clickLink(invoiceId: string, amount: number): PayLink {
     merchant_id: merchant,
     amount: String(Math.round(amount)),
     transaction_param: invoiceId,
-    return_url: `${env.webUrl.replace(/\/+$/, '')}/settings/billing`,
+    return_url: `${env.webUrl.replace(/\/+$/, '')}${BILLING_PAGE}`,
   });
   return {
     payUrl: `https://my.click.uz/services/pay?${query.toString()}`,

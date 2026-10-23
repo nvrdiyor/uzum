@@ -7,6 +7,7 @@
  *  GET   /:id             → bitta mahsulot tafsiloti (SKU'lar, 60 kunlik seriya, sharhlar, unit-iqtisod)
  *  PATCH /sku/:id         → tannarx va o'lchamlarni yangilash (+ CostPrice tarixiga yozuv)
  *  POST  /sku/bulk-cost   → tannarxlarni ommaviy yangilash
+ *  (ikkalasi ham SKU'ning o'tgan buyurtma pozitsiyalarini yangi tannarx bilan darhol qayta hisoblaydi)
  *
  * Barcha pul qiymatlari UZS (butun son), sanalar ISO-8601.
  * Ma'lumot bo'lmasa marshrutlar 200 va bo'sh/nol qiymat qaytaradi (xato emas).
@@ -63,6 +64,7 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import { aggregateSalesNet, getPeriodCosts, investedIn } from '../services/pnl.js';
+import { recalcSkuOrderItems } from '../services/item-cost.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -71,14 +73,6 @@ router.use(requireAuth, requireCompany);
 const ILLIQUID_DAYS = 30;
 /** Tafsilot sahifasidagi seriya uzunligi (kun) */
 const DETAIL_DAYS = 60;
-/**
- * Bozor bo'yicha o'rtacha kartochka konversiyasi (%) — bilvosita baholash uchun asos.
- * Uzum seller API kartochka ko'rishlari (impressions) sonini bermaydi, shuning uchun
- * konversiya taxminiy hisoblanadi (pastdagi `estimateConversion`).
- */
-const BASE_CONVERSION = 2.5;
-/** Yaxshi hisoblangan reyting — konversiya koeffitsiyenti shu qiymatga nisbatan olinadi */
-const TARGET_RATING = 4.5;
 
 // ─────────────────────────── Umumiy yordamchilar ───────────────────────────
 
@@ -102,18 +96,69 @@ function applySort<T>(rows: T[], order: 'asc' | 'desc', value: (row: T) => SortV
   });
 }
 
+/** SKU bo'yicha xarid foizi uchun dona: sotib olingan, yo'qotilgan (bekor + qaytgan), yo'lda */
+interface BuyoutAgg {
+  bought: number;
+  lost: number;
+  transit: number;
+}
+
 /**
- * Taxminiy konversiya (%).
- * Ko'rishlar statistikasi bo'lmagani uchun uchta real signaldan foydalanamiz:
- * bozor o'rtachasi, kartochka reytingi va sotib olish (buyout) darajasi.
- * Ko'rishlar API'ga qo'shilganda shu funksiya haqiqiy nisbat bilan almashtiriladi.
+ * Davrdagi pozitsiyalardan xarid foizi asosini yig'adi (SKU kesimida).
+ *
+ * Ilgari kartochkada "Konversiya" turardi: bozor o'rtachasi 2,5% × reyting ×
+ * qaytmaganlar ulushi. Seller API ko'rishlarni bermaydi — raqam to'qilgan edi
+ * (2026-10-24). Endi faqat haqiqiy pozitsiyalar sanaladi, Boshqaruv panelidagi
+ * "Sotib olish darajasi" bilan bir xil ta'rifda (analytics.ts collectTotals):
+ *
+ *   - sotib olingan — bekor/qaytmagan va buyurtmada `deliveredAt` bor
+ *     (xaridor qabul qilgan; `OrderItem.status = 'delivered'` buni bildirmaydi,
+ *     importer uni yo'ldagilarga ham qo'yadi);
+ *   - yo'qotilgan — bekor qilingan yoki qaytgan dona (`returnedQty`, bo'lmasa `qty`);
+ *   - yo'lda — qolgani; yakunlanmagan, shuning uchun foizga KIRMAYDI. Aks holda
+ *     yangi buyurtmalar "sotib olindi" bo'lib, foiz sun'iy ko'tarilardi.
  */
-function estimateConversion(rating: number, units: number, returns: number): number {
-  if (units <= 0) return 0;
-  const ratingFactor = rating > 0 ? Math.min(1.4, Math.max(0.5, rating / TARGET_RATING)) : 1;
-  const total = units + returns;
-  const buyoutFactor = total > 0 ? units / total : 1;
-  return round(BASE_CONVERSION * ratingFactor * buyoutFactor, 2);
+async function getBuyoutBySku(
+  storeIds: string[],
+  from: Date,
+  toExclusive: Date,
+  skuIds?: string[],
+): Promise<Map<string, BuyoutAgg>> {
+  const out = new Map<string, BuyoutAgg>();
+  if (storeIds.length === 0 || (skuIds && skuIds.length === 0)) return out;
+
+  const items = await prisma.orderItem.findMany({
+    where: {
+      orderedAt: { gte: from, lt: toExclusive },
+      order: { storeId: { in: storeIds } },
+      ...(skuIds ? { skuId: { in: skuIds } } : {}),
+    },
+    select: {
+      skuId: true,
+      qty: true,
+      status: true,
+      returnedAt: true,
+      returnedQty: true,
+      order: { select: { deliveredAt: true } },
+    },
+  });
+
+  for (const it of items) {
+    if (!it.skuId) continue;
+    const b = out.get(it.skuId) ?? { bought: 0, lost: 0, transit: 0 };
+    const returned = it.status === 'returned' || Boolean(it.returnedAt);
+    if (returned || it.status === 'canceled') {
+      // Uzum bekor/qaytgan satrda `amount = 0` beradi — haqiqiy dona `returnedQty` da
+      b.lost += it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1);
+    } else {
+      // Qisman qaytgan tirik pozitsiya: qaytgan qismi yo'qotilgan, qolgani o'z holatida
+      if (it.returnedQty > 0) b.lost += it.returnedQty;
+      if (it.order.deliveredAt) b.bought += it.qty;
+      else b.transit += it.qty;
+    }
+    out.set(it.skuId, b);
+  }
+  return out;
 }
 
 /** Bo'sh sotuv yig'indisi (SKU bo'yicha ma'lumot bo'lmaganda) */
@@ -182,6 +227,8 @@ interface CardContext {
   sales: Map<string, SalesAgg>;
   stocks: Map<string, StockInfo>;
   avgDaily: Map<string, number>;
+  /** Xarid foizi asosi (`getBuyoutBySku`) */
+  buyout: Map<string, BuyoutAgg>;
   /** Zaxira davri (kun) — `needOrder` shu davr uchun hisoblanadi */
   cover: number;
 }
@@ -249,6 +296,9 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   let stockOwn = 0;
   let avgTotal = 0;
   let needOrder = 0;
+  let bought = 0;
+  let lost = 0;
+  let transit = 0;
   /** Joriy narx — katalogdagi eng arzon SKU */
   let minPrice = Number.POSITIVE_INFINITY;
   /** O'sha SKU'ning chegirmadan oldingi narxi (bo'lmasa 0) */
@@ -258,8 +308,12 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     const agg = c.sales.get(s.id) ?? EMPTY_AGG;
     const st = c.stocks.get(s.id) ?? EMPTY_STOCK;
     const avg = c.avgDaily.get(s.id) ?? 0;
+    const bo = c.buyout.get(s.id);
 
     sold += agg.units;
+    bought += bo?.bought ?? 0;
+    lost += bo?.lost ?? 0;
+    transit += bo?.transit ?? 0;
     returns += agg.returns;
     revenue += agg.revenue;
     profit += agg.netProfit;
@@ -312,6 +366,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     : null;
 
   const stockTotal = stockFbo + stockFbs + stockOwn;
+  const completed = bought + lost;
   // Barcha SKU'lari arxivlangan mahsulot ham arxiv hisoblanadi (filtr uchun qulay)
   const archived = p.skus.length > 0 && p.skus.every((s) => s.archived);
 
@@ -335,7 +390,11 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     profit: round(profit),
     roi: pct(profit, investedIn(cogs, otherCost)),
     margin: pct(profit, revenue),
-    conversion: estimateConversion(p.rating, sold, returns),
+    // Yakunlangan pozitsiya bo'lmasa null — "0%" sotuvchini "hech kim olmadi" deb chalg'itardi
+    buyoutRate: completed > 0 ? pct(bought, completed) : null,
+    buyoutUnits: bought,
+    completedUnits: completed,
+    transitUnits: transit,
     stockFbo,
     stockFbs,
     stockOwn,
@@ -395,7 +454,8 @@ const PRODUCT_SORT: Record<string, (p: ProductCard) => SortValue> = {
   returns: (p) => p.returns,
   margin: (p) => p.margin,
   roi: (p) => p.roi,
-  conversion: (p) => p.conversion,
+  // Yakunlangani yo'q tovar (null) kamayish tartibida oxirga tushadi
+  buyout: (p) => p.buyoutRate ?? -1,
   rating: (p) => p.rating,
   price: (p) => p.minPrice,
   stock: (p) => p.stockFbo + p.stockFbs + p.stockOwn,
@@ -425,17 +485,18 @@ router.get(
       : 'all';
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [products, sales, stocks, avgDaily] = await Promise.all([
+    const [products, sales, stocks, avgDaily, buyout] = await Promise.all([
       loadProducts(storeIds),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getLatestStocks(storeIds),
       getAvgDaily(storeIds, 30),
+      getBuyoutBySku(storeIds, range.from, range.toExclusive),
     ]);
 
     const volumeBySku = new Map<string, number>();
     for (const p of products) for (const s of p.skus) volumeBySku.set(s.id, s.volumeL);
 
-    let cards = products.map((p) => buildCard(p, { sales, stocks, avgDaily, cover }));
+    let cards = products.map((p) => buildCard(p, { sales, stocks, avgDaily, buyout, cover }));
 
     // Qidiruv: nomi, kategoriyasi yoki SKU kodi bo'yicha (registrga bog'liq emas)
     const search = range.search?.toLowerCase();
@@ -935,7 +996,27 @@ interface SkuUpdateResponse {
   weightGr: number;
   /** Tannarx tarixiga yangi yozuv qo'shildimi */
   costHistoryAdded: boolean;
+  /** Yangi tannarx bilan qayta yozilgan buyurtma pozitsiyalari (null — qayta hisoblash bajarilmadi) */
+  itemsRecalculated: number | null;
   message: string;
+}
+
+/**
+ * Tannarx saqlangach SKU'ning o'tgan buyurtma pozitsiyalari darhol qayta
+ * hisoblanadi (services/item-cost.ts) — foyda va tannarx qamrovi keyingi
+ * to'liq sinxronni kutmaydi.
+ *
+ * Xato saqlashni bekor qilmaydi: tannarx allaqachon yozilgan, pozitsiyalar
+ * qayta saqlashda yoki sinxronda tuzaladi (javobda `itemsRecalculated: null`).
+ */
+async function recalcAfterCostSave(skuIds: string[], taxRate: number): Promise<number | null> {
+  try {
+    return await recalcSkuOrderItems(skuIds, taxRate);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[products] buyurtma pozitsiyalari qayta hisoblanmadi:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 router.patch(
@@ -997,6 +1078,15 @@ router.patch(
       });
     }
 
+    /*
+     * O'tgan buyurtmalar ham yangi tannarx bilan. Ilgari faqat Sku yozilardi:
+     * 14 kundan eski sotuvlar to'liq sinxrongacha cogs = 0 bilan qolib, foyda
+     * oshib ko'rinardi (2026-10-24). Qiymat o'zgarmagan bo'lsa ham ishlaydi —
+     * avvalgi saqlashlardan eskirib qolgan pozitsiyalarni ham tuzatadi.
+     */
+    const costTouched = input.purchasePrice !== undefined || input.extraCost !== undefined;
+    const itemsRecalculated = costTouched ? await recalcAfterCostSave([updated.id], company.taxRate) : 0;
+
     const payload: SkuUpdateResponse = {
       id: updated.id,
       sku: updated.sku,
@@ -1007,6 +1097,7 @@ router.patch(
       volumeL: updated.volumeL,
       weightGr: updated.weightGr,
       costHistoryAdded: costChanged,
+      itemsRecalculated,
       message: costChanged ? 'Tannarx yangilandi va tarixga yozildi' : 'SKU ma’lumotlari yangilandi',
     };
 
@@ -1021,6 +1112,8 @@ interface BulkCostResponse {
   /** Kompaniyaga tegishli bo'lmagan yoki topilmagan SKU id'lari */
   skipped: string[];
   items: { skuId: string; sku: string; purchasePrice: number; extraCost: number }[];
+  /** Yangi tannarx bilan qayta yozilgan buyurtma pozitsiyalari (null — qayta hisoblash bajarilmadi) */
+  itemsRecalculated: number | null;
   message: string;
 }
 
@@ -1077,10 +1170,17 @@ router.post(
     if (ops.length === 0) throw AppError.badRequest('Yuborilgan SKU’lar bu kompaniyada topilmadi', { skipped });
     await prisma.$transaction(ops);
 
+    // O'tgan buyurtmalar ham yangi tannarx bilan — PATCH /sku/:id dagi izohga qarang
+    const itemsRecalculated = await recalcAfterCostSave(
+      items.map((i) => i.skuId),
+      company.taxRate,
+    );
+
     const payload: BulkCostResponse = {
       updated: items.length,
       skipped,
       items,
+      itemsRecalculated,
       message: `${items.length} ta SKU tannarxi yangilandi${skipped.length ? `, ${skipped.length} tasi topilmadi` : ''}`,
     };
 
@@ -1217,7 +1317,7 @@ router.get(
     const scopedStores = [product.storeId];
     const seriesFrom = businessDayStart(lastDays(DETAIL_DAYS)[0] ?? toBusinessDate(new Date()));
 
-    const [sales, stocks, avgDaily, lastSale, storeTitles, orderRows, snapshots, reviewRows, taxCompany] =
+    const [sales, stocks, avgDaily, lastSale, storeTitles, orderRows, snapshots, reviewRows, taxCompany, buyout] =
       await Promise.all([
         aggregateSalesNet(company.id, scopedStores, range.from, range.toExclusive),
         getLatestStocks(scopedStores),
@@ -1252,9 +1352,10 @@ router.get(
           take: 5000,
         }),
         prisma.company.findUnique({ where: { id: company.id }, select: { taxRate: true } }),
+        getBuyoutBySku(scopedStores, range.from, range.toExclusive, skuIds),
       ]);
 
-    const card = buildCard(product, { sales, stocks, avgDaily, cover });
+    const card = buildCard(product, { sales, stocks, avgDaily, buyout, cover });
 
     // ── SKU tafsilotlari ──
     const skus: ProductDetailSku[] = product.skus.map((s) => {

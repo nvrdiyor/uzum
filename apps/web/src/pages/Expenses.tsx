@@ -14,7 +14,6 @@ import {
 } from '@/components/icons';
 import { EXPENSE_CATEGORIES, type ExpenseCategory, type FinanceResponse } from '@savdoiq/shared';
 import {
-  Badge,
   Button,
   Card,
   CardBody,
@@ -38,6 +37,7 @@ import {
 import { DonutChart, type DonutDatum } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { ExpenseFormModal } from '@/components/finance/ExpenseFormModal';
+import { PeriodChip } from '@/components/finance/PeriodChip';
 import {
   CATEGORY_TONE,
   categoryColor,
@@ -47,6 +47,7 @@ import {
   periodDays,
 } from '@/components/finance/financeData';
 import type { ExpenseInput, ExpenseRow } from '@/components/finance/types';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { useFeature } from '@/store/session';
@@ -342,6 +343,16 @@ export default function Expenses() {
   const grossProfit = finance.data?.grossProfit ?? null;
   const profitShare =
     grossProfit !== null && grossProfit > 0 ? (total / grossProfit) * 100 : null;
+  /*
+   * Ulush ohangi ma'noga qarab: xarajat yalpi foydadan oshsa — bu zarar
+   * (qizil); yarmidan ko'pini yesa — e'tibor (za'faron); undan kami — foyda
+   * saqlanib qolyapti (brend). Ilgari bu kartochka doim binafsha edi, u esa
+   * bizda Uzum ulushining rangi.
+   */
+  const shareTone: 'brand' | 'warn' | 'danger' =
+    profitShare === null || profitShare < 50 ? 'brand' : profitShare > 100 ? 'danger' : 'warn';
+  // Eng katta moddaning ohangi — donut va jadvaldagi rangi bilan bir oila
+  const topTone = topCategory ? CATEGORY_TONE[topCategory.category] : 'muted';
 
   const donutData: DonutDatum[] = useMemo(
     () =>
@@ -444,10 +455,12 @@ export default function Expenses() {
         width: 150,
         sortable: true,
         sortValue: (r) => r.category,
+        // Nuqta — donut va jamlanmadagi rangning aynan o'zi (COST_COLORS); plastinka foni tinch
         render: (r) => (
-          <Badge tone={CATEGORY_TONE[r.category]} dot>
+          <span className="chip bg-surface-3 text-ink-soft">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: categoryColor(r.category) }} />
             {labelOf(r.category)}
-          </Badge>
+          </span>
         ),
       },
       {
@@ -515,6 +528,12 @@ export default function Expenses() {
         icon={<Receipt className="h-5 w-5" />}
         title={t('title')}
         description={t('subtitle')}
+        meta={
+          <>
+            <PeriodChip />
+            <DataFreshness />
+          </>
+        }
         badge={<PreviewBadge feature="expenses" />}
         actions={
           <>
@@ -573,17 +592,34 @@ export default function Expenses() {
           <div className="space-y-5">
             {/* ── 1. KPI ── */}
             <StatGrid>
+              {/*
+                Xarajat — zarar emas, shuning uchun qizil emas: za'faron "pul
+                chiqib ketyapti, e'tibor bering" degani. Qizil faqat ulush
+                kartochkasida, xarajat yalpi foydadan oshganda.
+              */}
               <StatCard
                 label={t('kpi.total')}
                 value={f.money(total)}
                 hint={t('kpi.totalHint', { n: periodCount })}
                 icon={<Wallet className="h-5 w-5" />}
-                tone="danger"
+                tone="warn"
                 loading={list.isLoading}
               />
               <StatCard
                 label={t('kpi.top')}
-                value={topCategory ? labelOf(topCategory.category) : t('kpi.topNone')}
+                value={
+                  topCategory ? (
+                    <span className="inline-flex min-w-0 items-center gap-2.5">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ background: categoryColor(topCategory.category) }}
+                      />
+                      <span className="truncate">{labelOf(topCategory.category)}</span>
+                    </span>
+                  ) : (
+                    t('kpi.topNone')
+                  )
+                }
                 hint={
                   topCategory
                     ? t('kpi.topHint', {
@@ -593,7 +629,7 @@ export default function Expenses() {
                     : t('kpi.shareNone')
                 }
                 icon={<Layers className="h-5 w-5" />}
-                tone="warn"
+                tone={topTone === 'muted' ? 'info' : topTone}
                 loading={list.isLoading}
               />
               <StatCard
@@ -609,7 +645,7 @@ export default function Expenses() {
                 value={profitShare === null ? '—' : f.pct(profitShare)}
                 hint={profitShare === null ? t('kpi.shareNone') : t('kpi.shareHint')}
                 icon={<TrendingDown className="h-5 w-5" />}
-                tone="violet"
+                tone={shareTone}
                 loading={list.isLoading || finance.isLoading}
               />
             </StatGrid>

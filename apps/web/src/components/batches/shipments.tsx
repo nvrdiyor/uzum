@@ -8,8 +8,13 @@ import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import './shared';
 
+/*
+ * Omborda — ko'k (qoldiq/logistika), yo'lda — za'faron (kutilmoqda), keldi —
+ * firuza. Partiyalar sahifasidagi holat kartochkalari ham shu ranglarda;
+ * ilgari "Omborda" nishoni kulrang, kartochkasi esa ko'k edi.
+ */
 export const STATUS_TONE: Record<ShipmentStatus, Tone> = {
-  warehouse: 'muted',
+  warehouse: 'info',
   shipped: 'warn',
   arrived: 'brand',
 };

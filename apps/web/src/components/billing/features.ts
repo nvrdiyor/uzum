@@ -58,6 +58,16 @@ export const FEATURE_LABELS: Record<FeatureId, L10nText> = {
   priority_support: { uz: 'Ustuvor qo‘llab-quvvatlash', ru: 'Приоритетная поддержка', en: 'Priority support' },
 };
 
+/**
+ * Tarifda bor, lekin sahifasi hali chiqmagan imkoniyatlar — ro'yxatlarda
+ * "tez kunda" belgisi bilan ko'rsatiladi.
+ *
+ * Ilgari `vgh_report` oddiy imkoniyat qatori bo'lib sotilardi, sotuvchi esa
+ * menyuda bunday hisobotni topa olmasdi (2026-10-24). Sahifa chiqqach shu
+ * ro'yxatdan olib tashlanadi.
+ */
+export const COMING_SOON_FEATURES: ReadonlySet<FeatureId> = new Set<FeatureId>(['vgh_report']);
+
 export interface FeatureGroup {
   id: string;
   label: L10nText;

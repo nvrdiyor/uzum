@@ -22,6 +22,7 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
+  HeroCard,
   Modal,
   PageHeader,
   Skeleton,
@@ -366,13 +367,14 @@ export default function Referral() {
         </Card>
       ) : (
         <div className="space-y-5">
-          {/* ── Hero ── */}
-          <div className="card relative overflow-hidden bg-aurora p-5 sm:p-7">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand/10 blur-[90px]"
-            />
-
+          {/*
+            ── Hero ──
+            Dizayn tizimidagi yagona HeroCard. Ilgari o'zining aurora foni va
+            90px blur dog'i bor edi — u har kadrda qayta chizilib, kuchsiz
+            kompyuterda sahifani sekinlatardi va boshqa sahifalardagi asosiy
+            kartochkadan farq qilardi.
+          */}
+          <HeroCard tone="brand" className="relative overflow-hidden p-5 sm:p-7">
             <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-10">
               {/* Kod */}
               <div className="min-w-0">
@@ -399,10 +401,11 @@ export default function Referral() {
                 {/* Havola */}
                 <div className="mt-5">
                   <span className="label">{t('hero.link')}</span>
+                  {/* Tugmalar havola ostida (2xl dan torroqda): yonma-yon turganda havola maydoni "http://" gacha qisqarib qolardi */}
                   {referral.isLoading ? (
                     <Skeleton className="h-11 w-full" />
                   ) : (
-                    <div className="flex flex-col gap-2.5 sm:flex-row">
+                    <div className="flex flex-col gap-2.5 2xl:flex-row">
                       <div className="relative min-w-0 flex-1">
                         <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                         <input
@@ -446,12 +449,12 @@ export default function Referral() {
                 </div>
               </div>
 
-              {/* Foiz */}
+              {/* Foiz — kartochka ichidagi plitka (.well); backdrop-blur olib tashlandi */}
               <div className="flex items-center">
-                <div className="w-full rounded-2xl border border-line bg-surface/70 p-5 backdrop-blur">
+                <div className="well w-full p-5">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand">
-                      <Wallet className="h-5 w-5" />
+                    <span className="icon-tile tone-brand h-11 w-11 rounded-2xl [&_svg]:h-5 [&_svg]:w-5">
+                      <Wallet />
                     </span>
                     <div className="min-w-0">
                       <p className="tnum font-display text-xl font-extrabold tracking-tight text-ink sm:text-2xl">
@@ -463,7 +466,7 @@ export default function Referral() {
                 </div>
               </div>
             </div>
-          </div>
+          </HeroCard>
 
           {/* ── KPI ── */}
           <StatGrid>
@@ -475,12 +478,13 @@ export default function Referral() {
               tone="info"
               loading={referral.isLoading}
             />
+            {/* Binafsha emas: binafsha — "Uzum ulushi"; bu odamlar soni, taklif qilinganlar bilan bir oila */}
             <StatCard
               label={t('kpi.paying')}
               value={f.num(data?.activePaying ?? 0)}
               hint={t('kpi.payingHint')}
               icon={<BadgeCheck className="h-5 w-5" />}
-              tone="violet"
+              tone="info"
               loading={referral.isLoading}
             />
             <StatCard

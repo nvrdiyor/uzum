@@ -3,13 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Megaphone, Percent, TrendingUp } from '@/components/icons';
 import type { PromoRow, PromoSkuRow, PromosResponse } from '@savdoiq/shared';
 import { api } from '@/lib/api';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import {
   Badge,
   Card,
-
   CardHeader,
   DataTable,
   EmptyState,
@@ -235,14 +235,21 @@ export default function Promos() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="promos" />}
+        meta={<DataFreshness />}
       />
 
       <PlanGate feature="promos">
+        {/*
+          Ohanglar: kampaniya va mos tovarlar — ma'lumot (ko'k), qatnashayotgani —
+          sotuvchining natijasi (firuza), kutilayotgan foyda — hali olinmagan pul
+          (za'faron). Ilgari u binafsha edi, binafsha esa "Uzum ulushi".
+        */}
         <StatGrid>
           <StatCard
             label={t('kpi.promos')}
             value={f.num(data?.totals.promos ?? 0)}
             icon={<Megaphone className="h-5 w-5" />}
+            tone="info"
             loading={isLoading}
           />
           <StatCard
@@ -266,7 +273,7 @@ export default function Promos() {
             value={f.money(data?.totals.potentialProfit ?? 0)}
             hint={t('kpi.potentialHint')}
             icon={<TrendingUp className="h-5 w-5" />}
-            tone="violet"
+            tone="warn"
             loading={isLoading}
           />
         </StatGrid>
@@ -336,18 +343,18 @@ function PromoCard({ promo, active, onClick }: { promo: PromoRow; active: boolea
       <div className="mt-3 grid grid-cols-2 gap-2 text-2xs">
         <Stat label={t('card.matched')} value={f.num(promo.matched)} />
         <Stat label={t('card.joined')} value={f.num(promo.joined)} tone="brand" />
-        <Stat label={t('card.profitable')} value={f.num(promo.profitable)} tone="violet" />
-        <Stat label={t('card.discount')} value={f.pct(promo.avgDiscountPct, 0)} tone="warn" />
+        {/* Foydali, lekin qo'shilmagan — boy berilayotgan imkoniyat (za'faron), "Kutilayotgan foyda" bilan bir xil */}
+        <Stat label={t('card.profitable')} value={f.num(promo.profitable)} tone="warn" />
+        <Stat label={t('card.discount')} value={f.pct(promo.avgDiscountPct, 0)} />
       </div>
     </button>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: 'brand' | 'violet' | 'warn' }) {
-  const color =
-    tone === 'brand' ? 'text-brand-ink' : tone === 'violet' ? 'text-violet-ink' : tone === 'warn' ? 'text-warn-ink' : 'text-ink';
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'brand' | 'warn' }) {
+  const color = tone === 'brand' ? 'text-brand-ink' : tone === 'warn' ? 'text-warn-ink' : 'text-ink';
   return (
-    <div className="min-w-0 rounded-lg bg-surface-2 px-2.5 py-2">
+    <div className="well min-w-0 px-2.5 py-2">
       <p className="truncate text-muted">{label}</p>
       <p className={cn('tnum mt-0.5 text-sm font-bold', color)}>{value}</p>
     </div>

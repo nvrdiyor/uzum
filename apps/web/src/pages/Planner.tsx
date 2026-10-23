@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  Coins,
+  ArrowRight,
+  CalendarClock,
   History,
   PackagePlus,
   Sparkles,
@@ -17,15 +18,14 @@ import {
   Badge,
   Button,
   Card,
-  CardBody,
   CardHeader,
   DataTable,
   EmptyState,
   ErrorState,
+  HeroCard,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   ProgressBar,
   SearchInput,
   Segmented,
@@ -38,6 +38,8 @@ import {
   type Tone,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { SkuNameCell } from '@/components/stock/common';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { cn } from '@/lib/utils';
@@ -71,10 +73,16 @@ registerNamespace('planner', {
     'kpi.lostHint': 'Bugun buyurtma berilsa ham, tovar yetib kelguncha',
     'kpi.lostPast': 'O‘tgan {n} kunda yo‘qotilgan',
     'kpi.lostPastHint': 'Tovar tugab turgan kunlarda sotilmay qolgan',
+    'kpi.orderNow': 'Bugun buyurtma',
+    'kpi.orderNowHint': 'Buyurtma kuni yetgan yoki o‘tib ketgan SKU’lar',
 
     'alert.title': '{n} ta mahsulot kritik holatda',
     'alert.body': 'Bugun buyurtma bersangiz ham tovar kelguncha ({lead} kun) qoldiq tugaydi — kechiktirmang.',
     'alert.action': 'Kritiklarni ko‘rish',
+
+    'table.title': 'Buyurtma rejasi',
+    'table.subtitle': 'Har SKU uchun qoldiq, sotuv sur’ati va tavsiya etilgan miqdor',
+    'row.gapShort': '{n} kun tovarsiz',
 
     'filter.all': 'Hammasi',
     'filter.critical': 'Kritik',
@@ -142,10 +150,16 @@ registerNamespace('planner', {
     'kpi.lostHint': 'Даже если заказать сегодня — пока товар едет',
     'kpi.lostPast': 'Потеряно за {n} дн.',
     'kpi.lostPastHint': 'Не продано в дни, когда товара не было',
+    'kpi.orderNow': 'Заказать сегодня',
+    'kpi.orderNowHint': 'SKU, у которых день заказа наступил или уже прошёл',
 
     'alert.title': '{n} товаров в критическом состоянии',
     'alert.body': 'Даже при заказе сегодня остаток закончится раньше, чем товар приедет ({lead} дн.) — не откладывайте.',
     'alert.action': 'Показать критичные',
+
+    'table.title': 'План закупки',
+    'table.subtitle': 'Остаток, темп продаж и рекомендуемое количество по каждому SKU',
+    'row.gapShort': '{n} дн. без товара',
 
     'filter.all': 'Все',
     'filter.critical': 'Критичные',
@@ -213,10 +227,16 @@ registerNamespace('planner', {
     'kpi.lostHint': 'Even if you order today — while the goods are on the way',
     'kpi.lostPast': 'Lost in the last {n} days',
     'kpi.lostPastHint': 'Not sold on days the item was out of stock',
+    'kpi.orderNow': 'Order today',
+    'kpi.orderNowHint': 'SKUs whose order date has come or already passed',
 
     'alert.title': '{n} products are critical',
     'alert.body': 'Even if you order today, stock runs out before the goods arrive ({lead} days) — do not delay.',
     'alert.action': 'Show critical',
+
+    'table.title': 'Reorder plan',
+    'table.subtitle': 'Stock, sales pace and the recommended quantity for every SKU',
+    'row.gapShort': '{n} days out of stock',
 
     'filter.all': 'All',
     'filter.critical': 'Critical',
@@ -430,15 +450,14 @@ export default function Planner() {
       key: 'title',
       header: t('table.product'),
       render: (r) => (
-        // Kenglik cheklangan: uzun nom ustunni cho'zib, jadvalni yon tomonga surib yubormaydi
-        <div className="max-w-[13rem] 2xl:max-w-[24rem]">
-          <ProductCell
-            title={r.title}
-            subtitle={r.variant ? `${r.variant} · ${r.sku}` : r.sku}
-            imageUrl={r.imageUrl}
-            size={40}
-          />
-        </div>
+        // Kenglik cheklangan, nom esa ikki qatorgacha: ilgari 13rem'da bir qatorga
+        // kesilib "Paxta choyshab to'pl…" bo'lib qolardi (1366 px'da ham)
+        <SkuNameCell
+          className="min-w-[11rem] max-w-[15rem] 2xl:max-w-[24rem]"
+          title={r.title}
+          subtitle={r.variant ? `${r.variant} · ${r.sku}` : r.sku}
+          imageUrl={r.imageUrl}
+        />
       ),
     },
     {
@@ -532,17 +551,25 @@ export default function Planner() {
             >
               {due ? t('row.orderToday') : f.dateShort(r.orderBy)}
             </p>
-            <p className="tnum text-2xs text-muted">
+            <p className={cn('tnum text-2xs', r.orderInDays < 0 ? 'font-medium text-danger-ink' : 'text-muted')}>
               {r.orderInDays < 0
                 ? t('row.orderLate', { n: -r.orderInDays })
                 : due
                   ? f.dateShort(r.orderBy)
                   : t('row.orderIn', { n: r.orderInDays })}
             </p>
+            {/*
+              Ilgari bu yerda to'rt qator qizil yozuv turardi ("Bugun / 10 kun
+              kechikdi / kelguncha 7 kun tovarsiz / −6 735 750 so'm"). Endi bitta
+              qator: necha kun tovarsiz va qancha tushum yo'qoladi; to'liq summa izohda.
+            */}
             {r.gapDays > 0 ? (
-              <p className="tnum text-2xs font-medium leading-snug text-danger">
-                {t('row.gap', { n: r.gapDays })}
-                {r.lostRevenue > 0 ? <span className="block whitespace-nowrap">−{f.money(r.lostRevenue)}</span> : null}
+              <p
+                className="tnum mt-0.5 whitespace-nowrap text-2xs font-semibold text-danger"
+                title={`${t('row.gap', { n: r.gapDays })}${r.lostRevenue > 0 ? ` · −${f.money(r.lostRevenue)}` : ''}`}
+              >
+                {t('row.gapShort', { n: r.gapDays })}
+                {r.lostRevenue > 0 ? ` · −${f.compact(r.lostRevenue)}` : ''}
               </p>
             ) : null}
           </div>
@@ -558,7 +585,22 @@ export default function Planner() {
       render: (r) =>
         r.recommendedQty > 0 ? (
           <div>
-            <span className="tnum inline-flex items-center rounded-xl bg-brand/10 px-3 py-1 font-display text-base font-extrabold text-brand-ink">
+            {/*
+              Miqdor plitkasi shoshilinchlik rangida — holat nishoni bilan bir xil:
+              kritik — qizil, buyurtma vaqti — sariq, qolgani — neytral. Ilgari
+              hammasi yashil edi va "kechikkan" bilan "shoshilmasa ham bo'ladi"
+              bir xil ko'rinardi.
+            */}
+            <span
+              className={cn(
+                'tnum inline-flex items-center rounded-xl px-3 py-1 font-display text-base font-extrabold',
+                r.status === 'critical'
+                  ? 'bg-danger/10 text-danger-ink'
+                  : r.status === 'ending'
+                    ? 'bg-warn/10 text-warn-ink'
+                    : 'bg-surface-3 text-ink',
+              )}
+            >
               {f.num(r.recommendedQty)}
             </span>
             {r.purchaseCost > 0 ? (
@@ -581,6 +623,7 @@ export default function Planner() {
   );
 
   const needSkus = totals?.needSkus ?? 0;
+  const critical = data?.counts.critical ?? 0;
 
   return (
     <>
@@ -589,6 +632,7 @@ export default function Planner() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="planner" />}
+        meta={<DataFreshness />}
       />
 
       <FilterBar />
@@ -603,77 +647,47 @@ export default function Planner() {
           </Card>
         ) : (
           <div className="space-y-5">
-            {/* ── Boshqaruv ── */}
-            <Card>
-              <CardHeader icon={<Timer className="h-4 w-4" />} title={t('ctrl.title')} subtitle={t('ctrl.subtitle')} />
-              <CardBody className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-                <div>
-                  <span className="label">{t('ctrl.lead')}</span>
-                  <Select value={lead} onChange={(e) => setLead(Number(e.target.value))}>
-                    {LEAD_OPTIONS.map((d) => (
-                      <option key={d} value={d}>
-                        {d} {t('ctrl.days')}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="mt-1.5 text-xs text-muted">{t('ctrl.leadHint')}</p>
-                </div>
-
-                <div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="label mb-0">{t('ctrl.cover')}</span>
-                    <span className="tnum font-display text-lg font-extrabold text-brand-ink">
-                      {coverInput} {t('ctrl.days')}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={COVER_MIN}
-                    max={COVER_MAX}
-                    step={1}
-                    value={coverInput}
-                    onChange={(e) => setCoverInput(Number(e.target.value))}
-                    aria-label={t('ctrl.cover')}
-                    // Dumaloq o'lchami aniq berilgan (brauzerlarda standarti har xil) — belgilar shunga tayanadi
-                    className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-brand [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-brand [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand"
-                  />
-                  <div className="tnum relative mt-1.5 h-4 text-2xs text-muted">
-                    {COVER_MARKS.map((v) => (
-                      <span key={v} className="absolute -translate-x-1/2" style={{ left: markLeft(v) }}>
-                        {v}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-xs text-muted">{t('ctrl.coverHint')}</p>
-                </div>
-
-                <div>
-                  <span className="label">{t('ctrl.search')}</span>
-                  <SearchInput value={search} onChange={setSearch} placeholder={t('ctrl.search')} />
-                </div>
-              </CardBody>
-            </Card>
-
-            {/* ── Umumiy karta ── */}
-            <div className="card overflow-hidden bg-aurora p-5 sm:p-6">
+            {/*
+              Sahifadagi yagona HeroCard: nimani va qanchaga buyurtma qilish
+              kerak. Kritik ogohlantirish ham shu yerda — ilgari u alohida qizil
+              blok edi, hero raqamlari esa ostidagi ikki KPI'ni aynan takrorlardi.
+            */}
+            <HeroCard tone="brand" className="p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-grad text-on-brand">
-                    <PackagePlus className="h-5 w-5" />
-                  </div>
+                  <span className="icon-tile h-12 w-12 rounded-2xl [&_svg]:h-6 [&_svg]:w-6" aria-hidden>
+                    <PackagePlus />
+                  </span>
                   <div className="min-w-0">
-                    <p className="eyebrow-lg">{needSkus > 0 ? t('hero.need') : t('hero.none')}</p>
+                    <p className="eyebrow">{needSkus > 0 ? t('hero.need') : t('hero.none')}</p>
                     {planner.isLoading ? (
                       <Skeleton className="mt-2 h-8 w-64" />
                     ) : needSkus > 0 ? (
-                      <p className="tnum mt-1 font-display text-xl font-extrabold tracking-tight text-ink sm:text-2xl">
+                      <p className="tnum mt-1 font-display text-xl font-bold tracking-[-0.02em] text-ink sm:text-2xl">
                         {t('hero.skus', { n: needSkus })}
                         <span className="mx-2 text-muted">·</span>
-                        <span className="text-brand">{t('hero.sum', { v: f.money(totals?.purchaseCost ?? 0) })}</span>
+                        <span className="text-brand-ink">{t('hero.sum', { v: f.money(totals?.purchaseCost ?? 0) })}</span>
                       </p>
                     ) : (
                       <p className="mt-1 text-sm text-muted">{t('hero.noneHint')}</p>
                     )}
+                    {critical > 0 ? (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
+                        <span className="font-semibold text-danger-ink">{t('alert.title', { n: critical })}</span>
+                        <span className="text-ink-soft">{t('alert.body', { lead })}</span>
+                        {filter !== 'critical' ? (
+                          <button
+                            type="button"
+                            onClick={() => setFilter('critical')}
+                            className="focusable inline-flex items-center gap-1 rounded-md font-semibold text-danger-ink underline-offset-2 hover:underline"
+                          >
+                            {t('alert.action')}
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -696,25 +710,22 @@ export default function Planner() {
                   </Button>
                 </div>
               </div>
-            </div>
+            </HeroCard>
 
-            {/* ── KPI: butun katalog bo'yicha, qaysi yorliq ochiq bo'lishidan qat'i nazar ── */}
+            {/*
+              KPI: butun katalog bo'yicha, qaysi yorliq ochiq bo'lishidan qat'i
+              nazar. SKU soni va xarid summasi hero'da — bu yerda takrorlanmaydi;
+              o'rniga "bugun buyurtma" (javobda bor edi, lekin ko'rsatilmasdi).
+            */}
             <StatGrid>
               <StatCard
-                label={t('kpi.skus')}
-                value={f.num(needSkus)}
-                hint={t('kpi.skusHint')}
-                icon={<PackagePlus className="h-5 w-5" />}
-                tone="brand"
+                label={t('kpi.orderNow')}
+                value={t('hero.skus', { n: f.num(totals?.orderNow ?? 0) })}
+                hint={t('kpi.orderNowHint')}
+                icon={<CalendarClock className="h-5 w-5" />}
+                tone={(totals?.orderNow ?? 0) > 0 ? 'warn' : 'brand'}
                 loading={planner.isLoading}
-              />
-              <StatCard
-                label={t('kpi.cost')}
-                value={f.money(totals?.purchaseCost ?? 0)}
-                hint={t('kpi.costHint')}
-                icon={<Coins className="h-5 w-5" />}
-                tone="info"
-                loading={planner.isLoading}
+                onClick={(totals?.orderNow ?? 0) > 0 ? () => setFilter('ending') : undefined}
               />
               <StatCard
                 label={t('kpi.lost')}
@@ -729,38 +740,74 @@ export default function Planner() {
                 value={f.money(totals?.lostPast ?? 0)}
                 hint={t('kpi.lostPastHint')}
                 icon={<History className="h-5 w-5" />}
-                tone="warn"
+                tone="danger"
                 loading={planner.isLoading}
               />
             </StatGrid>
 
-            {/* ── Kritik ogohlantirish ── */}
-            {(data?.counts.critical ?? 0) > 0 ? (
-              <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-danger/25 bg-danger/10 p-4 sm:p-5">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-display text-sm font-bold text-ink">
-                    {t('alert.title', { n: data?.counts.critical ?? 0 })}
-                  </p>
-                  <p className="mt-1 text-sm text-ink-soft">{t('alert.body', { lead })}</p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setFilter('critical')}>
-                  {t('alert.action')}
-                </Button>
-              </div>
-            ) : null}
-
-            {/* ── Jadval ── */}
+            {/* ── Jadval: hisob parametrlari sarlavhada, holat yorliqlari va qidiruv — bevosita jadval ustida ── */}
             <Card>
+              {/*
+                Ilgari parametrlar sahifa boshidagi alohida kartochkada edi,
+                holat yorliqlari esa ~600 px pastda — jadvalning o'ng chetida.
+                Izohlar ("buyurtmadan omborga tushguncha…") endi belgining izohida.
+              */}
               <CardHeader
-                title={t('table.product')}
+                icon={<Sparkles />}
+                title={t('table.title')}
+                subtitle={t('table.subtitle')}
                 actions={
-                  <div className="no-scrollbar max-w-full overflow-x-auto">
-                    <Segmented options={filterOptions} value={filter} onChange={setFilter} size="sm" />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                    <label className="flex items-center gap-2.5" title={t('ctrl.leadHint')}>
+                      <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-muted">
+                        <Timer className="h-3.5 w-3.5" />
+                        {t('ctrl.lead')}
+                      </span>
+                      <Select className="h-9 w-28 py-1.5 text-sm" value={lead} onChange={(e) => setLead(Number(e.target.value))}>
+                        {LEAD_OPTIONS.map((d) => (
+                          <option key={d} value={d}>
+                            {d} {t('ctrl.days')}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <div className="min-w-0 sm:w-60" title={t('ctrl.coverHint')}>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="whitespace-nowrap text-xs font-medium text-muted">{t('ctrl.cover')}</span>
+                        <span className="tnum font-display text-sm font-bold text-brand-ink">
+                          {coverInput} {t('ctrl.days')}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={COVER_MIN}
+                        max={COVER_MAX}
+                        step={1}
+                        value={coverInput}
+                        onChange={(e) => setCoverInput(Number(e.target.value))}
+                        aria-label={t('ctrl.cover')}
+                        // Dumaloq o'lchami aniq berilgan (brauzerlarda standarti har xil) — belgilar shunga tayanadi
+                        className="mt-1.5 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-brand [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-brand [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand"
+                      />
+                      <div className="tnum relative mt-1 h-4 text-2xs text-muted">
+                        {COVER_MARKS.map((v) => (
+                          <span key={v} className="absolute -translate-x-1/2" style={{ left: markLeft(v) }}>
+                            {v}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 }
               />
-              <div className={cn('mt-4', planner.isFetching && !planner.isLoading && 'opacity-70')}>
+              {/* Holat yorliqlari va qidiruv — bevosita jadval ustida */}
+              <div className="mt-4 flex flex-col gap-3 border-y border-line bg-surface-2/40 px-5 py-3 md:flex-row md:items-center md:justify-between">
+                <div className="no-scrollbar max-w-full overflow-x-auto">
+                  <Segmented options={filterOptions} value={filter} onChange={setFilter} size="sm" />
+                </div>
+                <SearchInput value={search} onChange={setSearch} placeholder={t('ctrl.search')} className="w-full md:w-64" />
+              </div>
+              <div className={cn(planner.isFetching && !planner.isLoading && 'opacity-70')}>
                 <DataTable
                   columns={columns}
                   rows={visibleRows}
@@ -784,7 +831,7 @@ export default function Planner() {
                       <td className="hidden px-5 py-2.5 md:table-cell" />
                       <td className="px-5 py-2.5" />
                       <td className="tnum px-5 py-2.5 text-right">
-                        <span className="text-brand-ink">{visibleTotals.qty > 0 ? f.num(visibleTotals.qty) : '—'}</span>
+                        <span className="text-ink">{visibleTotals.qty > 0 ? f.num(visibleTotals.qty) : '—'}</span>
                         {visibleTotals.cost > 0 ? (
                           <p className="text-2xs font-normal text-muted">{f.money(visibleTotals.cost)}</p>
                         ) : null}

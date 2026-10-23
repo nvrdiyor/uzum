@@ -1,21 +1,37 @@
 import { Store } from '@/components/icons';
 import type { DashboardResponse } from '@savdoiq/shared';
-import { Card, CardBody, CardHeader, EmptyState, ProgressBar } from '@/components/ui';
+import { Amount, Card, CardBody, CardHeader, EmptyState } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 
-/** "Do'konlar" — tushum bo'yicha taqsimot */
+/**
+ * Do'kon ulushining rangi: tushum rangi (grafikdagi "Tushum" — ko'k)ning
+ * to'yinganlik zinalari. Kategorik palitra ATAYLAB olinmadi — yonidagi
+ * xarajatlar donutida to'q sariq "Marketing", bu yerda esa do'kon bo'lib,
+ * bitta rang ikki ma'no tashirdi.
+ */
+const SHADE = [1, 0.62, 0.4, 0.26, 0.18];
+const shade = (i: number) => `rgb(var(--c-info) / ${SHADE[Math.min(i, SHADE.length - 1)]})`;
+
+/**
+ * "Do'konlar" — tushum bo'yicha taqsimot.
+ *
+ * Ilgari 4 ustunli jadval edi: yarim kenglikdagi kartochkada ichki
+ * gorizontal aylantirish paydo bo'lardi, ikki qator ostida esa katta bo'sh
+ * joy qolardi. Endi ulush tasmasi va ixcham ro'yxat.
+ */
 export function StoresCard({ data }: { data: DashboardResponse }) {
   const t = useT('dashboard');
   const f = useFormat();
 
   const rows = [...data.storesBreakdown].sort((a, b) => b.revenue - a.revenue);
   const total = rows.reduce((s, r) => s + r.revenue, 0);
-  const max = rows.length ? Math.max(...rows.map((r) => r.revenue), 1) : 1;
+  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
 
   return (
     <Card className="flex flex-col">
       <CardHeader
-        icon={<Store className="h-4 w-4" />}
+        icon={<Store />}
+        tone="info"
         title={t('stores.title')}
         subtitle={t('stores.subtitle', { n: rows.length })}
       />
@@ -23,39 +39,43 @@ export function StoresCard({ data }: { data: DashboardResponse }) {
         {rows.length === 0 ? (
           <EmptyState className="py-10" icon={<Store className="h-6 w-6" />} title={t('stores.empty')} hint={t('stores.emptyHint')} />
         ) : (
-          <div className="overflow-x-auto">
-            {/* Telefonda ulush ustuni yashirin — u progress chizig'ida ko'rinib turadi */}
-            <table className="w-full border-collapse text-sm sm:min-w-[420px]">
-              <thead>
-                <tr>
-                  <th className="table-head border-b border-line px-3 py-2.5 text-left">{t('stores.col.store')}</th>
-                  <th className="table-head hidden border-b border-line px-3 py-2.5 text-right sm:table-cell">{t('stores.col.orders')}</th>
-                  <th className="table-head border-b border-line px-3 py-2.5 text-right">{t('stores.col.revenue')}</th>
-                  <th className="table-head hidden border-b border-line px-3 py-2.5 text-right sm:table-cell">{t('stores.col.share')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const share = total > 0 ? (r.revenue / total) * 100 : 0;
-                  return (
-                    <tr key={r.storeId} className="border-b border-line/60 last:border-0">
-                      <td className="px-3 py-3">
-                        <p className="truncate font-medium text-ink">{r.title}</p>
-                        <ProgressBar className="mt-1.5 max-w-[180px]" value={(r.revenue / max) * 100} />
-                        {/* Telefonda buyurtmalar soni nom ostida — alohida ustun sig'maydi */}
-                        <p className="tnum mt-1 text-xs text-muted sm:hidden">
-                          {t('stores.col.orders')}: {f.num(r.orders)}
-                        </p>
-                      </td>
-                      <td className="tnum hidden px-3 py-3 text-right text-ink-soft sm:table-cell">{f.num(r.orders)}</td>
-                      <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink">{f.money(r.revenue, data.currency)}</td>
-                      <td className="tnum hidden px-3 py-3 text-right text-muted sm:table-cell">{f.pct(share)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div
+              role="img"
+              aria-label={rows.map((r) => `${r.title} ${f.pct(share(r.revenue))}`).join(', ')}
+              className="flex h-2.5 w-full gap-1"
+            >
+              {rows
+                .filter((r) => r.revenue > 0)
+                .map((r, i) => (
+                  <div
+                    key={r.storeId}
+                    className="h-full min-w-[6px] origin-left animate-grow-x rounded-full"
+                    style={{ flex: `${share(r.revenue)} 1 0%`, background: shade(i), animationDelay: `${120 + i * 120}ms` }}
+                  />
+                ))}
+            </div>
+
+            <ul className="mt-4 divide-y divide-line/70">
+              {rows.map((r, i) => (
+                <li key={r.storeId} className="flex items-center gap-3 py-3 first:pt-1 last:pb-0">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: shade(i) }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink" title={r.title}>
+                      {r.title}
+                    </p>
+                    <p className="tnum mt-0.5 text-xs text-muted">{t('stores.orders', { n: f.num(r.orders) })}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="tnum whitespace-nowrap text-sm font-semibold text-ink">
+                      <Amount value={f.money(r.revenue, data.currency)} />
+                    </p>
+                    <p className="tnum mt-0.5 text-xs text-muted">{f.pct(share(r.revenue))}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </CardBody>
     </Card>

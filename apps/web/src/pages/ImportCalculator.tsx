@@ -25,8 +25,21 @@ import {
 } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { registerNamespace, useFormat, useT } from '@/i18n';
-import { Badge, Button, Card, CardBody, CardHeader, IconButton, PageHeader, Segmented, Skeleton } from '@/components/ui';
-import { CHART_COLORS } from '@/lib/theme';
+import {
+  Amount,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  HeroCard,
+  IconButton,
+  PageHeader,
+  Segmented,
+  Skeleton,
+} from '@/components/ui';
+import { SplitStrip } from '@/components/unit/CostSplitBar';
+import { COST_COLORS } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 registerNamespace('importCalc', {
@@ -294,7 +307,12 @@ function NumberField({
           className={cn(
             'tnum w-[132px] rounded-xl border border-line bg-surface-2 px-3 py-2 text-right text-sm font-semibold text-ink',
             'focus:border-brand/60 focus:outline-none focus:ring-2 focus:ring-brand/20',
-            suffix && 'pr-9',
+            /*
+             * Birlik uzunligiga qarab joy: bitta belgi ("¥", "%") uchun 36 px,
+             * "so'm" uchun 52 px. Ilgari hammasiga 36 px edi va teskari hisobda
+             * "100000" raqami "so'm" bilan ustma-ust tushardi (2026-10-24).
+             */
+            suffix && (suffix.length > 2 ? 'pr-[3.25rem]' : 'pr-9'),
           )}
         />
         {suffix ? (
@@ -372,14 +390,21 @@ export default function ImportCalculator() {
     );
   }
 
+  /*
+   * Ranglar COST_COLORS'dan — Unit kalkulyator va Moliya sahifalaridagi
+   * bilan bir xil: komissiya binafsha (Uzum ulushi), reklama to'q sariq,
+   * logistika ko'k, tannarx kulrang, foyda brend. Ilgari komissiya qizil
+   * ("zarar"), tannarx esa logistikaning ko'k rangida edi.
+   */
   const segments = [
-    { key: 'commission', value: result.commission, color: CHART_COLORS.danger, label: t('leg.commission') },
-    { key: 'ads', value: result.ads, color: CHART_COLORS.warn, label: t('leg.ads') },
-    { key: 'delivery', value: result.delivery, color: CHART_COLORS.slate, label: t('leg.delivery') },
-    { key: 'cost', value: result.cost, color: CHART_COLORS.info, label: t('leg.cost') },
-    { key: 'profit', value: Math.max(0, result.netProfit), color: CHART_COLORS.brand, label: t('leg.profit') },
+    { key: 'commission', value: result.commission, color: COST_COLORS.commission, label: t('leg.commission') },
+    { key: 'ads', value: result.ads, color: COST_COLORS.marketing, label: t('leg.ads') },
+    { key: 'delivery', value: result.delivery, color: COST_COLORS.logistics, label: t('leg.delivery') },
+    { key: 'cost', value: result.cost, color: COST_COLORS.cogs, label: t('leg.cost') },
+    { key: 'profit', value: Math.max(0, result.netProfit), color: COST_COLORS.profit, label: t('leg.profit') },
   ];
   const barTotal = segments.reduce((s, x) => s + x.value, 0) || 1;
+  const loss = !result.valid || result.netProfit <= 0;
 
   const factorLabel = f.dec(result.maxCostFactor, 3);
 
@@ -520,7 +545,7 @@ export default function ImportCalculator() {
               />
             </div>
 
-            <p className="mt-4 flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed text-muted">
+            <p className="well mt-4 flex items-start gap-2 p-3 text-xs leading-relaxed text-muted">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {t('tip')}
             </p>
@@ -529,7 +554,12 @@ export default function ImportCalculator() {
 
         {/* ── Natija ── */}
         <div className="space-y-5">
-          <Card className="bg-aurora p-6">
+          {/*
+            Sahifaning yagona HeroCard'i — Uzumda qo'yiladigan narx. Zararda
+            yoki shartlar noto'g'ri bo'lsa qizil ohangda (zarar — qizilning
+            yagona ma'nosi).
+          */}
+          <HeroCard tone={loss ? 'danger' : 'brand'} className="p-5 sm:p-6">
             {!result.valid ? (
               <div className="py-6 text-center">
                 <p className="font-display text-lg font-bold text-danger">{t('invalid.title')}</p>
@@ -537,14 +567,16 @@ export default function ImportCalculator() {
               </div>
             ) : (
               <>
-                <p className="eyebrow-lg">{t('result')}</p>
-                <p className="mt-2 flex items-baseline gap-2">
-                  <span className="tnum font-display text-[44px] font-extrabold leading-none tracking-tight text-ink sm:text-[56px]">
-                    {f.num(result.price)}
+                <div className="flex items-center gap-2.5">
+                  <span className="icon-tile h-9 w-9 rounded-[10px] [&_svg]:h-[18px] [&_svg]:w-[18px]" aria-hidden>
+                    <Ship />
                   </span>
-                  <span className="text-lg font-semibold text-muted">{t('sum')}</span>
+                  <p className="font-display text-[15px] font-semibold text-ink">{t('result')}</p>
+                </div>
+                <p className="tnum mt-4 font-title text-[38px] font-semibold leading-none tracking-[-0.03em] text-ink sm:text-[48px]">
+                  <Amount value={`${f.num(result.price)} ${t('sum')}`} />
                 </p>
-                <p className="mt-2 text-sm text-ink-soft">
+                <p className="mt-3 text-sm text-ink-soft">
                   {t('summary', { cost: f.num(result.cost), profit: f.num(result.netProfit) })}
                 </p>
 
@@ -554,35 +586,42 @@ export default function ImportCalculator() {
                   </p>
                 ) : null}
 
-                {/* Taqsimot chizig'i */}
-                <div className="mt-6 flex h-7 w-full overflow-hidden rounded-lg">
-                  {segments.map((s) => (
-                    <div
-                      key={s.key}
-                      title={`${s.label}: ${f.money(s.value)}`}
-                      style={{ width: `${(s.value / barTotal) * 100}%`, background: s.color }}
-                      className="h-full transition-[width] duration-500 ease-spring"
-                    />
-                  ))}
-                </div>
+                {/* Taqsimot chizig'i — narx qayerga ketadi */}
+                <SplitStrip parts={segments} className="mt-6 h-3.5" />
 
-                <div className="mt-4 grid gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Har bo'lak: nomi, summasi va narxdagi ulushi — boshqa sahifalardagi taqsimot ro'yxatlari kabi */}
+                <ul className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2">
                   {segments.map((s) => (
-                    <div key={s.key} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="flex items-center gap-2 text-muted">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+                    <li key={s.key} className="flex min-w-0 items-center gap-2.5 text-sm">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate',
+                          s.key === 'profit' ? 'font-semibold text-ink' : 'text-ink-soft',
+                        )}
+                      >
                         {s.label}
                       </span>
-                      <span className="tnum font-semibold text-ink">{f.num(s.value)}</span>
-                    </div>
+                      <span
+                        className={cn(
+                          'tnum shrink-0 font-semibold',
+                          s.key === 'profit' ? 'text-brand-ink' : 'text-ink',
+                        )}
+                      >
+                        {f.num(s.value)}
+                      </span>
+                      <span className="tnum w-10 shrink-0 text-right text-xs text-muted">
+                        {f.pct((s.value / barTotal) * 100, 0)}
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
                   <Badge tone={result.margin >= 20 ? 'brand' : result.margin > 0 ? 'warn' : 'danger'}>
                     {t('margin')}: {f.pct(result.margin)}
                   </Badge>
-                  <Badge tone="info">
+                  <Badge tone="muted">
                     {t('roi')}: {f.pct(result.roi)}
                   </Badge>
                   <Badge tone="muted">
@@ -591,7 +630,7 @@ export default function ImportCalculator() {
                 </div>
               </>
             )}
-          </Card>
+          </HeroCard>
 
           {/* ── Qoida ── */}
           {result.valid ? (
@@ -630,22 +669,22 @@ export default function ImportCalculator() {
                   <div className="flex items-center justify-between gap-4 py-3">
                     <span className="text-sm font-medium text-ink">{t('reverse.maxCost')}</span>
                     <span className="tnum font-display text-lg font-extrabold tracking-tight text-brand-ink">
-                      {f.num(reverse.maxCost)}
+                      <Amount value={`${f.num(reverse.maxCost)} ${t('sum')}`} />
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl bg-surface-2 p-4">
+                  <div className="well p-4">
                     <p className="text-xs text-muted">{t('reverse.maxPdd')}</p>
                     <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">
                       {f.num(reverse.yuan, 2)} <span className="text-base text-muted">¥</span>
                     </p>
                   </div>
-                  <div className="rounded-xl bg-surface-2 p-4">
+                  <div className="well p-4">
                     <p className="text-xs text-muted">{t('reverse.cargo')}</p>
                     <p className="tnum mt-1 font-display text-2xl font-extrabold tracking-tight text-ink">
-                      {f.num(reverse.cargo)} <span className="text-base text-muted">{t('sum')}</span>
+                      <Amount value={`${f.num(reverse.cargo)} ${t('sum')}`} />
                     </p>
                   </div>
                 </div>

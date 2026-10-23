@@ -175,6 +175,15 @@ export interface SyncStatus {
    */
   etaSeconds: number;
   firstRun: boolean;
+  /**
+   * Oxirgi MUVAFFAQIYATLI sinxron (kompaniya kabinetlaridan eng yangisi).
+   * `finishedAt` xato bilan tugagan jobda ham to'ladi — "ma'lumot qachon
+   * yangilandi" degan savolga javob bermaydi (2026-10-22 da Uzum ishlamay
+   * qolganda aynan shunday edi: job yiqilgan, ma'lumot esa eski).
+   */
+  lastSuccessAt: string | null;
+  /** Eng yaqin rejali sinxron */
+  nextSyncAt: string | null;
 }
 
 // ─────────────────────────── Dashboard ───────────────────────────
@@ -278,6 +287,40 @@ export interface Insight {
   metric?: string;
 }
 
+/**
+ * GET /analytics/cost-coverage — tanlangan davrda sotilgan donalarning
+ * qanchasida tannarx bor. Foyda faqat shu ulushda ishonchli: tannarxsiz
+ * pozitsiyada cogs = 0, ya'ni foyda shu tovarlar tannarxicha ortiq chiqadi.
+ *
+ * "Sotilgan" — Boshqaruv paneli foydasi bilan bir xil qoida: davr buyurtma
+ * sanasi bo'yicha, bekor qilingan va qaytgan pozitsiyalar kirmaydi
+ * (`soldUnits` = `DashboardResponse.unitsSold`, `revenue` = `revenue`).
+ */
+export interface CostCoverageResponse {
+  period: Period;
+  /** Davrda sotilgan dona */
+  soldUnits: number;
+  /** Shulardan tannarxsiz sotilgani (pozitsiyadagi tannarx 0) */
+  unitsNoCost: number;
+  /** Sotuv tushumi, so'm */
+  revenue: number;
+  /** Tannarxsiz sotilgan donalar tushumi, so'm */
+  revenueNoCost: number;
+  /** Tannarxsiz sotilgan SKU'lar soni (katalogga bog'lanmagan pozitsiyalar sanalmaydi) */
+  skusNoCost: number;
+  /**
+   * Tannarxi bor donalar ulushi, % — bir xonagacha PASTGA yaxlitlangan:
+   * bitta dona tannarxsiz bo'lsa ham 100 chiqmaydi. Sotuv bo'lmasa 100.
+   */
+  pct: number;
+  /**
+   * Foyda taxminan shuncha ortiq ko'rinadi, so'm: tannarxi bor sotuvlardagi
+   * tannarx/tushum nisbati × tannarxsiz tushum. Taxmin uchun asos bo'lmasa
+   * (davrda tannarxi bor sotuv yo'q) — null.
+   */
+  estMissingCogs: number | null;
+}
+
 // ─────────────────────────── Sotuv tahlili ───────────────────────────
 
 export interface HourlyPoint {
@@ -335,7 +378,13 @@ export interface SalesAnalyticsResponse {
 
 // ─────────────────────────── Sotuv voronkasi ───────────────────────────
 
-export type FunnelStepId = 'ordered' | 'sold' | 'canceled' | 'returned';
+/**
+ * Buyurtma qilingan dona to'rt holatdan biriga tushadi (yig'indisi = ordered):
+ * sotildi (xaridor qabul qildi), yo'lda (hali qabul qilmadi), bekor, qaytdi.
+ * Ilgari `inTransit` yo'q edi va yo'ldagi dona "sotildi" ga qo'shilardi —
+ * sotib olish foizi sun'iy ~90% chiqardi (2026-10-24).
+ */
+export type FunnelStepId = 'ordered' | 'sold' | 'inTransit' | 'canceled' | 'returned';
 
 export interface FunnelStep {
   id: FunnelStepId;
@@ -343,11 +392,17 @@ export interface FunnelStep {
   value: number;
   /** So'm */
   amount: number;
+  /**
+   * Oldingi teng davr — TENG YOSHDA: sotildi/yo'lda bo'linishi o'sha davr
+   * hozirgi davr yoshida bo'lgan paytdagi holat (hozir − davr uzunligi).
+   * Ilgari yakuniy holat olinardi va "Sotildi" o'zgarishi sun'iy tushardi
+   * (2026-10-24). Bekor/qaytgan esa yakuniy holat bo'yicha.
+   */
   prevValue: number;
   prevAmount: number;
   /** Oldingi davrga nisbatan o'zgarish, % */
   deltaPct: number | null;
-  /** Buyurtmadan shu bosqichgacha yetib kelgan ulush, % */
+  /** Buyurtma qilingan donalardagi ulushi, % */
   conversion: number | null;
 }
 
@@ -356,18 +411,28 @@ export interface FunnelProductRow {
   sku: string;
   title: string;
   imageUrl: string | null;
+  /** Buyurtma qilingan DONA (buyurtmalar soni emas) */
   ordered: number;
   orderedAmount: number;
+  /** Xaridor qabul qilgan dona (buyurtmada `deliveredAt` bor) */
   sold: number;
   soldAmount: number;
+  /** Hali yo'ldagi dona — sotilgan ham, yo'qotilgan ham emas */
+  inTransit: number;
   canceled: number;
   returned: number;
-  /** Sotib olish foizi: sotilgan / buyurtma qilingan */
-  buyoutRate: number;
+  /** Yakunlangan dona: sotildi + bekor + qaytdi (yo'ldagilar kirmaydi) */
+  completed: number;
+  /**
+   * Sotib olish foizi: sotildi / yakunlangan. Yakunlangani bo'lmasa `null`
+   * ("—"): hammasi yo'lda bo'lgan tovar "0% sotib olindi" emas.
+   */
+  buyoutRate: number | null;
   /** Bitta dona uchun o'rtacha narx */
   avgPrice: number;
   /** Sotilgan summadagi ulushi, % */
   share: number;
+  /** Oldingi teng davrga nisbatan, % — teng yoshda (`FunnelStep.prevValue` dagi kabi) */
   deltas: {
     ordered: number | null;
     sold: number | null;
@@ -382,17 +447,32 @@ export interface FunnelResponse {
   currency: string;
   steps: FunnelStep[];
   totals: {
+    /**
+     * Buyurtmalar soni (alohida `orderId`). Qolgan sanoqlar DONA: ilgari
+     * "Buyurtma qilindi" yorlig'i ostida dona ko'rsatilardi (2026-10-24).
+     */
+    orders: number;
+    /** Buyurtmalar sonining oldingi teng davrga nisbatan o'zgarishi, % */
+    ordersDeltaPct: number | null;
     ordered: number;
     orderedAmount: number;
     sold: number;
     soldAmount: number;
+    inTransit: number;
+    inTransitAmount: number;
     canceled: number;
     returned: number;
     canceledAmount: number;
-    buyoutRate: number;
+    /** Qaytgan dona summasi: sotuv narxi × qaytgan dona (ilgari doim 0 edi) */
+    returnedAmount: number;
+    /** Yakunlangan dona: sotildi + bekor + qaytdi */
+    completed: number;
+    /** Sotib olish foizi: sotildi / yakunlangan; yakunlangani bo'lmasa `null` */
+    buyoutRate: number | null;
     avgPrice: number;
   };
-  daily: { date: string; ordered: number; sold: number; canceled: number; returned: number }[];
+  /** Kunlik DONA; sold + inTransit + canceled + returned = ordered */
+  daily: { date: string; ordered: number; sold: number; inTransit: number; canceled: number; returned: number }[];
   rows: FunnelProductRow[];
   /** Uzum API bermaydigan bosqichlar (namoyish, kartochka ochish, savatga qo'shish) */
   missingSteps: string[];
@@ -431,6 +511,18 @@ export interface SalesStockResponse {
     payout: number;
     netProfit: number;
     skuCount: number;
+    /**
+     * Holatlar soni — qidiruvga mos barcha SKU bo'yicha, holat filtridan
+     * oldin. Filtr tanlanganda ham o'zgarmaydi (tasma va tugmalar shundan).
+     */
+    statusCounts: Record<SalesStockRow['status'], number>;
+    /**
+     * Ro'yxatdagi (qidiruv va holat filtridan keyin, BARCHA sahifalar) eng
+     * katta SKU tushumi — tushum chizig'ining miqyosi. Ilgari mijoz uni joriy
+     * 50 qatordan olardi: har sahifaning birinchi qatori to'liq chiziq olardi
+     * (2026-10-24).
+     */
+    maxRevenue: number;
   };
   rows: Paginated<SalesStockRow>;
 }
@@ -493,7 +585,22 @@ export interface ProductCard {
   profit: number;
   roi: number;
   margin: number;
-  conversion: number;
+  /**
+   * Xarid foizi, %: xaridor qabul qilgan dona ÷ (qabul qilingan + bekor + qaytgan).
+   * Faqat davrdagi YAKUNLANGAN pozitsiyalar — yo'ldagilar kirmaydi. Yakunlangani
+   * bo'lmasa `null` ("—"), 0% emas.
+   *
+   * Ilgari bu o'rinda `conversion` turardi — bozor o'rtachasi (2,5%) va
+   * reytingdan to'qilgan "konversiya". Seller API ko'rishlarni bermaydi, demak
+   * u raqam haqiqiy emas edi (2026-10-24).
+   */
+  buyoutRate: number | null;
+  /** Xaridor qabul qilgan dona (Order.deliveredAt bor, bekor/qaytmagan) */
+  buyoutUnits: number;
+  /** Xarid foizi asosi — yakunlangan dona: qabul qilingan + bekor + qaytgan */
+  completedUnits: number;
+  /** Hali yo'ldagi dona (xaridor qabul qilmagan) — xarid foiziga kirmaydi */
+  transitUnits: number;
   stockFbo: number;
   stockFbs: number;
   stockOwn: number;

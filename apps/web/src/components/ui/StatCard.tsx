@@ -1,4 +1,5 @@
 import { Children, type ReactNode } from 'react';
+import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { Amount, Delta, Skeleton, Sparkline } from './primitives';
 
@@ -9,46 +10,50 @@ export interface StatCardProps {
   delta?: number | null;
   /** Kamayish yaxshi bo'lsa true (xarajatlar uchun) */
   invertDelta?: boolean;
+  /** 'pp' — marja, ROI, xarid va qaytarish ulushi kabi foiz ko'rsatkichlar uchun */
+  deltaUnit?: 'pct' | 'pp';
+  /** Oldingi davr qiymati (formatlangan) — o'zgarish chipi yonida xira yoziladi */
+  previous?: ReactNode;
   hint?: ReactNode;
   icon?: ReactNode;
   spark?: number[];
-  tone?: 'brand' | 'info' | 'warn' | 'danger' | 'violet';
+  /** 'muted' — ma'nosi neytral ko'rsatkich (masalan, SKU soni); 'pink' — pullik saqlash (COST_COLORS.storage) */
+  tone?: 'brand' | 'info' | 'warn' | 'danger' | 'violet' | 'muted' | 'pink';
+  /** Tepadagi ohang chizig'i (standart: bor). Bir qatorda hamma kartochka bir xil bo'lsin */
+  accent?: boolean;
   loading?: boolean;
   className?: string;
   onClick?: () => void;
   footer?: ReactNode;
 }
 
-/** Yorliq yonidagi kichik belgi — rang ma'no bildiradi, katta plitka emas */
-const TONE_ICON = {
-  brand: 'bg-brand/12 text-brand-ink',
-  info: 'bg-info/12 text-info-ink',
-  warn: 'bg-warn/12 text-warn-ink',
-  danger: 'bg-danger/12 text-danger-ink',
-  violet: 'bg-violet/12 text-violet-ink',
-} as const;
-
 export function StatCard({
   label,
   value,
   delta,
   invertDelta,
+  deltaUnit = 'pct',
+  previous,
   hint,
   icon,
   spark,
   tone = 'brand',
+  accent = true,
   loading,
   className,
   onClick,
   footer,
 }: StatCardProps) {
+  const t = useT('common');
   return (
     <div
       className={cn(
         // flex-col + pastdagi mt-auto: qatordagi barcha kartochkalarda
         // o'zgarish chipi va sparkline bir sathda turadi
         // container: raqam o'lchami karta kengligiga moslashadi (telefonda 2 ustun)
-        'card card-hover relative flex flex-col overflow-hidden p-4 [container-type:inline-size] sm:p-5',
+        'card card-hover relative flex flex-col p-4 [container-type:inline-size] sm:p-5',
+        `tone-${tone}`,
+        accent && 'card-accent',
         onClick && 'cursor-pointer',
         className,
       )}
@@ -60,16 +65,14 @@ export function StatCard({
       */}
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
             {icon ? (
-              <span
-                className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md [&_svg]:h-3.5 [&_svg]:w-3.5',
-                  TONE_ICON[tone],
-                )}
-              >
-                {icon}
-              </span>
+              /*
+                Ohang rangidagi plitka. Ilgari bu yerda `bg-brand/12` turardi —
+                Tailwind shkalasida 12 yo'qligi sababli fon umuman chizilmas
+                edi va belgi yalang'och turardi (2026-10-24 gacha).
+              */
+              <span className="icon-tile h-8 w-8 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
             ) : null}
             {/* Sarlavha ikki qatorgacha — tor kartada kesilib ma'nosi yo'qolmasin */}
             <p className="line-clamp-2 eyebrow-lg">{label}</p>
@@ -97,9 +100,22 @@ export function StatCard({
       {/* mt-auto — izoh uzunligi turlicha bo'lsa ham pastki blok bir sathda turadi */}
       {(delta !== undefined || spark) && !loading ? (
         <div className="relative mt-auto flex items-end justify-between gap-3 pt-3">
-          {delta !== undefined ? <Delta value={delta} invert={invertDelta} /> : <span />}
+          {delta !== undefined ? (
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <Delta value={delta} invert={invertDelta} unit={deltaUnit} />
+              {previous !== undefined && previous !== null ? (
+                <span className="tnum truncate text-2xs text-muted">{t('common.prevValue', { v: String(previous) })}</span>
+              ) : null}
+            </span>
+          ) : (
+            <span />
+          )}
           {spark && spark.length > 1 ? (
-            <Sparkline data={spark} tone={tone === 'violet' ? 'info' : tone} className="opacity-80" />
+            <Sparkline
+              data={spark}
+              tone={tone === 'violet' || tone === 'muted' || tone === 'pink' ? 'info' : tone}
+              className="opacity-80"
+            />
           ) : null}
         </div>
       ) : null}

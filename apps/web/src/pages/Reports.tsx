@@ -2,34 +2,30 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
-  Coins,
+  CalendarRange,
   FileBarChart,
+  History,
   Printer,
   Receipt,
   ShoppingBag,
   TrendingUp,
 } from '@/components/icons';
-import type { MonthlyReportResponse, TopProductRow } from '@savdoiq/shared';
+import type { MonthlyReportResponse } from '@savdoiq/shared';
 import {
   Button,
   Card,
   CardBody,
-  CardHeader,
-  DataTable,
   EmptyState,
   ErrorState,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   Skeleton,
   SkeletonRows,
   StatCard,
-  StatGrid,
   toast,
-  type Column,
 } from '@/components/ui';
-import { BarsChart, ChartCard, DonutChart, TrendChart } from '@/components/charts';
+import { BarsChart, ChartCard, TrendChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import {
   CategoriesCard,
@@ -39,9 +35,13 @@ import {
   OrdersFlowCard,
   PrintHead,
   PrintStyles,
+  ResultHero,
   RiskCard,
+  TopSalesCard,
   WarehouseCard,
 } from '@/components/reports/ReportBlocks';
+import { CostCoverage } from '@/components/trust/CostCoverage';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
@@ -52,33 +52,51 @@ registerNamespace('reports', {
   uz: {
     title: 'Oylik hisobot',
     subtitle: 'Davr bo‘yicha to‘liq yakun: tushum, foyda, xarajat va ombor',
-    print: 'PDF uchun chop etish',
-    printHint: 'Brauzer chop etish oynasi ochiladi',
+    // Qisqa yorliq: uzun "PDF uchun chop etish" tugmalarni sarlavha ostiga surib yuborardi
+    print: 'PDF',
+    printHint: 'PDF uchun chop etish — brauzer chop etish oynasi ochiladi',
     exporting: 'Tayyorlanmoqda...',
     exportOk: 'Excel fayl yuklab olindi',
     exportErr: 'Excel faylni yuklab bo‘lmadi',
     'print.head': 'SavdoIQ — davr hisoboti',
+    'meta.orders': '{n} buyurtma',
 
     'kpi.revenue': 'Tushum',
-    'kpi.revenueHint': 'Davrdagi jami sotuv summasi',
-    'kpi.gross': 'Yalpi foyda',
-    'kpi.grossHint': 'Marja {v}',
-    'kpi.net': 'Sof foyda',
-    'kpi.netHint': 'Soliq {v} hisobga olingan',
+    'kpi.revenueSub': '{orders} buyurtma · {units} dona',
     'kpi.avgCheck': 'O‘rtacha chek',
     'kpi.avgCheckHint': '{v} buyurtma asosida',
+
+    'hero.profit': 'Sof foyda',
+    'hero.loss': 'Zarar',
+    'hero.margin': 'Sof marja {v}',
+    'hero.prevMonth': 'oldingi oy {v}',
+    'hero.lost': 'Xarajatlar tushumdan {v} ga oshdi',
+    'hero.gross': 'Yalpi foyda',
+    'hero.grossHint': 'Marja {v} · tannarxdan keyin',
+    'hero.bar': 'Tushum qayerga ketdi',
+    'hero.barBase': 'Tushum: {v}',
+    'hero.revenueMark': 'Tushum shu yerda tugaydi',
+    'hero.cogs': 'Tannarx',
+    'hero.cogsHint': 'Sotilgan tovarlarning xarid narxi',
+    'hero.costs': 'Xarajatlar',
+    'hero.costsHint': 'Komissiya, logistika, saqlash, reklama, soliq',
+    'hero.netHint': 'Barcha xarajat va soliqdan keyin',
 
     'orders.title': 'Buyurtmalar oqimi',
     'orders.subtitle': 'Qabul qilingandan yetkazilgangacha',
     'orders.total': 'Jami',
+    'orders.totalHint': 'Bekor va qaytganlar bilan',
     'orders.success': 'Muvaffaqiyatli',
-    'orders.units': 'Mahsulotlar (dona)',
+    'orders.successHint': 'Bekor qilinmagan, qaytmagan',
+    'orders.units': 'Sotildi, dona',
+    'orders.unitsHint': 'Muvaffaqiyatli buyurtmalarda',
     'orders.rate': 'muvaffaqiyat',
 
     'risk.title': 'Xavf va qaytarishlar',
     'risk.subtitle': 'Yo‘qotilgan buyurtmalar ulushi',
     'risk.returnRate': 'Qaytarish ulushi',
     'risk.rateHint': '5% gacha — normal, 10% dan yuqori — xavfli',
+    'risk.marker': '10% — xavfli zona chegarasi',
     'risk.canceled': 'Bekor qilingan',
     'risk.canceledHint': 'Yetkazilmagan buyurtmalar',
     'risk.returns': 'Qaytarishlar',
@@ -89,36 +107,48 @@ registerNamespace('reports', {
 
     'top.title': 'Top sotuvlar',
     'top.subtitle': 'Davrdagi eng ko‘p tushum keltirgan mahsulotlar',
+    'top.product': 'Mahsulot',
     'top.units': 'Dona',
     'top.revenue': 'Tushum',
     'top.profit': 'Foyda',
-    'top.margin': 'Marja',
+    'top.marginSub': 'marja {v}',
     'top.share': 'Ulush',
+    'top.top3': 'Top-3: tushumning {v}',
+    'top.top3Hint': 'Uchta yetakchi mahsulot birgalikda tushumning qancha qismini beradi',
+    'top.concentrated': 'Bitta mahsulotga bog‘liq',
+    'top.concentratedHint':
+      'Yetakchi mahsulot tushumning {v} ini beradi — u tugab qolsa yoki narxi tushsa, oy natijasi keskin o‘zgaradi',
     'top.empty': 'Bu davrda sotuv qayd etilmagan',
 
-    'share.title': 'Sotuv ulushi',
-    'share.subtitle': 'Top mahsulotlar va qolganlari',
-    'share.others': 'Boshqalar',
-    'share.center': 'Jami tushum',
-
     'cats.title': 'Kategoriyalar bo‘yicha',
-    'cats.subtitle': 'Tushumning kategoriyalar kesimi',
+    'cats.subtitle': 'Tushum qayerdan keldi',
+    'cats.total': 'Davr tushumi',
+    'cats.count': '{n} ta kategoriya',
+    'cats.more': 'Yana {n} ta kategoriya — {v}',
     'cats.empty': 'Kategoriya ma’lumoti yo‘q',
 
     'delivery.title': 'Yetkazib berish turlari',
-    'delivery.subtitle': 'FBO / FBS / DBS taqsimoti',
-    'delivery.orders': 'Buyurtma',
-    'delivery.success': 'Muvaffaqiyatli',
+    'delivery.subtitle': 'Buyurtmalarning FBO / FBS / DBS taqsimoti',
+    'delivery.totalChip': '{n} buyurtma',
+    'delivery.FBO': 'Uzum omboridan',
+    'delivery.FBS': 'O‘z omboringizdan',
+    'delivery.DBS': 'O‘zingiz yetkazasiz',
+    'delivery.successLine': 'Muvaffaqiyatli: {n} · {v}',
     'delivery.empty': 'Ma’lumot yo‘q',
 
     'expenses.title': 'Davr xarajatlari',
-    'expenses.subtitle': 'Komissiya, logistika, ombor va boshqalar',
+    'expenses.subtitle': 'Pul qayerga ketdi: komissiya, logistika, saqlash va boshqalar',
     'expenses.total': 'Jami xarajat',
+    'expenses.totalAside': 'tushumning {v}',
+    'expenses.pctNote': 'O‘ngdagi foiz — tushumga nisbatan',
     'expenses.empty': 'Xarajat qayd etilmagan',
 
     'warehouse.title': 'Ombor',
-    'warehouse.subtitle': 'Davr oxiridagi qoldiq holati',
+    'warehouse.subtitle': 'Hozirgi qoldiq, tannarx bo‘yicha',
     'warehouse.units': 'dona',
+    'warehouse.split': 'Qiymat bo‘yicha: FBO {a} · FBS {b}',
+    'warehouse.FBO': 'Uzum omborida',
+    'warehouse.FBS': 'O‘z omboringizda',
     'warehouse.capital': 'Jami ombor kapitali',
     'warehouse.capitalHint': 'Qoldiqlarning tannarx bo‘yicha qiymati',
 
@@ -131,6 +161,7 @@ registerNamespace('reports', {
     'insights.title': 'Xulosalar',
     'insights.subtitle': 'Davr bo‘yicha e’tibor talab qiladigan nuqtalar',
     'insights.empty': 'Alohida xulosa yo‘q — ko‘rsatkichlar barqaror',
+    'insights.more': 'Batafsil',
     'metric.netProfit': 'Sof foyda',
     'metric.expenses': 'Xarajatlar',
     'metric.successRate': 'Muvaffaqiyat ulushi',
@@ -154,33 +185,50 @@ registerNamespace('reports', {
   ru: {
     title: 'Месячный отчёт',
     subtitle: 'Полный итог периода: выручка, прибыль, расходы и склад',
-    print: 'Печать в PDF',
-    printHint: 'Откроется окно печати браузера',
+    print: 'PDF',
+    printHint: 'Печать в PDF — откроется окно печати браузера',
     exporting: 'Готовим...',
     exportOk: 'Excel-файл скачан',
     exportErr: 'Не удалось скачать Excel',
     'print.head': 'SavdoIQ — отчёт за период',
+    'meta.orders': 'Заказов: {n}',
 
     'kpi.revenue': 'Выручка',
-    'kpi.revenueHint': 'Общая сумма продаж за период',
-    'kpi.gross': 'Валовая прибыль',
-    'kpi.grossHint': 'Маржа {v}',
-    'kpi.net': 'Чистая прибыль',
-    'kpi.netHint': 'С учётом налога {v}',
+    'kpi.revenueSub': 'Заказов: {orders} · {units} шт.',
     'kpi.avgCheck': 'Средний чек',
     'kpi.avgCheckHint': 'На основе {v} заказов',
+
+    'hero.profit': 'Чистая прибыль',
+    'hero.loss': 'Убыток',
+    'hero.margin': 'Чистая маржа {v}',
+    'hero.prevMonth': 'прошлый месяц {v}',
+    'hero.lost': 'Расходы превысили выручку на {v}',
+    'hero.gross': 'Валовая прибыль',
+    'hero.grossHint': 'Маржа {v} · после себестоимости',
+    'hero.bar': 'Куда ушла выручка',
+    'hero.barBase': 'Выручка: {v}',
+    'hero.revenueMark': 'Здесь заканчивается выручка',
+    'hero.cogs': 'Себестоимость',
+    'hero.cogsHint': 'Закупочная цена проданных товаров',
+    'hero.costs': 'Расходы',
+    'hero.costsHint': 'Комиссия, логистика, хранение, реклама, налог',
+    'hero.netHint': 'После всех расходов и налога',
 
     'orders.title': 'Поток заказов',
     'orders.subtitle': 'От оформления до доставки',
     'orders.total': 'Всего',
+    'orders.totalHint': 'С отменами и возвратами',
     'orders.success': 'Успешных',
-    'orders.units': 'Товаров (шт)',
+    'orders.successHint': 'Без отмен и возвратов',
+    'orders.units': 'Продано, шт.',
+    'orders.unitsHint': 'В успешных заказах',
     'orders.rate': 'успешность',
 
     'risk.title': 'Риски и возвраты',
     'risk.subtitle': 'Доля потерянных заказов',
     'risk.returnRate': 'Доля возвратов',
     'risk.rateHint': 'До 5% — норма, выше 10% — рискованно',
+    'risk.marker': '10% — граница зоны риска',
     'risk.canceled': 'Отменено',
     'risk.canceledHint': 'Недоставленные заказы',
     'risk.returns': 'Возвраты',
@@ -191,36 +239,48 @@ registerNamespace('reports', {
 
     'top.title': 'Топ продаж',
     'top.subtitle': 'Товары с наибольшей выручкой за период',
+    'top.product': 'Товар',
     'top.units': 'Шт',
     'top.revenue': 'Выручка',
     'top.profit': 'Прибыль',
-    'top.margin': 'Маржа',
+    'top.marginSub': 'маржа {v}',
     'top.share': 'Доля',
+    'top.top3': 'Топ-3: {v} выручки',
+    'top.top3Hint': 'Какую долю выручки дают три лидера вместе',
+    'top.concentrated': 'Зависимость от одного товара',
+    'top.concentratedHint':
+      'Лидер даёт {v} выручки — если он закончится или подешевеет, итог месяца резко изменится',
     'top.empty': 'За этот период продаж не было',
 
-    'share.title': 'Доля продаж',
-    'share.subtitle': 'Топ-товары и остальные',
-    'share.others': 'Остальные',
-    'share.center': 'Всего выручки',
-
     'cats.title': 'По категориям',
-    'cats.subtitle': 'Разрез выручки по категориям',
+    'cats.subtitle': 'Откуда пришла выручка',
+    'cats.total': 'Выручка периода',
+    'cats.count': 'Категорий: {n}',
+    'cats.more': 'Ещё категорий: {n} — {v}',
     'cats.empty': 'Нет данных по категориям',
 
     'delivery.title': 'Типы доставки',
-    'delivery.subtitle': 'Распределение FBO / FBS / DBS',
-    'delivery.orders': 'Заказов',
-    'delivery.success': 'Успешных',
+    'delivery.subtitle': 'Распределение заказов FBO / FBS / DBS',
+    'delivery.totalChip': 'Заказов: {n}',
+    'delivery.FBO': 'Со склада Uzum',
+    'delivery.FBS': 'С вашего склада',
+    'delivery.DBS': 'Доставляете сами',
+    'delivery.successLine': 'Успешных: {n} · {v}',
     'delivery.empty': 'Нет данных',
 
     'expenses.title': 'Расходы периода',
-    'expenses.subtitle': 'Комиссия, логистика, хранение и прочее',
+    'expenses.subtitle': 'Куда ушли деньги: комиссия, логистика, хранение и прочее',
     'expenses.total': 'Итого расходов',
+    'expenses.totalAside': '{v} от выручки',
+    'expenses.pctNote': 'Процент справа — от выручки',
     'expenses.empty': 'Расходы не зафиксированы',
 
     'warehouse.title': 'Склад',
-    'warehouse.subtitle': 'Остатки на конец периода',
+    'warehouse.subtitle': 'Текущий остаток по себестоимости',
     'warehouse.units': 'шт',
+    'warehouse.split': 'По стоимости: FBO {a} · FBS {b}',
+    'warehouse.FBO': 'На складе Uzum',
+    'warehouse.FBS': 'На вашем складе',
     'warehouse.capital': 'Всего складского капитала',
     'warehouse.capitalHint': 'Стоимость остатков по себестоимости',
 
@@ -233,6 +293,7 @@ registerNamespace('reports', {
     'insights.title': 'Выводы',
     'insights.subtitle': 'Точки, требующие внимания за период',
     'insights.empty': 'Особых выводов нет — показатели стабильны',
+    'insights.more': 'Подробнее',
     'metric.netProfit': 'Чистая прибыль',
     'metric.expenses': 'Расходы',
     'metric.successRate': 'Доля успешных',
@@ -256,33 +317,50 @@ registerNamespace('reports', {
   en: {
     title: 'Monthly report',
     subtitle: 'Full period summary: revenue, profit, costs and stock',
-    print: 'Print to PDF',
-    printHint: 'Opens the browser print dialog',
+    print: 'PDF',
+    printHint: 'Print to PDF — opens the browser print dialog',
     exporting: 'Preparing...',
     exportOk: 'Excel file downloaded',
     exportErr: 'Could not download the Excel file',
     'print.head': 'SavdoIQ — period report',
+    'meta.orders': '{n} orders',
 
     'kpi.revenue': 'Revenue',
-    'kpi.revenueHint': 'Total sales for the period',
-    'kpi.gross': 'Gross profit',
-    'kpi.grossHint': 'Margin {v}',
-    'kpi.net': 'Net profit',
-    'kpi.netHint': 'Tax {v} included',
+    'kpi.revenueSub': '{orders} orders · {units} units',
     'kpi.avgCheck': 'Average check',
     'kpi.avgCheckHint': 'Based on {v} orders',
+
+    'hero.profit': 'Net profit',
+    'hero.loss': 'Loss',
+    'hero.margin': 'Net margin {v}',
+    'hero.prevMonth': 'last month {v}',
+    'hero.lost': 'Costs exceeded revenue by {v}',
+    'hero.gross': 'Gross profit',
+    'hero.grossHint': 'Margin {v} · after cost of goods',
+    'hero.bar': 'Where revenue went',
+    'hero.barBase': 'Revenue: {v}',
+    'hero.revenueMark': 'Revenue ends here',
+    'hero.cogs': 'Cost of goods',
+    'hero.cogsHint': 'Purchase price of the goods sold',
+    'hero.costs': 'Costs',
+    'hero.costsHint': 'Commission, logistics, storage, ads, tax',
+    'hero.netHint': 'After all costs and tax',
 
     'orders.title': 'Order flow',
     'orders.subtitle': 'From placement to delivery',
     'orders.total': 'Total',
+    'orders.totalHint': 'Incl. cancelled and returned',
     'orders.success': 'Successful',
-    'orders.units': 'Items (units)',
+    'orders.successHint': 'Not cancelled or returned',
+    'orders.units': 'Units sold',
+    'orders.unitsHint': 'In successful orders',
     'orders.rate': 'success rate',
 
     'risk.title': 'Risk and returns',
     'risk.subtitle': 'Share of lost orders',
     'risk.returnRate': 'Return rate',
     'risk.rateHint': 'Up to 5% is normal, above 10% is risky',
+    'risk.marker': '10% — risk zone threshold',
     'risk.canceled': 'Canceled',
     'risk.canceledHint': 'Orders that were not delivered',
     'risk.returns': 'Returns',
@@ -293,36 +371,48 @@ registerNamespace('reports', {
 
     'top.title': 'Top sales',
     'top.subtitle': 'Highest revenue products for the period',
+    'top.product': 'Product',
     'top.units': 'Units',
     'top.revenue': 'Revenue',
     'top.profit': 'Profit',
-    'top.margin': 'Margin',
+    'top.marginSub': 'margin {v}',
     'top.share': 'Share',
+    'top.top3': 'Top 3: {v} of revenue',
+    'top.top3Hint': 'How much of revenue the three leaders bring together',
+    'top.concentrated': 'Reliant on one product',
+    'top.concentratedHint':
+      'The leader brings {v} of revenue — if it runs out or its price drops, the month changes sharply',
     'top.empty': 'No sales recorded for this period',
 
-    'share.title': 'Sales share',
-    'share.subtitle': 'Top products versus the rest',
-    'share.others': 'Others',
-    'share.center': 'Total revenue',
-
     'cats.title': 'By category',
-    'cats.subtitle': 'Revenue split across categories',
+    'cats.subtitle': 'Where revenue came from',
+    'cats.total': 'Period revenue',
+    'cats.count': '{n} categories',
+    'cats.more': '{n} more categories — {v}',
     'cats.empty': 'No category data',
 
     'delivery.title': 'Delivery types',
-    'delivery.subtitle': 'FBO / FBS / DBS distribution',
-    'delivery.orders': 'Orders',
-    'delivery.success': 'Successful',
+    'delivery.subtitle': 'Orders split across FBO / FBS / DBS',
+    'delivery.totalChip': '{n} orders',
+    'delivery.FBO': 'From the Uzum warehouse',
+    'delivery.FBS': 'From your warehouse',
+    'delivery.DBS': 'You deliver',
+    'delivery.successLine': 'Successful: {n} · {v}',
     'delivery.empty': 'No data',
 
     'expenses.title': 'Period costs',
-    'expenses.subtitle': 'Commission, logistics, storage and more',
+    'expenses.subtitle': 'Where the money went: commission, logistics, storage and more',
     'expenses.total': 'Total costs',
+    'expenses.totalAside': '{v} of revenue',
+    'expenses.pctNote': 'The percentage on the right is of revenue',
     'expenses.empty': 'No costs recorded',
 
     'warehouse.title': 'Warehouse',
-    'warehouse.subtitle': 'Stock at the end of the period',
+    'warehouse.subtitle': 'Current stock at cost',
     'warehouse.units': 'units',
+    'warehouse.split': 'By value: FBO {a} · FBS {b}',
+    'warehouse.FBO': 'At the Uzum warehouse',
+    'warehouse.FBS': 'At your warehouse',
     'warehouse.capital': 'Total stock capital',
     'warehouse.capitalHint': 'Value of stock at cost price',
 
@@ -335,6 +425,7 @@ registerNamespace('reports', {
     'insights.title': 'Takeaways',
     'insights.subtitle': 'What deserves attention this period',
     'insights.empty': 'Nothing stands out — metrics look stable',
+    'insights.more': 'Details',
     'metric.netProfit': 'Net profit',
     'metric.expenses': 'Expenses',
     'metric.successRate': 'Success rate',
@@ -359,6 +450,14 @@ registerNamespace('reports', {
 
 type CompareRow = { month: string; revenue: number; profit: number; margin: number };
 
+/** '2026-10' → '2026-09' (oldingi kalendar oyi kaliti) */
+function prevMonthKey(key: string): string {
+  const y = Number(key.slice(0, 4));
+  const m = Number(key.slice(5, 7));
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function Reports() {
   const t = useT('reports');
   const f = useFormat();
@@ -376,23 +475,6 @@ export default function Reports() {
   });
 
   const data = report.data;
-
-  const donutData = useMemo(() => {
-    if (!data) return [];
-    const top = [...data.topProducts].sort((a, b) => b.revenue - a.revenue).slice(0, 6);
-    const palette: string[] = [
-      CHART_COLORS.brand,
-      CHART_COLORS.violet,
-      CHART_COLORS.info,
-      CHART_COLORS.warn,
-      CHART_COLORS.teal,
-      CHART_COLORS.pink,
-    ];
-    const rows = top.map((p, i) => ({ name: p.title, value: p.revenue, color: palette[i % palette.length] }));
-    const others = Math.max(0, data.revenue - top.reduce((s, p) => s + p.revenue, 0));
-    if (others > 0) rows.push({ name: t('share.others'), value: others, color: CHART_COLORS.slate });
-    return rows.filter((r) => r.value > 0);
-  }, [data, t]);
 
   const dailyData = useMemo(
     () =>
@@ -414,56 +496,22 @@ export default function Reports() {
     [compare.data],
   );
 
-  const topColumns: Column<TopProductRow>[] = [
-    {
-      key: 'title',
-      header: t('top.title'),
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} size={36} />,
-    },
-    {
-      key: 'units',
-      header: t('top.units'),
-      align: 'right',
-      sortable: true,
-      sortValue: (r) => r.units,
-      render: (r) => f.num(r.units),
-    },
-    {
-      key: 'revenue',
-      header: t('top.revenue'),
-      align: 'right',
-      sortable: true,
-      sortValue: (r) => r.revenue,
-      render: (r) => <span className="font-semibold text-ink">{f.money(r.revenue)}</span>,
-    },
-    {
-      key: 'profit',
-      header: t('top.profit'),
-      align: 'right',
-      sortable: true,
-      sortValue: (r) => r.profit,
-      hideOnMobile: true,
-      render: (r) => <span className={r.profit >= 0 ? 'text-brand-ink' : 'text-danger'}>{f.money(r.profit)}</span>,
-    },
-    {
-      key: 'margin',
-      header: t('top.margin'),
-      align: 'right',
-      hideOnMobile: true,
-      sortable: true,
-      sortValue: (r) => r.margin,
-      render: (r) => f.pct(r.margin, 1),
-    },
-    {
-      key: 'share',
-      header: t('top.share'),
-      align: 'right',
-      hideOnMobile: true,
-      sortable: true,
-      sortValue: (r) => r.share,
-      render: (r) => <span className="text-muted">{f.pct(r.share, 1)}</span>,
-    },
-  ];
+  /*
+   * Sof marjaning oldingi qiymati — faqat davr BITTA kalendar oyi (yoki oy
+   * boshidan bugungacha) bo'lganda: oylar taqqoslovida o'sha oydan oldingi oy
+   * bor. Marja — foiz ko'rsatkich, uzunligi teng bo'lmagan oylarni ham
+   * solishtirsa bo'ladi; summalarni (tushum, foyda) esa to'liq oy bilan
+   * yarim oyni solishtirib bo'lmaydi, shuning uchun ularga o'zgarish
+   * chiqarilmaydi. Boshqa davrda null — taxmin qilinmaydi.
+   */
+  const prevMargin = useMemo(() => {
+    if (!data || !compare.data) return null;
+    const key = data.period.from.slice(0, 7);
+    const oneMonth = data.period.from.endsWith('-01') && data.period.to.slice(0, 7) === key;
+    if (!oneMonth) return null;
+    const prev = compare.data.find((m) => m.month === prevMonthKey(key));
+    return prev && prev.revenue > 0 && Number.isFinite(prev.margin) ? prev.margin : null;
+  }, [data, compare.data]);
 
   const onExport = async () => {
     setExporting(true);
@@ -478,6 +526,9 @@ export default function Reports() {
     }
   };
 
+  // Davr chipi javobdagi davrdan (tarif chegarasi bilan qisqargan bo'lishi mumkin), u kelguncha — so'ralgan davr
+  const period = data?.period ?? { from: q.from, to: q.to };
+
   return (
     <>
       <PrintStyles />
@@ -487,6 +538,22 @@ export default function Reports() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="monthly_reports" />}
+        meta={
+          <>
+            <span className="meta-chip tnum">
+              <CalendarRange className="h-3.5 w-3.5" />
+              {f.date(period.from)} — {f.date(period.to)}
+            </span>
+            {data ? (
+              <span className="meta-chip tnum">
+                <ShoppingBag className="h-3.5 w-3.5" />
+                {t('meta.orders', { n: f.num(data.ordersTotal) })}
+              </span>
+            ) : null}
+            <DataFreshness />
+            <CostCoverage />
+          </>
+        }
         actions={
           <div className="no-print flex flex-wrap items-center gap-2">
             <Button variant="outline" icon={<Receipt className="h-4 w-4" />} loading={exporting} onClick={onExport}>
@@ -514,11 +581,13 @@ export default function Reports() {
           </Card>
         ) : report.isLoading ? (
           <div className="space-y-5">
-            <StatGrid>
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-[126px] w-full" />
-              ))}
-            </StatGrid>
+            <div className="grid gap-4 xl:grid-cols-3">
+              <Skeleton className="h-[320px] w-full xl:col-span-2" />
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                <Skeleton className="h-[152px] w-full" />
+                <Skeleton className="h-[152px] w-full" />
+              </div>
+            </div>
             <div className="grid gap-4 lg:grid-cols-2">
               <Skeleton className="h-64 w-full" />
               <Skeleton className="h-64 w-full" />
@@ -541,38 +610,35 @@ export default function Reports() {
           <div className="report-sheet space-y-5">
             <PrintHead from={data.period.from} to={data.period.to} />
 
-            {/* ── KPI ── */}
-            <StatGrid>
-              <StatCard
-                label={t('kpi.revenue')}
-                value={f.money(data.revenue)}
-                hint={t('kpi.revenueHint')}
-                icon={<TrendingUp className="h-5 w-5" />}
-                tone="brand"
-              />
-              <StatCard
-                label={t('kpi.gross')}
-                value={f.money(data.grossProfit)}
-                hint={t('kpi.grossHint', { v: f.pct(data.grossMargin, 1) })}
-                icon={<BarChart3 className="h-5 w-5" />}
-                tone="info"
-              />
-              <StatCard
-                label={t('kpi.net')}
-                value={f.money(data.netProfit)}
-                hint={t('kpi.netHint', { v: f.pct(data.taxRate, 1) })}
-                icon={<Coins className="h-5 w-5" />}
-                tone={data.netProfit >= 0 ? 'brand' : 'danger'}
-              />
-              <StatCard
-                label={t('kpi.avgCheck')}
-                value={f.money(data.avgCheck)}
-                // O'rtacha chek tirik buyurtmalarga bo'linadi — izohdagi son ham shular (bekor va qaytarilgani kirmaydi)
-                hint={t('kpi.avgCheckHint', { v: f.num(Math.max(0, data.ordersTotal - data.canceled - data.returns)) })}
-                icon={<ShoppingBag className="h-5 w-5" />}
-                tone="violet"
-              />
-            </StatGrid>
+            {/*
+              ── Davr natijasi ──
+              Chapda sahifaning yagona HeroCard'i (sof foyda va tushum qayerga
+              ketgani), o'ngda u bilan takrorlanmaydigan ikki ko'rsatkich.
+              Tuzilma Boshqaruv paneli bilan bir xil — sotuvchi ikki sahifada
+              raqamni bir joydan izlaydi.
+            */}
+            <div className="grid gap-4 xl:grid-cols-3">
+              <ResultHero className="xl:col-span-2" report={data} prevMargin={prevMargin} />
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                <StatCard
+                  label={t('kpi.revenue')}
+                  value={f.money(data.revenue)}
+                  hint={t('kpi.revenueSub', { orders: f.num(data.ordersTotal), units: f.num(data.unitsSold) })}
+                  icon={<TrendingUp className="h-5 w-5" />}
+                  spark={dailyData.map((d) => d.revenue)}
+                  tone="brand"
+                />
+                {/* Buyurtma ko'rsatkichi — "Buyurtmalar oqimi" kabi ko'k (info) */}
+                <StatCard
+                  label={t('kpi.avgCheck')}
+                  value={f.money(data.avgCheck)}
+                  // O'rtacha chek tirik buyurtmalarga bo'linadi — izohdagi son ham shular (bekor va qaytarilgani kirmaydi)
+                  hint={t('kpi.avgCheckHint', { v: f.num(Math.max(0, data.ordersTotal - data.canceled - data.returns)) })}
+                  icon={<ShoppingBag className="h-5 w-5" />}
+                  tone="info"
+                />
+              </div>
+            </div>
 
             {/* ── Oqim va xavf ── */}
             <div className="grid gap-4 lg:grid-cols-2">
@@ -580,59 +646,28 @@ export default function Reports() {
               <RiskCard report={data} />
             </div>
 
-            {/* ── Top sotuvlar va ulush ── */}
-            <div className="grid gap-4 xl:grid-cols-5">
-              <Card className="print-avoid-break xl:col-span-3">
-                <CardHeader title={t('top.title')} subtitle={t('top.subtitle')} />
-                <div className="overflow-x-auto">
-                  <DataTable
-                    columns={topColumns}
-                    rows={data.topProducts}
-                    rowKey={(r) => r.skuId}
-                    density="compact"
-                    empty={<EmptyState title={t('top.empty')} />}
-                  />
-                </div>
-              </Card>
+            {/* ── Top sotuvlar (ulush va konsentratsiya shu yerda) ── */}
+            <TopSalesCard rows={data.topProducts} />
 
-              <ChartCard
-                title={t('share.title')}
-                subtitle={t('share.subtitle')}
-                className="print-avoid-break xl:col-span-2"
-              >
-                {donutData.length ? (
-                  <DonutChart
-                    data={donutData}
-                    height={280}
-                    center={
-                      <>
-                        <span className="eyebrow">{t('share.center')}</span>
-                        <span className="tnum mt-0.5 font-display text-lg font-extrabold text-ink">
-                          {f.compact(data.revenue)}
-                        </span>
-                      </>
-                    }
-                  />
-                ) : (
-                  <EmptyState title={t('top.empty')} />
-                )}
-              </ChartCard>
+            {/* ── Tushum qayerdan keldi va qayerga ketdi ── */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <CategoriesCard rows={data.categories} revenue={data.revenue} />
+              <ExpensesCard rows={data.expenses} total={data.expensesTotal} revenue={data.revenue} />
             </div>
 
-            {/* ── Kategoriya va yetkazib berish ── */}
+            {/* ── Logistika: yetkazish turlari va ombor ── */}
             <div className="grid gap-4 lg:grid-cols-2">
-              <CategoriesCard rows={data.categories} />
               <DeliveryTypesCard rows={data.deliveryTypes} />
-            </div>
-
-            {/* ── Xarajat va ombor ── */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <ExpensesCard rows={data.expenses} total={data.expensesTotal} />
               <WarehouseCard warehouse={data.warehouse} />
             </div>
 
             {/* ── Kunlik dinamika ── */}
-            <ChartCard title={t('daily.title')} subtitle={t('daily.subtitle')} className="print-avoid-break">
+            <ChartCard
+              title={t('daily.title')}
+              subtitle={t('daily.subtitle')}
+              icon={<BarChart3 />}
+              className="print-avoid-break"
+            >
               {dailyData.length ? (
                 <TrendChart
                   data={dailyData}
@@ -661,6 +696,7 @@ export default function Reports() {
             <ChartCard
               title={t('compare.title')}
               subtitle={t('compare.subtitle')}
+              icon={<History />}
               className="print-avoid-break print-break-before"
             >
               {compare.isLoading ? (

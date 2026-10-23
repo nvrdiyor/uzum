@@ -32,6 +32,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { CostCoverage } from '@/components/trust/CostCoverage';
 import { CostInput } from '@/components/costprice/CostInput';
 import {
   effectiveCost,
@@ -48,6 +49,7 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
+import { invalidateCostDependent } from '@/lib/costQueries';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 
 registerNamespace('costPrice', {
@@ -462,10 +464,8 @@ export default function CostPrice() {
 
   // ─────────────────── Saqlash ───────────────────
 
-  const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['cost-price'] });
-    void qc.invalidateQueries({ queryKey: ['products'] });
-  };
+  // Foyda ko'rsatadigan hamma sahifa (server o'tgan buyurtmalarni ham qayta hisoblaydi)
+  const invalidate = () => invalidateCostDependent(qc);
 
   const bulkSave = useMutation({
     mutationFn: (items: BulkItem[]) => api.post<unknown>('/products/sku/bulk-cost', { items }),
@@ -705,6 +705,7 @@ export default function CostPrice() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="cost_price" />}
+        meta={<CostCoverage />}
         actions={
           <Button
             icon={<Save className="h-4 w-4" />}
@@ -739,7 +740,8 @@ export default function CostPrice() {
             {products.isLoading ? (
               <Skeleton className="h-[132px] w-full rounded-2xl" />
             ) : hasProducts ? (
-              <Card className="p-5 sm:p-6">
+              // Aksent chiziq holatni aytadi: hammasi kiritilgan — firuza, yetishmaydi — za'faron
+              <Card tone={missingNow > 0 ? 'warn' : 'brand'} className="p-5 sm:p-6">
                 <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
                   <div className="min-w-[240px] flex-1">
                     <p className="eyebrow-lg">{t('cov.label')}</p>
@@ -804,6 +806,7 @@ export default function CostPrice() {
             {/* ── Jadval ── */}
             <Card className="overflow-hidden">
               <CardHeader
+                icon={<Tags className="h-4 w-4" />}
                 title={t('table.title')}
                 subtitle={t('hint.assumptions', {
                   c: f.pct(assumptions.commissionPct, 0),

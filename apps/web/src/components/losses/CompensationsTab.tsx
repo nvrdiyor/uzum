@@ -1,18 +1,20 @@
-import { useMemo, type ReactNode } from 'react';
-import { Clock3, ShieldCheck, Wallet } from '@/components/icons';
+import { useMemo } from 'react';
+import { Clock3, Gauge, ShieldCheck, Wallet } from '@/components/icons';
 import type { LossesResponse, LossRow } from '@savdoiq/shared';
 import { useFormat, useT } from '@/i18n';
-import { cn } from '@/lib/utils';
 import {
   Badge,
   Card,
+  CardBody,
   CardHeader,
   DataTable,
   EmptyState,
-  ProductCell,
   ProgressBar,
+  StatCard,
+  StatGrid,
   type Column,
 } from '@/components/ui';
+import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
 
 const STATUS_TONE = {
   open: 'warn',
@@ -62,8 +64,9 @@ export function CompensationsTab({
     {
       key: 'product',
       header: t('col.product'),
-      width: '34%',
-      render: (r) => <ProductCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} imageUrl={r.imageUrl} />,
+      render: (r) => (
+        <ProductTitleCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} imageUrl={r.imageUrl} maxWidth={280} />
+      ),
       sortable: true,
       sortValue: (r) => r.title ?? r.sku ?? '',
     },
@@ -134,39 +137,47 @@ export function CompensationsTab({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-        <SummaryTile
-          icon={<ShieldCheck className="h-4 w-4" />}
+      {/*
+        Sahifadagi boshqa KPI'lar bilan bir xil StatCard: ilgari bu yerda
+        o'z plitkalari turardi — boshqa shrift, aksent chiziqsiz va boshqa
+        o'lchamdagi belgi bilan, tab almashganda sahifa "boshqa dizayn"ga o'tardi.
+      */}
+      <StatGrid>
+        <StatCard
+          icon={<ShieldCheck className="h-5 w-5" />}
           tone="brand"
           label={t('comp.received')}
           value={f.money(receivedAmount)}
           hint={t('comp.receivedHint', { n: received.length })}
         />
-        <SummaryTile
-          icon={<Clock3 className="h-4 w-4" />}
+        <StatCard
+          icon={<Clock3 className="h-5 w-5" />}
           tone="warn"
           label={t('comp.pending')}
           value={f.money(pendingAmount)}
           hint={t('comp.pendingHint', { n: pending.length })}
         />
-        <SummaryTile
-          icon={<Wallet className="h-4 w-4" />}
+        <StatCard
+          icon={<Wallet className="h-5 w-5" />}
           tone="danger"
           label={t('comp.rejected')}
           value={f.money(rejectedAmount)}
           hint={t('comp.rejectedHint', { n: rejected.length })}
         />
-      </div>
+      </StatGrid>
 
-      <Card className="p-5">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className="section-title">{t('comp.rate')}</p>
-            <p className="mt-0.5 text-sm text-muted">{t('comp.rateHint')}</p>
-          </div>
-          <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.pct(coverPct)}</p>
-        </div>
-        <ProgressBar value={coverPct} tone={coverPct >= 70 ? 'brand' : coverPct >= 35 ? 'warn' : 'danger'} />
+      <Card>
+        <CardHeader
+          icon={<Gauge className="h-4 w-4" />}
+          title={t('comp.rate')}
+          subtitle={t('comp.rateHint')}
+          actions={
+            <span className="tnum font-display text-2xl font-bold tracking-tight text-ink">{f.pct(coverPct)}</span>
+          }
+        />
+        <CardBody>
+          <ProgressBar value={coverPct} tone={coverPct >= 70 ? 'brand' : coverPct >= 35 ? 'warn' : 'danger'} />
+        </CardBody>
       </Card>
 
       <Card>
@@ -202,36 +213,6 @@ export function CompensationsTab({
           />
         </div>
       </Card>
-    </div>
-  );
-}
-
-function SummaryTile({
-  icon,
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  hint: string;
-  tone: 'brand' | 'warn' | 'danger';
-}) {
-  const toneClass = {
-    brand: 'bg-brand/10 text-brand-ink',
-    warn: 'bg-warn/10 text-warn-ink',
-    danger: 'bg-danger/10 text-danger-ink',
-  }[tone];
-  return (
-    <div className="card p-5">
-      <div className="flex items-center gap-2.5">
-        <span className={cn('flex h-8 w-8 items-center justify-center rounded-xl', toneClass)}>{icon}</span>
-        <p className="eyebrow-lg">{label}</p>
-      </div>
-      <p className="tnum mt-3 font-display text-[26px] font-extrabold leading-tight tracking-tight text-ink">{value}</p>
-      <p className="mt-1 text-xs text-muted">{hint}</p>
     </div>
   );
 }

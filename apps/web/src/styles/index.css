@@ -1,5 +1,50 @@
 @tailwind base;
 @tailwind components;
+
+/*
+ * Ohang klasslari — faqat --tone/--tone-ink ni almashtiradi, o'zi hech
+ * narsa bo'yamaydi. Rang ma'no bildiradi: brand — sotuvchi puli/foyda,
+ * violet — Uzum ulushi, warn — kutilayotgan pul yoki xavf, danger — faqat
+ * zarar, info — qoldiq va logistika, pink — pullik saqlash.
+ *
+ * ATAYLAB @layer tashqarisida: komponentlar ularni `tone-${tone}` shablon
+ * qatori bilan yasaydi va Tailwind bunday nomni manbada topa olmaydi —
+ * @layer components ichida turganda u ularni "ishlatilmagan" deb CSS'dan
+ * butunlay olib tashlardi va har bir ohang firuza bo'lib chiqardi
+ * (2026-10-24 da topildi). Oddiy CSS hech qachon tozalanmaydi.
+ *
+ * `@tailwind utilities` dan OLDIN turadi: sahifa kerak bo'lsa ohangni
+ * utility bilan ([--tone:...]) `!` siz ham almashtira olsin.
+ */
+.tone-brand {
+  --tone: var(--c-brand);
+  --tone-ink: var(--c-brand-ink);
+}
+.tone-info {
+  --tone: var(--c-info);
+  --tone-ink: var(--c-info-ink);
+}
+.tone-warn {
+  --tone: var(--c-warn);
+  --tone-ink: var(--c-warn-ink);
+}
+.tone-danger {
+  --tone: var(--c-danger);
+  --tone-ink: var(--c-danger-ink);
+}
+.tone-violet {
+  --tone: var(--c-violet);
+  --tone-ink: var(--c-violet-ink);
+}
+.tone-muted {
+  --tone: var(--c-muted);
+  --tone-ink: var(--c-text-soft);
+}
+.tone-pink {
+  --tone: var(--c-pink);
+  --tone-ink: var(--c-pink);
+}
+
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────
@@ -108,6 +153,21 @@
   --c-sheen: 12 18 28;
   --sheen-a: 0.06;
 
+  /*
+   * OHANG (tone) qatlami: kartochka aksent chizig'i, ikonka plitkasi va hero
+   * yorug'ligi rangni shu ikki o'zgaruvchidan oladi. Standart — brend (firuza),
+   * .tone-* klassi bilan ma'noga qarab almashtiriladi. 2026-10-24 gacha har
+   * komponent rangni o'zi qotirib yozardi: brend rangi faqat MoneyFlow
+   * tasmasida ko'rinardi, faol menyu va tablar esa kulrang edi.
+   */
+  --tone: var(--c-brand);
+  --tone-ink: var(--c-brand-ink);
+  /* Aksent chiziq, ikonka plitkasi gradienti va hero yorug'ligining kuchi */
+  --accent-a: 0.85;
+  --tile-a1: 0.18;
+  --tile-a2: 0.05;
+  --hero-a: 0.12;
+
   --sq-radius: 18px;
   --sq-sidebar: 256px;
   --sq-rail: 76px;
@@ -116,14 +176,19 @@
 }
 
 .dark {
-  /* Lojuvard tun — Samarqand gumbazlari ostidagi ko'k qora, sof qora emas */
-  --c-bg: 11 17 30;
-  --c-bg-soft: 14 21 36;
-  --c-surface: 18 26 43;
-  --c-surface-2: 24 33 54;
-  --c-surface-3: 32 43 69;
-  --c-border: 35 46 74;
-  --c-border-strong: 52 65 99;
+  /*
+   * Lojuvard tun — Samarqand gumbazlari ostidagi ko'k qora, sof qora emas.
+   * Fon chuqurroq, kartochka sirti undan aniq ajralib turadi: ilgari fon
+   * (11 17 30) va sirt (18 26 43) juda yaqin edi, kartochkalar fonga
+   * singib ketib, sahifa "tekis" ko'rinardi.
+   */
+  --c-bg: 8 12 22;
+  --c-bg-soft: 11 16 28;
+  --c-surface: 16 23 39;
+  --c-surface-2: 22 31 52;
+  --c-surface-3: 30 41 66;
+  --c-border: 37 49 78;
+  --c-border-strong: 54 68 104;
   /* Qorong'i fonda matn oqqa yaqin bo'lishi kerak — jadval qatorlari
      va ikkilamchi yozuvlar juda xira ko'rinmasin */
   --c-text: 238 242 250;
@@ -173,9 +238,13 @@
   --c-shadow: 2 6 16;
   --sh-1: 0.35;
   --sh-2: 0.65;
-  --hl-a: 0.035;
+  --hl-a: 0.06;
   --c-sheen: 255 255 255;
   --sheen-a: 0.07;
+  /* Qorong'ida rangli plitka va hero yorug'ligi kuchliroq bo'lmasa fonga singib ketadi */
+  --tile-a1: 0.26;
+  --tile-a2: 0.07;
+  --hero-a: 0.18;
   color-scheme: dark;
 }
 
@@ -250,6 +319,60 @@ body {
   }
 
   /*
+   * Kartochka tepasidagi ingichka rangli chiziq. Burchaklarga tegmaydi
+   * (radius bilan to'qnashib "qiyshiq" ko'rinmasin), chegaraning ichki
+   * tomonida turadi — overflow-hidden bo'lgan kartochkada ham kesilmaydi.
+   */
+  .card-accent {
+    position: relative;
+  }
+  .card-accent::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 18px;
+    right: 18px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: linear-gradient(90deg, rgb(var(--tone) / var(--accent-a)), rgb(var(--tone) / 0.1));
+    pointer-events: none;
+  }
+
+  /* Ikonka plitkasi — kartochka va sahifa sarlavhasidagi belgi uchun yagona ko'rinish */
+  .icon-tile {
+    @apply flex shrink-0 items-center justify-center;
+    color: rgb(var(--tone-ink));
+    background: linear-gradient(135deg, rgb(var(--tone) / var(--tile-a1)), rgb(var(--tone) / var(--tile-a2)));
+    box-shadow: inset 0 0 0 1px rgb(var(--tone) / 0.22);
+  }
+
+  /*
+   * Sahifadagi BITTA asosiy kartochka (masalan, sof foyda). Qolganlari tinch
+   * turadi — hamma kartochka porlasa, hech biri ajralib turmaydi.
+   */
+  .hero-card {
+    @apply min-w-0 rounded-2xl border bg-surface;
+    border-color: rgb(var(--tone) / 0.3);
+    background-image:
+      radial-gradient(60% 90% at 0% 0%, rgb(var(--tone) / var(--hero-a)) 0%, transparent 65%),
+      radial-gradient(45% 80% at 100% 0%, rgb(var(--c-violet) / calc(var(--hero-a) * 0.7)) 0%, transparent 60%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / var(--hl-a)),
+      0 0 0 1px rgb(var(--tone) / 0.08),
+      0 20px 48px -28px rgb(var(--tone) / 0.55);
+  }
+
+  /* Kartochka ichidagi kichik statistik plitka (Marja, ROI, kecha to'landi...) */
+  .well {
+    @apply rounded-xl border border-line/70 bg-surface-2/70;
+  }
+
+  /* Sahifa sarlavhasi ostidagi kontekst chiplari: davr, do'konlar, yangilangan vaqt */
+  .meta-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-muted;
+  }
+
+  /*
    * Kartochka sarlavhasi va tanasi orasidagi bo'shliq.
    *
    * Sarlavhada allaqachon pt-5 bor, tanada ham p-5 — ikkisi qo'shilib juda
@@ -315,7 +438,7 @@ body {
    * o'lcham, uch xil qalinlik uchrardi.
    */
   .eyebrow {
-    @apply text-2xs font-semibold text-muted;
+    @apply text-2xs font-semibold uppercase tracking-[0.06em] text-muted;
   }
 
   /*

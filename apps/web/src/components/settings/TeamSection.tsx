@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AtSign, Crown, Lock, Sparkles, Trash2, UserPlus, Users } from '@/components/icons';
@@ -21,7 +21,7 @@ import {
 import { api } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
-import { asItems, errText, memberName, MEMBER_ROLES, type MemberRole, type MemberRow } from './types';
+import { asMembers, errText, memberName, MEMBER_ROLES, type MemberRole, type MemberRow } from './types';
 
 const ROLE_TONE: Record<string, Tone> = {
   owner: 'brand',
@@ -35,6 +35,7 @@ export function TeamSection() {
   const f = useFormat();
   const qc = useQueryClient();
   const me = useSession((s) => s.me);
+  const patchMe = useSession((s) => s.patchMe);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<MemberRow | null>(null);
@@ -42,17 +43,27 @@ export function TeamSection() {
   const [role, setRole] = useState<MemberRole>('manager');
   const [touched, setTouched] = useState(false);
 
-  const isOwner = me?.company?.role === 'owner';
-
   const members = useQuery({
-    queryKey: ['company-members'],
-    queryFn: async () => asItems<MemberRow>(await api.get<MemberRow[]>('/company/members')),
+    // Kompaniya almashtirilganda boshqa kompaniyaning ro'yxati (va soni) keshdan chiqmasin
+    queryKey: ['company-members', me?.company?.id ?? null],
+    queryFn: async () => asMembers(await api.get<unknown>('/company/members')),
   });
 
-  const rows = useMemo(() => members.data ?? [], [members.data]);
-  const max = me?.limits.members ?? 1;
-  const used = me?.limits.used.members ?? rows.length;
+  const rows = useMemo(() => members.data?.members ?? [], [members.data]);
+  // Server javobi ustun: limit, son va boshqarish huquqi aynan shu kompaniya uchun hisoblangan.
+  // Sessiyadagi qiymatlar faqat javob kelguncha zaxira.
+  const isOwner = members.data?.canManage ?? (me?.company?.role === 'owner');
+  const max = members.data?.limit ?? me?.limits.members ?? 1;
+  const used = members.data?.used ?? me?.limits.used.members ?? rows.length;
   const full = used >= max;
+
+  // Tariflar sahifasidagi "a'zolar" qatori sessiyadan o'qiydi — taklif yoki chiqarishdan
+  // keyin u eskirib qolmasin, serverning yangi sonini sessiyaga ham yozamiz
+  const serverUsed = members.data?.used;
+  useEffect(() => {
+    if (serverUsed == null || !me || me.limits.used.members === serverUsed) return;
+    patchMe({ limits: { ...me.limits, used: { ...me.limits.used, members: serverUsed } } });
+  }, [serverUsed, me, patchMe]);
 
   const refresh = () => void qc.invalidateQueries({ queryKey: ['company-members'] });
 
@@ -68,13 +79,11 @@ export function TeamSection() {
     onError: (err) => toast.error(t('team.addErr'), errText(err)),
   });
 
+  // Ilgari rol POST /company/members (taklif marshruti) ga yuborilardi va har doim
+  // 409 "allaqachon jamoada" yoki 402 limit bilan qaytardi. Rol PATCH /members/:id da (2026-10-24)
   const changeRole = useMutation({
     mutationFn: (vars: { member: MemberRow; role: MemberRole }) =>
-      api.post<MemberRow>('/company/members', {
-        userId: vars.member.userId ?? vars.member.id,
-        username: vars.member.username ?? undefined,
-        role: vars.role,
-      }),
+      api.patch<MemberRow>(`/company/members/${vars.member.id}`, { role: vars.role }),
     onSuccess: () => {
       toast.success(t('team.roleChanged'));
       refresh();
@@ -163,7 +172,7 @@ export function TeamSection() {
         ) : (
           <ul className="space-y-2">
             {rows.map((m) => {
-              const isSelf = Boolean(me?.user.id && (m.userId === me.user.id || m.id === me.user.id));
+              const isSelf = m.isSelf ?? Boolean(me?.user.id && m.userId === me.user.id);
               const isRowOwner = m.role === 'owner';
               return (
                 <li

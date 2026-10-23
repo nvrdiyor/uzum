@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react';
 import { Check, Clock, Crown, Eye, Minus, Rocket, Sparkles } from '@/components/icons';
 import type { FeatureAccess, PlanId } from '@savdoiq/shared';
+import type { TFunc } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 export const PLAN_ICON: Record<PlanId, typeof Sparkles> = {
@@ -117,6 +118,23 @@ export function LimitBar({
       </div>
     </div>
   );
+}
+
+/** "Tez kunda" belgisi — tarifda bor, lekin sahifasi hali chiqmagan imkoniyat uchun */
+export function SoonChip({ label }: { label: string }) {
+  return (
+    <span className="chip ml-1.5 whitespace-nowrap bg-surface-3 px-2 py-0.5 align-middle text-2xs font-semibold text-muted">
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Tarix chuqurligi matni: 365 kun "1 yil" deb ko'rsatiladi — "365 kun" dan
+ * tushunarliroq. Boshqa qiymatlar (sinovdagi 60 kun) kunda qoladi.
+ */
+export function historyLimitText(t: TFunc, days: number): string {
+  return days === 365 ? t('limit.historyYear') : t('limit.historyValue', { n: days });
 }
 
 /** Kartadagi bitta limit satri (do'kon / kabinet / jamoa / tarix) */

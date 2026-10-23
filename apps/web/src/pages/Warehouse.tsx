@@ -6,12 +6,15 @@ import {
   Container,
   Download,
   Lock,
+  Store,
+  Table2,
   Truck,
   Warehouse as WarehouseIcon,
   Wallet,
 } from '@/components/icons';
 import { DEFAULTS, type StocksResponse } from '@savdoiq/shared';
 import {
+  Amount,
   Button,
   Card,
   CardBody,
@@ -22,8 +25,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
-  ProgressBar,
   SearchInput,
   SkeletonRows,
   StatCard,
@@ -32,13 +33,15 @@ import {
   type Column,
 } from '@/components/ui';
 import { ZeroAware } from '@/components/ui/ZeroAware';
-import { CHART_COLORS, DonutChart, SERIES_PALETTE, seriesColor } from '@/components/charts';
+import { DonutChart, seriesColor } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { downloadBlob } from '@/lib/utils';
+import { useStores } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
-import { SchemeShareCard } from '@/components/stock/common';
+import { NEUTRAL_TONE, STORAGE_TONE, SchemeShareCard, SkuNameCell } from '@/components/stock/common';
 import { rowsOf, type SchemeTotal, type WarehouseResponse, type WarehouseRow } from '@/components/stock/types';
 
 registerNamespace('warehouse', {
@@ -187,6 +190,9 @@ export default function Warehouse() {
   const tc = useT('common');
   const f = useFormat();
   const q = usePeriodQuery();
+  const stores = useStores();
+  // Do'kon nomi alohida ustun emas (~170 px) — faqat bir nechta do'kon aralash ko'rinsa, SKU yonida
+  const multiStore = !q.storeId && stores.length > 1;
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -294,21 +300,24 @@ export default function Warehouse() {
     }
   }
 
+  /*
+   * Do'kon ustuni SKU ostiga tushdi — ilgari u 1366 px'da "Qiymat" ustunini
+   * gorizontal aylantirish ortiga surib yuborardi.
+   */
   const columns: Column<WarehouseRow>[] = [
     {
       key: 'product',
       header: t('col.product'),
-      width: 300,
       sortable: true,
       sortValue: (r) => r.title,
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
-    },
-    {
-      key: 'store',
-      header: t('col.store'),
-      hideOnMobile: true,
-      sortValue: (r) => r.storeTitle ?? '',
-      render: (r) => <span className="truncate text-sm text-muted">{r.storeTitle ?? '—'}</span>,
+      render: (r) => (
+        <SkuNameCell
+          className="md:min-w-[13rem] md:max-w-[20rem] 2xl:max-w-[28rem]"
+          title={r.title}
+          subtitle={multiStore && r.storeTitle ? `${r.sku} · ${r.storeTitle}` : r.sku}
+          imageUrl={r.imageUrl}
+        />
+      ),
     },
     {
       key: 'own',
@@ -324,7 +333,7 @@ export default function Warehouse() {
       align: 'right',
       sortable: true,
       sortValue: (r) => r.reserved ?? 0,
-      render: (r) => <ZeroAware value={r.reserved ?? 0} tone="text-warn" text={f.num(r.reserved ?? 0)} />,
+      render: (r) => <ZeroAware value={r.reserved ?? 0} tone="text-warn-ink" text={f.num(r.reserved ?? 0)} />,
     },
     {
       key: 'inTransit',
@@ -333,7 +342,7 @@ export default function Warehouse() {
       hideOnMobile: true,
       sortable: true,
       sortValue: (r) => r.inTransit ?? 0,
-      render: (r) => <ZeroAware value={r.inTransit ?? 0} tone="text-info" text={f.num(r.inTransit ?? 0)} />,
+      render: (r) => <ZeroAware value={r.inTransit ?? 0} tone="text-info-ink" text={f.num(r.inTransit ?? 0)} />,
     },
     {
       key: 'available',
@@ -367,9 +376,11 @@ export default function Warehouse() {
     <>
       <PageHeader
         icon={<WarehouseIcon className="h-5 w-5" />}
+        tone="info"
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="warehouse" />}
+        meta={<DataFreshness />}
         actions={
           <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExport}>
             {tc('btn.export')}
@@ -381,13 +392,18 @@ export default function Warehouse() {
 
       <PlanGate feature="warehouse">
         <div className="space-y-5">
+          {/*
+            Qoldiq va yo'ldagi tovar — ombor/logistika rangi (ko'k), band —
+            sariq (mavjud qoldiqdan ayriladi), qiymat — neytral. Ilgari qiymat
+            binafsha edi — u faqat Uzum ulushi uchun.
+          */}
           <StatGrid>
             <StatCard
               label={t('kpi.units')}
               value={isLoading ? '—' : f.num(kpi.units)}
               hint={t('kpi.unitsHint')}
               icon={<Boxes className="h-5 w-5" />}
-              tone="brand"
+              tone="info"
               loading={isLoading}
             />
             <StatCard
@@ -395,7 +411,7 @@ export default function Warehouse() {
               value={isLoading ? '—' : f.money(kpi.costValue)}
               hint={t('kpi.valueHint')}
               icon={<Wallet className="h-5 w-5" />}
-              tone="violet"
+              className={NEUTRAL_TONE}
               loading={isLoading}
             />
             <StatCard
@@ -431,18 +447,23 @@ export default function Warehouse() {
                   <h2 className="section-title">{t('schemes.title')}</h2>
                   <p className="mt-0.5 text-sm text-muted">{t('schemes.hint')}</p>
                 </div>
+                {/*
+                  Uchala sxema ham bir ma'no — qoldiq — shuning uchun bir rangda
+                  (ko'k); farqni ikonka va nom beradi. Ilgari FBO yashil (foyda
+                  rangi), o'z ombori binafsha (Uzum ulushi rangi) edi.
+                */}
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <SchemeShareCard
-                    icon={<Building2 className="h-5 w-5" />}
+                    icon={<Building2 />}
                     title={t('scheme.fbo')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.fbo.units)}
                     amount={Math.round(schemes.fbo.amount)}
                     share={share(schemes.fbo.units)}
-                    tone="brand"
+                    tone="info"
                   />
                   <SchemeShareCard
-                    icon={<Truck className="h-5 w-5" />}
+                    icon={<Truck />}
                     title={t('scheme.fbs')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.fbs.units)}
@@ -451,20 +472,20 @@ export default function Warehouse() {
                     tone="info"
                   />
                   <SchemeShareCard
-                    icon={<WarehouseIcon className="h-5 w-5" />}
+                    icon={<WarehouseIcon />}
                     title={t('scheme.own')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.own.units)}
                     amount={Math.round(schemes.own.amount)}
                     share={share(schemes.own.units)}
-                    tone="violet"
+                    tone="info"
                   />
                 </div>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <Card>
-                  <CardHeader title={t('stores.title')} subtitle={t('stores.hint')} />
+                  <CardHeader icon={<Store />} tone="muted" title={t('stores.title')} subtitle={t('stores.hint')} />
                   <CardBody>
                     {isLoading ? (
                       <SkeletonRows rows={5} />
@@ -487,12 +508,9 @@ export default function Warehouse() {
                   </CardBody>
                 </Card>
 
-                <Card>
-                  <CardHeader
-                    title={t('capacity.title')}
-                    subtitle={t('capacity.hint')}
-                    icon={<Container className="h-4 w-4" />}
-                  />
+                {/* Saqlash xarajati — xarajat xaritasidagi pushti rangda (COST_COLORS.storage) */}
+                <Card accent className={STORAGE_TONE}>
+                  <CardHeader title={t('capacity.title')} subtitle={t('capacity.hint')} icon={<Container />} />
                   <CardBody>
                     {isLoading ? (
                       <SkeletonRows rows={5} />
@@ -503,42 +521,46 @@ export default function Warehouse() {
                         hint={t('capacity.noVolumeHint')}
                       />
                     ) : (
-                      <div className="space-y-4">
-                        <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                          <p className="eyebrow-lg">
-                            {t('capacity.volume')}
-                          </p>
-                          <p className="tnum mt-1 font-display text-3xl font-extrabold tracking-tight text-ink">
-                            {f.num(kpi.volumeL, 1)}{' '}
-                            <span className="text-base font-bold text-muted">{t('capacity.volumeUnit')}</span>
-                          </p>
-                          <div className="mt-3">
-                            {/* Sig'im chegarasi Uzumda yo'q — foiz o'rniga haqiqiy hajm ko'rsatiladi */}
-                    <p className="tnum font-display text-lg font-extrabold text-violet">
-                      {f.num(kpi.volumeL, 1)} {t('unit.liter')}
-                    </p>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl border border-line p-3.5">
-                            <p className="text-xs text-muted">{t('capacity.perDay')}</p>
-                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">{f.money(Math.round(storagePerDay))}</p>
-                          </div>
-                          <div className="rounded-xl border border-line p-3.5">
-                            <p className="text-xs text-muted">{t('capacity.perMonth')}</p>
-                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-warn">{f.money(storagePerMonth)}</p>
-                          </div>
-                          <div className="rounded-xl border border-line p-3.5">
-                            <p className="text-xs text-muted">{t('capacity.rate')}</p>
-                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">
-                              {f.money(DEFAULTS.storagePerLiterPerDay)}
+                      <div className="space-y-3">
+                        {/*
+                          Ilgari hajm shu blokda ikki marta yozilardi (katta raqam va
+                          ostida binafsha "1 081,2 l") — ikkinchisi olib tashlandi.
+                          Sig'im chegarasi Uzumda yo'q, shuning uchun foiz emas, hajm.
+                        */}
+                        <div className="well flex flex-wrap items-end justify-between gap-3 p-4">
+                          <div>
+                            <p className="eyebrow">{t('capacity.volume')}</p>
+                            <p className="tnum mt-1 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+                              {f.num(kpi.volumeL, 1)}{' '}
+                              <span className="text-base font-semibold text-muted">{t('capacity.volumeUnit')}</span>
                             </p>
                           </div>
-                          <div className="rounded-xl border border-line p-3.5">
-                            <p className="text-xs text-muted">{t('capacity.avgPerUnit')}</p>
-                            <p className="tnum mt-1 font-display text-lg font-extrabold tracking-tight text-ink">
+                          <p className="tnum text-xs text-muted">
+                            {t('capacity.avgPerUnit')}:{' '}
+                            <span className="font-semibold text-ink-soft">
                               {f.num(kpi.units > 0 ? kpi.volumeL / kpi.units : 0, 2)} {t('capacity.volumeUnit')}
+                            </span>
+                          </p>
+                        </div>
+
+                        {/* Amount: "so'm" kichik — tor plitkada summa ikki qatorga bo'linmasin */}
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="well p-3.5">
+                            <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.perDay')}</p>
+                            <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
+                              <Amount value={f.money(Math.round(storagePerDay))} />
+                            </p>
+                          </div>
+                          <div className="well p-3.5">
+                            <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.perMonth')}</p>
+                            <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
+                              <Amount value={f.money(storagePerMonth)} />
+                            </p>
+                          </div>
+                          <div className="well p-3.5">
+                            <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.rate')}</p>
+                            <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
+                              <Amount value={f.money(DEFAULTS.storagePerLiterPerDay)} />
                             </p>
                           </div>
                         </div>
@@ -550,6 +572,8 @@ export default function Warehouse() {
 
               <Card>
                 <CardHeader
+                  icon={<Table2 />}
+                  tone="info"
                   title={t('table.title')}
                   subtitle={t('table.hint')}
                   actions={
@@ -587,22 +611,22 @@ export default function Warehouse() {
                     }}
                     footer={
                       <>
-                        <td className="px-4 py-3 text-sm">{tc('common.total')}</td>
-                        <td className="hidden px-4 py-3 md:table-cell" />
-                        <td className="tnum px-4 py-3 text-right">
+                        {/* Telefonda (jami qatori alohida tor jadval) chekinish kichikroq — gorizontal surilmasin */}
+                        <td className="px-3 py-3 text-sm md:px-5">{tc('common.total')}</td>
+                        <td className="tnum px-3 py-3 text-right md:px-5">
                           {f.num(filtered.reduce((s, r) => s + (r.own ?? 0), 0))}
                         </td>
-                        <td className="tnum px-4 py-3 text-right">
+                        <td className="tnum px-3 py-3 text-right md:px-5">
                           {f.num(filtered.reduce((s, r) => s + (r.reserved ?? 0), 0))}
                         </td>
-                        <td className="tnum hidden px-4 py-3 text-right md:table-cell">
+                        <td className="tnum hidden px-5 py-3 text-right md:table-cell">
                           {f.num(filtered.reduce((s, r) => s + (r.inTransit ?? 0), 0))}
                         </td>
-                        <td className="hidden px-4 py-3 md:table-cell" />
-                        <td className="tnum hidden px-4 py-3 text-right md:table-cell">
+                        <td className="hidden px-5 py-3 md:table-cell" />
+                        <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right md:table-cell">
                           {f.num(filtered.reduce((s, r) => s + (r.volumeL ?? 0), 0), 1)}
                         </td>
-                        <td className="tnum px-4 py-3 text-right">
+                        <td className="tnum px-3 py-3 text-right md:whitespace-nowrap md:px-5">
                           {f.money(filtered.reduce((s, r) => s + (r.costValue ?? 0), 0))}
                         </td>
                       </>

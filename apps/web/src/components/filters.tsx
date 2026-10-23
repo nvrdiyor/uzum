@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Check, ChevronDown, Lock, Store } from '@/components/icons';
-import { getPlan, presetPeriod, toISODate, toBusinessDate } from '@savdoiq/shared';
+import { addDays, getPlan, presetPeriod, toBusinessDate } from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
 import { usePlan, useStores } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
@@ -51,13 +51,16 @@ export function PeriodPicker({ className }: { className?: string }) {
   /**
    * Tarif tarix chuqurligi: server bundan oldingi sanalarni baribir qaytarmaydi,
    * shuning uchun tanlashning ham iloji bo'lmaydi — foydalanuvchi bo'sh jadval
-   * o'rniga sababni ko'radi.
+   * o'rniga sababni ko'radi. Qiymat sinxron chegarasidan (365 kun) oshmaydi —
+   * plans.ts dagi VIP izohiga qarang.
+   *
+   * Ilgari eng erta sana UTC bo'yicha hisoblanardi, server esa (lib/period.ts)
+   * Toshkent savdo kuni bo'yicha kesadi: Toshkentda 00:00–05:00 oralig'ida
+   * tanlagich bir kun oldingi sanani taklif qilar, server uni jim
+   * qisqartirardi. Endi ikkalasi bir xil hisoblanadi (2026-10-24).
    */
   const historyDays = getPlan(plan).limits.historyDays;
-  const earliest = useMemo(
-    () => toISODate(new Date(Date.now() - historyDays * 86_400_000)),
-    [historyDays],
-  );
+  const earliest = useMemo(() => toBusinessDate(addDays(new Date(), -historyDays)), [historyDays]);
   const today = useMemo(() => toBusinessDate(new Date()), []);
 
   useEffect(() => {
@@ -144,9 +147,17 @@ export function PeriodPicker({ className }: { className?: string }) {
             </div>
             <button
               onClick={() => {
-                // Kelajak sanalar va tarif chegarasidan oldingi sanalar kesiladi
-                const safeFrom = from < earliest ? earliest : from;
-                const safeTo = to > today ? today : to;
+                /*
+                 * Ikkala sana ham [earliest, today] oralig'iga kesiladi. Ilgari
+                 * "gacha" faqat bugun bilan cheklanardi: `min` atributi qo'lda
+                 * yozishni to'xtatmaydi, chegaradan oldingi "gacha" yozilsa butun
+                 * davr tarif tarixidan tashqarida qolib, hisobot sababsiz bo'sh
+                 * chiqardi (2026-10-24). Bo'shatilgan maydon ('') ham shu yerda
+                 * eng erta sanaga aylanadi.
+                 */
+                const clamp = (d: string) => (d < earliest ? earliest : d > today ? today : d);
+                const safeFrom = clamp(from);
+                const safeTo = clamp(to);
                 setCustomPeriod(
                   safeFrom > safeTo ? { from: safeTo, to: safeTo } : { from: safeFrom, to: safeTo },
                 );

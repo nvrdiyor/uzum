@@ -509,6 +509,17 @@ export function daysSince(date: Date | null | undefined): number {
   return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86_400_000));
 }
 
+/**
+ * "Sotuv va qoldiq" ro'yxatiga SKU kiradimi: davrda sotuvi (dona yoki tushum),
+ * qoldig'i yoki so'nggi 30 kunlik sur'ati bo'lsa. Sahifa (stocks.ts) va Excel
+ * (export.ts) AYNAN shu qoidani ishlatadi. Ilgari ikkalasida alohida yozilgan
+ * edi va ajralib ketdi: "Bugun" davrida qoldig'i tugagan, lekin tez sotiladigan
+ * SKU sahifada "Kritik" bo'lib turardi, Excel faylida esa yo'q edi (2026-10-24).
+ */
+export function isSalesStockVisible(units: number, revenue: number, stockTotal: number, avgDaily: number): boolean {
+  return units !== 0 || revenue !== 0 || stockTotal !== 0 || avgDaily !== 0;
+}
+
 /** Kompaniyaning soliq stavkasi */
 export async function getTaxRate(companyId: string): Promise<number> {
   const c = await prisma.company.findUnique({ where: { id: companyId }, select: { taxRate: true } });

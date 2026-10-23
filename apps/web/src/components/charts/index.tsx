@@ -1127,7 +1127,11 @@ export function DonutChart({
   );
 }
 
-/** Grafik uchun kartochka qobig'i */
+/**
+ * Grafik uchun kartochka qobig'i. `icon`/`tone` — CardHeader bilan bir xil
+ * ko'rinish: ilgari grafik kartochkalari ikonkasiz qolib, yonidagi oddiy
+ * kartochkalardan "boshqa dizayn"dek ko'rinardi.
+ */
 export function ChartCard({
   title,
   subtitle,
@@ -1135,6 +1139,9 @@ export function ChartCard({
   children,
   className,
   legend,
+  icon,
+  tone,
+  accent,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -1142,13 +1149,22 @@ export function ChartCard({
   children: ReactNode;
   className?: string;
   legend?: { name: string; color: string; value?: ReactNode }[];
+  icon?: ReactNode;
+  tone?: 'brand' | 'info' | 'warn' | 'danger' | 'violet' | 'muted';
+  /** Tepadagi ohang chizig'i — Card'dagi kabi, berilmasa `tone` bo'lsa chiziladi */
+  accent?: boolean;
 }) {
   return (
-    <div className={cn('card p-5', className)}>
+    <div className={cn('card p-5', tone && `tone-${tone}`, (accent ?? Boolean(tone)) && 'card-accent', className)}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="section-title">{title}</h3>
-          {subtitle ? <p className="mt-0.5 text-sm text-muted">{subtitle}</p> : null}
+        <div className="flex min-w-0 items-start gap-3">
+          {icon ? (
+            <div className="icon-tile mt-0.5 h-9 w-9 rounded-[10px] [&_svg]:h-[18px] [&_svg]:w-[18px]">{icon}</div>
+          ) : null}
+          <div className="min-w-0">
+            <h3 className="section-title">{title}</h3>
+            {subtitle ? <p className="mt-0.5 text-sm text-muted">{subtitle}</p> : null}
+          </div>
         </div>
         {actions}
       </div>

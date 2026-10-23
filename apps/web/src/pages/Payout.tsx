@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  BarChart3,
   CalendarClock,
   CheckCircle2,
   HelpCircle,
   Receipt,
   Settings2,
-  Wallet,
+  Zap,
 } from '@/components/icons';
 import {
   PAYOUT_MODES,
@@ -29,6 +30,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { BarsChart, ChartCard, CHART_COLORS } from '@/components/charts';
 import { PayoutHero } from '@/components/finance/PayoutHero';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Amount,
   Badge,
@@ -392,10 +394,20 @@ export default function Payout() {
    */
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
 
+  // Ma'lumot yangiligi — kalendar sinxrondagi buyurtmalardan quriladi, eski bo'lsa sanalar ham siljiydi
+  const header = (
+    <PageHeader
+      icon={<CalendarClock className="h-5 w-5" />}
+      title={t('title')}
+      description={t('subtitle')}
+      meta={<DataFreshness />}
+    />
+  );
+
   if (isError) {
     return (
       <>
-        <PageHeader icon={<CalendarClock className="h-5 w-5" />} title={t('title')} description={t('subtitle')} />
+        {header}
         <Card>
           <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => void refetch()} />
         </Card>
@@ -405,7 +417,7 @@ export default function Payout() {
 
   return (
     <>
-      <PageHeader icon={<CalendarClock className="h-5 w-5" />} title={t('title')} description={t('subtitle')} />
+      {header}
 
       <PlanGate feature="unit_economics">
         {/* To'rtta kartochka o'rniga bitta bosh blok: tayyor pul, eng yaqin ochilish, qulfdagi pul */}
@@ -524,6 +536,7 @@ export default function Payout() {
         {data && data.days.length > 0 ? (
           <ChartCard
             className="mt-5"
+            icon={<BarChart3 className="h-4 w-4" />}
             title={t('chart.title')}
             subtitle={t('chart.subtitle')}
           >
@@ -881,8 +894,9 @@ function PlanRow({ row, first, switched }: { row: PayoutPlanDay; first: boolean;
          * ustun bir qatorda qolsa, summa ustuni siqilmaydi va o'rtadagi matnga
          * 30–40 px qolib, u so'zma-so'z ustun bo'lib tizilib qolardi.
          */
-        'flex flex-wrap items-center gap-x-3.5 gap-y-2.5 rounded-xl border p-3.5 transition-colors sm:flex-nowrap sm:gap-4',
-        first ? 'border-brand/30 bg-brand/[0.06]' : 'border-line bg-surface-2',
+        'flex flex-wrap items-center gap-x-3.5 gap-y-2.5 p-3.5 transition-colors sm:flex-nowrap sm:gap-4',
+        // Keyingilari sahifadagi boshqa ichki plitkalar bilan bir xil `.well`
+        first ? 'rounded-xl border border-brand/30 bg-brand/[0.06]' : 'well',
       )}
     >
       {/* Sana belgisi */}
@@ -1159,14 +1173,17 @@ function InstantCard({
   const t = useT('payout');
   const f = useFormat();
 
-  const tone = instant.eligible === true ? 'brand' : instant.eligible === false ? 'danger' : 'warn';
+  const tone: 'brand' | 'danger' | 'warn' =
+    instant.eligible === true ? 'brand' : instant.eligible === false ? 'danger' : 'warn';
   const label =
     instant.eligible === true ? t('inst.yes') : instant.eligible === false ? t('inst.no') : t('inst.maybe');
 
   return (
     <Card className="mt-5">
       <CardHeader
-        icon={<Wallet className="h-4 w-4" />}
+        icon={<Zap className="h-4 w-4" />}
+        // Ikonka plitkasi holat rangida — sarlavhaning o'zi javobni aytsin
+        tone={tone}
         title={t('inst.title')}
         subtitle={t('inst.subtitle', { n: hold })}
         actions={

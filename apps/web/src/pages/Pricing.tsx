@@ -92,6 +92,7 @@ registerNamespace('pricing', {
     'limit.members': 'Jamoa a’zosi',
     'limit.history': 'Tarix chuqurligi',
     'limit.historyValue': '{n} kun',
+    'limit.historyYear': '1 yil',
     'limit.sync': 'Sinxronizatsiya',
     'limit.syncValue': 'har {n} daqiqada',
 
@@ -99,6 +100,7 @@ registerNamespace('pricing', {
     'access.full': 'To‘liq ishlaydi',
     'access.preview': 'faqat ko‘rish',
     'access.off': 'Mavjud emas',
+    'access.soon': 'tez kunda',
 
     // Taqqoslash
     'compare.title': 'Tariflarni taqqoslash',
@@ -236,12 +238,14 @@ registerNamespace('pricing', {
     'limit.members': 'Участники команды',
     'limit.history': 'Глубина истории',
     'limit.historyValue': '{n} дней',
+    'limit.historyYear': '1 год',
     'limit.sync': 'Синхронизация',
     'limit.syncValue': 'каждые {n} мин.',
 
     'access.full': 'Полный доступ',
     'access.preview': 'только просмотр',
     'access.off': 'Недоступно',
+    'access.soon': 'скоро',
 
     'compare.title': 'Сравнение тарифов',
     'compare.subtitle': 'Как работает каждая возможность на разных тарифах',
@@ -373,12 +377,14 @@ registerNamespace('pricing', {
     'limit.members': 'Team members',
     'limit.history': 'History depth',
     'limit.historyValue': '{n} days',
+    'limit.historyYear': '1 year',
     'limit.sync': 'Sync interval',
     'limit.syncValue': 'every {n} min',
 
     'access.full': 'Full access',
     'access.preview': 'view only',
     'access.off': 'Not included',
+    'access.soon': 'soon',
 
     'compare.title': 'Compare plans',
     'compare.subtitle': 'How every feature behaves on each plan',

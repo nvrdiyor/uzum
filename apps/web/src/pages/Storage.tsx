@@ -1,24 +1,28 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Archive, Box, CalendarDays, Coins, Download, PieChart, Snowflake } from '@/components/icons';
+import { Archive, BarChart3, Box, CalendarDays, CalendarRange, Coins, Download, PieChart, Snowflake } from '@/components/icons';
 import type { DashboardResponse, StorageResponse, StorageRow } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
+import { COST_COLORS } from '@/lib/theme';
 import { FilterBar } from '@/components/filters';
 import { BarsChart, ChartCard } from '@/components/charts';
+import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Button,
   Card,
+  CardBody,
+  CardHeader,
   DataTable,
   EmptyState,
   ErrorState,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   ProgressBar,
   StatCard,
   StatGrid,
@@ -131,11 +135,18 @@ registerNamespace('storage', {
   },
 });
 
-/** Foydadagi ulush chegaralari */
+/** Foydadagi ulush chegaralari — KPI kartochkasi va jadval bir xil zonada */
 function shareClass(share: number): string {
-  if (share > 30) return 'text-danger';
+  if (share > 30) return 'text-danger-ink';
   if (share > 15) return 'text-warn-ink';
   return 'text-ink-soft';
+}
+
+function shareTone(share: number | null): 'brand' | 'warn' | 'danger' {
+  if (share === null) return 'brand';
+  if (share > 30) return 'danger';
+  if (share > 15) return 'warn';
+  return 'brand';
 }
 
 export default function Storage() {
@@ -192,8 +203,8 @@ export default function Storage() {
       {
         key: 'product',
         header: t('col.product'),
-        width: '30%',
-        render: (r) => <ProductCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} />,
+        // Nom ikki qatorda — oxirgi "Foydadagi ulushi" ustuni 1366px da ekrandan chiqib ketardi
+        render: (r) => <ProductTitleCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} maxWidth={260} />,
         sortable: true,
         sortValue: (r) => r.title ?? r.sku ?? '',
       },
@@ -211,7 +222,7 @@ export default function Storage() {
         align: 'right',
         hideOnMobile: true,
         render: (r) => (
-          <span className="tnum text-muted">
+          <span className="tnum whitespace-nowrap text-muted">
             {f.num(r.volumeL, 1)} {t('unit.liter')}
           </span>
         ),
@@ -273,6 +284,15 @@ export default function Storage() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="paid_storage" />}
+        meta={
+          <>
+            <span className="meta-chip tnum">
+              <CalendarRange className="h-3.5 w-3.5" />
+              {f.date(q.from)} — {f.date(q.to)}
+            </span>
+            <DataFreshness />
+          </>
+        }
         actions={
           <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={onExport}>
             Excel
@@ -284,13 +304,18 @@ export default function Storage() {
 
       <PlanGate feature="paid_storage">
         <div className="space-y-5">
+          {/*
+            Ohanglar: saqlash to'lovini Uzum ushlab qoladi — binafsha; kunlik
+            sarf — davom etayotgan xarajat (za'faron); hajm — qoldiq (ko'k);
+            foydadagi ulush jadvaldagi bilan bir xil zonada (15% / 30%).
+          */}
           <StatGrid>
             <StatCard
               label={t('kpi.amount')}
               value={f.money(totals.amount)}
               hint={t('kpi.amountHint')}
               icon={<Coins className="h-5 w-5" />}
-              tone="warn"
+              tone="violet"
               loading={isLoading}
             />
             <StatCard
@@ -298,7 +323,7 @@ export default function Storage() {
               value={f.money(totals.perDay)}
               hint={t('kpi.perDayHint')}
               icon={<CalendarDays className="h-5 w-5" />}
-              tone="info"
+              tone="warn"
               loading={isLoading}
             />
             <StatCard
@@ -306,7 +331,7 @@ export default function Storage() {
               value={`${f.num(totals.volumeL, 1)} ${t('unit.liter')}`}
               hint={t('kpi.volumeHint')}
               icon={<Box className="h-5 w-5" />}
-              tone="violet"
+              tone="info"
               loading={isLoading}
             />
             <StatCard
@@ -314,7 +339,7 @@ export default function Storage() {
               value={profitShare === null ? '—' : f.pct(profitShare)}
               hint={profitShare === null ? t('kpi.shareEmpty') : t('kpi.shareHint')}
               icon={<PieChart className="h-5 w-5" />}
-              tone={profitShare !== null && profitShare > 30 ? 'danger' : 'brand'}
+              tone={shareTone(profitShare)}
               loading={isLoading}
             />
           </StatGrid>
@@ -325,7 +350,7 @@ export default function Storage() {
             </Card>
           ) : (
             <>
-              <ChartCard title={t('chart.daily')} subtitle={t('chart.dailySub')}>
+              <ChartCard title={t('chart.daily')} subtitle={t('chart.dailySub')} icon={<BarChart3 />}>
                 {isLoading ? (
                   <div className="skeleton h-[280px] w-full" />
                 ) : daily.length ? (
@@ -333,7 +358,8 @@ export default function Storage() {
                     data={daily}
                     xKey="date"
                     xIsDate
-                    series={[{ key: 'amount', name: t('chart.amount'), money: true }]}
+                    // Saqlash xarajati hamma joyda bir rangda (COST_COLORS) — Boshqaruv paneli va Moliya bilan bir xil
+                    series={[{ key: 'amount', name: t('chart.amount'), money: true, color: COST_COLORS.storage }]}
                     height={280}
                   />
                 ) : (
@@ -342,47 +368,60 @@ export default function Storage() {
               </ChartCard>
 
               {top5.length ? (
-                <Card className="p-5">
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="section-title">{t('top.title')}</h3>
-                      <p className="mt-0.5 text-sm text-muted">{t('top.hint')}</p>
-                    </div>
-                    <Link
-                      to="/illiquid"
-                      title={t('top.linkHint')}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-brand-ink transition-colors hover:border-line-strong"
-                    >
-                      <Snowflake className="h-4 w-4" />
-                      {t('top.link')}
-                    </Link>
-                  </div>
-                  <ul className="space-y-4">
-                    {top5.map((r, i) => (
-                      <li key={r.skuId ?? r.sku ?? `top-${i}`}>
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <ProductCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} size={34} />
-                          <div className="flex items-center gap-3 text-xs">
-                            <span className="tnum text-muted">
-                              {f.num(r.daysStored)} {t('unit.days')}
-                            </span>
-                            <span className="tnum font-display text-sm font-extrabold text-ink">{f.money(r.amount)}</span>
+                <Card tone="warn">
+                  <CardHeader
+                    icon={<Coins className="h-4 w-4" />}
+                    title={t('top.title')}
+                    subtitle={t('top.hint')}
+                    actions={
+                      <Link
+                        to="/illiquid"
+                        title={t('top.linkHint')}
+                        className="btn-outline px-3.5 py-2 text-sm text-brand-ink"
+                      >
+                        <Snowflake className="h-4 w-4" />
+                        {t('top.link')}
+                      </Link>
+                    }
+                  />
+                  <CardBody>
+                    <ul className="space-y-4">
+                      {top5.map((r, i) => (
+                        <li key={r.skuId ?? r.sku ?? `top-${i}`}>
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <ProductTitleCell
+                              title={r.title ?? r.sku ?? '—'}
+                              subtitle={r.sku ?? undefined}
+                              size={34}
+                              maxWidth={420}
+                            />
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="tnum text-muted">
+                                {f.num(r.daysStored)} {t('unit.days')}
+                              </span>
+                              <span className="tnum whitespace-nowrap font-display text-sm font-bold text-ink">
+                                {f.money(r.amount)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <ProgressBar value={r.bar} tone={r.shareOfProfit > 30 ? 'danger' : 'warn'} />
-                      </li>
-                    ))}
-                  </ul>
+                          <ProgressBar value={r.bar} tone={r.shareOfProfit > 30 ? 'danger' : 'warn'} />
+                        </li>
+                      ))}
+                    </ul>
+                  </CardBody>
                 </Card>
               ) : null}
 
               <Card>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                  <h3 className="section-title">{t('table.title')}</h3>
-                  <p className="text-sm text-muted">
-                    {f.num(data?.rows.total ?? 0)} {t('common.rows')}
-                  </p>
-                </div>
+                <CardHeader
+                  icon={<Archive className="h-4 w-4" />}
+                  title={t('table.title')}
+                  actions={
+                    <span className="meta-chip tnum">
+                      {f.num(data?.rows.total ?? 0)} {t('common.rows')}
+                    </span>
+                  }
+                />
                 <div className="mt-4">
                   <DataTable
                     columns={columns}
@@ -404,18 +443,19 @@ export default function Storage() {
                     footer={
                       rows.length ? (
                         <>
-                          <td className="px-4 py-3 eyebrow-lg">
+                          <td className="px-5 py-3 eyebrow-lg">
                             {t('table.pageTotal')}
                           </td>
-                          <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
+                          <td className="tnum px-5 py-3 text-right">{f.num(pageQty)}</td>
                           {/* Yashiringan ustunlar bilan bir xil klass — aks holda mobilda
-                              qiymatlar boshqa ustun ostiga siljib ketardi */}
-                          <td className="tnum hidden px-4 py-3 text-right md:table-cell">
+                              qiymatlar boshqa ustun ostiga siljib ketardi.
+                              nowrap: "10 184,2 l" va summa ikki qatorga sinmasin */}
+                          <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right md:table-cell">
                             {f.num(pageVolume, 1)} {t('unit.liter')}
                           </td>
-                          <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                          <td className="hidden px-4 py-3 md:table-cell" colSpan={2} />
-                          <td className="px-4 py-3" />
+                          <td className="tnum whitespace-nowrap px-5 py-3 text-right">{f.money(pageAmount)}</td>
+                          <td className="hidden px-5 py-3 md:table-cell" colSpan={2} />
+                          <td className="px-5 py-3" />
                         </>
                       ) : undefined
                     }

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, ExternalLink, ScanBarcode, ShieldAlert, X } from '@/components/icons';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { registerNamespace, useFormat, useT } from '@/i18n';
+import { useSession } from '@/store/session';
 import { useDebounced } from '@/components/sales/useDebounced';
 import {
   Badge,
@@ -63,6 +64,7 @@ registerNamespace('mxik', {
     'toast.saved': 'MXIK saqlandi',
     'toast.cleared': 'MXIK olib tashlandi',
     'toast.failed': 'Saqlab bo‘lmadi',
+    'toast.forbidden': 'MXIK kodini faqat egasi yoki menejer o‘zgartira oladi',
     'filter.search': 'Nomi yoki SKU bo‘yicha qidirish',
     empty: 'Mahsulot topilmadi',
     'registry.open': 'Registrni ochish',
@@ -105,6 +107,7 @@ registerNamespace('mxik', {
     'toast.saved': 'МХИК сохранён',
     'toast.cleared': 'МХИК убран',
     'toast.failed': 'Не удалось сохранить',
+    'toast.forbidden': 'Код МХИК может менять только владелец или менеджер',
     'filter.search': 'Поиск по названию или SKU',
     empty: 'Товары не найдены',
     'registry.open': 'Открыть реестр',
@@ -147,6 +150,7 @@ registerNamespace('mxik', {
     'toast.saved': 'MXIK saved',
     'toast.cleared': 'MXIK removed',
     'toast.failed': 'Could not save',
+    'toast.forbidden': 'Only the owner or a manager can change the MXIK code',
     'filter.search': 'Search by name or SKU',
     empty: 'No products found',
     'registry.open': 'Open the registry',
@@ -187,6 +191,10 @@ export default function Mxik() {
   const t = useT('mxik');
   const f = useFormat();
   const qc = useQueryClient();
+  // Ilgari tahrir tugmalari hammaga ko'rinardi — PATCH /mxik/:skuId endi faqat
+  // owner/manager uchun, kuzatuvchi esa bossa umumiy "Saqlab bo'lmadi"ni ko'rardi
+  // (2026-10-24). Batches.tsx'dagi kabi: viewer faqat o'qiydi.
+  const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
 
   const [segment, setSegment] = useState<Segment>('missing');
   const [search, setSearch] = useState('');
@@ -206,7 +214,10 @@ export default function Mxik() {
       setPicking(null);
       void qc.invalidateQueries({ queryKey: ['mxik'] });
     },
-    onError: () => toast.error(t('toast.failed')),
+    // Rol eskirgan sessiyada (egasi rolni hozirgina o'zgartirgan) 403 kelishi
+    // mumkin — umumiy xato o'rniga sababini aytamiz.
+    onError: (err) =>
+      toast.error(t(err instanceof ApiError && err.status === 403 ? 'toast.forbidden' : 'toast.failed')),
   });
 
   const rows = useMemo(() => {
@@ -246,7 +257,9 @@ export default function Mxik() {
           </Badge>
         ),
     },
-    {
+  ];
+  if (canEdit)
+    columns.push({
       key: 'action',
       header: t('col.action'),
       align: 'right',
@@ -267,8 +280,7 @@ export default function Mxik() {
           ) : null}
         </div>
       ),
-    },
-  ];
+    });
 
   if (list.isError) return <ErrorState onRetry={() => void list.refetch()} />;
 
@@ -280,10 +292,12 @@ export default function Mxik() {
       <PageHeader icon={<ScanBarcode className="h-5 w-5" />} title={t('title')} description={t('subtitle')} />
 
       <StatGrid>
+        {/* Jami — ma'lumot (ko'k); yashil faqat bajarilgan ishda ("Kodi bor"), aks holda ikkalasi bir xil ko'rinardi */}
         <StatCard
           label={t('kpi.total')}
           value={f.num(total)}
           icon={<ScanBarcode className="h-5 w-5" />}
+          tone="info"
           loading={list.isLoading}
         />
         <StatCard
@@ -303,8 +317,9 @@ export default function Mxik() {
         />
       </StatGrid>
 
+      {/* Tushuntirish kartochkasi — ma'lumot ohangida (ko'k belgi), ogohlantirish emas */}
       <Card>
-        <CardHeader title={t('why.title')} icon={<ShieldAlert className="h-4 w-4" />} />
+        <CardHeader title={t('why.title')} icon={<ShieldAlert className="h-4 w-4" />} tone="info" />
         <CardBody className="space-y-2 text-sm leading-relaxed text-muted">
           <p>{t('why.body')}</p>
           <p>{t('why.source')}</p>
@@ -323,6 +338,7 @@ export default function Mxik() {
 
       <Card>
         <CardHeader
+          icon={<ScanBarcode className="h-4 w-4" />}
           title={t('title')}
           actions={
             <div className="flex flex-wrap items-center gap-2">
@@ -350,7 +366,7 @@ export default function Mxik() {
         </CardBody>
       </Card>
 
-      {picking ? (
+      {picking && canEdit ? (
         <RegistryPicker
           row={picking}
           onClose={() => setPicking(null)}

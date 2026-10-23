@@ -15,7 +15,6 @@ import {
 } from '@/components/icons';
 import type { ProductCard, ProductsResponse } from '@savdoiq/shared';
 import {
-  Badge,
   Button,
   Card,
   DataTable,
@@ -34,13 +33,17 @@ import {
   type Column,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
+import { NEUTRAL_TONE, STORAGE_TONE, TONE_TEXT } from '@/components/stock/common';
 import { ProductTile, ProductTileSkeleton } from '@/components/products/ProductTile';
+import { buyoutRateOf, buyoutTextClass, useBuyout } from '@/components/products/Buyout';
 import {
   COVER_OPTIONS,
   PRODUCT_FILTERS,
   PRODUCT_SORTS,
   STATE_STYLE,
   avgPurchasePrice,
+  coverTone,
   productState,
   totalStock,
   type CoverDays,
@@ -64,7 +67,7 @@ registerNamespace('products', {
     'kpi.inStock': 'Omborda',
     'kpi.inStockHint': 'FBO + FBS + o‘z ombori (dona)',
     'kpi.needOrder': 'Buyurtma kerak',
-    'kpi.needOrderHint': 'Zaxira davri uchun yetishmaydi (dona)',
+    'kpi.needOrderHint': '{n} kunlik zaxira uchun yetishmaydi (dona)',
     'kpi.storage': 'Saqlash xarajati',
     'kpi.storageHint': 'Kunlik pullik saqlash',
     'cover.label': 'Zaxira davri',
@@ -99,7 +102,6 @@ registerNamespace('products', {
       'Tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
     'card.cost': 'Tannarx',
     'card.noCost': 'Tannarx kiritilmagan',
-    'card.conversion': 'Konversiya',
     'card.roi': 'ROI',
     'card.margin': 'Marja',
     'card.fbo': 'FBO',
@@ -111,6 +113,15 @@ registerNamespace('products', {
     'card.stockTotal': 'Jami qoldiq: {n} dona',
     'card.needOrder': 'Buyurtma kerak: {n} dona',
     'card.noStock': 'Qoldiq tugagan',
+    'card.skusOut': '{n} ta SKU tugagan',
+    'card.reviews': '{n} sharh',
+    'card.revenue': 'Tushum',
+    'card.profit': 'Foyda',
+    'card.units': '{n} dona',
+    'card.marginSub': 'marja {pct}',
+    'card.costSub': 'tannarx {v}',
+    'card.costSubNone': 'tannarx yo‘q',
+    'card.returnsSub': '{n} qaytarish',
     'card.details': 'Batafsil',
     'col.product': 'Mahsulot',
     'col.skus': 'SKU',
@@ -138,7 +149,7 @@ registerNamespace('products', {
     'kpi.inStock': 'На складе',
     'kpi.inStockHint': 'FBO + FBS + свой склад (шт.)',
     'kpi.needOrder': 'Нужен заказ',
-    'kpi.needOrderHint': 'Не хватает на выбранный период (шт.)',
+    'kpi.needOrderHint': 'Не хватает на {n} дн. запаса (шт.)',
     'kpi.storage': 'Хранение',
     'kpi.storageHint': 'Платное хранение в день',
     'cover.label': 'Период запаса',
@@ -173,7 +184,6 @@ registerNamespace('products', {
       'Средняя цена, которую покупатели реально заплатили за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
     'card.cost': 'Себестоимость',
     'card.noCost': 'Себестоимость не указана',
-    'card.conversion': 'Конверсия',
     'card.roi': 'ROI',
     'card.margin': 'Маржа',
     'card.fbo': 'FBO',
@@ -185,6 +195,15 @@ registerNamespace('products', {
     'card.stockTotal': 'Всего остаток: {n} шт.',
     'card.needOrder': 'Нужен заказ: {n} шт.',
     'card.noStock': 'Остаток закончился',
+    'card.skusOut': 'Закончились SKU: {n}',
+    'card.reviews': 'отзывов: {n}',
+    'card.revenue': 'Выручка',
+    'card.profit': 'Прибыль',
+    'card.units': '{n} шт.',
+    'card.marginSub': 'маржа {pct}',
+    'card.costSub': 'себест. {v}',
+    'card.costSubNone': 'нет себест.',
+    'card.returnsSub': 'возвратов: {n}',
     'card.details': 'Подробнее',
     'col.product': 'Товар',
     'col.skus': 'SKU',
@@ -212,7 +231,7 @@ registerNamespace('products', {
     'kpi.inStock': 'In stock',
     'kpi.inStockHint': 'FBO + FBS + own warehouse (units)',
     'kpi.needOrder': 'Reorder needed',
-    'kpi.needOrderHint': 'Short for the selected cover period (units)',
+    'kpi.needOrderHint': 'Short for {n} days of cover (units)',
     'kpi.storage': 'Storage cost',
     'kpi.storageHint': 'Paid storage per day',
     'cover.label': 'Cover period',
@@ -247,7 +266,6 @@ registerNamespace('products', {
       'The average price buyers actually paid in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
     'card.cost': 'Cost',
     'card.noCost': 'Cost price not set',
-    'card.conversion': 'Conversion',
     'card.roi': 'ROI',
     'card.margin': 'Margin',
     'card.fbo': 'FBO',
@@ -259,6 +277,15 @@ registerNamespace('products', {
     'card.stockTotal': 'Total stock: {n} units',
     'card.needOrder': 'Reorder: {n} units',
     'card.noStock': 'Out of stock',
+    'card.skusOut': 'SKUs sold out: {n}',
+    'card.reviews': '{n} reviews',
+    'card.revenue': 'Revenue',
+    'card.profit': 'Profit',
+    'card.units': '{n} pcs',
+    'card.marginSub': 'margin {pct}',
+    'card.costSub': 'cost {v}',
+    'card.costSubNone': 'no cost price',
+    'card.returnsSub': '{n} returned',
     'card.details': 'Details',
     'col.product': 'Product',
     'col.skus': 'SKUs',
@@ -280,6 +307,16 @@ registerNamespace('products', {
 
 const PAGE_SIZE = 24;
 const VIEW_KEY = 'sp-products-view';
+/**
+ * Kartochkalar to'ri: 1366 px'da 4 ta (~250 px), keng ekranda 5 ta. Kartochka
+ * ichidagi katta-kichik kataklar shu eng tor kenglikka (~228 px) moslangan.
+ */
+const TILE_GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5';
+
+/* Jadval kataklari orasi 20 px (DataTable'ning px-5 o'rniga) — 8 ustun 1366 px'ga sig'adi */
+const PAD = 'pl-2.5 pr-2.5';
+const PAD_FIRST = 'pr-2.5';
+const PAD_LAST = 'pl-2.5';
 
 function readView(): ProductView {
   try {
@@ -292,6 +329,7 @@ function readView(): ProductView {
 export default function Products() {
   const t = useT('products');
   const f = useFormat();
+  const buyout = useBuyout();
   const navigate = useNavigate();
   const periodQuery = usePeriodQuery();
 
@@ -354,21 +392,42 @@ export default function Products() {
     }
   };
 
+  /*
+   * Jadval ko'rinishi 1366 px'ga sig'adi: tannarx — narx ostida, "necha kunga
+   * yetadi" — qoldiq ostida, marja — foyda ostida (Sotuv va qoldiq jadvalidagi
+   * kabi). Ilgari 11 ta ustun bor edi va ROI, marja, foyda gorizontal
+   * aylantirish ortida qolardi. Holat endi nom ostida rangli nuqta bilan.
+   */
   const columns: Column<ProductCard>[] = useMemo(
     () => [
       {
         key: 'title',
         header: t('col.product'),
-        width: 320,
-        render: (r) => (
-          <ProductCell
-            title={r.title}
-            subtitle={r.category ?? t('card.noCategory')}
-            imageUrl={r.imageUrl}
-          />
-        ),
+        render: (r) => {
+          const state = productState(r);
+          return (
+            <div className="md:min-w-[13rem] md:max-w-[19rem] 2xl:max-w-[28rem]">
+              <ProductCell
+                title={r.title}
+                subtitle={
+                  <>
+                    <span className={cn('font-medium', STATE_STYLE[state].text)}>
+                      <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle', STATE_STYLE[state].dot)} />
+                      {t(`state.${state}`)}
+                    </span>
+                    {' · '}
+                    {r.category ?? t('card.noCategory')}
+                  </>
+                }
+                imageUrl={r.imageUrl}
+              />
+            </div>
+          );
+        },
         sortable: true,
         sortValue: (r) => r.title,
+        className: PAD_FIRST,
+        headerClassName: PAD_FIRST,
       },
       {
         key: 'skuCount',
@@ -378,30 +437,28 @@ export default function Products() {
         render: (r) => <span className="tnum">{f.num(r.skuCount)}</span>,
         sortable: true,
         sortValue: (r) => r.skuCount,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'price',
         header: t('col.price'),
         align: 'right',
-        render: (r) => <span className="tnum text-ink">{f.money(r.minPrice)}</span>,
-        sortable: true,
-        sortValue: (r) => r.minPrice,
-      },
-      {
-        key: 'cost',
-        header: t('col.cost'),
-        align: 'right',
-        hideOnMobile: true,
         render: (r) => {
           const cost = avgPurchasePrice(r.skus);
-          return cost > 0 ? (
-            <span className="tnum">{f.money(cost)}</span>
-          ) : (
-            <span className="text-warn">—</span>
+          return (
+            <div className="leading-tight">
+              <span className="tnum text-ink">{f.money(r.minPrice)}</span>
+              <p className={cn('tnum text-2xs', cost > 0 ? 'text-muted' : 'font-medium text-warn-ink')}>
+                {cost > 0 ? t('card.costSub', { v: f.num(cost) }) : t('card.costSubNone')}
+              </p>
+            </div>
           );
         },
         sortable: true,
-        sortValue: (r) => avgPurchasePrice(r.skus),
+        sortValue: (r) => r.minPrice,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'sold',
@@ -410,65 +467,88 @@ export default function Products() {
         render: (r) => <span className="tnum">{f.num(r.sold)}</span>,
         sortable: true,
         sortValue: (r) => r.sold,
+        className: PAD,
+        headerClassName: PAD,
+      },
+      {
+        key: 'buyout',
+        // Sarlavha oddiy matn: telefonda DataTable "Saralash" ro'yxatiga faqat
+        // matnli sarlavhani qo'yadi, JSX bo'lsa kalitni ("buyout") ko'rsatardi.
+        // Formula izohi har katakning title'ida bor (2026-10-24)
+        header: buyout.label,
+        align: 'right',
+        hideOnMobile: true,
+        render: (r) => (
+          <span className={cn('tnum cursor-help', buyoutTextClass(buyoutRateOf(r)))} title={buyout.hint(r)}>
+            {buyout.value(r)}
+          </span>
+        ),
+        sortable: true,
+        // Hisoblanmagani (—) 0% dan ham past: kamayish tartibida oxirga tushadi
+        sortValue: (r) => buyoutRateOf(r) ?? -1,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'stock',
         header: t('col.stock'),
         align: 'right',
-        render: (r) => <span className="tnum">{f.num(totalStock(r))}</span>,
+        render: (r) => (
+          <div className="leading-tight">
+            <span className="tnum">{f.num(totalStock(r))}</span>
+            {/* "Necha kunga yetadi" — kartochkadagi chiziq rangida (STOCK_THRESHOLDS) */}
+            <p className={cn('tnum text-2xs font-semibold', TONE_TEXT[coverTone(r.daysLeft)])}>
+              {r.daysLeft === null || r.daysLeft === undefined
+                ? t('card.noForecast')
+                : t('card.daysValue', { n: f.num(r.daysLeft) })}
+            </p>
+          </div>
+        ),
         sortable: true,
         sortValue: (r) => totalStock(r),
-      },
-      {
-        key: 'daysLeft',
-        header: t('col.daysLeft'),
-        align: 'right',
-        hideOnMobile: true,
-        render: (r) => {
-          const state = productState(r);
-          return r.daysLeft === null || r.daysLeft === undefined ? (
-            <span className="text-muted">—</span>
-          ) : (
-            <span className={cn('tnum font-semibold', STATE_STYLE[state].text)}>{f.num(r.daysLeft)}</span>
-          );
-        },
-        sortable: true,
-        sortValue: (r) => r.daysLeft ?? -1,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'roi',
         header: t('col.roi'),
         align: 'right',
         hideOnMobile: true,
-        render: (r) => (
-          <span className={cn('tnum', r.roi >= 0 ? 'text-brand-ink' : 'text-danger')}>{f.pct(r.roi)}</span>
-        ),
+        // Tannarxsiz ROI hisoblanmaydi — kartochka va tafsilot sahifasidagi kabi "—"
+        render: (r) =>
+          avgPurchasePrice(r.skus) > 0 ? (
+            <span className={cn('tnum', r.roi < 0 ? 'text-danger' : 'text-ink-soft')}>{f.pct(r.roi)}</span>
+          ) : (
+            <span className="text-muted">—</span>
+          ),
         sortable: true,
         sortValue: (r) => r.roi,
-      },
-      {
-        key: 'margin',
-        header: t('col.margin'),
-        align: 'right',
-        hideOnMobile: true,
-        render: (r) => <span className="tnum">{f.pct(r.margin)}</span>,
-        sortable: true,
-        sortValue: (r) => r.margin,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'profit',
         header: t('col.profit'),
         align: 'right',
         render: (r) => (
-          <span className={cn('tnum font-semibold', r.profit >= 0 ? 'text-ink' : 'text-danger')}>
-            {f.money(r.profit)}
-          </span>
+          <div className="leading-tight">
+            <span className={cn('tnum font-semibold', r.profit < 0 ? 'text-danger' : 'text-brand-ink')}>
+              {f.money(r.profit)}
+            </span>
+            {r.revenue > 0 ? (
+              <p className={cn('tnum text-2xs', r.profit < 0 ? 'text-danger' : 'text-muted')}>
+                {t('card.marginSub', { pct: f.pct(r.margin) })}
+              </p>
+            ) : null}
+          </div>
         ),
         sortable: true,
         sortValue: (r) => r.profit,
+        className: PAD_LAST,
+        headerClassName: PAD_LAST,
       },
     ],
-    [t, f],
+    [t, f, buyout],
   );
 
   return (
@@ -478,6 +558,7 @@ export default function Products() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="products_assortment" />}
+        meta={<DataFreshness />}
         actions={
           <Button
             variant="outline"
@@ -507,13 +588,19 @@ export default function Products() {
           </Card>
         ) : (
         <div className="space-y-5">
-          {/* KPI */}
+          {/*
+            KPI ranglari ma'no bo'yicha: sanoqlar (mahsulot, SKU) — kulrang,
+            qoldiq — ko'k, buyurtma kerak — sariq, pullik saqlash — xarajat
+            xaritasidagi pushti. Ilgari qoldiq binafsha (Uzum ulushi rangi),
+            saqlash qizil ("zarar") edi — ikkalasi ham noto'g'ri o'qilardi.
+          */}
           <StatGrid className="xl:grid-cols-5">
             <StatCard
               label={t('kpi.products')}
               value={f.num(totals?.products ?? 0)}
               hint={t('kpi.productsHint')}
               icon={<Package className="h-5 w-5" />}
+              className={NEUTRAL_TONE}
               loading={isLoading}
             />
             <StatCard
@@ -521,7 +608,7 @@ export default function Products() {
               value={f.num(totals?.skus ?? 0)}
               hint={t('kpi.skusHint')}
               icon={<Boxes className="h-5 w-5" />}
-              tone="info"
+              className={NEUTRAL_TONE}
               loading={isLoading}
             />
             <StatCard
@@ -529,24 +616,34 @@ export default function Products() {
               value={f.num(totals?.inStock ?? 0)}
               hint={t('kpi.inStockHint')}
               icon={<ShoppingBag className="h-5 w-5" />}
-              tone="violet"
+              tone="info"
               loading={isLoading}
             />
+            {/* Bosilsa ro'yxat "Buyurtma kerak" filtriga o'tadi — raqamdan darhol tovarlarga */}
             <StatCard
               label={t('kpi.needOrder')}
               value={f.num(totals?.needOrder ?? 0)}
-              hint={t('kpi.needOrderHint')}
+              hint={t('kpi.needOrderHint', { n: cover })}
               icon={<PackageSearch className="h-5 w-5" />}
               tone={(totals?.needOrder ?? 0) > 0 ? 'warn' : 'brand'}
               loading={isLoading}
+              onClick={
+                (totals?.needOrder ?? 0) > 0
+                  ? () => {
+                      setFilter('need_order');
+                      setPage(1);
+                    }
+                  : undefined
+              }
             />
             <StatCard
               label={t('kpi.storage')}
               value={f.money(totals?.storageCostPerDay ?? 0)}
               hint={t('kpi.storageHint')}
               icon={<Coins className="h-5 w-5" />}
-              tone="danger"
+              className={STORAGE_TONE}
               loading={isLoading}
+              onClick={() => navigate('/storage')}
             />
           </StatGrid>
 
@@ -627,7 +724,7 @@ export default function Products() {
           {/* Ro'yxat — xato holati yuqorida hal qilingan */}
           {view === 'cards' ? (
             isLoading ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={TILE_GRID}>
                 {Array.from({ length: 8 }).map((_, i) => (
                   <ProductTileSkeleton key={i} />
                 ))}
@@ -654,7 +751,7 @@ export default function Products() {
               </Card>
             ) : (
               <div className={cn('space-y-4', isFetching && 'opacity-70 transition-opacity')}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className={TILE_GRID}>
                   {rows.map((p) => (
                     <ProductTile key={p.id} product={p} coverDays={Number(cover)} />
                   ))}

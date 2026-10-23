@@ -3,7 +3,7 @@
  * Faqat `UnitEconomics.tsx` va `Calculator.tsx` sahifalari ishlatadi.
  */
 import { DEFAULTS, type UnitCalcInput, type UnitEconomicsRow } from '@savdoiq/shared';
-import { CHART_COLORS } from '@/lib/theme';
+import { COST_COLORS } from '@/lib/theme';
 
 // ─────────────────────────── Kirish maydonlari ───────────────────────────
 
@@ -112,14 +112,21 @@ export type PartKey = 'cogs' | 'commission' | 'logistics' | 'storage' | 'other' 
 
 export const PART_ORDER: PartKey[] = ['cogs', 'commission', 'logistics', 'storage', 'other', 'tax', 'profit'];
 
+/*
+ * Ranglar lib/theme'dagi COST_COLORS'dan — Moliya, Mahsulot foydasi,
+ * Unit-iqtisod va kalkulyatorlarda bir xil modda bir xil rangda turadi.
+ * 2026-10-24 gacha bu yerda o'z palitrasi bor edi: komissiya qizil
+ * (sotuvchi uni "zarar" deb o'qirdi), soliq esa foyda bilan bir xil yashil
+ * tusda bo'lib, chiziqda ikkalasi bitta bo'lakdek ko'rinardi.
+ */
 export const PART_COLOR: Record<PartKey, string> = {
-  cogs: CHART_COLORS.slate,
-  commission: CHART_COLORS.danger,
-  logistics: CHART_COLORS.warn,
-  storage: CHART_COLORS.violet,
-  other: CHART_COLORS.info,
-  tax: CHART_COLORS.teal,
-  profit: CHART_COLORS.brand,
+  cogs: COST_COLORS.cogs,
+  commission: COST_COLORS.commission,
+  logistics: COST_COLORS.logistics,
+  storage: COST_COLORS.storage,
+  other: COST_COLORS.other,
+  tax: COST_COLORS.tax,
+  profit: COST_COLORS.profit,
 };
 
 /** Bitta dona narxi qayerga ketishi (jadval qatoridan) */

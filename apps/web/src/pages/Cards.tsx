@@ -468,11 +468,17 @@ export default function Cards() {
       <PlanGate feature="card_seo">
         <div className="space-y-5">
           <StatGrid>
+            {/*
+              Ohanglar: kartochkalar soni — ma'lumot (ko'k); ball — zonaga qarab;
+              past ballilar — xavf (za'faron), qizil emas: bu pul yo'qotishi
+              emas, tuzatsa bo'ladigan ish.
+            */}
             <StatCard
               label={t('kpi.cards')}
               value={f.num(totals?.cards ?? 0)}
               hint={t('kpi.cardsHint', { n: f.num(totals?.withDescription ?? 0) })}
               icon={<Package className="h-5 w-5" />}
+              tone="info"
               loading={isLoading}
             />
             <StatCard
@@ -480,7 +486,7 @@ export default function Cards() {
               value={f.num(totals?.avgScore ?? 0)}
               hint={t('kpi.avgHint')}
               icon={<Gauge className="h-5 w-5" />}
-              tone={totals && totals.cards > 0 ? scoreTone(totals.avgScore) : undefined}
+              tone={totals && totals.cards > 0 ? scoreTone(totals.avgScore) : 'info'}
               loading={isLoading}
             />
             <StatCard
@@ -488,7 +494,7 @@ export default function Cards() {
               value={f.num(totals?.lowScore ?? 0)}
               hint={t('kpi.lowHint')}
               icon={<ShieldAlert className="h-5 w-5" />}
-              tone={totals && totals.lowScore > 0 ? 'danger' : undefined}
+              tone={totals && totals.lowScore > 0 ? 'warn' : 'brand'}
               loading={isLoading}
             />
             <StatCard

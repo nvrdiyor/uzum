@@ -185,7 +185,15 @@ export const PLANS: Record<PlanId, Plan> = {
       stores: 10,
       cabinets: 999,
       members: 50,
-      historyDays: 1825,
+      /**
+       * Vaqtincha 365 — orqaga yig'ish (backfill) tayyor bo'lguncha.
+       * Ilgari 1825 (5 yil) edi va saytda "5 yillik tarix" deb sotilardi, lekin
+       * sinxron baribir 365 kundan oshmaydi (`MAX_HISTORY_DAYS`, apps/api
+       * services/sync.ts): VIP mijoz 5 yillik davrni tanlab, bo'sh hisobot
+       * ko'rardi. Davr tanlagich va server ham shu qiymat bilan cheklaydi.
+       * Backfill chiqqanda sinxron chegarasi bilan birga oshiriladi (2026-10-24).
+       */
+      historyDays: 365,
       syncIntervalMinutes: 30,
       autoReplyPerDay: 2000,
     },

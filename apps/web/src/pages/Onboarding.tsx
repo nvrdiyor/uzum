@@ -32,7 +32,8 @@ registerNamespace('onboarding', {
     'welcome.k.title': 'API kalit',
     'welcome.k.body': 'Uzum kabinetidan faqat o‘qish uchun kalit olasiz.',
     'welcome.s.title': 'Sinxronizatsiya',
-    'welcome.s.body': 'Barcha tarixni yig‘amiz — odatda bir necha daqiqa.',
+    // Ilgari "barcha tarix" va'da qilinardi, sinxron esa 365 kundan oshmaydi (2026-10-24)
+    'welcome.s.body': 'Tarifga qarab 1 yilgacha tarixni yig‘amiz — odatda bir necha daqiqa.',
     'welcome.start': 'Boshlash',
     'welcome.time': 'Sozlash ~2 daqiqa, dastlabki ma’lumot yig‘ish — bir necha daqiqa',
 
@@ -135,7 +136,7 @@ registerNamespace('onboarding', {
     'welcome.k.title': 'API-ключ',
     'welcome.k.body': 'Получите ключ только на чтение в кабинете Uzum.',
     'welcome.s.title': 'Синхронизация',
-    'welcome.s.body': 'Соберём всю историю — обычно несколько минут.',
+    'welcome.s.body': 'Соберём историю до 1 года, в зависимости от тарифа — обычно несколько минут.',
     'welcome.start': 'Начать',
     'welcome.time': 'Настройка ~2 минуты, первичный сбор данных — несколько минут',
 
@@ -238,7 +239,7 @@ registerNamespace('onboarding', {
     'welcome.k.title': 'API key',
     'welcome.k.body': 'Create a read-only key in your Uzum seller cabinet.',
     'welcome.s.title': 'Sync',
-    'welcome.s.body': 'We import your full history — usually a few minutes.',
+    'welcome.s.body': 'We import up to 1 year of history, depending on your plan — usually a few minutes.',
     'welcome.start': 'Get started',
     'welcome.time': 'Setup takes ~2 minutes, the first data import a few minutes',
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Layers3, PieChart as PieIcon, X } from '@/components/icons';
+import { BarChart3, Download, LayoutGrid, Layers3, PieChart as PieIcon, Table2, TrendingDown, Trophy, X } from '@/components/icons';
 import type { AbcResponse, AbcRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
@@ -19,7 +19,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   ProgressBar,
   SearchInput,
   Skeleton,
@@ -28,6 +27,8 @@ import {
   toast,
   type Column,
 } from '@/components/ui';
+import { NEUTRAL_TONE, SkuNameCell } from '@/components/stock/common';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { AbcGroupCard } from '@/components/analysis/AbcGroupCard';
 import { AbcMatrix, type MatrixCellData } from '@/components/analysis/AbcMatrix';
 import { ParetoChart, type ParetoPoint } from '@/components/analysis/ParetoChart';
@@ -333,7 +334,7 @@ export default function Abc() {
       key: 'product',
       header: t('col.product'),
       width: '32%',
-      render: (r) => <ProductCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
+      render: (r) => <SkuNameCell title={r.title} subtitle={r.sku} imageUrl={r.imageUrl} />,
       sortable: true,
       sortValue: (r) => r.title,
     },
@@ -414,6 +415,7 @@ export default function Abc() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="abc_analysis" />}
+        meta={<DataFreshness />}
         actions={
           <Button
             variant="outline"
@@ -435,26 +437,32 @@ export default function Abc() {
           </Card>
         ) : (
           <div className="space-y-5">
+            {/*
+              Umumiy hajm (tushum, SKU soni) — neytral; guruh ko'rsatkichlari —
+              o'z guruhi rangida (A — brend, C — qizil), xuddi pastdagi guruh
+              kartalari, Pareto ustunlari va matritsadagidek.
+            */}
             <StatGrid>
               <StatCard
                 label={t('kpi.revenue')}
                 value={isLoading ? '' : f.money(totals.revenue)}
                 loading={isLoading}
                 icon={<PieIcon className="h-5 w-5" />}
-                tone="brand"
+                className={NEUTRAL_TONE}
               />
               <StatCard
                 label={t('kpi.skus')}
                 value={isLoading ? '' : f.num(totals.skus)}
                 loading={isLoading}
                 icon={<Layers3 className="h-5 w-5" />}
-                tone="info"
+                className={NEUTRAL_TONE}
               />
               <StatCard
                 label={t('kpi.aShare')}
                 value={isLoading ? '' : f.pct(groups[0]?.revenueShare ?? 0)}
                 hint={t('kpi.aShareHint')}
                 loading={isLoading}
+                icon={<Trophy className="h-5 w-5" />}
                 tone="brand"
               />
               <StatCard
@@ -462,6 +470,7 @@ export default function Abc() {
                 value={isLoading ? '' : f.num(groups[2]?.skuCount ?? 0)}
                 hint={t('kpi.cCountHint')}
                 loading={isLoading}
+                icon={<TrendingDown className="h-5 w-5" />}
                 tone="danger"
               />
             </StatGrid>
@@ -500,6 +509,8 @@ export default function Abc() {
             <div className="grid gap-4 xl:grid-cols-3">
               <ChartCard
                 className="xl:col-span-2"
+                icon={<BarChart3 />}
+                tone="brand"
                 title={t('pareto.title')}
                 subtitle={t('pareto.subtitle', { n: Math.min(PARETO_LIMIT, rows.length) })}
                 legend={
@@ -525,7 +536,7 @@ export default function Abc() {
                 )}
               </ChartCard>
 
-              <ChartCard title={t('matrix.title')} subtitle={t('matrix.subtitle')}>
+              <ChartCard icon={<LayoutGrid />} tone="muted" title={t('matrix.title')} subtitle={t('matrix.subtitle')}>
                 {isLoading ? (
                   <Skeleton className="h-[320px] w-full" />
                 ) : hasXyz ? (
@@ -564,6 +575,7 @@ export default function Abc() {
             {/* Jadval */}
             <Card>
               <CardHeader
+                icon={<Table2 />}
                 title={t('table.title')}
                 subtitle={t('filter.found', { n: filtered.length })}
                 actions={
@@ -611,19 +623,25 @@ export default function Abc() {
                   }
                   footer={
                     <>
-                      <td className="px-4 py-3 text-sm">
+                      {/*
+                        Kompyuterda summalar bo'linmaydi — ilgari "315 639 000 / so'm"
+                        ikki qatorga tushardi. Telefonda (tor jami qatori) bo'linishi mumkin.
+                      */}
+                      <td className="px-3 py-3 text-sm md:px-5">
                         {filtered.length === rows.length ? t('common.total') : t('table.filteredTotal')}
                       </td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.money(filteredTotals.revenue)}</td>
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
+                      <td className="tnum px-3 py-3 text-right text-sm md:whitespace-nowrap md:px-5">
+                        {f.money(filteredTotals.revenue)}
+                      </td>
+                      <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right text-sm md:table-cell">
                         {f.money(filteredTotals.profit)}
                       </td>
-                      <td className="tnum hidden px-4 py-3 text-right text-sm md:table-cell">
+                      <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right text-sm md:table-cell">
                         {f.num(filteredTotals.units)}
                       </td>
-                      <td className="tnum px-4 py-3 text-right text-sm">{f.pct(filteredTotals.share)}</td>
-                      <td className="hidden px-4 py-3 md:table-cell" />
-                      <td className="px-4 py-3" />
+                      <td className="tnum whitespace-nowrap px-3 py-3 text-right text-sm md:px-5">{f.pct(filteredTotals.share)}</td>
+                      <td className="hidden px-5 py-3 md:table-cell" />
+                      <td className="px-3 py-3 md:px-5" />
                     </>
                   }
                 />

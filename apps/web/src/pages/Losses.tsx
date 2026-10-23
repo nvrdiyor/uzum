@@ -1,23 +1,25 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Coins, Download, FileText, Hash, Info, PackageX, ShieldCheck } from '@/components/icons';
+import { Boxes, CalendarRange, Coins, Download, FileText, Hash, Info, PackageX, ShieldCheck } from '@/components/icons';
 import type { LossRow, LossesResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
+import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Badge,
   Button,
   Card,
+  CardHeader,
   DataTable,
   EmptyState,
   ErrorState,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   Segmented,
   Select,
   StatCard,
@@ -333,9 +335,14 @@ export default function Losses() {
       {
         key: 'product',
         header: t('col.product'),
-        width: '30%',
         render: (r) => (
-          <ProductCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} imageUrl={r.imageUrl} />
+          <ProductTitleCell
+            title={r.title ?? r.sku ?? '—'}
+            subtitle={r.sku ?? undefined}
+            imageUrl={r.imageUrl}
+            maxWidth={210}
+            minWidth={140}
+          />
         ),
         sortable: true,
         sortValue: (r) => r.title ?? r.sku ?? '',
@@ -343,20 +350,27 @@ export default function Losses() {
       {
         key: 'type',
         header: t('col.type'),
-        render: (r) =>
-          r.kind ? (
-            <Badge tone={LOSS_KIND_TONE[r.kind]}>{t(`kind.${r.kind}`)}</Badge>
-          ) : (
-            <Badge tone={TYPE_TONE[r.type]}>{t(`type.${r.type}`)}</Badge>
-          ),
+        /*
+          Tur va sxema bitta katakda (ustma-ust): alohida "Sxema" ustuni bilan
+          jadval 1366px ga sig'masdan, "Holat" ustuni ekrandan chiqardi.
+        */
+        render: (r) => (
+          <div className="flex flex-col items-start gap-1">
+            {r.kind ? (
+              <Badge tone={LOSS_KIND_TONE[r.kind]} className="whitespace-nowrap">
+                {t(`kind.${r.kind}`)}
+              </Badge>
+            ) : (
+              <Badge tone={TYPE_TONE[r.type]} className="whitespace-nowrap">
+                {t(`type.${r.type}`)}
+              </Badge>
+            )}
+            <Badge tone={r.scheme === 'FBO' ? 'violet' : 'info'} className="px-2 py-0 text-2xs">
+              {r.scheme}
+            </Badge>
+          </div>
+        ),
         sortValue: (r) => r.kind ?? r.type,
-      },
-      {
-        key: 'scheme',
-        header: t('col.scheme'),
-        hideOnMobile: true,
-        render: (r) => <Badge tone={r.scheme === 'FBO' ? 'violet' : 'info'}>{r.scheme}</Badge>,
-        sortValue: (r) => r.scheme,
       },
       {
         key: 'qty',
@@ -389,8 +403,9 @@ export default function Losses() {
       {
         key: 'status',
         header: t('col.status'),
+        // nowrap: "Da'vo yuborilgan" ikki qatorga sinib, nishon cho'zilib qolardi
         render: (r) => (
-          <Badge tone={LOSS_STATUS_TONE[r.status]} dot>
+          <Badge tone={LOSS_STATUS_TONE[r.status]} dot className="whitespace-nowrap">
             {t(`status.${r.status}`)}
           </Badge>
         ),
@@ -420,6 +435,18 @@ export default function Losses() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="losses_report" />}
+        meta={
+          <>
+            {/* Tovar balansi butun davr bo'yicha — davr chipi faqat yo'qotish/kompensatsiya tablarida */}
+            {tab !== 'balance' ? (
+              <span className="meta-chip tnum">
+                <CalendarRange className="h-3.5 w-3.5" />
+                {f.date(q.from)} — {f.date(q.to)}
+              </span>
+            ) : null}
+            <DataFreshness />
+          </>
+        }
         actions={
           tab === 'balance' ? undefined : (
             <>
@@ -542,15 +569,16 @@ export default function Losses() {
                 <ClaimMinimum amount={data.open.amount} min={data.balance.rules.minClaim} />
               ) : null}
               <Card>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                  <div>
-                    <h3 className="section-title">{t('table.title')}</h3>
-                    <p className="mt-0.5 text-sm text-muted">{t('table.note')}</p>
-                  </div>
-                  <p className="text-sm text-muted">
-                    {f.num(data?.rows.total ?? 0)} {t('common.rows')}
-                  </p>
-                </div>
+                <CardHeader
+                  icon={<PackageX className="h-4 w-4" />}
+                  title={t('table.title')}
+                  subtitle={t('table.note')}
+                  actions={
+                    <span className="meta-chip tnum">
+                      {f.num(data?.rows.total ?? 0)} {t('common.rows')}
+                    </span>
+                  }
+                />
                 <div className="mt-4">
                   <DataTable
                     columns={columns}
@@ -573,13 +601,14 @@ export default function Losses() {
                     footer={
                       rows.length ? (
                         <>
-                          <td className="px-4 py-3 eyebrow-lg" colSpan={4}>
+                          <td className="px-5 py-3 eyebrow-lg" colSpan={3}>
                             {t('table.pageTotal')}
                           </td>
-                          <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
-                          <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                          <td className="tnum px-4 py-3 text-right text-brand-ink">{f.money(pageComp)}</td>
-                          <td className="px-4 py-3" colSpan={2} />
+                          <td className="tnum px-5 py-3 text-right">{f.num(pageQty)}</td>
+                          {/* nowrap: summa "so'm" bilan ikki qatorga sinmasin */}
+                          <td className="tnum whitespace-nowrap px-5 py-3 text-right">{f.money(pageAmount)}</td>
+                          <td className="tnum whitespace-nowrap px-5 py-3 text-right text-brand-ink">{f.money(pageComp)}</td>
+                          <td className="px-5 py-3" colSpan={2} />
                         </>
                       ) : undefined
                     }

@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { CalendarRange, Clock, Download, Inbox, MapPin, TrendingUp, Truck } from '@/components/icons';
+import {
+  CalendarDays,
+  CalendarRange,
+  Clock,
+  Coins,
+  Download,
+  Inbox,
+  MapPin,
+  Receipt,
+  ShoppingBag,
+  TrendingUp,
+  Truck,
+} from '@/components/icons';
 import type { DeliveryType, OrderRow, OrderStatus, SalesAnalyticsResponse } from '@savdoiq/shared';
 import {
   Badge,
@@ -26,6 +38,7 @@ import {
 } from '@/components/ui';
 import { BarsChart, ChartCard, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import { DELIVERY_TYPES, DeliveryBadge, ORDER_STATUSES, OrderStatusBadge } from '@/components/sales/OrderBadges';
 import { OrderDrawer } from '@/components/sales/OrderDrawer';
 import { useDebounced } from '@/components/sales/useDebounced';
@@ -423,7 +436,10 @@ export default function Sales() {
         key: 'id',
         header: t('col.id'),
         hideOnMobile: true,
-        render: (row) => <span className="tnum text-xs text-muted">{row.uzumOrderId ?? row.id.slice(0, 8)}</span>,
+        // nowrap: "UZ-2-03056" ikki qatorga sinib, har bir qatorni ikki baravar baland qilardi
+        render: (row) => (
+          <span className="tnum whitespace-nowrap text-xs text-muted">{row.uzumOrderId ?? row.id.slice(0, 8)}</span>
+        ),
       },
       {
         key: 'status',
@@ -507,8 +523,9 @@ export default function Sales() {
         key: 'netProfit',
         header: t('col.netProfit'),
         align: 'right',
+        // Foyda — sotuvchining puli (firuza), zarar — qizil
         render: (row) => (
-          <span className={cn('font-semibold', row.netProfit < 0 ? 'text-danger' : 'text-ink')}>
+          <span className={cn('font-semibold', row.netProfit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
             {f.num(row.netProfit)}
           </span>
         ),
@@ -520,7 +537,7 @@ export default function Sales() {
         header: t('col.margin'),
         align: 'right',
         render: (row) => (
-          <span className={row.margin < 0 ? 'text-danger' : 'text-ink-soft'}>{f.pct(row.margin)}</span>
+          <span className={row.margin < 0 ? 'text-danger-ink' : 'text-ink-soft'}>{f.pct(row.margin)}</span>
         ),
         sortValue: (row) => row.margin,
         sortable: true,
@@ -536,6 +553,15 @@ export default function Sales() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="sales_analytics" />}
+        meta={
+          <>
+            <span className="meta-chip tnum">
+              <CalendarRange className="h-3.5 w-3.5" />
+              {f.date(data?.period.from ?? q.from)} — {f.date(data?.period.to ?? q.to)}
+            </span>
+            <DataFreshness />
+          </>
+        }
         actions={
           <Button
             variant="outline"
@@ -592,6 +618,12 @@ export default function Sales() {
           </Card>
         ) : (
           <div className="space-y-5">
+            {/*
+              Ohanglar butun saytda bir xil ma'noda: buyurtma ko'rsatkichlari
+              (soni, o'rtacha chek) — ko'k, sotuvchining puli (tushum, foyda) —
+              firuza, zarar — qizil. Ilgari o'rtacha chek binafsha edi, binafsha
+              esa "Uzum ulushi"; foyda kartochkasida esa yuk mashinasi turardi.
+            */}
             <StatGrid>
               <StatCard
                 label={t('kpi.orders')}
@@ -601,7 +633,8 @@ export default function Sales() {
                     ? t('kpi.ordersExcluded', { c: f.num(kpi.excluded.canceled), r: f.num(kpi.excluded.returned) })
                     : t('kpi.ordersHint')
                 }
-                icon={<Inbox className="h-5 w-5" />}
+                icon={<ShoppingBag className="h-5 w-5" />}
+                tone="info"
                 loading={isLoading}
               />
               <StatCard
@@ -609,14 +642,14 @@ export default function Sales() {
                 value={f.money(kpi.revenue)}
                 hint={t('kpi.revenueHint')}
                 icon={<TrendingUp className="h-5 w-5" />}
-                tone="info"
+                tone="brand"
                 loading={isLoading}
               />
               <StatCard
                 label={t('kpi.profit')}
                 value={f.money(kpi.profit)}
                 hint={t('kpi.profitHint')}
-                icon={<Truck className="h-5 w-5" />}
+                icon={<Coins className="h-5 w-5" />}
                 tone={kpi.profit < 0 ? 'danger' : 'brand'}
                 loading={isLoading}
                 footer={`${tc('common.margin')}: ${f.pct(kpi.marginPct)}`}
@@ -625,8 +658,8 @@ export default function Sales() {
                 label={t('kpi.avgCheck')}
                 value={f.money(kpi.avgCheck)}
                 hint={t('kpi.avgCheckHint')}
-                icon={<CalendarRange className="h-5 w-5" />}
-                tone="violet"
+                icon={<Receipt className="h-5 w-5" />}
+                tone="info"
                 loading={isLoading}
               />
             </StatGrid>
@@ -636,6 +669,7 @@ export default function Sales() {
                 className="xl:col-span-2"
                 title={t('hourly.title')}
                 subtitle={t('hourly.subtitle')}
+                icon={<Clock />}
                 actions={
                   <Segmented
                     size="sm"
@@ -656,11 +690,12 @@ export default function Sales() {
                       data={hourData}
                       xKey="hour"
                       height={280}
+                      // Ranglar KPI bilan bir xil: buyurtmalar — ko'k, tushum — firuza
                       series={[
                         {
                           key: metric,
                           name: metric === 'orders' ? t('hourly.orders') : t('hourly.revenue'),
-                          color: metric === 'orders' ? CHART_COLORS.brand : CHART_COLORS.info,
+                          color: metric === 'orders' ? CHART_COLORS.info : CHART_COLORS.brand,
                           money: metric === 'revenue',
                         },
                       ]}
@@ -679,9 +714,12 @@ export default function Sales() {
                 )}
               </ChartCard>
 
+              {/* Yetkazish — logistika: ko'k ohang (Oylik hisobotdagi kartochka bilan bir xil) */}
               <ChartCard
                 title={t('delivery.title')}
                 subtitle={t('delivery.subtitle')}
+                icon={<Truck />}
+                tone="info"
                 legend={deliveryData.map((d) => ({
                   name: d.name,
                   color: d.color,
@@ -708,7 +746,7 @@ export default function Sales() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-3">
-              <ChartCard className="xl:col-span-2" title={t('city.title')} subtitle={t('city.subtitle')}>
+              <ChartCard className="xl:col-span-2" title={t('city.title')} subtitle={t('city.subtitle')} icon={<MapPin />}>
                 {isLoading ? (
                   <Skeleton className="h-[320px] w-full" />
                 ) : cityData.length ? (
@@ -728,7 +766,7 @@ export default function Sales() {
                 )}
               </ChartCard>
 
-              <ChartCard title={t('weekday.title')} subtitle={t('weekday.subtitle')}>
+              <ChartCard title={t('weekday.title')} subtitle={t('weekday.subtitle')} icon={<CalendarDays />}>
                 {isLoading ? (
                   <Skeleton className="h-[320px] w-full" />
                 ) : (
@@ -736,7 +774,8 @@ export default function Sales() {
                     data={weekdayData}
                     xKey="day"
                     height={320}
-                    series={[{ key: 'orders', name: t('weekday.orders'), color: CHART_COLORS.violet }]}
+                    // Ilgari binafsha edi — binafsha faqat "Uzum ulushi"; buyurtmalar soni — ko'k
+                    series={[{ key: 'orders', name: t('weekday.orders'), color: CHART_COLORS.info }]}
                   />
                 )}
               </ChartCard>
@@ -744,6 +783,7 @@ export default function Sales() {
 
             <Card>
               <CardHeader
+                icon={<ShoppingBag className="h-4 w-4" />}
                 title={t('table.title')}
                 subtitle={t('table.hint')}
                 actions={<Badge tone="muted">{f.num(data?.orders.total ?? 0)}</Badge>}

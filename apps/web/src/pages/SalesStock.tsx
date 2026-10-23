@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Boxes, Coins, Download, Inbox, PackageCheck, ShoppingCart, TrendingUp, Wallet } from '@/components/icons';
+import { Boxes, Coins, Download, Inbox, PackageCheck, ShoppingCart, Table2, TrendingUp, Wallet } from '@/components/icons';
 import type { SalesStockResponse, SalesStockRow } from '@savdoiq/shared';
 import {
   Badge,
@@ -13,18 +13,20 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   SearchInput,
   Segmented,
-  Skeleton,
   StatCard,
+  StatGrid,
   toast,
   type Column,
 } from '@/components/ui';
-import { ChartCard, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
+  NEUTRAL_TONE,
+  STATE_COLOR,
   STOCK_STATES,
+  SkuNameCell,
   StockStatusBadge,
   TONE_TEXT,
   daysTone,
@@ -33,8 +35,8 @@ import {
 import { useDebounced } from '@/components/sales/useDebounced';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
-import { CHART_COLORS } from '@/lib/theme';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useStores } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 
 registerNamespace('salesStock', {
@@ -50,28 +52,24 @@ registerNamespace('salesStock', {
     'kpi.profit': 'Tovarlar bo‘yicha foyda',
     'unit': 'dona',
     'seg.all': 'Barchasi',
-    'seg.critical': 'Kritik',
-    'seg.low': 'Tugayapti',
-    'seg.excess': 'Ortiqcha',
-    'seg.dead': 'Harakatsiz',
-    'chart.title': 'Qoldiq holati',
-    'chart.subtitle': 'Joriy sahifadagi SKU’lar taqsimoti',
-    'chart.total': 'SKU',
+    'strip.title': 'Qoldiq holati — barcha SKU’lar taqsimoti',
+    'strip.share': '{status}: {count} SKU ({pct})',
     'table.title': 'SKU bo‘yicha kesim',
-    'table.hint': 'Summalar so‘mda. “Yetadi” ustuni joriy sotuv sur’atiga asoslangan',
+    'table.hint': 'Summalar so‘mda. Holat va necha kunga yetishi so‘nggi 30 kunlik sotuv sur’atidan',
     'table.empty': 'Mos SKU topilmadi',
     'table.emptyHint': 'Filtrni o‘zgartiring yoki boshqa davrni tanlang',
     'col.product': 'Mahsulot',
-    'col.store': 'Do‘kon',
     'col.sold': 'Sotildi',
     'col.stock': 'Omborda',
     'col.revenue': 'Tushum',
     'col.payout': 'To‘lovga',
     'col.netProfit': 'Sof foyda',
-    'col.avgDaily': 'Kunlik o‘rtacha',
-    'col.daysLeft': 'Yetadi',
-    'col.monthPotential': 'Oylik potentsial',
-    'col.status': 'Holat',
+    'col.status': 'Holat · yetadi',
+    'revenueShare': 'Jami tushumdagi ulushi: {pct}. Chiziq — eng ko‘p tushumli SKU’ga nisbatan',
+    'own': 'O‘z ombori {n}',
+    'margin': 'marja {pct}',
+    'perMonth': '{n}/oy',
+    'coverHint': 'So‘nggi 30 kunlik sur’at: kuniga {day}, oyiga {month} dona',
     'days': 'kun',
     'noSales': 'Sotuv yo‘q',
     'filter.search': 'Nomi yoki SKU bo‘yicha qidirish',
@@ -90,28 +88,24 @@ registerNamespace('salesStock', {
     'kpi.profit': 'Прибыль по товарам',
     'unit': 'шт',
     'seg.all': 'Все',
-    'seg.critical': 'Критично',
-    'seg.low': 'Заканчивается',
-    'seg.excess': 'Избыток',
-    'seg.dead': 'Неликвид',
-    'chart.title': 'Состояние остатков',
-    'chart.subtitle': 'Распределение SKU текущей страницы',
-    'chart.total': 'SKU',
+    'strip.title': 'Состояние остатков — распределение всех SKU',
+    'strip.share': '{status}: {count} SKU ({pct})',
     'table.title': 'Разрез по SKU',
-    'table.hint': 'Суммы в сумах. Колонка «Хватит» рассчитана по текущей скорости продаж',
+    'table.hint': 'Суммы в сумах. Статус и на сколько хватит — по темпу продаж за последние 30 дней',
     'table.empty': 'Подходящих SKU нет',
     'table.emptyHint': 'Измените фильтр или выберите другой период',
     'col.product': 'Товар',
-    'col.store': 'Магазин',
     'col.sold': 'Продано',
     'col.stock': 'На складе',
     'col.revenue': 'Выручка',
     'col.payout': 'К выплате',
     'col.netProfit': 'Чистая прибыль',
-    'col.avgDaily': 'В день',
-    'col.daysLeft': 'Хватит',
-    'col.monthPotential': 'Потенциал/мес',
-    'col.status': 'Статус',
+    'col.status': 'Статус · хватит',
+    'revenueShare': 'Доля в общей выручке: {pct}. Полоса — относительно SKU с наибольшей выручкой',
+    'own': 'Свой склад {n}',
+    'margin': 'маржа {pct}',
+    'perMonth': '{n}/мес',
+    'coverHint': 'Темп за последние 30 дней: {day} в день, {month} шт в месяц',
     'days': 'дн.',
     'noSales': 'Нет продаж',
     'filter.search': 'Поиск по названию или SKU',
@@ -130,28 +124,24 @@ registerNamespace('salesStock', {
     'kpi.profit': 'Profit on goods',
     'unit': 'pcs',
     'seg.all': 'All',
-    'seg.critical': 'Critical',
-    'seg.low': 'Low',
-    'seg.excess': 'Excess',
-    'seg.dead': 'Dead stock',
-    'chart.title': 'Stock health',
-    'chart.subtitle': 'SKU split on the current page',
-    'chart.total': 'SKUs',
+    'strip.title': 'Stock health — split of all SKUs',
+    'strip.share': '{status}: {count} SKUs ({pct})',
     'table.title': 'SKU breakdown',
-    'table.hint': 'Amounts in UZS. “Lasts” is based on the current sales velocity',
+    'table.hint': 'Amounts in UZS. Status and days of cover use the last 30 days’ sales pace',
     'table.empty': 'No matching SKUs',
     'table.emptyHint': 'Change the filter or pick another period',
     'col.product': 'Product',
-    'col.store': 'Store',
     'col.sold': 'Sold',
     'col.stock': 'In stock',
     'col.revenue': 'Revenue',
     'col.payout': 'Payout',
     'col.netProfit': 'Net profit',
-    'col.avgDaily': 'Per day',
-    'col.daysLeft': 'Lasts',
-    'col.monthPotential': 'Monthly potential',
-    'col.status': 'Status',
+    'col.status': 'Status · lasts',
+    'revenueShare': 'Share of total revenue: {pct}. The bar is relative to the top-revenue SKU',
+    'own': 'Own warehouse {n}',
+    'margin': 'margin {pct}',
+    'perMonth': '{n}/mo',
+    'coverHint': 'Last 30 days’ pace: {day} a day, {month} pcs a month',
     'days': 'days',
     'noSales': 'No sales',
     'filter.search': 'Search by name or SKU',
@@ -161,23 +151,111 @@ registerNamespace('salesStock', {
 });
 
 const PAGE_SIZE = 50;
-type Segment = 'all' | 'critical' | 'low' | 'excess' | 'dead';
-const SEGMENTS: Segment[] = ['all', 'critical', 'low', 'excess', 'dead'];
+/**
+ * "Yetarli" (ok) ham filtr: Qoldiqlar sahifasidagi bilan bir xil besh holat.
+ * Ilgari u yo'q edi — sog'lom SKU'larni alohida ko'rib bo'lmasdi.
+ */
+type Segment = 'all' | StockState;
+const SEGMENTS: Segment[] = ['all', ...STOCK_STATES];
 
-const STATUS_COLOR: Record<StockState, string> = {
-  critical: CHART_COLORS.danger,
-  low: CHART_COLORS.warn,
-  ok: CHART_COLORS.brand,
-  excess: CHART_COLORS.info,
-  dead: CHART_COLORS.slate,
-};
+const NO_COUNTS: Record<StockState, number> = { critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
 
+/** Chiziq uzunligi, %: eng kattasiga nisbatan, 0–100 oralig'ida */
+function barPct(value: number, max: number): number {
+  return max > 0 ? Math.min(100, Math.max(0, Math.round((value / max) * 1000) / 10)) : 0;
+}
+
+/*
+ * Kataklar orasidagi bo'shliq: DataTable'ning px-5 (har ustunga 40 px) o'rniga
+ * 20 px — yetti ustunda ~120 px yutuq, 1280 px ekranda ruscha sarlavhalar bilan
+ * ham jadval gorizontal aylantirishsiz sig'adi (o'lchandi: uz 875 / ru 946 px,
+ * joy 958 px). pl-/pr- Tailwind CSS'ida px- dan keyin chiqadi, shuning uchun
+ * aynan shular ustun keladi. Birinchi ustunning chap va oxirgisining o'ng
+ * cheti px-5 da qoladi — karta chizig'i bilan teng.
+ */
+const PAD = 'pl-2.5 pr-2.5';
+const PAD_FIRST = 'pr-2.5';
+const PAD_LAST = 'pl-2.5';
+
+/**
+ * Qoldiq holati tasmasi: holatlarning 100% ga yoyilgan ulushi va ostida filtr.
+ * Tasma bo'lagini bosish ham o'sha holatni tanlaydi (qayta bosilsa — Barchasi).
+ *
+ * Ilgari jadval yonida alohida halqa kartochkasi turardi: u jadvaldan uchdan
+ * bir kenglikni olib, 1366 px'da Tushum…Holat ustunlarini gorizontal aylantirish
+ * ortiga surardi, o'zi esa jadval balandligicha bo'sh cho'zilardi (2026-10-24).
+ */
+function StatusStrip({
+  counts,
+  value,
+  onChange,
+}: {
+  counts: Record<StockState, number>;
+  value: Segment;
+  onChange: (next: Segment) => void;
+}) {
+  const t = useT('salesStock');
+  const tc = useT('common');
+  const f = useFormat();
+  const total = STOCK_STATES.reduce((sum, s) => sum + counts[s], 0);
+
+  return (
+    <div className="space-y-2.5">
+      {/* Klaviatura uchun xuddi shu tanlov pastdagi tugmalarda bor — tasma faqat sichqoncha uchun */}
+      <div
+        className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full bg-surface-3"
+        aria-hidden
+        title={t('strip.title')}
+      >
+        {total > 0
+          ? STOCK_STATES.filter((s) => counts[s] > 0).map((s) => (
+              <button
+                key={s}
+                type="button"
+                tabIndex={-1}
+                title={t('strip.share', {
+                  status: tc(`status.${s}`),
+                  count: f.num(counts[s]),
+                  pct: f.pct((counts[s] / total) * 100),
+                })}
+                onClick={() => onChange(value === s ? 'all' : s)}
+                className={cn(
+                  'h-full min-w-1.5 transition-opacity duration-150 hover:opacity-100',
+                  value !== 'all' && value !== s && 'opacity-30',
+                )}
+                style={{ flex: `${counts[s]} 1 0%`, backgroundColor: STATE_COLOR[s] }}
+              />
+            ))
+          : null}
+      </div>
+      <Segmented
+        value={value}
+        onChange={onChange}
+        size="sm"
+        options={SEGMENTS.map((s) => ({
+          value: s,
+          label:
+            s === 'all' ? (
+              t('seg.all')
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STATE_COLOR[s] }} />
+                {tc(`status.${s}`)}
+              </span>
+            ),
+          count: s === 'all' ? total : counts[s],
+        }))}
+      />
+    </div>
+  );
+}
 
 export default function SalesStock() {
   const t = useT('salesStock');
   const tc = useT('common');
   const f = useFormat();
   const q = usePeriodQuery();
+  const stores = useStores();
 
   const [page, setPage] = useState(1);
   const [segment, setSegment] = useState<Segment>('all');
@@ -209,35 +287,29 @@ export default function SalesStock() {
     placeholderData: keepPreviousData,
   });
 
+  // Filtr server tomonida qo'llangan — bu yerda qayta filtrlash shart emas
   const rows = useMemo(() => data?.rows.items ?? [], [data]);
   const totals = data?.totals;
+  /*
+   * Holatlar soni serverdan: qidiruvga mos barcha SKU bo'yicha, holat
+   * filtridan oldin. Ilgari ular joriy, allaqachon filtrlangan sahifadan
+   * sanalardi — "Kritik" bosilsa Barchasi 8 ga, qolganlari 0 ga tushardi.
+   */
+  const statusCounts = totals?.statusCounts ?? NO_COUNTS;
 
-  const counts = useMemo(() => {
-    const base: Record<Segment, number> = { all: rows.length, critical: 0, low: 0, excess: 0, dead: 0 };
-    for (const row of rows) {
-      if (row.status === 'critical' || row.status === 'low' || row.status === 'excess' || row.status === 'dead') {
-        base[row.status] += 1;
-      }
-    }
-    return base;
-  }, [rows]);
-
-  const filtered = useMemo(
-    // Filtr server tomonida qo'llangan — bu yerda qayta filtrlash shart emas
-    () => rows,
-    [rows, segment],
-  );
-
-  const statusChart = useMemo(() => {
-    const map = new Map<StockState, number>();
-    for (const row of rows) map.set(row.status, (map.get(row.status) ?? 0) + 1);
-    return STOCK_STATES.filter((s) => (map.get(s) ?? 0) > 0)
-      .map((s) => ({
-        name: tc(`status.${s}`),
-        value: map.get(s) ?? 0,
-        color: STATUS_COLOR[s],
-      }));
-  }, [rows, tc]);
+  /*
+   * Do'kon nomi alohida ustun emas (u ~170 px olardi, hatto do'kon bitta
+   * bo'lsa ham): faqat bir nechta do'kon aralash ko'rinsa, SKU yonida.
+   */
+  const multiStore = !q.storeId && stores.length > 1;
+  /*
+   * Tushum chizig'i miqyosi serverdan: ro'yxatdagi (barcha sahifalar) eng katta
+   * tushum = to'liq uzunlik, izohda shu aytiladi. Ilgari u joriy 50 qatordan
+   * olinardi: har sahifaning birinchi qatori to'liq chiziq olardi, izohda esa
+   * faqat "jami tushumdagi ulushi: 9,9%" turardi (2026-10-24).
+   */
+  const maxRevenue = totals?.maxRevenue ?? 0;
+  const totalRevenue = totals?.revenue ?? 0;
 
   async function onExport() {
     setExporting(true);
@@ -252,23 +324,32 @@ export default function SalesStock() {
     }
   }
 
+  /*
+   * Ustunlar 1280 px'da sig'adi: Do'kon ustuni SKU ostiga, "Yetadi" esa Holat
+   * ustuniga tushdi; FBO/FBS, marja va oylik sur'at — sub-qatorlarda.
+   * Ilgari 11 ustun bor edi va 1366 px'da faqat Mahsulot / Do'kon / Sotildi
+   * ko'rinardi (2026-10-24).
+   */
   const columns = useMemo<Column<SalesStockRow>[]>(
     () => [
       {
         key: 'product',
         header: t('col.product'),
-        width: 280,
-        render: (row) => <ProductCell title={row.title} subtitle={row.sku} imageUrl={row.imageUrl} />,
+        render: (row) => (
+          // Kenglik chegaralangan: uzun nom jadvalni cho'zmasin, tor joyda ikki
+          // qatorga sig'sin — "… — Yashil" / "… — Bej" kabi variant kesilmaydi.
+          // Bo'sh joy qolsa ustun o'zi kengayadi (22rem gacha).
+          <SkuNameCell
+            className="md:min-w-[13.5rem] md:max-w-[22rem] 2xl:max-w-[28rem]"
+            title={row.title}
+            subtitle={multiStore ? `${row.sku} · ${row.storeTitle}` : row.sku}
+            imageUrl={row.imageUrl}
+          />
+        ),
         sortValue: (row) => row.title,
         sortable: true,
-      },
-      {
-        key: 'store',
-        header: t('col.store'),
-        hideOnMobile: true,
-        render: (row) => <span className="truncate text-xs text-muted">{row.storeTitle}</span>,
-        sortValue: (row) => row.storeTitle,
-        sortable: true,
+        className: PAD_FIRST,
+        headerClassName: PAD_FIRST,
       },
       {
         key: 'sold',
@@ -277,95 +358,136 @@ export default function SalesStock() {
         render: (row) => <span className="font-medium text-ink">{f.num(row.sold)}</span>,
         sortValue: (row) => row.sold,
         sortable: true,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
+        /*
+         * Izoh qatorlari yig'indiga teng: o'z ombori (bo'lsa) alohida qatorda.
+         * Ilgari faqat FBO · FBS edi — 30 ostida "FBO 22 · FBS 6" turardi
+         * (2026-10-24). Bitta qatorga qo'shilsa ustun ~55 px kengayib, ruscha
+         * 1280 px'da jadval 53 px gorizontal aylanib qolardi (o'lchandi).
+         */
         key: 'stock',
         header: t('col.stock'),
         align: 'right',
         render: (row) => (
-          <div className="leading-tight">
+          <div className="leading-tight" title={t('kpi.stockHint')}>
             <span className="tnum font-medium text-ink">{f.num(row.stockFbo + row.stockFbs + row.stockOwn)}</span>
             <p className="tnum text-2xs text-muted">
               FBO {f.num(row.stockFbo)} · FBS {f.num(row.stockFbs)}
             </p>
+            {row.stockOwn > 0 ? (
+              <p className="tnum text-2xs text-muted">{t('own', { n: f.num(row.stockOwn) })}</p>
+            ) : null}
           </div>
         ),
         sortValue: (row) => row.stockFbo + row.stockFbs + row.stockOwn,
         sortable: true,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'revenue',
         header: t('col.revenue'),
         align: 'right',
-        render: (row) => f.num(row.revenue),
+        render: (row) => (
+          <div
+            className="leading-tight"
+            title={
+              totalRevenue > 0 ? t('revenueShare', { pct: f.pct((row.revenue / totalRevenue) * 100) }) : undefined
+            }
+          >
+            <span className="font-semibold text-ink">{f.num(row.revenue)}</span>
+            {/*
+              Tushum chizig'i: qaysi SKU pul olib kelayotganini ko'z bilan ajratish
+              uchun. Neytral rangda — yashil faqat sotuvchida qoladigan foyda uchun.
+            */}
+            <span className="mt-1 flex h-0.5 w-full justify-end overflow-hidden rounded-full bg-surface-3">
+              <span className="h-full rounded-full bg-ink-soft/40" style={{ width: `${barPct(row.revenue, maxRevenue)}%` }} />
+            </span>
+          </div>
+        ),
         sortValue: (row) => row.revenue,
         sortable: true,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'payout',
         header: t('col.payout'),
         align: 'right',
         hideOnMobile: true,
-        render: (row) => f.num(row.payout),
+        render: (row) => <span className="text-ink-soft">{f.num(row.payout)}</span>,
         sortValue: (row) => row.payout,
         sortable: true,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'netProfit',
         header: t('col.netProfit'),
         align: 'right',
         render: (row) => (
-          <span className={cn('font-semibold', row.netProfit < 0 ? 'text-danger' : 'text-ink')}>
-            {f.num(row.netProfit)}
-          </span>
+          <div className="leading-tight">
+            <span className={cn('font-semibold', row.netProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
+              {f.num(row.netProfit)}
+            </span>
+            {row.revenue > 0 ? (
+              <p className={cn('tnum text-2xs', row.netProfit < 0 ? 'text-danger' : 'text-muted')}>
+                {t('margin', { pct: f.pct((row.netProfit / row.revenue) * 100) })}
+              </p>
+            ) : null}
+          </div>
         ),
         sortValue: (row) => row.netProfit,
         sortable: true,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
-        key: 'avgDaily',
-        header: t('col.avgDaily'),
-        align: 'right',
-        hideOnMobile: true,
-        render: (row) => f.num(row.avgDaily, 1),
-        sortValue: (row) => row.avgDaily,
-        sortable: true,
-      },
-      {
-        key: 'daysLeft',
-        header: t('col.daysLeft'),
-        align: 'right',
-        render: (row) => (
-          <span className={cn('font-semibold', TONE_TEXT[daysTone(row.daysLeft)])}>
-            {row.daysLeft === null ? t('noSales') : `${f.num(row.daysLeft)} ${t('days')}`}
-          </span>
-        ),
-        sortValue: (row) => row.daysLeft ?? Number.MAX_SAFE_INTEGER,
-        sortable: true,
-      },
-      {
-        key: 'monthPotential',
-        header: t('col.monthPotential'),
-        align: 'right',
-        hideOnMobile: true,
-        render: (row) => (
-          <span>
-            {f.num(row.monthPotential)} <span className="text-2xs text-muted">{t('unit')}</span>
-          </span>
-        ),
-        sortValue: (row) => row.monthPotential,
-        sortable: true,
-      },
-      {
+        /*
+         * Holat va "Yetadi" bitta ustunda: holat aynan qoldiq necha kunga
+         * yetishidan kelib chiqadi. Ostida — kun (holat rangida) va oylik
+         * sur'at; kunlik o'rtacha izohda (u oylikning 30 dan biri).
+         */
         key: 'status',
         header: t('col.status'),
-        align: 'center',
-        render: (row) => <StockStatusBadge status={row.status} />,
-        sortValue: (row) => row.status,
+        align: 'right',
+        render: (row) => (
+          <div className="text-right leading-tight">
+            <StockStatusBadge status={row.status} />
+            <p
+              className="tnum mt-1 text-2xs"
+              title={
+                row.avgDaily > 0
+                  ? t('coverHint', { day: f.num(row.avgDaily, 1), month: f.num(row.monthPotential) })
+                  : undefined
+              }
+            >
+              <span className={cn('font-semibold', TONE_TEXT[daysTone(row.daysLeft)])}>
+                {row.daysLeft === null ? t('noSales') : `${f.num(row.daysLeft)} ${t('days')}`}
+              </span>
+              {row.avgDaily > 0 ? (
+                <span className="text-muted"> · {t('perMonth', { n: f.num(row.monthPotential) })}</span>
+              ) : null}
+            </p>
+          </div>
+        ),
+        /*
+         * Saralash — shoshilinchlik bo'yicha: DataTable birinchi bosishda (va
+         * telefondagi tanlov) kamayish tartibida saralaydi, shuning uchun kun
+         * manfiy olinadi — 0 kunlik "Kritik" tepada, "Sotuv yo'q" pastda.
+         * Ilgari teskari edi: birinchi bosishda eng kam shoshilinchlari
+         * (232 kun, "Sotuv yo'q") tepaga chiqardi (2026-10-24).
+         */
+        sortValue: (row) => -(row.daysLeft ?? Number.MAX_SAFE_INTEGER),
         sortable: true,
+        className: PAD_LAST,
+        headerClassName: PAD_LAST,
       },
     ],
-    [t, f],
+    [t, f, multiStore, maxRevenue, totalRevenue],
   );
 
   return (
@@ -375,6 +497,7 @@ export default function SalesStock() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="stocks_fbo_fbs" />}
+        meta={<DataFreshness />}
         actions={
           <Button
             variant="outline"
@@ -407,12 +530,19 @@ export default function SalesStock() {
           </Card>
         ) : (
           <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {/*
+              Ranglar ma'no bo'yicha: sotilgan dona va tushum (Uzum ulushi ham
+              ichida) — neytral, qoldiq — ko'k, to'lovga — sariq (hali kelmagan
+              pul), foyda — yashil. Ilgari tushum binafsha — Uzum ulushi
+              rangida — turardi va "bu Uzumniki" deb o'qilardi.
+            */}
+            <StatGrid>
               <StatCard
                 label={t('kpi.sold')}
                 value={`${f.num(totals?.sold ?? 0)} ${t('unit')}`}
                 hint={t('kpi.soldHint', { count: f.num(totals?.skuCount ?? 0) })}
                 icon={<PackageCheck className="h-5 w-5" />}
+                className={NEUTRAL_TONE}
                 loading={isLoading}
               />
               <StatCard
@@ -427,7 +557,7 @@ export default function SalesStock() {
                 label={t('kpi.revenue')}
                 value={f.money(totals?.revenue ?? 0)}
                 icon={<Coins className="h-5 w-5" />}
-                tone="violet"
+                className={NEUTRAL_TONE}
                 loading={isLoading}
               />
               <StatCard
@@ -444,84 +574,44 @@ export default function SalesStock() {
                 tone={(totals?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
                 loading={isLoading}
               />
-            </div>
+            </StatGrid>
 
-            <div className="grid gap-4 xl:grid-cols-3">
-              {/* Halqa ranglari nimani bildirishini ko'rsatib turadigan izoh —
-                  ilgari faqat sichqoncha olib borilganda bilinardi */}
-              <ChartCard
-                title={t('chart.title')}
-                subtitle={t('chart.subtitle')}
-                legend={statusChart.map((d) => ({
-                  name: d.name,
-                  color: d.color ?? CHART_COLORS.brand,
-                  value: f.num(d.value),
-                }))}
-              >
-                {isLoading ? (
-                  <Skeleton className="h-[260px] w-full" />
-                ) : statusChart.length ? (
-                  <DonutChart
-                    data={statusChart}
-                    money={false}
-                    center={
-                      <div>
-                        <p className="tnum font-display text-2xl font-extrabold tracking-tight text-ink">{f.num(rows.length)}</p>
-                        <p className="text-xs text-muted">{t('chart.total')}</p>
-                      </div>
-                    }
-                  />
-                ) : (
-                  <EmptyState icon={<Inbox className="h-6 w-6" />} title={tc('common.noData')} />
-                )}
-              </ChartCard>
-
-              <Card className="xl:col-span-2">
-                <CardHeader
-                  title={t('table.title')}
-                  subtitle={t('table.hint')}
-                  actions={<Badge tone="muted">{f.num(data?.rows.total ?? 0)}</Badge>}
-                />
-                <div className="px-5 pt-4">
-                  <div className="overflow-x-auto pb-1">
-                    <Segmented
-                      value={segment}
-                      onChange={setSegment}
-                      size="sm"
-                      options={SEGMENTS.map((s) => ({
-                        value: s,
-                        label: t(`seg.${s}`),
-                        count: counts[s],
-                      }))}
+            {/* Jadval to'liq kenglikda: holat tasmasi uning sarlavhasida, filtr vazifasini ham bajaradi */}
+            <Card>
+              <CardHeader
+                icon={<Table2 />}
+                title={t('table.title')}
+                subtitle={t('table.hint')}
+                actions={<Badge tone="muted">{f.num(data?.rows.total ?? 0)}</Badge>}
+              />
+              <div className="px-5 pt-4">
+                <StatusStrip counts={statusCounts} value={segment} onChange={setSegment} />
+              </div>
+              <div className="mt-3">
+                <DataTable
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(row) => row.skuId}
+                  loading={isLoading}
+                  density="compact"
+                  stickyFirstColumn
+                  empty={
+                    <EmptyState
+                      icon={<Inbox className="h-6 w-6" />}
+                      title={t('table.empty')}
+                      hint={t('table.emptyHint')}
                     />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <DataTable
-                    columns={columns}
-                    rows={filtered}
-                    rowKey={(row) => row.skuId}
-                    loading={isLoading}
-                    density="compact"
-                    stickyFirstColumn
-                    empty={
-                      <EmptyState
-                        icon={<Inbox className="h-6 w-6" />}
-                        title={t('table.empty')}
-                        hint={t('table.emptyHint')}
-                      />
-                    }
-                    pagination={{
-                      page: data?.rows.page ?? 1,
-                      pages: data?.rows.pages ?? 1,
-                      total: data?.rows.total ?? 0,
-                      pageSize: PAGE_SIZE,
-                      onPage: setPage,
-                    }}
-                  />
-                </div>
-              </Card>
-            </div>
+                  }
+                  pagination={{
+                    page: data?.rows.page ?? 1,
+                    pages: data?.rows.pages ?? 1,
+                    total: data?.rows.total ?? 0,
+                    pageSize: PAGE_SIZE,
+                    onPage: setPage,
+                  }}
+                />
+              </div>
+            </Card>
           </div>
         )}
       </PlanGate>

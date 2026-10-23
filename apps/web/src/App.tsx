@@ -98,6 +98,18 @@ function Protected() {
   return <Outlet />;
 }
 
+/**
+ * Eski to'lov havolasi. Ilgari API bildirishnomalari va Click'dan qaytish
+ * manzili `/settings/billing` ga olib borardi, bunday sahifa esa yo'q edi —
+ * to'lovdan keyin 404 chiqardi (2026-10-24). Endi ular /pricing ga boradi;
+ * bu yo'naltirish allaqachon yuborilgan xabarlardagi havolalar uchun qoldi.
+ * So'rov qismi ham saqlanadi — to'lov tizimi qo'shgan parametrlar yo'qolmasin.
+ */
+function LegacyBillingRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/pricing${search}`} replace />;
+}
+
 function Bootstrap() {
   const load = useSession((s) => s.load);
   const setTheme = useUi((s) => s.setTheme);
@@ -189,6 +201,7 @@ export default function App() {
               <Route path="/referral" element={<Referral />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/billing" element={<LegacyBillingRedirect />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/companies/:id" element={<AdminCompany />} />
             </Route>

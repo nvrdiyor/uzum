@@ -284,6 +284,11 @@ export default function Batches() {
               icon={<Wallet className="h-5 w-5" />}
               tone="brand"
             />
+            {/*
+              Holat kartochkalari jadvaldagi holat nishonlari bilan bir rangda
+              (batches/shipments.tsx STATUS_TONE): omborda — ko'k, yo'lda —
+              za'faron, keldi — firuza. Ilgari "Keldi" binafsha edi, nishon esa yashil.
+            */}
             <StatCard
               label={t('status.warehouse')}
               value={t('sum.count', { n: byStatus.warehouse.n })}
@@ -303,7 +308,7 @@ export default function Batches() {
               value={t('sum.count', { n: byStatus.arrived.n })}
               hint={t('sum.countHint', { sum: f.money(byStatus.arrived.sum) })}
               icon={<CircleCheck className="h-5 w-5" />}
-              tone="violet"
+              tone="brand"
             />
           </StatGrid>
         ) : null}

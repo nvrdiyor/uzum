@@ -125,6 +125,9 @@ registerNamespace('common', {
     'common.perDay': 'kuniga',
     'common.vsPrev': 'oldingi davrga nisbatan',
     'common.noCompare': 'Oldingi davr bilan taqqoslash uchun ma’lumot yo‘q',
+    // Foiz punkti: marja 20% → 25% = "+5 p.p." (nisbiy "+25%" emas)
+    'common.pp': 'p.p.',
+    'common.prevValue': 'oldin: {v}',
     'common.demo': 'Namuna ma’lumot',
     // Holatlar
     'status.critical': 'Kritik',
@@ -266,6 +269,8 @@ registerNamespace('common', {
     'common.perDay': 'в день',
     'common.vsPrev': 'к прошлому периоду',
     'common.noCompare': 'Нет данных за предыдущий период',
+    'common.pp': 'п.п.',
+    'common.prevValue': 'было: {v}',
     'common.demo': 'Демо-данные',
     'status.critical': 'Критично',
     'status.low': 'Заканчивается',
@@ -404,6 +409,8 @@ registerNamespace('common', {
     'common.perDay': 'per day',
     'common.vsPrev': 'vs previous period',
     'common.noCompare': 'No data for the previous period',
+    'common.pp': 'pp',
+    'common.prevValue': 'was: {v}',
     'common.demo': 'Demo data',
     'status.critical': 'Critical',
     'status.low': 'Low',

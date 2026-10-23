@@ -15,12 +15,15 @@ export function NumberField({
   max,
   step,
   icon,
+  badge,
   tone = 'default',
   hintOnFocus = false,
   className,
 }: {
   label: ReactNode;
   hint?: ReactNode;
+  /** Yorliq qatorining o'ng chetidagi kichik belgi — masalan qiymat manbai ("Sotuvdan") */
+  badge?: ReactNode;
   /**
    * Izoh faqat maydonga kirilganda, uning ostida suzib chiqadi. O'n ikkita
    * maydonning har biri ostida doimiy izoh tursa, forma ikki barobar uzayadi
@@ -66,6 +69,7 @@ export function NumberField({
         <span className="truncate" title={typeof label === 'string' ? label : undefined}>
           {label}
         </span>
+        {badge ? <span className="ml-auto shrink-0">{badge}</span> : null}
       </label>
       <div className="relative">
         <input
@@ -79,7 +83,20 @@ export function NumberField({
           onChange={(e) => commit(e.target.value)}
           onBlur={() => setRaw(String(value))}
           className={cn(
-            'input tnum pr-16 font-semibold',
+            'input tnum font-semibold',
+            /*
+             * Brauzerning ↑↓ tugmachalari o'chirilgan: ular o'ngdagi 20 px ni
+             * egallab, birlik ("so'm") bilan ustma-ust tushardi va 6 xonali
+             * summa kesilardi. Qadam bo'yicha o'zgartirish klaviatura
+             * strelkalari bilan ishlayveradi (`step`).
+             */
+            '[appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none',
+            /*
+             * Qisqa birlik ("so'm", "%", "kun") uchun o'ngda 48 px yetadi. Ilgari
+             * har doim 64 px band qilinardi: telefondagi 2 ustunli formada
+             * (360 px) raqamga ~56 px qolib, 6 xonali summa kesilardi (2026-10-24).
+             */
+            typeof suffix === 'string' && suffix.length <= 4 ? 'pr-12' : 'pr-16',
             tone === 'brand' && 'border-brand/40 text-brand',
             tone === 'danger' && 'border-danger/40 text-danger',
           )}

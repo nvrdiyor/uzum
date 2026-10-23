@@ -4,7 +4,7 @@
  * esa shu yerda tavsiflangan (javob konverti shu bo'limga xos).
  */
 
-import type { ProductCard, ProductCardSku, ReviewRow, TimeSeriesPoint } from '@savdoiq/shared';
+import { STOCK_THRESHOLDS, type ProductCard, type ProductCardSku, type ReviewRow, type TimeSeriesPoint } from '@savdoiq/shared';
 
 /** Zaxira davri (kun) — "qoldiq necha kunga yetadi" hisobi uchun */
 export const COVER_OPTIONS = ['7', '14', '30', '60', '90'] as const;
@@ -48,12 +48,17 @@ export const STATE_STYLE: Record<ProductState, { chip: string; dot: string; text
   hidden: { chip: 'bg-danger/10 text-danger-ink', dot: 'bg-danger', text: 'text-muted' },
 };
 
-/** "Necha kunga yetadi" chizig'i uchun rang */
+/**
+ * "Necha kunga yetadi" chizig'i uchun rang. Chegaralar Qoldiqlar, Sotuv va
+ * qoldiq sahifalaridagi holat nishoni bilan bir xil (STOCK_THRESHOLDS): ilgari
+ * bu yerda ortiqcha 120 kundan boshlanardi va 100 kunlik mahsulot kartochkada
+ * yashil, Qoldiqlar sahifasida "Ortiqcha" bo'lib chiqardi.
+ */
 export function coverTone(daysLeft: number | null | undefined): 'brand' | 'info' | 'warn' | 'danger' | 'muted' {
   if (daysLeft === null || daysLeft === undefined) return 'muted';
-  if (daysLeft <= 7) return 'danger';
-  if (daysLeft <= 14) return 'warn';
-  if (daysLeft >= 120) return 'info';
+  if (daysLeft <= STOCK_THRESHOLDS.critical) return 'danger';
+  if (daysLeft <= STOCK_THRESHOLDS.low) return 'warn';
+  if (daysLeft >= STOCK_THRESHOLDS.excess) return 'info';
   return 'brand';
 }
 
@@ -79,6 +84,19 @@ export interface ProductDetailSku extends ProductCardSku {
   weightGr?: number;
   margin?: number;
   roi?: number;
+  /*
+   * Quyidagilarni server (GET /products/:id) allaqachon qaytaradi — ilgari
+   * tipda e'lon qilinmagani uchun SKU jadvali holat, sur'at va "yetadi"ni
+   * ko'rsatmasdi. Eski javobda bo'lmasligi mumkin, shuning uchun ixtiyoriy.
+   */
+  barcode?: string | null;
+  archived?: boolean;
+  reserved?: number;
+  inTransit?: number;
+  avgDaily?: number;
+  daysLeft?: number | null;
+  status?: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
+  lastSaleAt?: string | null;
 }
 
 export interface ProductStockPoint {
@@ -110,6 +128,8 @@ export interface ProductReviewsBlock {
 
 export interface ProductDetailResponse {
   product: ProductCard;
+  /** Mahsulot qaysi do'konda — sarlavha chipi uchun (server `store` qaytaradi) */
+  store?: { id: string; title: string } | null;
   skus?: ProductDetailSku[];
   /** Sotuv dinamikasi (60 kun) */
   series?: TimeSeriesPoint[];
@@ -173,8 +193,14 @@ export function normalizeProductDetail(raw: unknown): ProductDetailResponse | un
           breakEvenPrice: Number(u.breakEvenPrice ?? 0),
         };
 
+  const store = r.store as { id?: unknown; title?: unknown } | null | undefined;
+
   return {
     product,
+    store:
+      store && typeof store.title === 'string' && store.title
+        ? { id: String(store.id ?? ''), title: store.title }
+        : null,
     skus: (r.skus ?? []) as ProductDetailSku[],
     series: (r.series ?? []) as TimeSeriesPoint[],
     stocks: (r.stocks ?? r.stockHistory ?? []) as ProductStockPoint[],

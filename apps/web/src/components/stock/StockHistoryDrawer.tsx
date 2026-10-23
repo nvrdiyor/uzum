@@ -6,6 +6,7 @@ import { Button, Drawer, ErrorState, ProductCell, Skeleton, EmptyState } from '@
 import { LinesChart, CHART_COLORS } from '@/components/charts';
 import { api } from '@/lib/api';
 import { registerNamespace, useFormat, useT } from '@/i18n';
+import { cn } from '@/lib/utils';
 import { DaysLeftCell, MetaRow, StockStatusBadge } from './common';
 import type { StockHistoryPoint } from './types';
 
@@ -159,7 +160,7 @@ export function StockHistoryDrawer({
             <div className="hairline" />
             <MetaRow label={t('field.inTransit')} value={f.num(row.inTransit)} />
             <div className="hairline" />
-            <MetaRow label={t('field.total')} value={f.num(row.total)} tone="brand" />
+            <MetaRow label={t('field.total')} value={f.num(row.total)} tone="info" />
             <div className="hairline" />
             <MetaRow label={t('field.costValue')} value={f.money(row.costValue)} />
             <div className="hairline" />
@@ -194,20 +195,31 @@ export function StockHistoryDrawer({
                 data={series}
                 xKey="date"
                 height={260}
+                // Qoldiq — ombor ranglarida; binafsha faqat Uzum ulushi, yashil — foyda uchun
                 series={[
-                  { key: 'fbo', name: t('field.fbo'), color: CHART_COLORS.brand },
-                  { key: 'fbs', name: t('field.fbs'), color: CHART_COLORS.info },
-                  { key: 'own', name: t('field.own'), color: CHART_COLORS.violet },
+                  { key: 'fbo', name: t('field.fbo'), color: CHART_COLORS.info },
+                  { key: 'fbs', name: t('field.fbs'), color: CHART_COLORS.teal },
+                  { key: 'own', name: t('field.own'), color: CHART_COLORS.slate },
                 ]}
               />
             )}
           </div>
 
           {advice ? (
-            <div className="card border-brand/30 bg-brand/5 p-5">
+            /*
+              Tavsiya kartochkasi neytral fonda, ohang — aksent chiziq va ikonka:
+              buyurtma kerak bo'lsa sariq, aks holda brend. Ilgari yashil fonli
+              blok edi va "buyurtma bering" ham, "hammasi joyida" ham bir xil ko'rinardi.
+            */
+            <div
+              className={cn(
+                'card card-accent p-5',
+                advice.avg > 0 && advice.need > 0 ? 'tone-warn' : 'tone-brand',
+              )}
+            >
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-ink">
-                  <Lightbulb className="h-4 w-4" />
+                <div className="icon-tile h-9 w-9 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4">
+                  <Lightbulb />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-base font-bold text-ink">{t('drawer.recommend')}</p>
@@ -218,7 +230,7 @@ export function StockHistoryDrawer({
                     <p className="mt-1.5 text-sm text-muted">{t('drawer.enough')}</p>
                   ) : (
                     <>
-                      <p className="tnum mt-2 font-display text-2xl font-extrabold tracking-tight text-brand-ink">
+                      <p className="tnum mt-2 font-display text-2xl font-extrabold tracking-tight text-ink">
                         {f.num(advice.need)} <span className="text-base text-ink-soft">{t('drawer.units')}</span>
                       </p>
                       <p className="mt-1 text-xs text-muted">{t('drawer.cover')}</p>
@@ -230,7 +242,7 @@ export function StockHistoryDrawer({
                         {advice.stockoutDate ? (
                           <div className="flex items-center justify-between gap-3 text-sm">
                             <span className="text-muted">{t('drawer.stockout')}</span>
-                            <span className="tnum font-semibold text-warn">{f.date(advice.stockoutDate)}</span>
+                            <span className="tnum font-semibold text-warn-ink">{f.date(advice.stockoutDate)}</span>
                           </div>
                         ) : null}
                       </div>

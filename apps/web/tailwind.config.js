@@ -47,6 +47,12 @@ export default {
       fontSize: {
         '2xs': ['0.6875rem', { lineHeight: '1rem', letterSpacing: '0.02em' }],
       },
+      // Standart shkalada 12 yo'q edi: `bg-brand/12` kabi klasslar CSS'ga umuman
+      // chiqmay, StatCard ikonkalari 2026-10-24 gacha fonsiz turardi
+      opacity: {
+        8: '0.08',
+        12: '0.12',
+      },
       borderRadius: {
         lg: '0.625rem',
         xl: '0.75rem',

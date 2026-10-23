@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { Badge, ProgressBar, type Tone } from '@/components/ui';
+import { STOCK_THRESHOLDS } from '@savdoiq/shared';
+import { Badge, ProductThumb, ProgressBar, type Tone } from '@/components/ui';
+import { CHART_COLORS } from '@/lib/theme';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +10,11 @@ export type StockState = 'critical' | 'low' | 'ok' | 'excess' | 'dead';
 
 export const STOCK_STATES: StockState[] = ['critical', 'low', 'ok', 'excess', 'dead'];
 
+/**
+ * Holat rangi BARCHA ombor sahifalarida bir xil: kritik — qizil, tugayapti —
+ * sariq, yetarli — brend, ortiqcha — ko'k (qoldiq), harakatsiz — kulrang.
+ * Nishon, tasma, grafik bo'lagi va "yetadi" chizig'i shu jadvaldan oladi.
+ */
 export const STATE_TONE: Record<StockState, Tone> = {
   critical: 'danger',
   low: 'warn',
@@ -15,6 +22,29 @@ export const STATE_TONE: Record<StockState, Tone> = {
   excess: 'info',
   dead: 'muted',
 };
+
+/** Grafik va holat tasmasi uchun o'sha ranglar (slate — harakatsiz) */
+export const STATE_COLOR: Record<StockState, string> = {
+  critical: CHART_COLORS.danger,
+  low: CHART_COLORS.warn,
+  ok: CHART_COLORS.brand,
+  excess: CHART_COLORS.info,
+  dead: CHART_COLORS.slate,
+};
+
+/**
+ * StatCard ohanglari orasida "muted" va "pink" yo'q. Sanoq KPI'lari (SKU soni,
+ * tannarx qiymati) ma'no rangini olmasin, pullik saqlash esa xarajat
+ * xaritasidagi pushti rangda (COST_COLORS.storage) tursin — shuning uchun
+ * ohang o'zgaruvchilari shu klasslar bilan almashtiriladi.
+ *
+ * `!` (important) ATAYLAB: .tone-* klasslari index.css'da @layer tashqarisiga,
+ * fayl oxiriga ko'chirilgan va har qanday utility'dan keyin keladi — oddiy
+ * almashtirish StatCard'ning o'z tone-brand klassiga yutqazib, kartochka
+ * yana firuza bo'lib qolardi (2026-10-24 da tekshirildi).
+ */
+export const NEUTRAL_TONE = '![--tone:var(--c-muted)] ![--tone-ink:var(--c-text-soft)]';
+export const STORAGE_TONE = '![--tone:var(--c-pink)] ![--tone-ink:var(--c-pink)]';
 
 export const TONE_TEXT: Record<Tone, string> = {
   brand: 'text-brand-ink',
@@ -24,6 +54,47 @@ export const TONE_TEXT: Record<Tone, string> = {
   muted: 'text-muted',
   violet: 'text-violet',
 };
+
+/**
+ * SKU jadvallaridagi mahsulot katagi: rasm yoki rangli bosh harflar, ikki
+ * qatorgacha nom va izoh (SKU, do'kon).
+ *
+ * Umumiy ProductCell nomni bir qatorda kesadi, nom JSX bo'lsa esa bosh
+ * harflarni izohdan olardi — ikki do'konli hisobda hamma qatorda bir xil
+ * "SS" ("SAM-0103 · Samarqand…") chiqardi. Bosh harf va rang variantsiz
+ * nomdan olinadi: bir mahsulotning "— Bej" va "— Yashil"i bir xil rangda.
+ */
+export function SkuNameCell({
+  title,
+  subtitle,
+  imageUrl,
+  className,
+}: {
+  title: string;
+  subtitle?: string;
+  imageUrl?: string | null;
+  className?: string;
+}) {
+  const cut = title.lastIndexOf(' — ');
+  const base = cut > 0 ? title.slice(0, cut) : title;
+  return (
+    <div className={cn('flex min-w-0 items-center gap-3', className)}>
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2">
+        <ProductThumb name={base} imageUrl={imageUrl} style={{ fontSize: 14 }} />
+      </div>
+      <div className="min-w-0">
+        <p className="line-clamp-2 whitespace-normal text-sm font-medium leading-snug text-ink" title={title}>
+          {title}
+        </p>
+        {subtitle ? (
+          <p className="truncate text-xs text-muted" title={subtitle}>
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 /** Rangli holat belgisi (Kritik / Tugayapti / Yetarli / Ortiqcha / Harakatsiz) */
 export function StockStatusBadge({ status }: { status: StockState }) {
@@ -35,13 +106,18 @@ export function StockStatusBadge({ status }: { status: StockState }) {
   );
 }
 
-/** Necha kunga yetishiga qarab rang */
+/**
+ * Necha kunga yetishiga qarab rang — server holati bilan bir xil chegaralar
+ * (STOCK_THRESHOLDS). Ilgari ortiqcha "90 dan katta" edi, server esa 90 kunni
+ * allaqachon "Ortiqcha" derdi: aynan 90 kunlik SKU nishonda ko'k, kun
+ * yozuvida yashil chiqardi.
+ */
 export function daysTone(days: number | null | undefined): Tone {
   if (days === null || days === undefined || !Number.isFinite(days)) return 'muted';
-  if (days <= 7) return 'danger';
-  if (days <= 14) return 'warn';
-  if (days <= 90) return 'brand';
-  return 'info';
+  if (days <= STOCK_THRESHOLDS.critical) return 'danger';
+  if (days <= STOCK_THRESHOLDS.low) return 'warn';
+  if (days >= STOCK_THRESHOLDS.excess) return 'info';
+  return 'brand';
 }
 
 /**
@@ -107,29 +183,18 @@ export function SchemeShareCard({
   const t = useT('common');
 
   return (
-    <div className="card card-hover p-5">
+    // Ohang tizimi orqali: ikonka plitkasi va ulush chizig'i bir rangda (index.css: .tone-*, .icon-tile)
+    <div className={cn('card card-hover p-5', `tone-${tone}`)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate eyebrow-lg">{title}</p>
-          <p className="tnum mt-2 font-display text-[26px] font-extrabold leading-tight tracking-tight text-ink">
-            {f.num(units)} <span className="text-base font-bold text-muted">{t('common.units')}</span>
+          <p className="tnum mt-2 font-display text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">
+            {f.num(units)} <span className="text-base font-semibold text-muted">{t('common.units').toLowerCase()}</span>
           </p>
           <p className="tnum mt-1 text-sm text-ink-soft">{f.money(amount)}</p>
         </div>
         {icon ? (
-          <div
-            className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-              tone === 'brand' && 'bg-brand/10 text-brand-ink',
-              tone === 'info' && 'bg-info/10 text-info-ink',
-              tone === 'violet' && 'bg-violet/10 text-violet-ink',
-              tone === 'warn' && 'bg-warn/10 text-warn-ink',
-              tone === 'danger' && 'bg-danger/10 text-danger-ink',
-              tone === 'muted' && 'bg-surface-3 text-muted',
-            )}
-          >
-            {icon}
-          </div>
+          <div className="icon-tile h-10 w-10 rounded-xl [&_svg]:h-5 [&_svg]:w-5">{icon}</div>
         ) : null}
       </div>
 

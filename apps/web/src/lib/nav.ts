@@ -29,7 +29,7 @@ import {
   CreditCard,
   Settings,
   Ship,
-  Boxes,
+  PackagePlus,
   Wand2,
   type AppIcon,
 } from '@/components/icons';
@@ -71,7 +71,8 @@ export const NAV: NavGroup[] = [
       { to: '/cards', labelKey: 'nav.cards', icon: Wand2, feature: 'card_seo' },
       { to: '/abc', labelKey: 'nav.abc', icon: PieChart, feature: 'abc_analysis' },
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
-      { to: '/batches', labelKey: 'nav.batches', icon: Boxes, feature: 'cost_price' },
+      // Ilgari Boxes edi — Qoldiqlar (Layers) bilan aynan bir xil "stack" belgisi chiqardi
+      { to: '/batches', labelKey: 'nav.batches', icon: PackagePlus, feature: 'cost_price' },
       { to: '/mxik', labelKey: 'nav.mxik', icon: ScanBarcode },
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
     ],

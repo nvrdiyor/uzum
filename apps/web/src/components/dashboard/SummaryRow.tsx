@@ -1,10 +1,35 @@
-import { Banknote, Boxes, Gauge } from '@/components/icons';
+import { Boxes, Gauge, Wallet } from '@/components/icons';
 import type { DashboardResponse } from '@savdoiq/shared';
-import { Amount, Card, CardBody, CardHeader, Delta, ProgressBar, ProgressRing } from '@/components/ui';
+import { Amount, Card, CardBody, CardHeader, Delta, ProgressBar, ProgressRing, type Tone } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
-import { clamp } from '@/lib/utils';
+import { clamp, cn } from '@/lib/utils';
+import { buyoutTone, marginTone, ppDelta, rateBases, returnsTone, roiTone } from './rates';
 
-/** "To'lovlar" — kecha to'langan va bugun kutilayotgan summa */
+const DOT: Record<Tone, string> = {
+  brand: 'bg-brand',
+  info: 'bg-info',
+  warn: 'bg-warn',
+  danger: 'bg-danger',
+  violet: 'bg-violet',
+  muted: 'bg-muted',
+};
+
+const INK: Record<Tone, string> = {
+  brand: 'text-brand-ink',
+  info: 'text-info-ink',
+  warn: 'text-warn-ink',
+  danger: 'text-danger-ink',
+  violet: 'text-violet-ink',
+  muted: 'text-ink',
+};
+
+/**
+ * "To'lovlar" — Uzum'dan keladigan pul.
+ *
+ * Rang ma'nosi: kecha to'langani — sizniki (brend), bugun kutilayotgani —
+ * hali kelmagan pul (sariq). Ilgari "kutilmoqda" ko'k edi va qoldiq/logistika
+ * bilan bir xil o'qilardi.
+ */
 export function PayoutsCard({ data }: { data: DashboardResponse }) {
   const t = useT('dashboard');
   const f = useFormat();
@@ -15,105 +40,156 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
       label: t('payouts.yesterday'),
       amount: data.paidYesterday,
       orders: data.paidOrdersYesterday,
-      accent: 'text-brand-ink',
-      bar: 'brand' as const,
+      tone: 'brand' as const,
     },
     {
       key: 'today',
       label: t('payouts.today'),
       amount: data.expectedToday,
       orders: data.expectedOrdersToday,
-      accent: 'text-info-ink',
-      bar: 'info' as const,
+      tone: 'warn' as const,
     },
   ];
   const max = Math.max(data.paidYesterday, data.expectedToday, 1);
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader
-        icon={<Banknote className="h-4 w-4" />}
-        title={t('payouts.title')}
-        subtitle={t('payouts.subtitle')}
-      />
-      <CardBody className="flex-1 space-y-4">
+    <Card tone="brand" className="flex flex-col">
+      <CardHeader icon={<Wallet />} title={t('payouts.title')} subtitle={t('payouts.subtitle')} />
+      <CardBody className="flex flex-1 flex-col gap-3">
         {/*
           Uzum kabinetidagi "Umumiy balans" bilan AYNAN bir xil raqam.
           Sotuvchi pulini shu qator bo'yicha solishtiradi — foyda
           ko'rsatkichlari bilan emas (ular tannarxni ham ayiradi).
         */}
-        <div className="rounded-xl border border-brand/25 bg-brand/[0.08] p-3.5">
-          <div className="flex items-end justify-between gap-3">
-            <span className="eyebrow-lg">
-              {t('payouts.balance')}
-            </span>
-          </div>
-          <p className="tnum mt-1 font-display text-2xl font-bold tracking-[-0.02em] text-brand-ink">
+        <div className="well p-3.5">
+          <p className="eyebrow">{t('payouts.balance')}</p>
+          <p className="tnum mt-1.5 font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
             <Amount value={f.money(data.uzumBalance, data.currency)} />
           </p>
-          <p className="mt-1 text-xs text-muted">{t('payouts.balanceHint')}</p>
+          <p className="mt-2 text-xs leading-snug text-muted">{t('payouts.balanceHint')}</p>
         </div>
 
-        {rows.map((r) => (
-          <div key={r.key}>
-            <div className="flex items-end justify-between gap-3">
-              <span className="eyebrow-lg">{r.label}</span>
-              <span className="tnum text-xs text-muted">{t('payouts.orders', { n: f.num(r.orders) })}</span>
-            </div>
-            <p className={`tnum mt-1 font-display text-xl font-bold tracking-[-0.02em] ${r.accent}`}>
-              <Amount value={f.money(r.amount, data.currency)} />
-            </p>
-            <ProgressBar className="mt-2" tone={r.bar} value={(r.amount / max) * 100} />
-          </div>
-        ))}
-        <p className="border-t border-line pt-3 text-xs text-muted">{t('payouts.hint')}</p>
-      </CardBody>
-    </Card>
-  );
-}
-
-/** "Marja va ROI" — ikkita halqa ko'rsatkich */
-export function MarginRoiCard({ data }: { data: DashboardResponse }) {
-  const t = useT('dashboard');
-  const f = useFormat();
-
-  const gauges = [
-    { key: 'margin', label: t('margin.margin'), value: data.margin.value, delta: data.margin.deltaPct },
-    { key: 'roi', label: t('margin.roi'), value: data.roi.value, delta: data.roi.deltaPct },
-  ];
-
-  return (
-    <Card className="flex flex-col">
-      <CardHeader icon={<Gauge className="h-4 w-4" />} title={t('margin.title')} subtitle={t('margin.subtitle')} />
-      <CardBody className="flex-1">
         <div className="grid grid-cols-2 gap-3">
-          {gauges.map((g) => (
-            <div key={g.key} className="flex flex-col items-center gap-2 rounded-xl bg-surface-2 py-4">
-              <ProgressRing value={clamp(g.value, 0, 100)} size={100} stroke={9}>
-                <span className="tnum font-display text-lg font-bold text-ink">{f.pct(g.value)}</span>
-                <span className="mt-0.5 eyebrow">{g.label}</span>
-              </ProgressRing>
-              <Delta value={g.delta} />
+          {rows.map((r) => (
+            <div key={r.key} className="well flex min-w-0 flex-col p-3">
+              {/* Nom kesilmaydi, kerak bo'lsa ikki qatorga o'tadi ("Ожидается сегодня" tor plitkaga sig'masdi) */}
+              <p className="flex min-w-0 items-start gap-1.5 text-xs font-medium leading-4 text-ink-soft">
+                <span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', DOT[r.tone])} />
+                <span className="min-w-0">{r.label}</span>
+              </p>
+              <p className={cn('tnum mt-1.5 font-display text-[17px] font-bold leading-6 tracking-[-0.02em]', INK[r.tone])}>
+                <Amount value={f.money(r.amount, data.currency)} />
+              </p>
+              <p className="tnum text-2xs text-muted">{t('payouts.orders', { n: f.num(r.orders) })}</p>
+              <ProgressBar className="mt-auto pt-2.5" tone={r.tone} value={(r.amount / max) * 100} />
             </div>
           ))}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs">
-          <div>
-            <p className="text-muted">{t('margin.buyout')}</p>
-            <p className="tnum mt-0.5 font-semibold text-ink">{f.pct(data.buyoutRate.value)}</p>
-          </div>
-          <div>
-            <p className="text-muted">{t('margin.returns')}</p>
-            <p className="tnum mt-0.5 font-semibold text-ink">{f.pct(data.returnsRate.value)}</p>
-          </div>
+
+        <p className="mt-auto border-t border-line pt-3 text-xs leading-snug text-muted">{t('payouts.hint')}</p>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * "Marja va ROI" — ikki halqa va ikki stavka plitkasi.
+ *
+ * Halqa rangi qiymatdan (rates.ts): 0,8% marja endi "yashil to'liq emas
+ * halqa" emas, aniq sariq ogohlantirish. O'zgarish — foiz PUNKTIDA.
+ * Kartochka chizig'i marja holatini takrorlaydi: qator ko'zdan
+ * kechirilganda muammo shu yerdaligi darhol ko'rinadi.
+ */
+export function MarginRoiCard({ data }: { data: DashboardResponse }) {
+  const t = useT('dashboard');
+  const tc = useT('common');
+  const f = useFormat();
+  const base = rateBases(data);
+
+  const gauges = [
+    {
+      key: 'margin',
+      label: t('margin.margin'),
+      value: data.margin.value,
+      tone: marginTone(data.margin.value),
+      delta: ppDelta(data.margin, base.margin),
+      prev: base.margin ? data.margin.previous : null,
+    },
+    {
+      key: 'roi',
+      label: t('margin.roi'),
+      value: data.roi.value,
+      tone: roiTone(data.roi.value),
+      delta: ppDelta(data.roi, base.roi),
+      prev: base.roi ? data.roi.previous : null,
+    },
+  ];
+
+  const rates = [
+    {
+      key: 'buyout',
+      label: t('margin.buyout'),
+      value: data.buyoutRate.value,
+      tone: buyoutTone(data.buyoutRate.value),
+      delta: ppDelta(data.buyoutRate, base.buyout),
+      invert: false,
+    },
+    {
+      key: 'returns',
+      label: t('margin.returns'),
+      value: data.returnsRate.value,
+      tone: returnsTone(data.returnsRate.value),
+      delta: ppDelta(data.returnsRate, base.returns),
+      // Qaytarish kamaysa — yaxshi
+      invert: true,
+    },
+  ];
+
+  return (
+    <Card tone={gauges[0]?.tone ?? 'brand'} className="flex flex-col">
+      <CardHeader icon={<Gauge />} title={t('margin.title')} subtitle={t('margin.subtitle')} />
+      <CardBody className="flex flex-1 flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          {gauges.map((g) => (
+            <div key={g.key} className="well flex min-w-0 flex-col items-center px-2 pb-3 pt-3.5 text-center">
+              <ProgressRing value={clamp(g.value, 0, 100)} size={92} stroke={8} tone={g.tone}>
+                <span className={cn('tnum font-display text-base font-bold leading-tight', INK[g.tone])}>
+                  {f.pct(g.value)}
+                </span>
+                <span className="eyebrow mt-0.5">{g.label}</span>
+              </ProgressRing>
+              <div className="mt-2.5 flex flex-col items-center gap-1">
+                <Delta value={g.delta} unit="pp" />
+                {g.prev !== null ? (
+                  <span className="tnum text-2xs text-muted">{tc('common.prevValue', { v: f.pct(g.prev) })}</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {rates.map((r) => (
+            <div key={r.key} className="well flex min-w-0 flex-col p-3">
+              <p className="text-xs leading-4 text-muted">{r.label}</p>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <span className="tnum font-display text-[17px] font-bold leading-6 text-ink">{f.pct(r.value)}</span>
+                <Delta value={r.delta} unit="pp" invert={r.invert} className="px-2 py-0.5 text-2xs" />
+              </div>
+              <ProgressBar className="mt-auto pt-2" tone={r.tone} value={r.value} />
+            </div>
+          ))}
         </div>
       </CardBody>
     </Card>
   );
 }
 
-/** "Qoldiq qiymati" — dona, summa va FBO/FBS ajratmasi */
-export function StockValueCard({ data }: { data: DashboardResponse }) {
+/**
+ * "Qoldiq qiymati" — tannarx bo'yicha muzlagan kapital va FBO/FBS bo'linishi.
+ * Binafsha — Uzum ombori (Uzum'niki), firuza — o'z omboringiz.
+ */
+export function StockValueCard({ data, className }: { data: DashboardResponse; className?: string }) {
   const t = useT('dashboard');
   const f = useFormat();
 
@@ -121,52 +197,66 @@ export function StockValueCard({ data }: { data: DashboardResponse }) {
   const total = fbo + fbs;
   const fboPct = total > 0 ? (fbo / total) * 100 : 0;
 
+  const split = [
+    { key: 'fbo', name: 'FBO', where: t('stock.fbo'), units: fbo, pct: fboPct, dot: 'bg-violet' },
+    { key: 'fbs', name: 'FBS', where: t('stock.fbs'), units: fbs, pct: total > 0 ? 100 - fboPct : 0, dot: 'bg-brand' },
+  ];
+
   return (
-    <Card className="flex flex-col">
-      <CardHeader icon={<Boxes className="h-4 w-4" />} title={t('stock.title')} subtitle={t('stock.subtitle')} />
-      <CardBody className="flex-1">
-        <p className="tnum font-display text-2xl font-bold tracking-[-0.02em] text-ink">
+    <Card tone="info" className={cn('flex flex-col', className)}>
+      <CardHeader icon={<Boxes />} title={t('stock.title')} subtitle={t('stock.subtitle')} />
+      <CardBody className="flex flex-1 flex-col">
+        <p className="tnum font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
           <Amount value={f.money(amount, data.currency)} />
         </p>
-        <p className="mt-1 text-xs text-muted">{t('stock.units', { n: f.num(units) })}</p>
+        <p className="mt-2 text-xs text-muted">{t('stock.units', { n: f.num(units) })}</p>
 
-        {/* Qoldiq 0 bo'lganda rangli bo'lak umuman chizilmaydi — ilgari bo'sh
-            ombor to'laligicha binafsha ko'rinib, to'la deb tushunilardi */}
-        <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-surface-3">
-          {total > 0 ? (
-            <div className="flex h-full w-full">
-              <div
-                className="h-full bg-violet transition-[width] duration-700 ease-spring"
-                style={{ width: `${fboPct}%` }}
-              />
-              <div
-                className="h-full bg-brand transition-[width] duration-700 ease-spring"
-                style={{ width: `${100 - fboPct}%` }}
-              />
-            </div>
-          ) : null}
-        </div>
+        {/*
+          mt-auto: qo'shni kartochkalar balandroq bo'lsa, bo'sh joy katta raqam
+          ostida qoladi, tafsilot esa pastki chetda (pul oqimi lentasi kabi) —
+          ilgari izoh ustida 70px bo'shliq "uzilib qolgan"dek turardi.
+        */}
+        <div className="mt-auto pt-5">
+          {/* Qoldiq 0 bo'lganda rangli bo'lak umuman chizilmaydi — ilgari bo'sh
+              ombor to'laligicha binafsha ko'rinib, to'la deb tushunilardi */}
+          <div className="flex h-2.5 w-full gap-1" aria-hidden>
+            {total > 0 ? (
+              split
+                .filter((s) => s.units > 0)
+                .map((s) => (
+                  <div
+                    key={s.key}
+                    className={cn('h-full min-w-[6px] rounded-full transition-[flex-grow] duration-700 ease-spring', s.dot)}
+                    style={{ flex: `${s.pct} 1 0%` }}
+                  />
+                ))
+            ) : (
+              <div className="h-full flex-1 rounded-full bg-surface-3" />
+            )}
+          </div>
 
-        <div className="mt-3 space-y-2.5">
           {/* fbo/fbs — DONA miqdori (summa emas) */}
-          <SplitRow color="bg-violet" label={t('stock.fbo')} value={t('stock.units', { n: f.num(fbo) })} />
-          <SplitRow color="bg-brand" label={t('stock.fbs')} value={t('stock.units', { n: f.num(fbs) })} />
-        </div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {split.map((s) => (
+              <div key={s.key} className="well min-w-0 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
+                  <span className={cn('h-2 w-2 shrink-0 rounded-full', s.dot)} />
+                  {s.name}
+                  <span className="tnum ml-auto font-medium text-muted">{f.pct(s.pct, 0)}</span>
+                </p>
+                <p className="tnum mt-1.5 font-display text-[17px] font-bold leading-6 text-ink">
+                  {f.num(s.units)} <span className="font-sans text-xs font-medium text-muted">{t('stock.pcs')}</span>
+                </p>
+                <p className="truncate text-2xs text-muted" title={s.where}>
+                  {s.where}
+                </p>
+              </div>
+            ))}
+          </div>
 
-        <p className="mt-4 border-t border-line pt-3 text-xs text-muted">{t('stock.hint')}</p>
+          <p className="mt-4 border-t border-line pt-3 text-xs leading-snug text-muted">{t('stock.hint')}</p>
+        </div>
       </CardBody>
     </Card>
-  );
-}
-
-function SplitRow({ color, label, value }: { color: string; label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="flex items-center gap-2 text-muted">
-        <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
-        {label}
-      </span>
-      <span className="tnum font-semibold text-ink">{value}</span>
-    </div>
   );
 }

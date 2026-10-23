@@ -59,6 +59,31 @@ export function seriesColor(index: number): string {
   return SERIES_PALETTE[index] ?? SERIES_OTHER;
 }
 
+/**
+ * Xarajat turlarining ranglari — HAMMA sahifada bir xil (Boshqaruv paneli,
+ * Moliya, Mahsulot foydasi, Unit-iqtisod, kalkulyatorlar). Rang ma'noga bog'liq:
+ *   komissiya — binafsha: Uzum oladigan qism (MoneyFlow'dagi "Uzum oldi" bilan bir xil);
+ *   logistika — ko'k, saqlash — pushti, reklama — to'q sariq, soliq — sariq;
+ *   tannarx — kulrang (o'z tovaringiz puli), boshqa — zaytun, foyda — brend.
+ * 2026-10-24 gacha komissiya qizil (danger) edi va "zarar" deb o'qilardi,
+ * soliq esa foyda bilan bir xil yashil tusda bo'lib, bitta segmentdek ko'rinardi.
+ * Qizil (danger) faqat zarar uchun.
+ */
+export const COST_COLORS = {
+  cogs: CHART_COLORS.slate,
+  commission: CHART_COLORS.violet,
+  logistics: CHART_COLORS.info,
+  storage: CHART_COLORS.pink,
+  marketing: 'rgb(var(--sc-2))',
+  tax: CHART_COLORS.warn,
+  // Ish haqi — o'z jamoangiz xarajati; to'q ko'k-binafsha, Uzum binafshasidan to'qroq
+  salary: 'rgb(var(--sc-7))',
+  other: CHART_COLORS.lime,
+  profit: CHART_COLORS.brand,
+} as const;
+
+export type CostColorKey = keyof typeof COST_COLORS;
+
 export const LEVEL_TONE = {
   info: { bg: 'bg-info/10', border: 'border-info/25', text: 'text-info-ink' },
   success: { bg: 'bg-brand/10', border: 'border-brand/25', text: 'text-brand-ink' },

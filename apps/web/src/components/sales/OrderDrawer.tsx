@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Calendar, Hash, MapPin, Package } from '@/components/icons';
 import type { OrderRow } from '@savdoiq/shared';
-import { Drawer } from '@/components/ui';
+import { Drawer, ProductThumb } from '@/components/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { DeliveryBadge, OrderStatusBadge } from './OrderBadges';
@@ -78,6 +78,18 @@ function MetaItem({ icon, label, value }: { icon: ReactNode; label: string; valu
   );
 }
 
+/*
+ * Ayirmalar xarajat ranglarida (COST_COLORS bilan bir xil): komissiya —
+ * binafsha (Uzum oladi), logistika — ko'k. Ilgari ikkalasi qizil edi va
+ * har bir buyurtma "zarar"dek ko'rinardi; qizil endi faqat manfiy foydada.
+ */
+const MONEY_TONE = {
+  danger: 'text-danger-ink',
+  brand: 'text-brand-ink',
+  violet: 'text-violet-ink',
+  info: 'text-info-ink',
+} as const;
+
 function MoneyRow({
   label,
   value,
@@ -89,7 +101,7 @@ function MoneyRow({
   value: string;
   negative?: boolean;
   strong?: boolean;
-  tone?: 'danger' | 'brand';
+  tone?: keyof typeof MONEY_TONE;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-line/60 py-2.5 last:border-0">
@@ -98,7 +110,7 @@ function MoneyRow({
         className={cn(
           'tnum text-sm',
           strong ? 'font-display text-base font-extrabold' : 'font-medium',
-          tone === 'danger' ? 'text-danger' : tone === 'brand' ? 'text-brand-ink' : 'text-ink-soft',
+          tone ? MONEY_TONE[tone] : 'text-ink-soft',
         )}
       >
         {negative ? '−' : ''}
@@ -118,14 +130,9 @@ export function OrderDrawer({ order, onClose }: { order: OrderRow | null; onClos
       {order ? (
         <div className="space-y-5">
           <div className="flex items-start gap-3.5">
+            {/* Jadvaldagi kabi: rasm yo'q yoki havola eskirgan bo'lsa — nomning bosh harflari */}
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-line bg-surface-2">
-              {order.imageUrl ? (
-                <img src={order.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-muted">
-                  <Package className="h-5 w-5" />
-                </div>
-              )}
+              <ProductThumb name={order.title} imageUrl={order.imageUrl} style={{ fontSize: 20 }} />
             </div>
             <div className="min-w-0">
               <p className="font-display text-base font-bold leading-snug text-ink">{order.title}</p>
@@ -165,8 +172,8 @@ export function OrderDrawer({ order, onClose }: { order: OrderRow | null; onClos
             <MoneyRow label={t('sellPrice')} value={f.money(order.sellPrice)} />
             <MoneyRow label={t('purchasePrice')} value={f.money(order.purchasePrice)} />
             <MoneyRow label={t('revenue')} value={f.money(order.revenue)} />
-            <MoneyRow label={t('commission')} value={f.money(order.commission)} negative tone="danger" />
-            <MoneyRow label={t('logistics')} value={f.money(order.logistics)} negative tone="danger" />
+            <MoneyRow label={t('commission')} value={f.money(order.commission)} negative tone="violet" />
+            <MoneyRow label={t('logistics')} value={f.money(order.logistics)} negative tone="info" />
             <MoneyRow label={t('payout')} value={f.money(order.payout)} />
             <MoneyRow
               label={t('netProfit')}

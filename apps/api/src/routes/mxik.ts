@@ -21,7 +21,7 @@
 import { Router } from 'express';
 import { prisma } from '@savdoiq/db';
 import { AppError, ah } from '../lib/errors.js';
-import { companyCtx, requireAuth, requireCompany } from '../lib/auth.js';
+import { companyCtx, requireAuth, requireCompany, requireRole } from '../lib/auth.js';
 import { getStoreIds } from '../services/common.js';
 
 const router = Router();
@@ -210,8 +210,14 @@ router.get(
 
 // ─────────────────────────── PATCH /:skuId ───────────────────────────
 
+/*
+ * Ilgari bu yerda rol tekshiruvi yo'q edi — "Kuzatuvchi" (viewer) ham SKU'ning
+ * MXIK kodini o'zgartira olardi, noto'g'ri kod esa sotuvni to'xtatadi (2026-10-24).
+ * Boshqa yozish marshrutlari kabi faqat owner va manager.
+ */
 router.patch(
   '/:skuId',
+  requireRole('owner', 'manager'),
   ah(async (req, res) => {
     const { company } = companyCtx(req);
     const storeIds = await getStoreIds(company.id);

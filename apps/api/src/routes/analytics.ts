@@ -1,8 +1,9 @@
 /**
  * Dashboard va yengil KPI marshrutlari.
  *
- * GET /api/v1/analytics/dashboard — asosiy sahifa (barcha tariflarda ochiq).
- * GET /api/v1/analytics/kpi      — widget uchun yengil versiya (4 ta ko'rsatkich).
+ * GET /api/v1/analytics/dashboard     — asosiy sahifa (barcha tariflarda ochiq).
+ * GET /api/v1/analytics/kpi           — widget uchun yengil versiya (4 ta ko'rsatkich).
+ * GET /api/v1/analytics/cost-coverage — davrda sotilgan donalarning tannarx qamrovi.
  *
  * Barcha pul qiymatlari UZS (butun son), sanalar ISO-8601.
  */
@@ -22,6 +23,7 @@ import {
   toISODate,
   businessDayStart,
   toBusinessDate,
+  type CostCoverageResponse,
   type DashboardResponse,
   type Insight,
   type MetricValue,
@@ -84,7 +86,13 @@ interface PeriodTotals {
   commission: number;
   logistics: number;
   units: number;
+  /** Qaytgan dona: `returnedQty` (bo'lmasa `qty`), tirik satrdagi qisman qaytish ham */
   returnsUnits: number;
+  /**
+   * Xaridor qabul qilgan dona (buyurtmada `deliveredAt` bor) — qaytarish
+   * foizining asosi. `units` dan farqi: yo'ldagilar kirmaydi.
+   */
+  handedUnits: number;
   /** Davrdagi barcha buyurtmalar */
   ordersTotal: number;
   /** Bekor qilinmagan va qaytarilmagan buyurtmalar (o'rtacha chek uchun) */
@@ -106,6 +114,7 @@ const emptyTotals = (): PeriodTotals => ({
   logistics: 0,
   units: 0,
   returnsUnits: 0,
+  handedUnits: 0,
   ordersTotal: 0,
   ordersActive: 0,
   ordersDelivered: 0,
@@ -143,6 +152,7 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
           logistics: true,
           status: true,
           returnedAt: true,
+          returnedQty: true,
         },
       },
     },
@@ -172,10 +182,23 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
           ({ units: 0, revenue: 0, payout: 0, cogs: 0, otherCost: 0, netProfit: 0, returns: 0 } satisfies SkuAgg)
         : null;
 
-      if (returned) {
-        t.returnsUnits += it.qty;
-        if (skuAgg) skuAgg.returns += it.qty;
-      } else if (it.status !== 'canceled') {
+      /*
+       * Qaytgan dona `returnedQty` da: Uzum qaytgan satrda `amount = 0`,
+       * `amountReturns = N` yuboradi (importer: qty = 0). Ilgari `qty`
+       * sanalardi — jonli do'konda qaytarish foizi doim 0% chiqardi va
+       * "returns_up" xulosasi hech qachon ishlamasdi. Tirik satrdagi qisman
+       * qaytish ham sanaladi (services/common.ts aggregateSales bilan bir xil)
+       * (2026-10-24).
+       */
+      let returnedUnits = 0;
+      if (returned) returnedUnits = it.returnedQty > 0 ? it.returnedQty : it.qty;
+      else if (it.status !== 'canceled') returnedUnits = it.returnedQty;
+      t.returnsUnits += returnedUnits;
+      if (skuAgg) skuAgg.returns += returnedUnits;
+
+      if (!returned && it.status !== 'canceled') {
+        // Qaytarish foizi asosi — faqat xaridor qabul qilgan dona, yo'ldagilar emas
+        if (o.deliveredAt) t.handedUnits += it.qty;
         t.units += it.qty;
         t.revenue += it.revenue;
         t.payout += it.payout;
@@ -536,8 +559,13 @@ router.get(
     const prevBuyoutBase = prev.ordersDelivered + prev.ordersReturned + prev.ordersCanceled;
     const curBuyout = pct(cur.ordersDelivered, curBuyoutBase);
     const prevBuyout = pct(prev.ordersDelivered, prevBuyoutBase);
-    const curReturns = pct(cur.returnsUnits, cur.units + cur.returnsUnits);
-    const prevReturns = pct(prev.returnsUnits, prev.units + prev.returnsUnits);
+    /*
+     * Qaytarish foizi: qaytgan / (xaridor qabul qilgan + qaytgan). Ilgari
+     * asosga yo'ldagi dona ham kirardi — hali qaytishi mumkin bo'lmagan tovar
+     * foizni pasaytirardi (2026-10-24).
+     */
+    const curReturns = pct(cur.returnsUnits, cur.handedUnits + cur.returnsUnits);
+    const prevReturns = pct(prev.returnsUnits, prev.handedUnits + prev.returnsUnits);
 
     const revenueMetric = metric(cur.revenue, prev.revenue);
 
@@ -727,6 +755,89 @@ router.get(
       netProfit: metric(curNet, prevNet),
       ordersCount: metric(cur.orders, prev.orders),
       margin: metric(pct(curNet, cur.revenue), pct(prevNet, prev.revenue), 2),
+    };
+
+    res.json(payload);
+  }),
+);
+
+// ─────────────────────────── GET /analytics/cost-coverage ───────────────────────────
+
+/**
+ * Tannarx qamrovi — sahifa sarlavhasidagi "Tannarx: 87% sotuvda" chipi uchun.
+ *
+ * Ilgari foyda raqamlari yonida ular qanchalik ishonchli ekani ko'rinmasdi:
+ * tannarxi kiritilmagan SKU sotuvida cogs = 0 va foyda shuncha oshib chiqadi.
+ * Ogohlantirish faqat mahsulot kartochkasida (hamma SKU'si tannarxsiz
+ * bo'lsagina) va Tannarx sahifasida katalog ulushi sifatida bor edi — davrdagi
+ * SOTUV bo'yicha emas (2026-10-24).
+ *
+ * Qoidalar `collectTotals` (Boshqaruv paneli foydasi) bilan bir xil: davr —
+ * buyurtma sanasi (Order.orderedAt), bekor qilingan va qaytgan pozitsiyalar
+ * kirmaydi. "Tannarxsiz" — foyda formulasidagi kabi pozitsiyadagi
+ * `purchasePrice` 0 (cogs = purchasePrice × qty = 0). Kodda "bepul tovar"
+ * degan alohida tushuncha yo'q: tannarx 0 hamma joyda "kiritilmagan" deb
+ * o'qiladi (Tannarx sahifasi, SKU holati, qoldiq qiymati).
+ */
+router.get(
+  '/cost-coverage',
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    let soldUnits = 0;
+    let revenue = 0;
+    let unitsNoCost = 0;
+    let revenueNoCost = 0;
+    let coveredCogs = 0;
+    let coveredRevenue = 0;
+    const skusNoCost = new Set<string>();
+
+    if (storeIds.length > 0) {
+      // SKU × tannarx bo'yicha bazaning o'zida yig'iladi — katta davrda ham qatorlar tashilmaydi
+      const groups = await prisma.orderItem.groupBy({
+        by: ['skuId', 'purchasePrice'],
+        where: {
+          order: { storeId: { in: storeIds }, orderedAt: { gte: range.from, lt: range.toExclusive } },
+          // collectTotals'dagi `!returned && status !== 'canceled'` (returned = status 'returned' yoki returnedAt bor)
+          status: { notIn: ['canceled', 'returned'] },
+          returnedAt: null,
+        },
+        _sum: { qty: true, revenue: true },
+      });
+
+      for (const g of groups) {
+        const units = g._sum.qty ?? 0;
+        const rev = g._sum.revenue ?? 0;
+        soldUnits += units;
+        revenue += rev;
+        if (g.purchasePrice > 0) {
+          coveredCogs += g.purchasePrice * units;
+          coveredRevenue += rev;
+        } else {
+          unitsNoCost += units;
+          revenueNoCost += rev;
+          if (g.skuId && units > 0) skusNoCost.add(g.skuId);
+        }
+      }
+    }
+
+    const payload: CostCoverageResponse = {
+      period: range.period,
+      soldUnits,
+      unitsNoCost,
+      revenue: round(revenue),
+      revenueNoCost: round(revenueNoCost),
+      skusNoCost: skusNoCost.size,
+      // PASTGA yaxlitlanadi: 1000 donadan bittasi tannarxsiz bo'lsa ham "100%" deb ko'rsatmaslik uchun
+      pct: soldUnits > 0 ? Math.floor(((soldUnits - unitsNoCost) * 1000) / soldUnits) / 10 : 100,
+      estMissingCogs:
+        unitsNoCost === 0
+          ? 0
+          : coveredRevenue > 0
+            ? round((coveredCogs / coveredRevenue) * revenueNoCost)
+            : null,
     };
 
     res.json(payload);

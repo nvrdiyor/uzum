@@ -1,6 +1,6 @@
 import { useFormat } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { ABC_CSS_VAR, ABC_INK_VAR, clamp01, type AbcGroupKey } from './shared';
+import { ABC_CSS_VAR, ABC_INK_VAR, ABC_TONE, clamp01, type AbcGroupKey } from './shared';
 
 /** Guruh rangida ishlaydigan doiraviy ko'rsatkich (ProgressRing brand rangga qat'iy bog'langani uchun) */
 function GroupRing({ value, group, size = 104, stroke = 9 }: { value: number; group: AbcGroupKey; size?: number; stroke?: number }) {
@@ -63,20 +63,23 @@ export function AbcGroupCard({
   const color = `rgb(var(${ABC_INK_VAR[group]}))`;
 
   return (
+    /*
+      Guruh rangi umumiy ohang tizimi orqali: tepada aksent chiziq va halqa bir
+      rangda (A — brend, B — sariq, C — qizil). Ilgari har kartaning burchagida
+      o'z rangli yorug'ligi bor edi — uch karta birdan "porlab", sahifadagi
+      asosiy kartochka ajralmay qolardi.
+    */
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'card card-hover group relative overflow-hidden p-5 text-left',
+        'card card-hover card-accent group relative overflow-hidden p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
+        `tone-${ABC_TONE[group]}`,
         onClick && 'cursor-pointer',
         active && 'border-line-strong ring-2 ring-brand/40',
       )}
     >
-      <div
-        className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 opacity-60"
-        style={{ background: `radial-gradient(closest-side, rgb(var(${ABC_CSS_VAR[group]}) / 0.22), transparent)` }}
-      />
-
       <div className="relative flex items-start gap-4">
         <GroupRing value={revenueShare} group={group} />
         <div className="min-w-0 flex-1">
@@ -85,18 +88,19 @@ export function AbcGroupCard({
         </div>
       </div>
 
-      <div className="relative mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3.5">
-        <div className="min-w-0">
+      {/* Ichki statistik plitkalar — boshqa sahifalardagi .well bilan bir xil */}
+      <div className="relative mt-4 grid grid-cols-3 gap-2">
+        <div className="well min-w-0 px-3 py-2">
           <p className="truncate eyebrow">{labels.sku}</p>
           <p className="tnum mt-0.5 text-sm font-bold text-ink">{f.num(skuCount)}</p>
         </div>
-        <div className="min-w-0">
+        <div className="well min-w-0 px-3 py-2">
           <p className="truncate eyebrow">{labels.revenue}</p>
           <p className="tnum mt-0.5 text-sm font-bold" style={{ color }}>
             {f.compact(revenue)}
           </p>
         </div>
-        <div className="min-w-0">
+        <div className="well min-w-0 px-3 py-2">
           <p className="truncate eyebrow">{labels.units}</p>
           <p className="tnum mt-0.5 text-sm font-bold text-ink">{f.num(units)}</p>
         </div>

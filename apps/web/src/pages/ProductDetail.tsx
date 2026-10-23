@@ -1,19 +1,25 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  ImageOff,
+  ArrowRight,
+  Boxes,
+  Info,
   Layers,
   MessageSquare,
   Package,
+  PackagePlus,
   Scale,
+  ShieldCheck,
   Star,
+  Store,
   TrendingUp,
   Undo2,
   Wand2,
 } from '@/components/icons';
 import {
+  Amount,
   Badge,
   Button,
   Card,
@@ -22,19 +28,24 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
+  HeroCard,
   PageHeader,
   PlanGate,
   PreviewBadge,
+  ProductThumb,
   ProgressBar,
+  ProgressRing,
+  Segmented,
   Skeleton,
   SkeletonRows,
-  StatCard,
-  StatGrid,
   toast,
   type Column,
+  type Tone,
 } from '@/components/ui';
 import { ChartCard, DonutChart, LinesChart, TrendChart, CHART_COLORS } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { DataFreshness } from '@/components/trust/DataFreshness';
+import { buyoutRateOf, buyoutTextClass, buyoutTone, useBuyout } from '@/components/products/Buyout';
 import { InlineCostInput } from '@/components/products/InlineCostInput';
 import { MissingCostBanner } from '@/components/products/MissingCostBanner';
 import { ProductVisibilityButton } from '@/components/products/VisibilityButton';
@@ -48,10 +59,13 @@ import {
   type ProductDetailResponse,
   type ProductDetailSku,
 } from '@/components/products/types';
+import { StockStatusBadge, TONE_TEXT, daysTone } from '@/components/stock/common';
 import { api } from '@/lib/api';
+import { COST_COLORS } from '@/lib/theme';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { invalidateCostDependent } from '@/lib/costQueries';
 
 registerNamespace('productDetail', {
   uz: {
@@ -65,6 +79,14 @@ registerNamespace('productDetail', {
     'state.out': 'Qoldiqsiz',
     'state.archived': 'Arxiv',
     'state.hidden': 'O‘chirilgan',
+    'meta.uzumId': 'Uzum ID {id}',
+    'meta.skus': '{n} SKU',
+    'meta.noCategory': 'Kategoriyasiz',
+    'hero.title': 'Davr natijasi',
+    'hero.sold': '{n} dona sotildi',
+    'hero.avgPrice': 'O‘rtacha sotilgan',
+    'hero.avgPriceWhy':
+      'Tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
     'kpi.revenue': 'Tushum',
     'kpi.profit': 'Sof foyda',
     'kpi.roi': 'ROI',
@@ -72,6 +94,7 @@ registerNamespace('productDetail', {
     'kpi.margin': 'Marja',
     'info.price': 'Narx',
     'info.cost': 'Tannarx',
+    'info.noCost': 'kiritilmagan',
     'info.sold': 'Sotildi',
     'info.revenue': 'Tushum',
     'info.profit': 'Foyda',
@@ -80,36 +103,57 @@ registerNamespace('productDetail', {
     'info.rating': 'Reyting',
     'info.returns': 'Qaytarishlar',
     'info.stock': 'Qoldiq',
-    'info.conversion': 'Konversiya',
     'info.daysLeft': 'Qoldiq yetadi',
     'info.days': '{n} kun',
     'info.noForecast': 'Prognoz yo‘q',
     'info.units': '{n} dona',
     'info.reviews': '{n} sharh',
+    'cover.title': 'Ombor qamrovi',
+    'cover.subtitle': 'Qoldiq necha kunga yetadi',
+    'cover.share': '{cover} kunlik zaxiraning {pct} qismi',
+    'cover.full': '{cover} kunlik zaxiradan ham ko‘p',
+    'cover.noSales': 'So‘nggi 30 kunda sotuv yo‘q — prognoz qilinmaydi',
+    'cover.inTransit': 'yo‘lda {n}',
+    'cover.reserved': 'band {n}',
+    'need.title': 'Buyurtma kerak',
+    'need.subtitle': '{n} kunlik zaxira uchun yetishmaydi',
+    'need.none': 'Hozircha buyurtma shart emas',
+    'need.noneHint': 'Barcha SKU’lar zaxira davriga yetadi',
+    'need.urgent': 'Eng shoshilinch SKU’lar',
+    'need.planner': 'Rejalashtiruvchida ochish',
+    'quality.title': 'Sifat va qaytarishlar',
+    'quality.subtitle': 'Tanlangan davr bo‘yicha',
+    'quality.unanswered': 'Javobsiz sharhlar',
+    'quality.noRating': 'Hali baholanmagan',
     'tab.sales': 'Sotuv dinamikasi',
     'tab.stocks': 'Qoldiqlar',
-    'tab.skus': 'SKU’lar',
     'tab.unit': 'Unit-iqtisod',
     'tab.reviews': 'Sharhlar',
     'sales.title': 'Sotuv dinamikasi',
-    'sales.subtitle': 'Oxirgi 60 kun: tushum, foyda va dona',
+    'sales.subtitle': 'Oxirgi 60 kun: tushum va foyda',
     'sales.revenue': 'Tushum',
     'sales.profit': 'Foyda',
-    'sales.units': 'Dona',
+    'sales.units': 'Dona: {n}',
     'stocks.title': 'Qoldiqlar tarixi',
     'stocks.subtitle': 'FBO, FBS va o‘z ombori bo‘yicha',
     'stocks.fbo': 'FBO',
     'stocks.fbs': 'FBS',
     'stocks.own': 'Ombor',
     'skus.title': 'SKU’lar',
-    'skus.subtitle': 'Tannarxni to‘g‘ridan-to‘g‘ri jadvalda tahrirlash mumkin',
+    'skus.subtitle': 'Holat, qoldiq va tannarx — tannarxni to‘g‘ridan-to‘g‘ri jadvalda tahrirlash mumkin',
     'skus.sku': 'SKU',
-    'skus.name': 'Nomi',
+    'skus.status': 'Holat · yetadi',
     'skus.price': 'Narx',
     'skus.cost': 'Tannarx',
     'skus.stock': 'Qoldiq',
     'skus.sold': 'Sotildi',
     'skus.profit': 'Foyda',
+    'skus.own': 'O‘z ombori {n}',
+    'skus.transit': 'yo‘lda {n}',
+    'skus.days': '{n} kun',
+    'skus.perDay': '{n}/kun',
+    'skus.noSales': 'Sotuv yo‘q',
+    'skus.margin': 'marja {pct}',
     'skus.costPlaceholder': 'Tannarx',
     'cost.saved': 'Tannarx yangilandi',
     'cost.savedBody': '{sku} uchun yangi tannarx saqlandi',
@@ -132,7 +176,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Jami xarajat',
     'unit.breakEven': 'Zararsizlik narxi',
     'unit.empty': 'Unit-iqtisod uchun tannarx kerak',
-    'unit.emptyHint': 'SKU’lar bo‘limida tannarxni kiriting',
+    'unit.emptyHint': 'SKU jadvalida tannarxni kiriting',
     'reviews.title': 'Sharhlar',
     'reviews.subtitle': 'Reyting taqsimoti va oxirgi izohlar',
     'reviews.avg': 'O‘rtacha reyting',
@@ -159,6 +203,14 @@ registerNamespace('productDetail', {
     'state.out': 'Без остатка',
     'state.archived': 'Архив',
     'state.hidden': 'Удалён',
+    'meta.uzumId': 'Uzum ID {id}',
+    'meta.skus': '{n} SKU',
+    'meta.noCategory': 'Без категории',
+    'hero.title': 'Итог за период',
+    'hero.sold': 'Продано {n} шт.',
+    'hero.avgPrice': 'Средняя цена продажи',
+    'hero.avgPriceWhy':
+      'Средняя цена, которую покупатели реально заплатили за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
     'kpi.revenue': 'Выручка',
     'kpi.profit': 'Чистая прибыль',
     'kpi.roi': 'ROI',
@@ -166,6 +218,7 @@ registerNamespace('productDetail', {
     'kpi.margin': 'Маржа',
     'info.price': 'Цена',
     'info.cost': 'Себестоимость',
+    'info.noCost': 'не указана',
     'info.sold': 'Продано',
     'info.revenue': 'Выручка',
     'info.profit': 'Прибыль',
@@ -174,36 +227,57 @@ registerNamespace('productDetail', {
     'info.rating': 'Рейтинг',
     'info.returns': 'Возвраты',
     'info.stock': 'Остаток',
-    'info.conversion': 'Конверсия',
     'info.daysLeft': 'Хватит на',
     'info.days': '{n} дн.',
     'info.noForecast': 'Нет прогноза',
     'info.units': '{n} шт.',
     'info.reviews': '{n} отзывов',
+    'cover.title': 'Покрытие запасом',
+    'cover.subtitle': 'На сколько хватит остатка',
+    'cover.share': '{pct} от запаса на {cover} дн.',
+    'cover.full': 'Больше запаса на {cover} дн.',
+    'cover.noSales': 'За 30 дней продаж нет — прогноза нет',
+    'cover.inTransit': 'в пути {n}',
+    'cover.reserved': 'резерв {n}',
+    'need.title': 'Нужен заказ',
+    'need.subtitle': 'Не хватает на {n} дн. запаса',
+    'need.none': 'Пока заказывать не нужно',
+    'need.noneHint': 'Всех SKU хватает на период запаса',
+    'need.urgent': 'Самые срочные SKU',
+    'need.planner': 'Открыть в планировщике',
+    'quality.title': 'Качество и возвраты',
+    'quality.subtitle': 'За выбранный период',
+    'quality.unanswered': 'Отзывы без ответа',
+    'quality.noRating': 'Оценок пока нет',
     'tab.sales': 'Динамика продаж',
     'tab.stocks': 'Остатки',
-    'tab.skus': 'SKU',
     'tab.unit': 'Юнит-экономика',
     'tab.reviews': 'Отзывы',
     'sales.title': 'Динамика продаж',
-    'sales.subtitle': 'Последние 60 дней: выручка, прибыль и штуки',
+    'sales.subtitle': 'Последние 60 дней: выручка и прибыль',
     'sales.revenue': 'Выручка',
     'sales.profit': 'Прибыль',
-    'sales.units': 'Штук',
+    'sales.units': 'Штук: {n}',
     'stocks.title': 'История остатков',
     'stocks.subtitle': 'По FBO, FBS и своему складу',
     'stocks.fbo': 'FBO',
     'stocks.fbs': 'FBS',
     'stocks.own': 'Склад',
     'skus.title': 'SKU',
-    'skus.subtitle': 'Себестоимость можно менять прямо в таблице',
+    'skus.subtitle': 'Статус, остаток и себестоимость — себестоимость можно менять прямо в таблице',
     'skus.sku': 'SKU',
-    'skus.name': 'Название',
+    'skus.status': 'Статус · хватит',
     'skus.price': 'Цена',
     'skus.cost': 'Себестоимость',
     'skus.stock': 'Остаток',
     'skus.sold': 'Продано',
     'skus.profit': 'Прибыль',
+    'skus.own': 'Свой склад {n}',
+    'skus.transit': 'в пути {n}',
+    'skus.days': '{n} дн.',
+    'skus.perDay': '{n}/дн.',
+    'skus.noSales': 'Нет продаж',
+    'skus.margin': 'маржа {pct}',
     'skus.costPlaceholder': 'Себест.',
     'cost.saved': 'Себестоимость обновлена',
     'cost.savedBody': 'Новое значение сохранено для {sku}',
@@ -226,7 +300,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Всего расходов',
     'unit.breakEven': 'Цена безубыточности',
     'unit.empty': 'Для юнит-экономики нужна себестоимость',
-    'unit.emptyHint': 'Укажите себестоимость в разделе SKU',
+    'unit.emptyHint': 'Укажите себестоимость в таблице SKU',
     'reviews.title': 'Отзывы',
     'reviews.subtitle': 'Распределение рейтинга и последние отзывы',
     'reviews.avg': 'Средний рейтинг',
@@ -253,6 +327,14 @@ registerNamespace('productDetail', {
     'state.out': 'Out of stock',
     'state.archived': 'Archived',
     'state.hidden': 'Deleted',
+    'meta.uzumId': 'Uzum ID {id}',
+    'meta.skus': '{n} SKUs',
+    'meta.noCategory': 'No category',
+    'hero.title': 'Period result',
+    'hero.sold': '{n} units sold',
+    'hero.avgPrice': 'Average selling price',
+    'hero.avgPriceWhy':
+      'The average price buyers actually paid in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
     'kpi.revenue': 'Revenue',
     'kpi.profit': 'Net profit',
     'kpi.roi': 'ROI',
@@ -260,6 +342,7 @@ registerNamespace('productDetail', {
     'kpi.margin': 'Margin',
     'info.price': 'Price',
     'info.cost': 'Cost price',
+    'info.noCost': 'not set',
     'info.sold': 'Sold',
     'info.revenue': 'Revenue',
     'info.profit': 'Profit',
@@ -268,36 +351,57 @@ registerNamespace('productDetail', {
     'info.rating': 'Rating',
     'info.returns': 'Returns',
     'info.stock': 'Stock',
-    'info.conversion': 'Conversion',
     'info.daysLeft': 'Days of cover',
     'info.days': '{n} days',
     'info.noForecast': 'No forecast',
     'info.units': '{n} units',
     'info.reviews': '{n} reviews',
+    'cover.title': 'Stock cover',
+    'cover.subtitle': 'How long the stock lasts',
+    'cover.share': '{pct} of a {cover}-day cover',
+    'cover.full': 'More than a {cover}-day cover',
+    'cover.noSales': 'No sales in the last 30 days — no forecast',
+    'cover.inTransit': '{n} in transit',
+    'cover.reserved': '{n} reserved',
+    'need.title': 'Reorder',
+    'need.subtitle': 'Short for {n} days of cover',
+    'need.none': 'No reorder needed yet',
+    'need.noneHint': 'Every SKU covers the period',
+    'need.urgent': 'Most urgent SKUs',
+    'need.planner': 'Open in Planner',
+    'quality.title': 'Quality and returns',
+    'quality.subtitle': 'For the selected period',
+    'quality.unanswered': 'Unanswered reviews',
+    'quality.noRating': 'Not rated yet',
     'tab.sales': 'Sales trend',
     'tab.stocks': 'Stock levels',
-    'tab.skus': 'SKUs',
     'tab.unit': 'Unit economics',
     'tab.reviews': 'Reviews',
     'sales.title': 'Sales trend',
-    'sales.subtitle': 'Last 60 days: revenue, profit and units',
+    'sales.subtitle': 'Last 60 days: revenue and profit',
     'sales.revenue': 'Revenue',
     'sales.profit': 'Profit',
-    'sales.units': 'Units',
+    'sales.units': 'Units: {n}',
     'stocks.title': 'Stock history',
     'stocks.subtitle': 'FBO, FBS and own warehouse',
     'stocks.fbo': 'FBO',
     'stocks.fbs': 'FBS',
     'stocks.own': 'Own',
     'skus.title': 'SKUs',
-    'skus.subtitle': 'Cost price can be edited straight in the table',
+    'skus.subtitle': 'Status, stock and cost — the cost price can be edited straight in the table',
     'skus.sku': 'SKU',
-    'skus.name': 'Name',
+    'skus.status': 'Status · lasts',
     'skus.price': 'Price',
     'skus.cost': 'Cost',
     'skus.stock': 'Stock',
     'skus.sold': 'Sold',
     'skus.profit': 'Profit',
+    'skus.own': 'Own warehouse {n}',
+    'skus.transit': '{n} in transit',
+    'skus.days': '{n} days',
+    'skus.perDay': '{n}/day',
+    'skus.noSales': 'No sales',
+    'skus.margin': 'margin {pct}',
     'skus.costPlaceholder': 'Cost',
     'cost.saved': 'Cost price updated',
     'cost.savedBody': 'New cost saved for {sku}',
@@ -320,7 +424,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Total cost',
     'unit.breakEven': 'Break-even price',
     'unit.empty': 'Unit economics needs a cost price',
-    'unit.emptyHint': 'Set the cost price in the SKUs tab',
+    'unit.emptyHint': 'Set the cost price in the SKU table',
     'reviews.title': 'Reviews',
     'reviews.subtitle': 'Rating distribution and latest feedback',
     'reviews.avg': 'Average rating',
@@ -338,8 +442,36 @@ registerNamespace('productDetail', {
   },
 });
 
-type Tab = 'sales' | 'stocks' | 'skus' | 'unit' | 'reviews';
-const TABS: Tab[] = ['sales', 'stocks', 'skus', 'unit', 'reviews'];
+/*
+ * SKU jadvali endi tabda emas — sahifaning o'zida (Unit-iqtisod va sharhlardan
+ * oldin): sotuvchi aynan qaysi variant tugayotganini birinchi ekranda ko'rsin.
+ * Ilgari u "SKU'lar" tabi ortida yashirin edi va server qaytargan holat,
+ * sur'at, "yetadi" ustunlari umuman chizilmasdi.
+ */
+type Tab = 'sales' | 'stocks' | 'unit' | 'reviews';
+const TABS: Tab[] = ['sales', 'stocks', 'unit', 'reviews'];
+
+/**
+ * GET /products/:id `cover` yubormaydi — server standarti 30 kun (coverParam).
+ * "Buyurtma kerak" miqdori ham aynan shu davr uchun hisoblangan, shuning uchun
+ * qamrov halqasi va izohlar ham 30 kunga nisbatan.
+ */
+const DETAIL_COVER = 30;
+
+/*
+ * Kataklar orasi px-5 o'rniga 20 px — yetti ustunli SKU jadvali 1366 px'da
+ * gorizontal aylantirishsiz sig'adi (Sotuv va qoldiq jadvalidagi kabi).
+ */
+const PAD = 'pl-2.5 pr-2.5';
+const PAD_FIRST = 'pr-2.5';
+const PAD_LAST = 'pl-2.5';
+
+/** SKU nomidan mahsulot nomini olib tashlaydi: "Paxta choyshab … — Kulrang" → "Kulrang" */
+function variantOf(skuTitle: string, productTitle: string): string {
+  if (!productTitle || !skuTitle.startsWith(productTitle)) return skuTitle;
+  const rest = skuTitle.slice(productTitle.length).replace(/^[\s—–,:·-]+/u, '').trim();
+  return rest || skuTitle;
+}
 
 export default function ProductDetail() {
   const t = useT('productDetail');
@@ -399,6 +531,8 @@ export default function ProductDetail() {
     onSettled: () => {
       setSavingSku(null);
       void qc.invalidateQueries({ queryKey });
+      // Server o'tgan buyurtmalarni ham qayta hisobladi — boshqa sahifalardagi foyda ham yangilansin
+      invalidateCostDependent(qc);
     },
   });
 
@@ -424,40 +558,112 @@ export default function ProductDetail() {
       toast.error(t('cost.error'), err instanceof Error ? err.message : undefined);
     },
     onSuccess: () => toast.success(t('cost.bulkSaved')),
-    onSettled: () => void qc.invalidateQueries({ queryKey }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey });
+      invalidateCostDependent(qc);
+    },
   });
+
+  const productTitle = product?.title ?? '';
 
   const skuColumns: Column<ProductDetailSku>[] = useMemo(
     () => [
       {
         key: 'sku',
         header: t('skus.sku'),
-        width: 160,
-        render: (r) => <span className="tnum text-sm font-semibold text-ink">{r.sku}</span>,
+        render: (r) => {
+          const variant = variantOf(r.title, productTitle);
+          return (
+            <div className="min-w-0 max-w-[15rem] 2xl:max-w-[22rem]">
+              <p className="tnum truncate text-sm font-semibold text-ink">{r.sku}</p>
+              <p className="truncate text-xs text-muted" title={r.title}>
+                {variant}
+                {r.barcode ? <span className="tnum opacity-80"> · {r.barcode}</span> : null}
+              </p>
+            </div>
+          );
+        },
         sortable: true,
         sortValue: (r) => r.sku,
+        className: PAD_FIRST,
+        headerClassName: PAD_FIRST,
       },
       {
-        key: 'title',
-        header: t('skus.name'),
-        hideOnMobile: true,
-        render: (r) => <span className="text-sm text-ink-soft">{r.title}</span>,
+        // Holat aynan "necha kunga yetadi"dan kelib chiqadi — bitta ustunda
+        key: 'status',
+        header: t('skus.status'),
+        render: (r) => (
+          <div className="leading-tight">
+            {r.status ? <StockStatusBadge status={r.status} /> : null}
+            <p className="tnum mt-1 text-2xs">
+              <span className={cn('font-semibold', TONE_TEXT[daysTone(r.daysLeft)])}>
+                {r.daysLeft === null || r.daysLeft === undefined
+                  ? t('skus.noSales')
+                  : t('skus.days', { n: f.num(r.daysLeft) })}
+              </span>
+              {(r.avgDaily ?? 0) > 0 ? (
+                <span className="text-muted"> · {t('skus.perDay', { n: f.num(r.avgDaily ?? 0, 1) })}</span>
+              ) : null}
+            </p>
+          </div>
+        ),
+        // Shoshilinchlik bo'yicha: birinchi bosishda (kamayish) eng kam kunlisi tepada
+        sortValue: (r) => -(r.daysLeft ?? Number.MAX_SAFE_INTEGER),
         sortable: true,
-        sortValue: (r) => r.title,
+        className: PAD,
+        headerClassName: PAD,
+      },
+      {
+        key: 'stock',
+        header: t('skus.stock'),
+        align: 'right',
+        render: (r) => {
+          const total = (r.stockFbo ?? 0) + (r.stockFbs ?? 0) + (r.stockOwn ?? 0);
+          return (
+            <div className="leading-tight">
+              <span className={cn('tnum font-semibold', total > 0 ? 'text-ink' : 'text-danger')}>{f.num(total)}</span>
+              <p className="tnum text-2xs text-muted">
+                FBO {f.num(r.stockFbo ?? 0)} · FBS {f.num(r.stockFbs ?? 0)}
+              </p>
+              {(r.stockOwn ?? 0) > 0 ? (
+                <p className="tnum text-2xs text-muted">{t('skus.own', { n: f.num(r.stockOwn ?? 0) })}</p>
+              ) : null}
+              {(r.inTransit ?? 0) > 0 ? (
+                <p className="tnum text-2xs font-medium text-info-ink">{t('skus.transit', { n: f.num(r.inTransit ?? 0) })}</p>
+              ) : null}
+            </div>
+          );
+        },
+        sortable: true,
+        sortValue: (r) => (r.stockFbo ?? 0) + (r.stockFbs ?? 0) + (r.stockOwn ?? 0),
+        className: PAD,
+        headerClassName: PAD,
+      },
+      {
+        key: 'sold',
+        header: t('skus.sold'),
+        align: 'right',
+        render: (r) => <span className="tnum font-medium text-ink">{f.num(r.sold)}</span>,
+        sortable: true,
+        sortValue: (r) => r.sold,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'price',
         header: t('skus.price'),
         align: 'right',
-        render: (r) => <span className="tnum text-ink">{f.money(r.price)}</span>,
+        hideOnMobile: true,
+        render: (r) => <span className="tnum text-ink-soft">{f.money(r.price)}</span>,
         sortable: true,
         sortValue: (r) => r.price,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'cost',
         header: t('skus.cost'),
         align: 'right',
-        width: 150,
         render: (r) => (
           <InlineCostInput
             value={r.purchasePrice ?? 0}
@@ -468,39 +674,32 @@ export default function ProductDetail() {
           />
         ),
         sortValue: (r) => r.purchasePrice ?? 0,
-      },
-      {
-        key: 'stock',
-        header: t('skus.stock'),
-        align: 'right',
-        render: (r) => (
-          <span className="tnum">{f.num((r.stockFbo ?? 0) + (r.stockFbs ?? 0) + (r.stockOwn ?? 0))}</span>
-        ),
-        sortable: true,
-        sortValue: (r) => (r.stockFbo ?? 0) + (r.stockFbs ?? 0) + (r.stockOwn ?? 0),
-      },
-      {
-        key: 'sold',
-        header: t('skus.sold'),
-        align: 'right',
-        render: (r) => <span className="tnum">{f.num(r.sold)}</span>,
-        sortable: true,
-        sortValue: (r) => r.sold,
+        className: PAD,
+        headerClassName: PAD,
       },
       {
         key: 'profit',
         header: t('skus.profit'),
         align: 'right',
         render: (r) => (
-          <span className={cn('tnum font-semibold', r.profit >= 0 ? 'text-ink' : 'text-danger')}>
-            {f.money(r.profit)}
-          </span>
+          <div className="leading-tight">
+            <span className={cn('tnum font-semibold', r.profit < 0 ? 'text-danger' : 'text-brand-ink')}>
+              {f.money(r.profit)}
+            </span>
+            {r.revenue > 0 && typeof r.margin === 'number' ? (
+              <p className={cn('tnum text-2xs', r.profit < 0 ? 'text-danger' : 'text-muted')}>
+                {t('skus.margin', { pct: f.pct(r.margin) })}
+              </p>
+            ) : null}
+          </div>
         ),
         sortable: true,
         sortValue: (r) => r.profit,
+        className: PAD_LAST,
+        headerClassName: PAD_LAST,
       },
     ],
-    [t, f, savingSku, savedSku, patchCost],
+    [t, f, savingSku, savedSku, patchCost, productTitle],
   );
 
   // ─────────── Yuklanish / xato / bo'sh ───────────
@@ -511,13 +710,14 @@ export default function ProductDetail() {
         <BackLink label={t('back')} />
         <PageHeader icon={<Package className="h-5 w-5" />} title={<Skeleton className="h-6 w-64" />} />
         <div className="space-y-5">
-          <StatGrid>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 w-full" />
+          <Skeleton className="h-44 w-full rounded-2xl" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-56 w-full rounded-2xl" />
             ))}
-          </StatGrid>
+          </div>
           <Card className="p-5">
-            <SkeletonRows rows={6} />
+            <SkeletonRows rows={4} />
           </Card>
         </div>
       </>
@@ -560,16 +760,24 @@ export default function ProductDetail() {
   }
 
   const state = productState(product);
-  const stock = totalStock(product);
+  const cost = avgCost(skus);
+  const showAvg =
+    product.avgSoldPrice > 0 && Math.abs(product.avgSoldPrice - product.minPrice) >= product.minPrice * 0.01;
+  const loss = product.profit < 0;
 
   return (
     <>
       <BackLink label={t('back')} />
 
       <PageHeader
-        icon={<Package className="h-5 w-5" />}
-        title={product.title}
-        description={t('subtitle', { sku: product.skuCount, cat: product.category ?? '—' })}
+        // Sarlavha plitkasida mahsulotning o'zi: rasm yoki rangli bosh harflar
+        icon={<ProductThumb name={product.title} imageUrl={product.imageUrl} className="rounded-xl text-base" />}
+        // Uzum'dagi haqiqiy nomlar 70–150 belgi — ikki qatordan oshmasin, to'liq nomi izohda
+        title={
+          <span className="line-clamp-2 text-[20px] sm:text-[24px]" title={product.title}>
+            {product.title}
+          </span>
+        }
         badge={
           <span className="flex flex-wrap items-center gap-2">
             <span className={cn('chip', STATE_STYLE[state].chip)}>
@@ -578,6 +786,22 @@ export default function ProductDetail() {
             </span>
             <PreviewBadge feature="products_assortment" />
           </span>
+        }
+        meta={
+          <>
+            <DataFreshness />
+            {product.uzumProductId ? (
+              <span className="meta-chip tnum">{t('meta.uzumId', { id: product.uzumProductId })}</span>
+            ) : null}
+            {data?.store ? (
+              <span className="meta-chip">
+                <Store className="h-3.5 w-3.5" />
+                {data.store.title}
+              </span>
+            ) : null}
+            <span className="meta-chip">{product.category ?? t('meta.noCategory')}</span>
+            <span className="meta-chip tnum">{t('meta.skus', { n: f.num(product.skuCount) })}</span>
+          </>
         }
         actions={
           <span className="flex flex-wrap items-center gap-2">
@@ -601,141 +825,107 @@ export default function ProductDetail() {
 
       <PlanGate feature="products_assortment">
         <div className="space-y-5">
-          {/* KPI */}
-          <StatGrid>
-            <StatCard
-              label={t('kpi.revenue')}
-              value={f.money(product.revenue)}
-              icon={<TrendingUp className="h-5 w-5" />}
-            />
-            <StatCard
-              label={t('kpi.profit')}
-              value={f.money(product.profit)}
-              icon={<Scale className="h-5 w-5" />}
-              tone={product.profit >= 0 ? 'brand' : 'danger'}
-            />
-            <StatCard
-              label={t('kpi.roi')}
-              /* Tannarx kiritilmagan bo'lsa ROI hisoblanmaydi — "0,0%" chalg'itadi */
-              /* Manfiy ROI ham haqiqiy natija — uni "tannarx yo'q" deb ko'rsatmaymiz */
-              value={hasCost ? f.pct(product.roi) : '—'}
-              hint={hasCost ? undefined : t('kpi.roiNoCost')}
-              icon={<Layers className="h-5 w-5" />}
-              tone={product.roi >= 0 ? 'info' : 'danger'}
-            />
-            <StatCard
-              label={t('kpi.margin')}
-              value={f.pct(product.margin)}
-              icon={<Scale className="h-5 w-5" />}
-              tone="violet"
-            />
-          </StatGrid>
-
-          {/* Rasm + asosiy ko'rsatkichlar */}
-          <Card className="p-5">
-            <div className="flex flex-col gap-5 lg:flex-row">
-              {/* Rasm mobil ekranda ham o'lchovli bo'lsin — aks holda bo'sh kvadrat
-                  butun ekranni egallardi */}
-              <div className="w-full max-w-[200px] shrink-0 sm:max-w-[224px] lg:w-56">
-                <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-surface-2">
-                  {product.imageUrl ? (
-                    <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-muted">
-                      <ImageOff className="h-8 w-8" />
-                    </div>
-                  )}
-                </div>
+          {/*
+            Sahifadagi yagona HeroCard — mahsulot davr ichida qancha pul
+            keltirgani. Ilgari to'rtta bir xil KPI kartochkasi, ostida esa
+            224 px bo'sh rasm va 11 ta teng kulrang plitka turardi: asosiy
+            savolga javob ko'zga tashlanmasdi.
+          */}
+          <HeroCard tone={loss ? 'danger' : 'brand'} className="p-5 sm:p-6">
+            {/* Davr chegarasi raqamlar yonida — qaysi davr natijasi ekani so'ralmasin */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="eyebrow">
+                {t('hero.title')}
+                <span className="tnum ml-2 font-medium normal-case tracking-normal text-ink-soft">
+                  {periodQuery.from === periodQuery.to
+                    ? f.dateShort(periodQuery.from)
+                    : `${f.dateShort(periodQuery.from)} – ${f.dateShort(periodQuery.to)}`}
+                </span>
+              </p>
+              <p className="tnum text-xs text-muted">{t('hero.sold', { n: f.num(product.sold) })}</p>
+            </div>
+            {/* Telefonda pul katakchalari to'liq kenglikda — "43 816 0…" bo'lib kesilmasin */}
+            <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <HeroStat
+                className="col-span-2 sm:col-span-1"
+                label={t('kpi.revenue')}
+                icon={<TrendingUp className="h-3.5 w-3.5" />}
+              >
+                <Amount value={f.money(product.revenue)} />
+              </HeroStat>
+              <HeroStat
+                className="col-span-2 sm:col-span-1"
+                label={t('kpi.profit')}
+                icon={<Scale className="h-3.5 w-3.5" />}
+                valueClass={loss ? 'text-danger' : 'text-brand-ink'}
+              >
+                <Amount value={f.money(product.profit)} />
+              </HeroStat>
+              <HeroStat label={t('kpi.margin')} valueClass={product.margin < 0 ? 'text-danger' : undefined}>
+                {f.pct(product.margin)}
+              </HeroStat>
+              {/* Tannarx kiritilmagan bo'lsa ROI hisoblanmaydi — "0,0%" chalg'itadi; manfiy ROI esa haqiqiy natija */}
+              <HeroStat
+                label={t('kpi.roi')}
+                hint={hasCost ? undefined : t('kpi.roiNoCost')}
+                valueClass={!hasCost ? 'text-muted' : product.roi < 0 ? 'text-danger' : undefined}
+              >
+                {hasCost ? f.pct(product.roi) : '—'}
+              </HeroStat>
+            </div>
+            <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-line/60 pt-3 text-xs">
+              <div className="flex items-baseline gap-1.5">
+                <dt className="text-muted">{t('info.price')}</dt>
+                <dd className="tnum font-semibold text-ink">{f.money(product.minPrice)}</dd>
               </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  <Metric label={t('info.price')} value={f.money(product.minPrice)} />
-                  <Metric
-                    label={t('info.cost')}
-                    value={
-                      avgCost(skus) > 0 ? f.money(avgCost(skus)) : '—'
-                    }
-                    tone={avgCost(skus) > 0 ? undefined : 'warn'}
-                  />
-                  <Metric label={t('info.sold')} value={t('info.units', { n: f.num(product.sold) })} />
-                  {/* Tushum, foyda, ROI va marja yuqoridagi KPI qatorida bor —
-                      bu yerda takrorlanmaydi (ustiga-ustak ROI u yerda "—",
-                      bu yerda "0,0%" bo'lib, bir-biriga zid ko'rinardi) */}
-                  <Metric label={t('info.conversion')} value={f.pct(product.conversion)} />
-                  <Metric
-                    label={t('info.rating')}
-                    value={product.rating > 0 ? f.num(product.rating, 1) : '—'}
-                    tone={product.rating > 0 && product.rating < 4 ? 'warn' : undefined}
-                  />
-                  <Metric
-                    label={t('info.returns')}
-                    value={t('info.units', { n: f.num(product.returns) })}
-                    tone={product.returns > 0 ? 'danger' : undefined}
-                  />
-                  <Metric label={t('info.stock')} value={t('info.units', { n: f.num(stock) })} />
-                  <Metric
-                    label={t('info.daysLeft')}
-                    value={
-                      product.daysLeft === null || product.daysLeft === undefined
-                        ? t('info.noForecast')
-                        : t('info.days', { n: f.num(product.daysLeft) })
-                    }
-                    tone={
-                      product.daysLeft !== null && product.daysLeft !== undefined && product.daysLeft <= 7
-                        ? 'danger'
-                        : undefined
-                    }
-                  />
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ['stocks.fbo', product.stockFbo],
-                      ['stocks.fbs', product.stockFbs],
-                      ['stocks.own', product.stockOwn],
-                    ] as const
-                  ).map(([key, value]) => (
-                    <div key={key} className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-                      <p className="eyebrow">{t(key)}</p>
-                      <p className="tnum text-sm font-bold text-ink">{f.num(value ?? 0)}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="flex items-baseline gap-1.5">
+                <dt className="text-muted">{t('info.cost')}</dt>
+                <dd className={cn('tnum font-semibold', cost > 0 ? 'text-ink' : 'text-warn-ink')}>
+                  {cost > 0 ? f.money(cost) : t('info.noCost')}
+                </dd>
               </div>
+              {showAvg ? (
+                <div className="flex cursor-help items-baseline gap-1.5" title={t('hero.avgPriceWhy')}>
+                  <dt className="text-muted">{t('hero.avgPrice')}</dt>
+                  <dd className="tnum font-semibold text-ink">{f.money(product.avgSoldPrice)}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </HeroCard>
+
+          {/* Tannarx ogohlantirishi — foyda raqamlari aynan unga bog'liq, shuning uchun darhol ostida */}
+          <MissingCostBanner skus={missing} saving={bulkCost.isPending} onApply={(v) => bulkCost.mutate(v)} />
+
+          {/* Bento: qoldiq qamrovi, buyurtma va sifat — har biri bitta savolga javob */}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <CoverCard product={product} skus={skus} />
+            <NeedCard product={product} skus={skus} />
+            <QualityCard data={data} />
+          </div>
+
+          <Card className="overflow-hidden">
+            <CardHeader
+              icon={<Layers />}
+              tone="info"
+              title={t('skus.title')}
+              subtitle={t('skus.subtitle')}
+              actions={<Badge tone="muted">{f.num(skus.length)}</Badge>}
+            />
+            <div className="mt-4">
+              <DataTable<ProductDetailSku>
+                columns={skuColumns}
+                rows={skus}
+                rowKey={(r) => r.id}
+                density="compact"
+                empty={<EmptyState icon={<Layers className="h-6 w-6" />} title={t('empty.skus')} />}
+              />
             </div>
           </Card>
 
-          {/* Tannarx ogohlantirishi */}
-          <MissingCostBanner
-            skus={missing}
-            saving={bulkCost.isPending}
-            onApply={(v) => bulkCost.mutate(v)}
-          />
-
-          {/* Tab'lar */}
-          <div className="-mx-1 overflow-x-auto px-1 no-scrollbar">
-            <SegmentedTabs value={tab} onChange={setTab} labels={TABS.map((x) => t(`tab.${x}`))} />
-          </div>
+          <Segmented<Tab> value={tab} onChange={setTab} options={TABS.map((x) => ({ value: x, label: t(`tab.${x}`) }))} />
 
           {tab === 'sales' ? <SalesTab data={data} /> : null}
           {tab === 'stocks' ? <StocksTab data={data} /> : null}
-          {tab === 'skus' ? (
-            <Card className="overflow-hidden">
-              <CardHeader title={t('skus.title')} subtitle={t('skus.subtitle')} />
-              <div className="mt-4">
-                <DataTable<ProductDetailSku>
-                  columns={skuColumns}
-                  rows={skus}
-                  rowKey={(r) => r.id}
-                  empty={
-                    <EmptyState icon={<Layers className="h-6 w-6" />} title={t('empty.skus')} />
-                  }
-                />
-              </div>
-            </Card>
-          ) : null}
           {tab === 'unit' ? <UnitTab data={data} /> : null}
           {tab === 'reviews' ? <ReviewsTab data={data} /> : null}
         </div>
@@ -764,70 +954,265 @@ function BackLink({ label }: { label: string }) {
   );
 }
 
-function Metric({
+/** HeroCard ichidagi bitta katta ko'rsatkich */
+function HeroStat({
   label,
-  value,
-  tone,
+  icon,
+  hint,
+  valueClass,
+  className,
+  children,
 }: {
   label: string;
-  value: string;
-  tone?: 'brand' | 'danger' | 'warn';
+  icon?: ReactNode;
+  hint?: string;
+  valueClass?: string;
+  className?: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-      <p className="truncate eyebrow">{label}</p>
+    <div className={cn('well min-w-0 px-4 py-3', hint && 'cursor-help', className)} title={hint}>
+      <p className="flex items-center gap-1.5 eyebrow">
+        {icon ? <span className="text-muted">{icon}</span> : null}
+        <span className="truncate">{label}</span>
+        {hint ? <Info className="h-3 w-3 shrink-0" /> : null}
+      </p>
       <p
         className={cn(
-          'tnum mt-0.5 truncate text-sm font-bold',
-          tone === 'brand' && 'text-brand-ink',
-          tone === 'danger' && 'text-danger',
-          tone === 'warn' && 'text-warn-ink',
-          !tone && 'text-ink',
+          'tnum mt-1.5 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.02em] sm:text-[22px]',
+          valueClass ?? 'text-ink',
         )}
-        title={value}
       >
-        {value}
+        {children}
       </p>
     </div>
   );
 }
 
-function SegmentedTabs({
-  value,
-  onChange,
-  labels,
-}: {
-  value: Tab;
-  onChange: (v: Tab) => void;
-  labels: string[];
-}) {
+/** Kartochka ichidagi "yorliq — qiymat" qatori */
+function InfoRow({ label, value, tone }: { label: ReactNode; value: ReactNode; tone?: Tone }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface-2 p-1">
-      {TABS.map((tabId, i) => {
-        const active = tabId === value;
-        return (
-          <button
-            key={tabId}
-            type="button"
-            onClick={() => onChange(tabId)}
-            className={cn(
-              'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-[background-color,color,box-shadow] duration-150',
-              active ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink',
-            )}
-          >
-            {labels[i]}
-          </button>
-        );
-      })}
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="text-sm text-muted">{label}</dt>
+      <dd className={cn('tnum text-sm font-semibold', tone ? TONE_TEXT[tone] : 'text-ink')}>{value}</dd>
     </div>
+  );
+}
+
+/**
+ * Ombor qamrovi: halqa — 30 kunlik zaxiraning qancha qismi bor, yonida jami
+ * dona va yo'ldagi/band; ostida FBO, FBS va o'z ombori. Rang "yetadi"
+ * chizig'idagi bilan bir xil: kritik — qizil, tugayapti — sariq, ortiqcha — ko'k.
+ */
+function CoverCard({ product, skus }: { product: ProductDetailResponse['product']; skus: ProductDetailSku[] }) {
+  const t = useT('productDetail');
+  const tc = useT('common');
+  const f = useFormat();
+  const stock = totalStock(product);
+  const days = product.daysLeft ?? null;
+  const ringPct = days !== null ? Math.min(100, (days / DETAIL_COVER) * 100) : 0;
+  const tone = daysTone(days);
+  const inTransit = skus.reduce((s, x) => s + (x.inTransit ?? 0), 0);
+  const reserved = skus.reduce((s, x) => s + (x.reserved ?? 0), 0);
+
+  return (
+    <Card tone="info">
+      <CardHeader icon={<Boxes />} title={t('cover.title')} subtitle={t('cover.subtitle')} />
+      <CardBody>
+        <div className="flex items-center gap-4">
+          <ProgressRing value={ringPct} size={92} stroke={9} tone={tone}>
+            <span className={cn('tnum font-display text-xl font-bold leading-none', TONE_TEXT[tone])}>
+              {days !== null ? f.num(days) : '—'}
+            </span>
+            <span className="mt-0.5 text-2xs text-muted">{tc('common.days')}</span>
+          </ProgressRing>
+          <div className="min-w-0">
+            <p className="tnum font-display text-2xl font-bold leading-tight text-ink">
+              {f.num(stock)} <span className="text-sm font-semibold text-muted">{tc('common.units').toLowerCase()}</span>
+            </p>
+            <p className="mt-1 text-xs leading-snug text-muted">
+              {days === null
+                ? t('cover.noSales')
+                : days >= DETAIL_COVER
+                  ? t('cover.full', { cover: DETAIL_COVER })
+                  : t('cover.share', { cover: DETAIL_COVER, pct: f.pct(ringPct, 0) })}
+            </p>
+            {inTransit > 0 || reserved > 0 ? (
+              <p className="tnum mt-1.5 text-2xs">
+                {inTransit > 0 ? (
+                  <span className="font-medium text-info-ink">{t('cover.inTransit', { n: f.num(inTransit) })}</span>
+                ) : null}
+                {inTransit > 0 && reserved > 0 ? <span className="text-muted"> · </span> : null}
+                {reserved > 0 ? <span className="text-muted">{t('cover.reserved', { n: f.num(reserved) })}</span> : null}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {(
+            [
+              ['stocks.fbo', product.stockFbo],
+              ['stocks.fbs', product.stockFbs],
+              ['stocks.own', product.stockOwn],
+            ] as const
+          ).map(([key, value]) => (
+            <div key={key} className="well px-3 py-2">
+              <p className="eyebrow">{t(key)}</p>
+              <p className={cn('tnum text-sm font-bold', (value ?? 0) > 0 ? 'text-ink' : 'text-muted')}>
+                {f.num(value ?? 0)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Buyurtma kerak: jami miqdor va eng shoshilinch variantlar. Ilgari bu
+ * sahifada buyurtma miqdori umuman ko'rinmasdi, garchi u javobda bo'lsa ham.
+ */
+function NeedCard({ product, skus }: { product: ProductDetailResponse['product']; skus: ProductDetailSku[] }) {
+  const t = useT('productDetail');
+  const tc = useT('common');
+  const f = useFormat();
+  const need = product.needOrder ?? 0;
+  // Kritik va tugayotgan, arxivda bo'lmagan variantlar — eng kam kunlisi birinchi
+  const urgent = skus
+    .filter((s) => !s.archived && (s.status === 'critical' || s.status === 'low'))
+    .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
+    .slice(0, 3);
+
+  return (
+    <Card tone={need > 0 ? 'warn' : 'brand'}>
+      <CardHeader icon={<PackagePlus />} title={t('need.title')} subtitle={t('need.subtitle', { n: DETAIL_COVER })} />
+      <CardBody>
+        {need > 0 ? (
+          <p className="tnum font-display text-[28px] font-bold leading-none tracking-[-0.02em] text-ink">
+            {f.num(need)} <span className="text-sm font-semibold text-muted">{tc('common.units').toLowerCase()}</span>
+          </p>
+        ) : (
+          <div>
+            <p className="font-display text-base font-semibold text-brand-ink">{t('need.none')}</p>
+            <p className="mt-0.5 text-xs text-muted">{t('need.noneHint')}</p>
+          </div>
+        )}
+
+        {urgent.length > 0 ? (
+          <div className="mt-4">
+            <p className="eyebrow mb-2">{t('need.urgent')}</p>
+            <ul className="space-y-1.5">
+              {urgent.map((s) => (
+                <li key={s.id} className="well flex items-center justify-between gap-3 px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="tnum block truncate text-xs font-semibold text-ink">{s.sku}</span>
+                    <span className="block truncate text-2xs text-muted" title={s.title}>
+                      {variantOf(s.title, product.title)}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className={cn('tnum text-xs font-semibold', TONE_TEXT[daysTone(s.daysLeft)])}>
+                      {t('skus.days', { n: f.num(s.daysLeft ?? 0) })}
+                    </span>
+                    {s.status ? <StockStatusBadge status={s.status} /> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <Link
+          to="/planner"
+          className="focusable mt-4 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-brand-ink hover:underline"
+        >
+          {t('need.planner')}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Sifat: xarid foizi (asosiy raqam, rangi 70%/40% chegaralari bo'yicha),
+ * qaytarishlar, reyting va javobsiz sharhlar.
+ */
+function QualityCard({ data }: { data: ProductDetailResponse | undefined }) {
+  const t = useT('productDetail');
+  const f = useFormat();
+  const buyout = useBuyout();
+  const product = data?.product;
+  if (!product) return null;
+  const rate = buyoutRateOf(product);
+  const tone = buyoutTone(rate);
+  const unanswered = data?.reviews?.totals.unanswered ?? 0;
+
+  return (
+    <Card>
+      <CardHeader
+        icon={<ShieldCheck />}
+        tone={tone ?? 'muted'}
+        title={t('quality.title')}
+        subtitle={t('quality.subtitle')}
+      />
+      <CardBody>
+        <div className="flex cursor-help items-baseline justify-between gap-3" title={buyout.hint(product)}>
+          <span className="inline-flex items-center gap-1 text-sm text-muted">
+            {buyout.label}
+            <Info className="h-3 w-3" />
+          </span>
+          <span className={cn('tnum font-display text-2xl font-bold leading-none', buyoutTextClass(rate))}>
+            {buyout.value(product)}
+          </span>
+        </div>
+        <ProgressBar value={rate ?? 0} tone={tone ?? 'muted'} className="mt-2.5" />
+        <dl className="mt-3 divide-y divide-line/60">
+          <InfoRow
+            label={t('info.returns')}
+            value={t('info.units', { n: f.num(product.returns) })}
+            tone={product.returns > 0 ? 'warn' : undefined}
+          />
+          <InfoRow
+            label={t('info.rating')}
+            value={
+              product.rating > 0 ? (
+                <span className="inline-flex items-center gap-1">
+                  <Star className="h-3.5 w-3.5 text-warn" />
+                  {f.num(product.rating, 1)}
+                  <span className="font-normal text-muted">· {t('info.reviews', { n: f.num(product.reviewsCount) })}</span>
+                </span>
+              ) : (
+                <span className="font-normal text-muted">{t('quality.noRating')}</span>
+              )
+            }
+          />
+          <InfoRow
+            label={t('quality.unanswered')}
+            value={f.num(unanswered)}
+            tone={unanswered > 0 ? 'warn' : undefined}
+          />
+        </dl>
+      </CardBody>
+    </Card>
   );
 }
 
 function SalesTab({ data }: { data: ProductDetailResponse | undefined }) {
   const t = useT('productDetail');
+  const f = useFormat();
   const series = data?.series ?? [];
+  const units = series.reduce((s, p) => s + (Number(p.units) || 0), 0);
   return (
-    <ChartCard title={t('sales.title')} subtitle={t('sales.subtitle')}>
+    <ChartCard
+      icon={<TrendingUp />}
+      tone="brand"
+      title={t('sales.title')}
+      subtitle={t('sales.subtitle')}
+      // Dona pul o'qida chizilsa nolga yopishib qolardi (o'ng o'q hali yo'q) — jami chip sifatida
+      actions={series.length ? <span className="meta-chip tnum">{t('sales.units', { n: f.num(units) })}</span> : undefined}
+    >
       {series.length === 0 ? (
         <EmptyState icon={<TrendingUp className="h-6 w-6" />} title={t('empty.series')} />
       ) : (
@@ -837,7 +1222,6 @@ function SalesTab({ data }: { data: ProductDetailResponse | undefined }) {
           series={[
             { key: 'revenue', name: t('sales.revenue'), money: true, color: CHART_COLORS.info },
             { key: 'profit', name: t('sales.profit'), money: true, color: CHART_COLORS.brand },
-            { key: 'units', name: t('sales.units'), color: CHART_COLORS.warn },
           ]}
         />
       )}
@@ -849,7 +1233,7 @@ function StocksTab({ data }: { data: ProductDetailResponse | undefined }) {
   const t = useT('productDetail');
   const stocks = data?.stocks ?? [];
   return (
-    <ChartCard title={t('stocks.title')} subtitle={t('stocks.subtitle')}>
+    <ChartCard icon={<Layers />} tone="info" title={t('stocks.title')} subtitle={t('stocks.subtitle')}>
       {stocks.length === 0 ? (
         <EmptyState icon={<Layers className="h-6 w-6" />} title={t('empty.stocks')} />
       ) : (
@@ -857,9 +1241,9 @@ function StocksTab({ data }: { data: ProductDetailResponse | undefined }) {
           data={stocks as unknown as Record<string, unknown>[]}
           height={320}
           series={[
-            { key: 'fbo', name: t('stocks.fbo'), color: CHART_COLORS.brand },
-            { key: 'fbs', name: t('stocks.fbs'), color: CHART_COLORS.info },
-            { key: 'own', name: t('stocks.own'), color: CHART_COLORS.violet },
+            { key: 'fbo', name: t('stocks.fbo'), color: CHART_COLORS.info },
+            { key: 'fbs', name: t('stocks.fbs'), color: CHART_COLORS.teal },
+            { key: 'own', name: t('stocks.own'), color: CHART_COLORS.slate },
           ]}
         />
       )}
@@ -880,20 +1264,25 @@ function UnitTab({ data }: { data: ProductDetailResponse | undefined }) {
     );
   }
 
+  /*
+   * Xarajat ranglari butun ilova bo'yicha bir xil (COST_COLORS): komissiya —
+   * binafsha (Uzum oladigan qism), logistika — ko'k, saqlash — pushti, soliq —
+   * sariq, tannarx — kulrang. Ilgari komissiya qizil edi va "zarar" deb o'qilardi.
+   */
   const parts = [
-    { name: t('unit.cogs'), value: Math.max(0, u.purchasePrice), color: CHART_COLORS.slate },
-    { name: t('unit.commission'), value: Math.max(0, u.commission), color: CHART_COLORS.danger },
-    { name: t('unit.logistics'), value: Math.max(0, u.logistics), color: CHART_COLORS.warn },
-    { name: t('unit.storage'), value: Math.max(0, u.storage), color: CHART_COLORS.violet },
-    { name: t('unit.other'), value: Math.max(0, u.otherCost), color: CHART_COLORS.info },
-    { name: t('unit.tax'), value: Math.max(0, u.tax), color: CHART_COLORS.teal },
+    { name: t('unit.cogs'), value: Math.max(0, u.purchasePrice), color: COST_COLORS.cogs },
+    { name: t('unit.commission'), value: Math.max(0, u.commission), color: COST_COLORS.commission },
+    { name: t('unit.logistics'), value: Math.max(0, u.logistics), color: COST_COLORS.logistics },
+    { name: t('unit.storage'), value: Math.max(0, u.storage), color: COST_COLORS.storage },
+    { name: t('unit.other'), value: Math.max(0, u.otherCost), color: COST_COLORS.other },
+    { name: t('unit.tax'), value: Math.max(0, u.tax), color: COST_COLORS.tax },
   ].filter((p) => p.value > 0);
 
   const costTotal = parts.reduce((s, p) => s + p.value, 0);
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <ChartCard title={t('unit.title')} subtitle={t('unit.subtitle')}>
+      <ChartCard icon={<Scale />} tone="violet" title={t('unit.title')} subtitle={t('unit.subtitle')}>
         <DonutChart
           data={parts}
           height={280}
@@ -906,8 +1295,8 @@ function UnitTab({ data }: { data: ProductDetailResponse | undefined }) {
         />
       </ChartCard>
 
-      <Card>
-        <CardHeader title={t('unit.net')} subtitle={t('unit.price')} />
+      <Card tone={u.netProfit < 0 ? 'danger' : 'brand'}>
+        <CardHeader icon={<TrendingUp />} title={t('unit.net')} subtitle={t('unit.price')} />
         <CardBody className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-muted">{t('unit.price')}</span>
@@ -941,14 +1330,34 @@ function UnitTab({ data }: { data: ProductDetailResponse | undefined }) {
                 {f.money(u.netProfit)}
               </span>
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <Metric label={t('info.margin')} value={f.pct(u.margin)} />
-              <Metric label={t('info.roi')} value={f.pct(u.roi)} />
-              <Metric label={t('unit.breakEven')} value={f.money(u.breakEvenPrice)} />
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <MiniStat label={t('info.margin')} value={f.pct(u.margin)} />
+              <MiniStat label={t('info.roi')} value={f.pct(u.roi)} />
+              <MiniStat label={t('unit.breakEven')} value={f.money(u.breakEvenPrice)} />
             </div>
           </div>
         </CardBody>
       </Card>
+    </div>
+  );
+}
+
+/** Ichki statistik plitka (.well) — yorliq va qiymat */
+function MiniStat({ label, value, tone }: { label: string; value: string; tone?: 'brand' | 'warn' }) {
+  return (
+    <div className="well min-w-0 px-3 py-2">
+      <p className="truncate eyebrow" title={label}>
+        {label}
+      </p>
+      <p
+        className={cn(
+          'tnum mt-0.5 truncate text-sm font-bold',
+          tone === 'brand' ? 'text-brand-ink' : tone === 'warn' ? 'text-warn-ink' : 'text-ink',
+        )}
+        title={value}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -973,7 +1382,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       <Card className="xl:col-span-1">
-        <CardHeader title={t('reviews.title')} subtitle={t('reviews.subtitle')} />
+        <CardHeader icon={<Star />} tone="warn" title={t('reviews.title')} subtitle={t('reviews.subtitle')} />
         <CardBody className="space-y-4">
           <div className="flex items-center gap-4">
             <div>
@@ -1007,8 +1416,8 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Metric label={t('reviews.answered')} value={f.num(totals.answered)} tone="brand" />
-            <Metric
+            <MiniStat label={t('reviews.answered')} value={f.num(totals.answered)} tone="brand" />
+            <MiniStat
               label={t('reviews.unanswered')}
               value={f.num(totals.unanswered)}
               tone={totals.unanswered > 0 ? 'warn' : undefined}
@@ -1018,14 +1427,14 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
       </Card>
 
       <Card className="xl:col-span-2">
-        <CardHeader title={t('reviews.latest')} />
+        <CardHeader icon={<MessageSquare />} tone="muted" title={t('reviews.latest')} />
         <CardBody>
           {rows.length === 0 ? (
             <EmptyState icon={<MessageSquare className="h-6 w-6" />} title={t('reviews.empty')} />
           ) : (
             <ul className="space-y-3">
               {rows.slice(0, 8).map((review) => (
-                <li key={review.id} className="rounded-xl border border-line bg-surface-2 p-3.5">
+                <li key={review.id} className="well p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-1">
                       {Array.from({ length: 5 }).map((_, i) => (
@@ -1047,7 +1456,7 @@ function ReviewsTab({ data }: { data: ProductDetailResponse | undefined }) {
                       <p className="mt-0.5 text-xs text-ink-soft">{review.answerText}</p>
                     </div>
                   ) : (
-                    <p className="mt-2 inline-flex items-center gap-1.5 text-2xs text-warn">
+                    <p className="mt-2 inline-flex items-center gap-1.5 text-2xs text-warn-ink">
                       <Undo2 className="h-3 w-3" />
                       {t('reviews.noAnswer')}
                     </p>

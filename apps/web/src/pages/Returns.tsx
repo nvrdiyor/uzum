@@ -1,25 +1,28 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Coins, Download, Percent, Receipt, Undo2 } from '@/components/icons';
-import { eachDay, type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
+import { AlertTriangle, BarChart3, CalendarRange, Coins, Download, Percent, PieChart, Receipt, Undo2 } from '@/components/icons';
+import { type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
-import { ChartCard, DonutChart, SERIES_PALETTE, TrendChart, seriesColor } from '@/components/charts';
+import { CHART_COLORS, ChartCard, DonutChart, TrendChart, seriesColor } from '@/components/charts';
+import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Badge,
   Button,
   Card,
+  CardBody,
+  CardHeader,
   DataTable,
   EmptyState,
   ErrorState,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductCell,
   ProgressBar,
   SearchInput,
   Segmented,
@@ -278,13 +281,19 @@ const STATUS_KEY: Record<string, string> = {
   rejected: 'status.rejected',
 };
 
+/*
+ * Sotuv voronkasi va Oylik hisobot bilan bir xil: qaytarish — qizil (tovar
+ * borib-kelib, logistika puli ketgan haqiqiy yo'qotish), bekor qilish —
+ * za'faron (sotuv bo'lmadi, lekin xarajat ham yo'q). Ilgari qaytarish
+ * sariq, bekor qilish kulrang edi va boshqa sahifalardagidan farq qilardi.
+ */
 const STATUS_TONE: Record<string, Tone> = {
   new: 'info',
   processing: 'info',
   accepted: 'brand',
   completed: 'brand',
-  returned: 'warn',
-  canceled: 'muted',
+  returned: 'danger',
+  canceled: 'warn',
   rejected: 'danger',
 };
 
@@ -379,24 +388,27 @@ export default function Returns() {
     }
   };
 
+  /*
+   * Jadval 1366px ga sig'ishi uchun: nom ikki qatorda, buyurtma kodi nom
+   * ostida (qidiruv uni topadi), "Turi" ustuni esa faqat "Hammasi" tabida —
+   * bitta turdagi ro'yxatda u har qatorda bir xil nishonni takrorlardi va
+   * "Sana" ustunini ekrandan chiqarib yuborardi.
+   */
   const columns: Column<ReturnRow>[] = useMemo(
     () => [
       {
         key: 'product',
         header: t('col.product'),
-        width: '30%',
         render: (r) => (
-          <ProductCell title={r.title ?? r.sku ?? '—'} subtitle={r.sku ?? undefined} imageUrl={r.imageUrl} />
+          <ProductTitleCell
+            title={r.title ?? r.sku ?? '—'}
+            subtitle={[r.sku, r.orderCode].filter(Boolean).join(' · ') || undefined}
+            imageUrl={r.imageUrl}
+            maxWidth={250}
+          />
         ),
         sortable: true,
         sortValue: (r) => r.title ?? r.sku ?? '',
-      },
-      {
-        key: 'order',
-        header: t('col.order'),
-        hideOnMobile: true,
-        render: (r) => <span className="tnum text-muted">{r.orderCode ?? '—'}</span>,
-        sortValue: (r) => r.orderCode ?? '',
       },
       {
         key: 'qty',
@@ -418,33 +430,37 @@ export default function Returns() {
         key: 'reason',
         header: t('col.reason'),
         render: (r) => (
-          <span className="line-clamp-2 max-w-[220px] text-sm text-ink-soft" title={r.reason ?? undefined}>
+          <span className="line-clamp-2 max-w-[200px] text-sm text-ink-soft" title={r.reason ?? undefined}>
             {reasonLabel(r.reason)}
           </span>
         ),
         sortValue: (r) => r.reason ?? '',
       },
-      {
-        key: 'status',
-        header: t('col.kind'),
-        render: (r) => (
-          <Badge tone={STATUS_TONE[r.status] ?? 'muted'} dot>
-            {STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
-          </Badge>
-        ),
-        sortValue: (r) => r.status,
-      },
+      ...(kind === 'all'
+        ? [
+            {
+              key: 'status',
+              header: t('col.kind'),
+              render: (r: ReturnRow) => (
+                <Badge tone={STATUS_TONE[r.status] ?? 'muted'} dot>
+                  {STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
+                </Badge>
+              ),
+              sortValue: (r: ReturnRow) => r.status,
+            },
+          ]
+        : []),
       {
         key: 'date',
         header: t('col.date'),
         align: 'right',
         hideOnMobile: true,
-        render: (r) => <span className="tnum text-muted">{f.date(r.returnedAt)}</span>,
+        render: (r) => <span className="tnum whitespace-nowrap text-muted">{f.date(r.returnedAt)}</span>,
         sortable: true,
         sortValue: (r) => r.returnedAt,
       },
     ],
-    [t, f],
+    [t, f, kind],
   );
 
   const pageQty = rows.reduce((s, r) => s + r.qty, 0);
@@ -457,6 +473,15 @@ export default function Returns() {
         title={t('title')}
         description={t('subtitle')}
         badge={<PreviewBadge feature="returns_report" />}
+        meta={
+          <>
+            <span className="meta-chip tnum">
+              <CalendarRange className="h-3.5 w-3.5" />
+              {f.date(q.from)} — {f.date(q.to)}
+            </span>
+            <DataFreshness />
+          </>
+        }
         actions={
           <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={onExport}>
             Excel
@@ -491,6 +516,12 @@ export default function Returns() {
       <PlanGate feature="returns_report">
         <div className="space-y-5">
           <p className="-mt-1 text-sm text-muted">{t(`kind.${kind}Hint`)}</p>
+          {/*
+            Ohanglar ma'no bo'yicha: qaytgan summa — haqiqiy yo'qotish (qizil),
+            bekor qilingani esa sotilmay qolgan pul, xarajatsiz (za'faron).
+            Ulush Oylik hisobotdagi zonalar bilan: 5% gacha — firuza, 10% gacha —
+            za'faron, undan yuqori — qizil.
+          */}
           <StatGrid>
             <StatCard
               label={tk('kpi.count')}
@@ -505,7 +536,7 @@ export default function Returns() {
               value={f.money(totals.amount)}
               hint={tk('kpi.amountHint')}
               icon={<Coins className="h-5 w-5" />}
-              tone="danger"
+              tone={kind === 'canceled' ? 'warn' : 'danger'}
               loading={isLoading}
             />
             <StatCard
@@ -513,7 +544,7 @@ export default function Returns() {
               value={f.pct(totals.rate)}
               hint={tk('kpi.rateHint')}
               icon={<Percent className="h-5 w-5" />}
-              tone={totals.rate >= 10 ? 'danger' : 'info'}
+              tone={totals.rate >= 10 ? 'danger' : totals.rate >= 5 ? 'warn' : 'brand'}
               loading={isLoading}
             />
             <StatCard
@@ -521,7 +552,7 @@ export default function Returns() {
               value={f.money(avgValue)}
               hint={t('kpi.avgHint')}
               icon={<Receipt className="h-5 w-5" />}
-              tone="violet"
+              tone="info"
               loading={isLoading}
             />
           </StatGrid>
@@ -533,7 +564,12 @@ export default function Returns() {
           ) : (
             <>
               <div className="grid gap-4 grid-cols-1 xl:grid-cols-3">
-                <ChartCard title={t('chart.reasons')} subtitle={tk('chart.reasonsSub')} className="xl:col-span-1">
+                <ChartCard
+                  title={t('chart.reasons')}
+                  subtitle={tk('chart.reasonsSub')}
+                  icon={<PieChart />}
+                  className="xl:col-span-1"
+                >
                   {isLoading ? (
                     <div className="skeleton h-[260px] w-full" />
                   ) : donut.length ? (
@@ -561,7 +597,16 @@ export default function Returns() {
                               </span>
                               <span className="tnum shrink-0 text-sm font-semibold text-ink">{f.pct(r.share)}</span>
                             </div>
-                            <ProgressBar value={r.share} tone="brand" />
+                            {/*
+                              Chiziq donutdagi bo'lak rangida — ilgari hammasi yashil edi
+                              va qaytarish sababi "yaxshi" narsadek ko'rinardi.
+                            */}
+                            <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+                              <div
+                                className="h-full origin-left animate-grow-x rounded-full"
+                                style={{ width: `${Math.min(100, r.share)}%`, background: seriesColor(i) }}
+                              />
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -571,14 +616,26 @@ export default function Returns() {
                   )}
                 </ChartCard>
 
-                <ChartCard title={t('chart.dynamics')} subtitle={tk('chart.dynamicsSub')} className="xl:col-span-2">
+                <ChartCard
+                  title={t('chart.dynamics')}
+                  subtitle={tk('chart.dynamicsSub')}
+                  icon={<BarChart3 />}
+                  className="xl:col-span-2"
+                >
                   {isLoading ? (
                     <div className="skeleton h-[300px] w-full" />
                   ) : (
                     <TrendChart
                       data={daily}
                       xKey="date"
-                      series={[{ key: 'qty', name: tk('chart.count') }]}
+                      // Rang turga qarab: qaytarish — qizil, bekor qilish — za'faron (holat nishonlari bilan bir xil)
+                      series={[
+                        {
+                          key: 'qty',
+                          name: tk('chart.count'),
+                          color: kind === 'canceled' ? CHART_COLORS.warn : CHART_COLORS.danger,
+                        },
+                      ]}
                       showLegend={false}
                       height={300}
                       variant="bars"
@@ -587,43 +644,55 @@ export default function Returns() {
                 </ChartCard>
               </div>
 
+              {/*
+                Ogohlantirish — za'faron ohangli oddiy kartochka (aksent chiziq
+                va belgi). Ilgari butun kartochka sariq fonga bo'yalgan edi va
+                ichidagi plitkalar fon bilan qo'shilib ketardi.
+              */}
               {kind === 'returned' && topRisky.length ? (
-                <Card className="border-warn/30 bg-warn/5 p-5">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn-ink">
-                      <AlertTriangle className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="section-title">{t('alert.title')}</h3>
-                      <p className="mt-0.5 text-sm text-muted">{t('alert.hint')}</p>
-                    </div>
-                  </div>
-                  <ul className="mt-4 grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-                    {topRisky.map((p) => (
-                      <li key={p.key} className="rounded-xl border border-line bg-surface p-3">
-                        <ProductCell title={p.title} subtitle={p.sku ?? undefined} imageUrl={p.imageUrl} size={34} />
-                        <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                          <span className="text-muted">
-                            {f.num(p.qty)} {t('common.units')} · {f.money(p.amount)}
-                          </span>
-                          <span className={cn('tnum font-semibold', p.share >= 25 ? 'text-danger' : 'text-warn-ink')}>
-                            {f.pct(p.share)} {t('alert.share')}
-                          </span>
-                        </div>
-                        <ProgressBar className="mt-2" value={p.share} tone={p.share >= 25 ? 'danger' : 'warn'} />
-                      </li>
-                    ))}
-                  </ul>
+                <Card tone="warn">
+                  <CardHeader
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                    title={t('alert.title')}
+                    subtitle={t('alert.hint')}
+                  />
+                  <CardBody>
+                    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                      {topRisky.map((p) => (
+                        <li key={p.key} className="well p-3">
+                          <ProductTitleCell
+                            title={p.title ?? p.sku ?? '—'}
+                            subtitle={p.sku ?? undefined}
+                            imageUrl={p.imageUrl}
+                            size={34}
+                            maxWidth={240}
+                          />
+                          <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                            <span className="tnum text-muted">
+                              {f.num(p.qty)} {t('common.units')} · {f.money(p.amount)}
+                            </span>
+                            <span className={cn('tnum font-semibold', p.share >= 25 ? 'text-danger-ink' : 'text-warn-ink')}>
+                              {f.pct(p.share)} {t('alert.share')}
+                            </span>
+                          </div>
+                          <ProgressBar className="mt-2" value={p.share} tone={p.share >= 25 ? 'danger' : 'warn'} />
+                        </li>
+                      ))}
+                    </ul>
+                  </CardBody>
                 </Card>
               ) : null}
 
               <Card>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-                  <h3 className="section-title">{tk('table.title')}</h3>
-                  <p className="text-sm text-muted">
-                    {f.num(data?.rows.total ?? 0)} {t('common.rows')}
-                  </p>
-                </div>
+                <CardHeader
+                  icon={<Undo2 className="h-4 w-4" />}
+                  title={tk('table.title')}
+                  actions={
+                    <span className="meta-chip tnum">
+                      {f.num(data?.rows.total ?? 0)} {t('common.rows')}
+                    </span>
+                  }
+                />
                 <div className="mt-4">
                   <DataTable
                     columns={columns}
@@ -645,12 +714,12 @@ export default function Returns() {
                     footer={
                       rows.length ? (
                         <>
-                          <td className="px-4 py-3 eyebrow-lg" colSpan={2}>
-                            {t('table.pageTotal')}
-                          </td>
-                          <td className="tnum px-4 py-3 text-right">{f.num(pageQty)}</td>
-                          <td className="tnum px-4 py-3 text-right">{f.money(pageAmount)}</td>
-                          <td className="px-4 py-3" colSpan={3} />
+                          <td className="px-5 py-3 eyebrow-lg">{t('table.pageTotal')}</td>
+                          <td className="tnum px-5 py-3 text-right">{f.num(pageQty)}</td>
+                          {/* nowrap: summa "so'm" bilan ikki qatorga sinmasin */}
+                          <td className="tnum whitespace-nowrap px-5 py-3 text-right">{f.money(pageAmount)}</td>
+                          {/* Sabab (+ "Hammasi" tabida Turi) va Sana */}
+                          <td className="px-5 py-3" colSpan={kind === 'all' ? 3 : 2} />
                         </>
                       ) : undefined
                     }
