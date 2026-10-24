@@ -47,9 +47,10 @@ router.use(requireAuth, requireCompany, requireFeature('planner'));
 /** Zaxira davri chegaralari (kun) — saytdagi slayder bilan bir xil */
 const COVER_MIN = 7;
 const COVER_MAX = 90;
-const DEFAULT_COVER = 30;
+// Eksport: Boshqaruv panelidagi "Bugun nima qilish kerak" (routes/today.ts) aynan shu qiymatlar bilan hisoblaydi
+export const DEFAULT_COVER = 30;
 /** Yetkazib berish muddati (kun) — buyurtma berilgandan omborga tushgunga qadar */
-const DEFAULT_LEAD = 7;
+export const DEFAULT_LEAD = 7;
 /**
  * Ehtiyot zaxirasi (kun): buyurtma kuni shuncha oldinga suriladi. Sotuv bir
  * tekis emas — bir kunda 3 ta, keyin ikki kun yo'q; yetkazma ham kechikadi.
@@ -63,8 +64,8 @@ const MAX_ROWS = 1000;
 const BOX_VOLUME_L = 60;
 const BOX_UNITS = 20;
 
-const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
-const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0 };
+export const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
+export const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0 };
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
@@ -93,7 +94,7 @@ function leadParam(value: string | number | undefined): number {
  * bo'lishi mumkin, shuning uchun ular qo'shilmaydi — kattasi olinadi.
  * Qoralamalar (draft) kirmaydi: ular hali jo'natilmagan.
  */
-async function getInbound(companyId: string, storeIds: string[]): Promise<Map<string, number>> {
+export async function getInbound(companyId: string, storeIds: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (storeIds.length === 0) return out;
   const items = await prisma.shipmentItem.findMany({
@@ -135,7 +136,7 @@ const STATUS_RANK: Record<PlannerRow['status'], number> = {
   no_action: 3,
 };
 
-interface PlanInput {
+export interface PlanInput {
   info: SkuInfo;
   stock: StockInfo;
   inbound: number;
@@ -146,8 +147,8 @@ interface PlanInput {
   today: Date;
 }
 
-/** Bitta SKU uchun reja qatori */
-function buildRow(inp: PlanInput): PlannerRow {
+/** Bitta SKU uchun reja qatori (eksport: routes/today.ts ham "yo'qotiladigan tushum"ni shundan oladi) */
+export function buildRow(inp: PlanInput): PlannerRow {
   const { info, demand, lead } = inp;
   const rate = demand.rate;
   const supply = inp.stock.total + inp.inbound;

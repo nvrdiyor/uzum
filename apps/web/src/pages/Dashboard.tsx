@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart3,
   Coins,
@@ -19,7 +19,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
-import { ChartCard, TrendChart, type SeriesDef } from '@/components/charts';
+import { ChartCard, TrendChart, type CompareDef, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import {
   Button,
@@ -35,6 +35,7 @@ import {
 } from '@/components/ui';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { CostCoverage } from '@/components/trust/CostCoverage';
+import { ComparePeriodChip } from '@/components/trust/ComparePeriod';
 import { MoneyFlow } from '@/components/dashboard/MoneyFlow';
 import { InsightsBlock } from '@/components/dashboard/InsightsBlock';
 import { MarginRoiCard, PayoutsCard, StockValueCard } from '@/components/dashboard/SummaryRow';
@@ -44,6 +45,11 @@ import { TopProductsCard } from '@/components/dashboard/TopProductsCard';
 import { ProfitRankList, type ProfitRankRow } from '@/components/dashboard/ProfitRankList';
 import { MarginMap } from '@/components/dashboard/MarginMap';
 import { splitProductName } from '@/components/dashboard/productName';
+import { TodayTasks } from '@/components/dashboard/TodayTasks';
+import { TODAY_QUERY_KEY } from '@/components/dashboard/today/useToday';
+import { GoalsCard } from '@/components/dashboard/GoalsCard';
+import { GOALS_QUERY_KEY } from '@/components/dashboard/goals/useGoals';
+import { RETURNS_QUERY_KEY, ReturnsCard } from '@/components/dashboard/ReturnsCard';
 import { cn } from '@/lib/utils';
 
 registerNamespace('dashboard', {
@@ -79,7 +85,6 @@ registerNamespace('dashboard', {
     'margin.margin': 'Marja',
     'margin.roi': 'ROI',
     'margin.buyout': 'Sotib olish darajasi',
-    'margin.returns': 'Qaytarishlar',
 
     'stock.title': 'Qoldiq qiymati',
     'stock.subtitle': 'Omborlardagi tovar bahosi',
@@ -89,8 +94,8 @@ registerNamespace('dashboard', {
     'stock.pcs': 'dona',
     'stock.hint': 'Qiymat tannarx bo‘yicha hisoblangan — bu muzlatilgan kapital.',
 
-    'insights.title': 'Tavsiyalar',
-    'insights.subtitle': 'Ma’lumotlaringiz asosida topilgan muhim nuqtalar',
+    'insights.title': 'Davr xulosalari',
+    'insights.subtitle': 'Tanlangan davrda nima bo‘ldi — raqamlar bilan',
     'insights.count': '{n} ta',
     'insights.view': 'Ko‘rish',
     'insights.empty': 'Hammasi joyida',
@@ -120,6 +125,8 @@ registerNamespace('dashboard', {
     'chart.title': 'Dinamika',
     'chart.subtitle': 'Kunlik ko‘rsatkichlar',
     'chart.empty': 'Grafik uchun ma’lumot yetarli emas',
+    'chart.prev': 'O‘tgan davr',
+    'chart.prevRevenue': 'O‘tgan davr tushumi',
     'metric.revenue': 'Tushum',
     'metric.profit': 'Sof foyda',
     'metric.orders': 'Buyurtmalar',
@@ -193,7 +200,6 @@ registerNamespace('dashboard', {
     'margin.margin': 'Маржа',
     'margin.roi': 'ROI',
     'margin.buyout': 'Процент выкупа',
-    'margin.returns': 'Возвраты',
 
     'stock.title': 'Стоимость остатков',
     'stock.subtitle': 'Товар на складах',
@@ -203,8 +209,8 @@ registerNamespace('dashboard', {
     'stock.pcs': 'шт.',
     'stock.hint': 'Стоимость по себестоимости — это замороженный капитал.',
 
-    'insights.title': 'Рекомендации',
-    'insights.subtitle': 'Важное, найденное по вашим данным',
+    'insights.title': 'Итоги периода',
+    'insights.subtitle': 'Что произошло за выбранный период — в цифрах',
     'insights.count': '{n} шт.',
     'insights.view': 'Смотреть',
     'insights.empty': 'Всё в порядке',
@@ -234,6 +240,8 @@ registerNamespace('dashboard', {
     'chart.title': 'Динамика',
     'chart.subtitle': 'Показатели по дням',
     'chart.empty': 'Недостаточно данных для графика',
+    'chart.prev': 'Прошлый период',
+    'chart.prevRevenue': 'Выручка прошлого периода',
     'metric.revenue': 'Выручка',
     'metric.profit': 'Чистая прибыль',
     'metric.orders': 'Заказы',
@@ -307,7 +315,6 @@ registerNamespace('dashboard', {
     'margin.margin': 'Margin',
     'margin.roi': 'ROI',
     'margin.buyout': 'Buyout rate',
-    'margin.returns': 'Returns',
 
     'stock.title': 'Stock value',
     'stock.subtitle': 'Goods sitting in warehouses',
@@ -317,8 +324,8 @@ registerNamespace('dashboard', {
     'stock.pcs': 'units',
     'stock.hint': 'Valued at cost price — this is your frozen capital.',
 
-    'insights.title': 'Insights',
-    'insights.subtitle': 'What your data is telling you right now',
+    'insights.title': 'Period summary',
+    'insights.subtitle': 'What happened in the selected period — in numbers',
     'insights.count': '{n}',
     'insights.view': 'View',
     'insights.empty': 'All good',
@@ -348,6 +355,8 @@ registerNamespace('dashboard', {
     'chart.title': 'Trend',
     'chart.subtitle': 'Daily performance',
     'chart.empty': 'Not enough data to draw a chart',
+    'chart.prev': 'Previous period',
+    'chart.prevRevenue': 'Previous period revenue',
     'metric.revenue': 'Revenue',
     'metric.profit': 'Net profit',
     'metric.orders': 'Orders',
@@ -420,6 +429,15 @@ export default function Dashboard() {
     queryFn: () => api.get<DashboardResponse>('/analytics/dashboard', q),
   });
 
+  // Vazifalar, maqsadlar va qaytarish kartasi o'z so'rovlari bilan — "Yangilash" ularni ham yangilasin
+  const qc = useQueryClient();
+  const refreshAll = () => {
+    void refetch();
+    for (const key of [TODAY_QUERY_KEY, GOALS_QUERY_KEY, RETURNS_QUERY_KEY]) {
+      void qc.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
   const points = data?.series ?? [];
 
   const chartData = useMemo(
@@ -489,6 +507,23 @@ export default function Dashboard() {
     return [{ key: 'units', name: t('metric.units'), color: CHART_COLORS.info }];
   }, [metric, t]);
 
+  /*
+   * Oldingi teng davr — tanlangan ko'rsatkich bo'yicha uzuq chiziq. Server
+   * uni joriy seriya bilan bir ta'rifda beradi (foyda davr xarajatlaridan
+   * keyin), jami esa KPI'dagi "oldingi" bilan teng. Tarix yetmasa null —
+   * chiziq chizilmaydi, nol chiziq "o'sish" deb o'qilmasin.
+   */
+  const compare = useMemo<CompareDef | null>(() => {
+    const prev = data?.previousSeries;
+    if (!prev?.length) return null;
+    return {
+      rows: prev.map((p) => ({ date: p.date, revenue: p.revenue, profit: p.profit, orders: p.orders, units: p.units })),
+      key: metric,
+      // "Tushum" rejimida grafikda foyda ham bor — chiziq qaysi biri ekani nomida
+      name: metric === 'revenue' ? t('chart.prevRevenue') : t('chart.prev'),
+    };
+  }, [data?.previousSeries, metric, t]);
+
   const header = (
     <PageHeader
       icon={<LayoutDashboard className="h-5 w-5" />}
@@ -501,10 +536,11 @@ export default function Dashboard() {
         <>
           <DataFreshness />
           <CostCoverage />
+          {data?.comparePeriod ? <ComparePeriodChip period={data.comparePeriod} /> : null}
         </>
       }
       actions={
-        <IconButton label={t('refresh')} onClick={() => void refetch()} disabled={isFetching}>
+        <IconButton label={t('refresh')} onClick={refreshAll} disabled={isFetching}>
           <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
         </IconButton>
       }
@@ -524,6 +560,11 @@ export default function Dashboard() {
               <Skeleton className="h-[190px] w-full rounded-2xl" />
               <Skeleton className="h-[190px] w-full rounded-2xl" />
             </div>
+          </div>
+          {/* Bugungi vazifalar va oylik maqsadlar qatori */}
+          <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
+            <Skeleton className="h-[372px] w-full rounded-2xl xl:col-span-2" />
+            <Skeleton className="h-[372px] w-full rounded-2xl" />
           </div>
           <InsightsBlock items={[]} loading />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
@@ -672,15 +713,24 @@ export default function Dashboard() {
         </div>
 
         {/*
-          2. Tavsiyalar — pul ko'rsatkichlaridan keyinoq, birinchi ekranda.
-          Ilgari ular uchinchi qatorda, 1366×768 ekranda ikkinchi sahifada edi.
+          2. Bugun nima qilish kerak (2/3) va oylik maqsadlar (1/3) — birinchi
+          ekranda. Ikkalasi ham davr tanlagichiga bog'liq emas: vazifalar bugungi
+          kun uchun, maqsadlar joriy oy uchun.
         */}
+        <PlanGate feature="dashboard_realtime">
+          <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
+            <TodayTasks className="xl:col-span-2" />
+            <GoalsCard />
+          </div>
+        </PlanGate>
+
+        {/* 3. Davr xulosalari — tanlangan davrda nima bo'ldi (vazifalardan farqli, davrga bog'liq) */}
         <PlanGate feature="dashboard_realtime">
           <InsightsBlock items={data.insights} />
         </PlanGate>
 
         {/*
-          3. To'lovlar / marja va ROI / qoldiq qiymati. 1024px da uchta ustun
+          4. To'lovlar / marja va ROI / qoldiq qiymati. 1024px da uchta ustun
           ~230px bo'lib qolardi — o'rtada ikki ustun, uchinchisi butun qator.
         */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
@@ -689,7 +739,7 @@ export default function Dashboard() {
           <StockValueCard data={data} className="md:col-span-2 xl:col-span-1" />
         </div>
 
-        {/* 4. Asosiy grafik */}
+        {/* 5. Asosiy grafik — oldingi teng davr uzuq chiziq bilan */}
         <ChartCard
           icon={<BarChart3 />}
           title={t('chart.title')}
@@ -709,7 +759,7 @@ export default function Dashboard() {
           }
         >
           {chartData.length > 1 ? (
-            <TrendChart data={chartData} series={chartSeries} height={320} variant="bars" />
+            <TrendChart data={chartData} series={chartSeries} height={320} variant="bars" compare={compare} />
           ) : (
             <EmptyState
               className="py-16"
@@ -720,7 +770,7 @@ export default function Dashboard() {
           )}
         </ChartCard>
 
-        {/* 5. Qaysi tovar foyda keltiryapti va marja xaritasi */}
+        {/* 6. Qaysi tovar foyda keltiryapti va marja xaritasi */}
         <div className="grid gap-4 xl:grid-cols-2 xl:gap-5">
           <ChartCard icon={<Coins />} title={t('ptop.title')} subtitle={t('ptop.subtitle')}>
             {topByProfit.length > 0 ? (
@@ -743,19 +793,19 @@ export default function Dashboard() {
         </div>
 
         {/*
-          6. Xarajatlar (2/3) va do'konlar (1/3) — ustunlar tepadagi uchlik
-          qator bilan bir chiziqda. Bitta do'konda — faqat xarajatlar, butun kenglikda.
+          7. Xarajatlar (2/3), o'ngda qaytarish va bekor qilish kartasi va (bir
+          nechta do'kon bo'lsa) do'konlar — ustunlar tepadagi uchlik qator bilan
+          bir chiziqda.
         */}
-        {showStores ? (
-          <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
-            <ExpensesCard data={data} className="xl:col-span-2" />
-            <StoresCard data={data} />
+        <div className="grid gap-4 xl:grid-cols-3 xl:gap-5">
+          <ExpensesCard data={data} className="xl:col-span-2" />
+          <div className="grid content-start gap-4 xl:gap-5">
+            <ReturnsCard />
+            {showStores ? <StoresCard data={data} /> : null}
           </div>
-        ) : (
-          <ExpensesCard data={data} wide />
-        )}
+        </div>
 
-        {/* 7. Top mahsulotlar */}
+        {/* 8. Top mahsulotlar */}
         <TopProductsCard rows={data.topProducts} />
       </div>
     </>

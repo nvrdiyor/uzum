@@ -246,6 +246,18 @@ export interface DashboardResponse {
     periodOnly: number;
   };
   series: TimeSeriesPoint[];
+  /**
+   * Oldingi teng davr kunma-kun, `series` bilan o'sha ta'rifda (foyda davr
+   * xarajatlaridan keyin). Indeks bo'yicha tekislangan: i-nuqta joriy davrning
+   * i-kuniga to'g'ri keladi, `date` — oldingi davrdagi haqiqiy sana. Joriy
+   * seriya bugun bilan tugasa ham bu davrning to'liq uzunligida — yig'indisi
+   * KPI'lardagi `previous` bilan teng. Oldingi davr saqlangan tarixdan (tarif
+   * chuqurligi, birinchi sinxron) tashqarida bo'lsa null: nol chiziq "o'sish"
+   * deb o'qilmasin.
+   */
+  previousSeries?: TimeSeriesPoint[] | null;
+  /** `previousSeries` qaysi kunlar (= KPI o'zgarishlari qaysi davrga nisbatan); taqqoslab bo'lmasa null */
+  comparePeriod?: Period | null;
   storesBreakdown: { storeId: string; title: string; revenue: number; orders: number }[];
   topProducts: TopProductRow[];
   insights: Insight[];
@@ -906,6 +918,13 @@ export interface FinanceResponse {
   expensesTotal: number;
   taxAmount: number;
   daily: { date: string; revenue: number; expenses: number; profit: number }[];
+  /**
+   * Oldingi teng davr kunma-kun, `daily` bilan o'sha ta'rifda va indeks bo'yicha
+   * tekislangan (DashboardResponse.previousSeries kabi). Tarix yetmasa null.
+   */
+  previousDaily?: { date: string; revenue: number; expenses: number; profit: number }[] | null;
+  /** `previousDaily` qaysi kunlar; taqqoslab bo'lmasa null */
+  comparePeriod?: Period | null;
   balance: {
     /** Yetkazilgan buyurtmalar bo'yicha to'lovga tayyor summa */
     paidOut: number;
@@ -1415,7 +1434,10 @@ export interface ReturnRow {
   /** `kind` bilan bir xil — eski mijozlar uchun qoldirilgan */
   status: string;
   kind: ReturnKind;
+  /** Taxminiy qaytish sanasi (Uzum aniq sanani bermaydi); bo'lmasa buyurtma kuni */
   returnedAt: string;
+  /** Buyurtma kuni, YYYY-MM-DD — davr va jadval tartibi shu bo'yicha */
+  orderedAt: string;
 }
 
 export interface ReturnsResponse {
@@ -2089,4 +2111,214 @@ export interface CardDetailResponse {
   /** Server hisoblagan joriy ball (sayt matn o'zgarganda o'zi qayta hisoblaydi) */
   audit: CardAuditResult;
   impact: CardImpact | null;
+}
+
+// ─────────────────────────── Oylik maqsadlar (Boshqaruv paneli) ───────────────────────────
+
+/**
+ * Oy natijasi — Boshqaruv panelidagi raqamlar bilan AYNAN bir xil ta'rif:
+ * sof foyda davr xarajatlaridan keyin, marja = sof foyda ÷ tushum, dona —
+ * bekor qilinmagan va qaytmagan sotuv (panelning `unitsSold`i).
+ */
+export interface GoalMetrics {
+  revenue: number;
+  netProfit: number;
+  units: number;
+  /** Foizda, 2 xona (18.42) */
+  marginPct: number;
+}
+
+/** Maqsad yoki taklif; `null` — bu ko'rsatkich kuzatilmaydi */
+export interface GoalTargets {
+  revenue: number | null;
+  netProfit: number | null;
+  units: number | null;
+  marginPct: number | null;
+}
+
+/** GET /dashboard/goals */
+export interface GoalsResponse {
+  /** 'YYYY-MM' — Toshkent kalendari bo'yicha joriy oy */
+  month: string;
+  /** Oyning nechanchi kuni (sarlavhadagi "24-kun / 31") */
+  dayOfMonth: number;
+  daysInMonth: number;
+  /**
+   * Oy boshidan o'tgan vaqt KASR kunlarda (24-kuni soat 10:00 da 23.42; kamida 1).
+   * Sur'at belgisi, prognoz va "kuniga kerak" shu bilan hisoblanadi.
+   */
+  elapsedDays: number;
+  currency: string;
+  actual: GoalMetrics;
+  /** Saqlangan maqsad (CompanySetting 'goals:YYYY-MM'); saqlanmagan bo'lsa null */
+  target: GoalTargets | null;
+  /**
+   * O'tgan oy × 1,1 (marja — o'tgan oyniki, chegara sifatida). O'tgan oyda
+   * sotuv bo'lmasa null; o'tgan oy zarar bo'lsa sof foyda va marja taklifi null.
+   */
+  suggested: GoalTargets | null;
+  lastMonth: GoalMetrics | null;
+  /**
+   * Oy oxiri prognozi. Tushum va dona — o'tgan kunlar sur'ati bo'yicha chiziqli;
+   * sof foyda — tovarlar foydasi sur'ati minus kutilayotgan davr xarajatlari.
+   */
+  forecast: { revenue: number; netProfit: number; units: number };
+  /**
+   * Qolgan kunlarda kuniga qancha kerak (maqsadga yetilgan bo'lsa 0; oxirgi
+   * kuni — butun qoldiq). Maqsad saqlanmagan bo'lsa null, saqlanmagan
+   * ko'rsatkich uchun ham null. Sof foydada hali tushmagan kutilgan davr
+   * xarajati ham hisobga olingan.
+   */
+  needPerDay: { revenue: number | null; netProfit: number | null; units: number | null } | null;
+  /** 'company' — do'kon filtri tanlangan bo'lsa ham hisob barcha do'konlar bo'yicha */
+  scope: 'company' | 'store';
+}
+
+/** PUT /dashboard/goals — berilmagan yoki null kalit shu maqsadni olib tashlaydi */
+export interface GoalsUpdateRequest {
+  month: string;
+  revenue?: number | null;
+  netProfit?: number | null;
+  units?: number | null;
+  marginPct?: number | null;
+}
+
+/** PUT /dashboard/goals javobi; hamma maqsad olib tashlansa target null */
+export interface GoalsUpdateResponse {
+  month: string;
+  target: GoalTargets | null;
+}
+
+// ─────────────────────────── Bugun nima qilish kerak (Boshqaruv paneli) ───────────────────────────
+
+/**
+ * Vazifa turi — har biri bitta tekshiruv (apps/api routes/today.ts):
+ *  loss    — da'vo yuborilmagan yo'qotish (Uzum qoplashi kerak bo'lgan pul);
+ *  review  — javobsiz salbiy (≤ 3★) sharh, oxirgi 30 kun;
+ *  cost    — 30 kunda sotilgan, lekin tannarxi kiritilmagan SKU;
+ *  fbs     — sotuvchi yig'ishi kerak bo'lgan yangi FBS/DBS buyurtma;
+ *  stock   — bugun buyurtma berilsa ham tovar kelguncha tugaydigan qoldiq;
+ *  storage — pullik saqlash haftadan haftaga o'sdi.
+ */
+export type TodayTaskKind = 'loss' | 'review' | 'cost' | 'fbs' | 'stock' | 'storage';
+export type TodayTaskLevel = 'danger' | 'warn' | 'info';
+
+export interface TodayTask {
+  /**
+   * Qator kaliti: bitta obyekt — "loss:<id>", "review:<id>", "cost:<skuId>",
+   * "fbs:<orderId>", "stock:<skuId>", "storage:<YYYY-Www>"; bir turdagi bir
+   * nechta obyekt bitta qatorga yig'ilganda — "<kind>:*".
+   */
+  key: string;
+  kind: TodayTaskKind;
+  level: TodayTaskLevel;
+  /** O'zbekcha matn (sayt uch tilda `kind` + `params` dan o'zi yasaydi) */
+  title: string;
+  body: string;
+  /** Xavf ostidagi pul, so'm. Halol raqam bo'lmasa (sharh) — null, hech qachon taxmin qilinmaydi */
+  amount: number | null;
+  link: string;
+  cta: string;
+  /** Tarifda bu bo'lim faqat ko'rish uchun ochiq ('preview') yoki yopiq */
+  locked?: boolean;
+  /** Qatordagi obyektlar soni (bitta obyekt — 1) */
+  count: number;
+  /** "Bajarildi" / "Keyinroq" shu obyekt kalitlariga yoziladi (guruhda — har biriga) */
+  keys: string[];
+  /** Matnni tilga moslash uchun xom qiymatlar (son, ISO sana, SKU kodi) */
+  params: Record<string, string | number>;
+}
+
+/** Ishga tushgan va hech narsa topmagan tekshiruv — "Hammasi nazoratda" ro'yxati uchun */
+export interface TodayCheck {
+  kind: TodayTaskKind;
+  label: string;
+}
+
+/** GET /dashboard/today — davr tanlagichiga bog'liq emas, "bugun" — Toshkent savdo kuni */
+export interface TodayResponse {
+  /** Toshkent savdo kuni, YYYY-MM-DD */
+  date: string;
+  items: TodayTask[];
+  cleared: TodayCheck[];
+  /**
+   * Uzum bugun jadval bo'yicha o'tkazgan to'lov — sinxron uni allaqachon qayd
+   * etgan bo'lsa (PayoutRecord). Bugun to'lov kuni bo'lmasa yoki hali qayd
+   * etilmagan bo'lsa null. Vazifa emas, faqat kontekst.
+   */
+  payoutToday: number | null;
+  /** Foydalanuvchi "Bajarildi" yoki "Keyinroq" deb yashirgan obyektlar soni */
+  hidden: number;
+}
+
+export type TodayAction = 'done' | 'snooze' | 'reset';
+
+/** PATCH /dashboard/today/:key — `keys` berilsa amal har biriga (guruh qatori) */
+export interface TodayActionRequest {
+  action: TodayAction;
+  keys?: string[];
+}
+
+export interface TodayActionResponse {
+  action: TodayAction;
+  keys: string[];
+  /** 'snooze' — qachongacha yashiriladi (keyingi Toshkent kunining boshi, ISO) */
+  snoozeUntil: string | null;
+}
+
+// ─────────────────────────── Qaytarish va bekor qilish (Boshqaruv paneli) ───────────────────────────
+
+/**
+ * Davr bo'yicha qaytarish va bekor qilish xulosasi — YAGONA ta'rif
+ * (apps/api services/returns.ts `summarizeReturns`). Boshqaruv panelidagi
+ * karta, "Qaytarishlar" sahifasi jamlari va Sotuv voronkasidagi qaytgan /
+ * bekor qilingan dona va summa shu bilan bir xil chiqadi:
+ *  • davr — BUYURTMA sanasi bo'yicha (Uzum qaytarish sanasini bermaydi);
+ *  • qaytarish ulushi = qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona);
+ *  • bekor qilish ulushi = bekor qilingan dona ÷ buyurtma qilingan barcha dona;
+ *  • summa — sotuv narxi × dona, so'm.
+ */
+export interface ReturnsSummary {
+  /** Xaridor qabul qilgan dona — qaytarish ulushining asosi (yo'ldagilar kirmaydi) */
+  soldUnits: number;
+  /** Davrda buyurtma qilingan barcha dona: sotilgan + yo'lda + bekor + qaytgan */
+  orderedUnits: number;
+  /** Qaytgan dona (qisman qaytishlar bilan), summa va ulush (%, 2 xona) */
+  returned: { qty: number; amount: number; rate: number };
+  /** Bekor qilingan dona, summa va ulush (%, 2 xona) */
+  canceled: { qty: number; amount: number; rate: number };
+  /**
+   * Qaytarishlar orasida eng ko'p uchragan HAQIQIY sabab — Uzum bergan asl
+   * matn (sayt uni "Qaytarishlar" sahifasidagi qoidalar bilan tarjima qiladi).
+   * Sababsizlar (bo'sh matn, "Клиент не указал причину") hisobga olinmaydi;
+   * haqiqiy sabab umuman bo'lmasa null. `share` — barcha qaytgan donadan, %.
+   */
+  topReason: { raw: string; qty: number; share: number } | null;
+  /** Eng ko'p qaytgan SKU (katalogdagi); `rate` — shu SKU ning o'z qaytarish ulushi, % */
+  topSku: {
+    skuId: string;
+    productId: string;
+    sku: string;
+    title: string;
+    /** Mahsulot nomi — SKU nomi faqat variant ("ЧЕРН") bo'lsa, qaysi tovar ekani shundan */
+    productTitle: string;
+    imageUrl: string | null;
+    qty: number;
+    amount: number;
+    rate: number;
+  } | null;
+}
+
+/** GET /dashboard/returns — tanlangan davr va oldingi teng davr */
+export interface DashboardReturnsResponse {
+  period: Period;
+  previousPeriod: Period;
+  current: ReturnsSummary;
+  /** Oldingi davrda buyurtma bo'lmasa null */
+  previous: ReturnsSummary | null;
+  /**
+   * Ulush o'zgarishi FOIZ PUNKTIDA (joriy − oldingi, 1 xona). Oldingi davr
+   * bo'lmasa null; ulushlardan birining asosi 0 bo'lsa o'sha kalit null.
+   */
+  deltaPp: { returned: number | null; canceled: number | null } | null;
 }

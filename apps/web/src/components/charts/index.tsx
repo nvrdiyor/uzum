@@ -6,6 +6,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Line,
   LineChart,
   Pie,
@@ -32,6 +33,7 @@ import {
   granularityOptions,
   niceTicks,
   trimLeadingEmpty,
+  ymd,
   type Bucket,
   type Granularity,
   type Row,
@@ -87,6 +89,32 @@ export interface SeriesDef {
   /** Manfiy qiymat rangi — masalan zarar ko'rilgan kun qizil bo'lsin */
   negColor?: string;
 }
+
+/**
+ * Oldingi davr bilan taqqoslash — grafikda xira uzuq chiziq.
+ *
+ * `rows` joriy `data` bilan INDEKS bo'yicha tekislangan (server oldingi teng
+ * davrni kunma-kun beradi: i-qator ↔ joriy davrning i-kuni). Sanalar har xil,
+ * shuning uchun qiymat sana bo'yicha emas, tartib bo'yicha qo'shiladi.
+ */
+export interface CompareDef {
+  rows: Record<string, unknown>[];
+  /** Qaysi seriya bilan taqqoslanadi — `series[].key` lardan biri, `rows` da ham shu kalit */
+  key: string;
+  /** Afsona va izohdagi nom ("O‘tgan davr") */
+  name: string;
+}
+
+/** Taqqoslash qiymati qatorda shu kalitda turadi — sahifa kalitlari bilan to'qnashmaydi */
+const CMP = '__cmp';
+const CMP_COLOR = 'rgb(var(--c-muted))';
+/**
+ * Oldingi davrdagi BITTA keskin kun (masalan, bir martalik ulgurji buyurtma)
+ * o'qni o'ziga tortib, joriy ustunlarni yassilab yubormasin: eng katta qiymat
+ * ikkinchisidan shuncha marta katta va joriy maksimumdan ham baland bo'lsa,
+ * u o'q chegarasidan chiqib kesiladi (izohda haqiqiy qiymat ko'rinadi).
+ */
+const CMP_SPIKE = 3;
 
 interface BaseProps {
   data: Record<string, unknown>[];
@@ -197,8 +225,32 @@ interface TipRow {
   negative?: boolean;
 }
 
+/** Izohdagi oldingi davr qatori: o'z sanalari va joriy qiymatdan farqi bilan */
+interface TipCompare {
+  name: string;
+  /** Oldingi davrdagi haqiqiy sana(lar) — "7 sen", "7–13 sen" */
+  when: string;
+  value: string;
+  negative?: boolean;
+  /** Joriy qiymat oldingisidan necha foiz farq qiladi; hisoblab bo'lmasa null */
+  delta: number | null;
+}
+
 /** Grafik ustiga chiqadigan izoh oynasi — barcha grafiklarda bir xil */
-function TipCard({ title, sub, rows, total }: { title: ReactNode; sub?: ReactNode; rows: TipRow[]; total?: TipRow }) {
+function TipCard({
+  title,
+  sub,
+  rows,
+  total,
+  compare,
+}: {
+  title: ReactNode;
+  sub?: ReactNode;
+  rows: TipRow[];
+  total?: TipRow;
+  compare?: TipCompare;
+}) {
+  const f = useFormat();
   return (
     <div style={tooltipStyle()} className="min-w-[172px]">
       <p className="mb-1.5 font-semibold text-ink">
@@ -223,6 +275,31 @@ function TipCard({ title, sub, rows, total }: { title: ReactNode; sub?: ReactNod
         <div className="mt-1.5 flex items-center justify-between gap-6 border-t border-line pt-1.5">
           <span className="text-muted">{total.name}</span>
           <span className="tnum whitespace-nowrap font-semibold text-ink">{total.value}</span>
+        </div>
+      ) : null}
+      {compare ? (
+        // Oldingi davr — alohida qism: sanasi boshqa, uni joriy kun qatorlari bilan aralashtirib bo'lmaydi
+        <div className="mt-1.5 border-t border-line pt-1.5">
+          <div className="flex items-center justify-between gap-6">
+            <span className="flex items-center gap-2 whitespace-nowrap text-muted">
+              <span className="w-2.5 shrink-0 border-t-2 border-dashed" style={{ borderColor: CMP_COLOR }} />
+              {compare.name}
+              <span className="text-2xs">· {compare.when}</span>
+            </span>
+            <span className={cn('tnum whitespace-nowrap font-semibold', compare.negative ? 'text-danger' : 'text-ink-soft')}>
+              {compare.value}
+            </span>
+          </div>
+          {compare.delta !== null ? (
+            <p
+              className={cn(
+                'tnum mt-0.5 text-right text-2xs font-semibold',
+                compare.delta > 0 ? 'text-brand-ink' : compare.delta < 0 ? 'text-danger-ink' : 'text-muted',
+              )}
+            >
+              {`${compare.delta > 0 ? '+' : ''}${f.num(compare.delta, Math.abs(compare.delta) >= 100 ? 0 : 1)}%`}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -336,6 +413,87 @@ function BarGradient({ id, color }: { id: string; color: string }) {
 /** Bir kunning butun kengligi shundan oshmaydi — besh kunlik grafikda ustunlar "devor" bo'lib qolmasin */
 const MAX_BAND = 46;
 
+// ─────────────────────────── Oldingi davr bilan taqqoslash ───────────────────────────
+
+interface Merged {
+  rows: Row[];
+  /** Joriy va oldingi davr orasidagi siljish, kunda; taqqoslash yo'q bo'lsa null */
+  shift: number | null;
+  /** Joriy seriyaning oxirgi kuni — undan keyingi qatorlarda faqat oldingi davr qiymati bor */
+  lastDate: string | null;
+}
+
+/**
+ * Oldingi davr qiymatlarini joriy qatorlarga INDEKS bo'yicha qo'shadi (CMP kaliti).
+ *
+ * Oldingi davr uzunroq bo'lishi mumkin: joriy seriya bugun bilan tugaydi,
+ * tanlangan davr esa kelajakka cho'zilgan bo'lsa ham. Qolgan kunlar joriy
+ * qiymatsiz qator bo'lib qo'shiladi — uzuq chiziq KESILMAYDI va uning jami
+ * KPI'lardagi "oldingi davr" bilan teng qoladi.
+ */
+function withCompare(data: Row[], compare: CompareDef | null | undefined, xKey: string): Merged {
+  const prev = compare?.rows;
+  const first = dayNumber(data[0]?.[xKey]);
+  const last = dayNumber(data[data.length - 1]?.[xKey]);
+  const prevFirst = dayNumber(prev?.[0]?.[xKey]);
+  if (!compare || !prev?.length || first === null || last === null || prevFirst === null) {
+    return { rows: data, shift: null, lastDate: null };
+  }
+  const len = Math.max(data.length, prev.length);
+  const rows: Row[] = [];
+  for (let i = 0; i < len; i++) {
+    const cur = data[i];
+    const p = prev[i];
+    const row: Row = cur ? { ...cur } : { [xKey]: ymd(last + (i - data.length + 1)) };
+    row[CMP] = p ? num(p[compare.key]) : undefined;
+    rows.push(row);
+  }
+  return {
+    rows,
+    shift: first - prevFirst,
+    lastDate: len > data.length ? String(data[data.length - 1]?.[xKey]) : null,
+  };
+}
+
+/**
+ * Kun katagini yorituvchi kursor. Taqqoslash chizig'i bo'lsa grafik
+ * ComposedChart bo'ladi va Recharts kursorni ustun katagi emas, ingichka oq
+ * chiziq qilib chizadi — ustunli grafikda esa butun kun yoritilishi kerak
+ * (BarChart'dagi kabi). Recharts bu elementga maydon o'lchamlari va
+ * kursor nuqtalarini o'zi uzatadi.
+ */
+function BandCursor({
+  points,
+  width = 0,
+  height = 0,
+  top = 0,
+  count,
+}: {
+  points?: { x: number; y: number }[];
+  width?: number;
+  height?: number;
+  top?: number;
+  count: number;
+}) {
+  const x = points?.[0]?.x;
+  if (x === undefined || count <= 0) return null;
+  const band = width / count;
+  return <rect x={x - band / 2} y={top} width={band} height={height} fill={CURSOR_BAND.fill} pointerEvents="none" />;
+}
+
+/** Taqqoslash chizig'i o'qdan qancha joy oladi; bitta keskin kun o'qni cho'zmaydi (CMP_SPIKE) */
+function compareExtent(rows: Row[], curMax: number): { min: number; max: number; integers: boolean; clipped: boolean } {
+  const e = extent(rows, [CMP]);
+  const [top = 0, second = 0] = rows
+    .map((r) => r[CMP])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    .sort((a, b) => b - a);
+  if (top > curMax && second > 0 && top > CMP_SPIKE * second) {
+    return { min: e.min, max: Math.max(second, curMax), integers: e.integers, clipped: true };
+  }
+  return { ...e, clipped: false };
+}
+
 // ─────────────────────────── Vaqt grafigi ───────────────────────────
 
 /**
@@ -348,6 +506,10 @@ const MAX_BAND = 46;
  * Ustunli ko'rinishda bir nechta seriya "ustun ichida ustun" bo'lib chiziladi:
  * birinchi seriya (masalan tushum) — keng och ustun, qolganlari (sof foyda)
  * uning ichida tor to'q ustun. `stacked` bo'lsa ichkilari ustma-ust yig'iladi.
+ *
+ * `compare` — oldingi teng davr xira uzuq chiziq bo'lib ustiga chiziladi:
+ * haftalik/oylik ko'rinishda u ham o'sha kataklarga yig'iladi, afsonada
+ * jami, izohda o'z sanalari va farq foizi bilan.
  */
 export function TrendChart({
   data,
@@ -360,7 +522,12 @@ export function TrendChart({
   showGrid = true,
   stacked,
   variant = 'area',
-}: BaseProps & { variant?: 'area' | 'bars' }) {
+  compare,
+}: BaseProps & {
+  variant?: 'area' | 'bars';
+  /** Sahifa uni useMemo bilan bersin — har chizishda yangi obyekt hisobni qayta boshlaydi */
+  compare?: CompareDef | null;
+}) {
   const f = useFormat();
   const t = useT('charts');
   const dates = useDateLabels();
@@ -382,9 +549,19 @@ export function TrendChart({
     const keys = keySig.split('|');
     const isDates = xIsDate && data.length > 0 && dayNumber(data[0]?.[xKey]) !== null;
     if (!isDates) {
-      return { rows: data as Bucket[], options: ['day'] as Granularity[], gran: 'day' as Granularity, since: null, isDates };
+      return {
+        rows: data as Bucket[],
+        options: ['day'] as Granularity[],
+        gran: 'day' as Granularity,
+        since: null,
+        isDates,
+        shift: null,
+      };
     }
-    const cut = trimLeadingEmpty(data, keys);
+    const merged = withCompare(data, compare, xKey);
+    // Oldingi davr qiymati ham "harakat": boshidagi kunlar faqat ikkalasi ham bo'sh bo'lsa kesiladi
+    const sumKeys = merged.shift !== null ? [...keys, CMP] : keys;
+    const cut = trimLeadingEmpty(merged.rows, sumKeys);
     const options = granularityOptions(cut.rows.length);
     const gran = picked && options.includes(picked) ? picked : autoGranularity(cut.rows.length, maxBars);
     /*
@@ -393,28 +570,48 @@ export function TrendChart({
      * (haftalik, oylik) ko'rinishda u faqat bo'sh katak bo'lib turardi.
      */
     const lead = cut.trimmed > 0 && (variant === 'bars' || gran !== 'day') ? 1 : 0;
+    let rows = bucketize(cut.rows.slice(lead), xKey, sumKeys, gran);
+    // Butunlay bugundan keyingi kataklarda joriy seriya yo'q — u nolga "qulab" chizilmasin
+    const lastDate = merged.lastDate;
+    if (lastDate) {
+      rows = rows.map((b) => (b.__from > lastDate ? { ...b, ...Object.fromEntries(keys.map((k) => [k, undefined])) } : b));
+    }
     return {
-      rows: bucketize(cut.rows.slice(lead), xKey, keys, gran),
+      rows,
       options,
       gran,
       since: cut.trimmed > 0 ? String(cut.rows[1]?.[xKey] ?? '') : null,
       isDates,
+      shift: merged.shift,
     };
-  }, [data, xKey, keySig, xIsDate, picked, maxBars, variant]);
+  }, [data, xKey, keySig, xIsDate, picked, maxBars, variant, compare]);
 
   const { rows, gran } = prep;
   const bars = variant === 'bars';
   const [outer, ...inner] = series;
   const overlay = bars && series.length > 1;
+  const cmp = prep.shift !== null && compare ? { ...compare, shift: prep.shift } : null;
+  const cmpSeries = cmp ? series.find((s) => s.key === cmp.key) : undefined;
 
   // Ustma-ust ko'rinishda tashqi ustun alohida, ichkilari esa (stacked bo'lsa) yig'indi bo'yicha o'lchanadi
   const range = useMemo(() => {
     const keys = keySig.split('|');
-    if (!overlay) return extent(rows, keys, Boolean(stacked));
-    const a = extent(rows, keys.slice(0, 1));
-    const b = extent(rows, keys.slice(1), Boolean(stacked));
-    return { min: Math.min(a.min, b.min), max: Math.max(a.max, b.max), integers: a.integers && b.integers };
-  }, [rows, keySig, overlay, stacked]);
+    const base = !overlay
+      ? extent(rows, keys, Boolean(stacked))
+      : (() => {
+          const a = extent(rows, keys.slice(0, 1));
+          const b = extent(rows, keys.slice(1), Boolean(stacked));
+          return { min: Math.min(a.min, b.min), max: Math.max(a.max, b.max), integers: a.integers && b.integers };
+        })();
+    if (prep.shift === null) return { ...base, clipped: false };
+    const c = compareExtent(rows, base.max);
+    return {
+      min: Math.min(base.min, c.min),
+      max: Math.max(base.max, c.max),
+      integers: base.integers && c.integers,
+      clipped: c.clipped,
+    };
+  }, [rows, keySig, overlay, stacked, prep.shift]);
 
   const y = useYScale(range.min, range.max, range.integers);
   const axis = chartAxisProps();
@@ -422,11 +619,26 @@ export function TrendChart({
   const xTick = (v: string) =>
     !prep.isDates ? String(v) : gran === 'month' ? dates.month(v) : dates.day(v);
 
+  const fmtCmp = (v: number) => (cmpSeries?.money ? f.money(v) : f.num(v));
+
   const legend: LegendItem[] = showLegend
-    ? series.map((s, i) => {
-        const sum = rows.reduce((acc, r) => acc + num(r[s.key]), 0);
-        return { name: s.name, color: s.color ?? seriesColor(i), value: s.money ? f.money(sum) : f.num(sum) };
-      })
+    ? [
+        ...series.map((s, i) => {
+          const sum = rows.reduce((acc, r) => acc + num(r[s.key]), 0);
+          return { name: s.name, color: s.color ?? seriesColor(i), value: s.money ? f.money(sum) : f.num(sum) };
+        }),
+        // Oldingi davr jami — KPI'dagi "oldingi" bilan bir xil raqam (server ikkalasini bitta ta'rifda beradi)
+        ...(cmp
+          ? [
+              {
+                name: cmp.name,
+                color: CMP_COLOR,
+                mark: 'line' as const,
+                value: fmtCmp(rows.reduce((acc, r) => acc + num(r[CMP]), 0)),
+              },
+            ]
+          : []),
+      ]
     : [];
 
   const controls =
@@ -448,11 +660,29 @@ export function TrendChart({
     <Tooltip
       isAnimationActive={false}
       wrapperStyle={TIP_WRAPPER}
-      cursor={bars ? CURSOR_BAND : CURSOR_LINE}
+      cursor={bars ? (cmp ? <BandCursor count={rows.length} /> : CURSOR_BAND) : CURSOR_LINE}
       content={({ active, payload }) => {
         const row = payload?.[0]?.payload as Bucket | undefined;
         if (!active || !row) return null;
-        const span = prep.isDates ? (dayNumber(row.__to) ?? 0) - (dayNumber(row.__from) ?? 0) + 1 : 1;
+        const from = dayNumber(row.__from);
+        const to = dayNumber(row.__to);
+        const span = prep.isDates ? (to ?? 0) - (from ?? 0) + 1 : 1;
+
+        let compareTip: TipCompare | undefined;
+        if (cmp && row[CMP] !== undefined && from !== null && to !== null) {
+          const prev = num(row[CMP]);
+          const cur = row[cmp.key];
+          compareTip = {
+            name: cmp.name,
+            // Oldingi davr — o'sha kataklar, `shift` kun oldin (oylik katak ham taqvim oyi emas, aynan shu kunlar)
+            when: dates.range(ymd(from - cmp.shift), ymd(to - cmp.shift)),
+            value: fmtCmp(prev),
+            negative: prev < 0,
+            // Foiz faqat musbat asosdan: zarardan foydaga o'tishning "+250%" i hech narsa aytmaydi
+            delta: cur !== undefined && prev > 0 ? ((num(cur) - prev) / prev) * 100 : null,
+          };
+        }
+
         return (
           <TipCard
             title={
@@ -464,15 +694,19 @@ export function TrendChart({
             }
             // To'liqmas hafta: necha kun yig'ilgani aytiladi, aks holda past ustun "sotuv tushdi" deb o'qiladi
             sub={gran === 'week' && span < 7 ? t('days', { n: span }) : undefined}
-            rows={series.map((s, i) => {
-              const v = num(row[s.key]);
-              return {
-                name: s.name,
-                color: s.color ?? seriesColor(i),
-                value: s.money ? f.money(v) : f.num(v),
-                negative: v < 0,
-              };
-            })}
+            // Bugundan keyingi katakda joriy qiymat yo'q — "0 so'm" deb ko'rsatilmaydi
+            rows={series
+              .filter((s) => row[s.key] !== undefined)
+              .map((s) => {
+                const v = num(row[s.key]);
+                return {
+                  name: s.name,
+                  color: s.color ?? seriesColor(series.indexOf(s)),
+                  value: s.money ? f.money(v) : f.num(v),
+                  negative: v < 0,
+                };
+              })}
+            compare={compareTip}
           />
         );
       }}
@@ -483,12 +717,41 @@ export function TrendChart({
     <>
       {showGrid ? <CartesianGrid vertical={false} stroke={GRID_STROKE} strokeOpacity={0.7} /> : null}
       <XAxis dataKey={xKey} {...axis} tickFormatter={xTick} minTickGap={28} tickMargin={8} interval="preserveStartEnd" />
-      <YAxis {...axis} ticks={y.ticks} domain={y.domain} tickFormatter={y.label} width={y.width} interval={0} />
+      <YAxis
+        {...axis}
+        ticks={y.ticks}
+        domain={y.domain}
+        tickFormatter={y.label}
+        width={y.width}
+        interval={0}
+        // Oldingi davrning bitta keskin kuni o'q chegarasidan chiqib kesiladi (compareExtent)
+        allowDataOverflow={range.clipped}
+      />
       {range.min < 0 ? <ReferenceLine y={0} stroke="rgb(var(--c-border-strong))" /> : null}
     </>
   );
 
+  // Ustun va maydon ustidan, nuqtasiz: joriy davrdan xira, lekin har ikki mavzuda ko'rinadi
+  const compareLine = cmp ? (
+    <Line
+      dataKey={CMP}
+      name={cmp.name}
+      type="monotone"
+      stroke={CMP_COLOR}
+      strokeWidth={1.75}
+      strokeDasharray="5 4"
+      strokeLinecap="round"
+      dot={false}
+      activeDot={{ r: 3.5, strokeWidth: 2, stroke: 'rgb(var(--c-surface))', fill: CMP_COLOR }}
+      isAnimationActive={ANIMATE}
+      animationDuration={600}
+    />
+  ) : null;
+
   const margin = { top: 8, right: 8, left: 0, bottom: 0 };
+  // Recharts ustun yoki maydon bilan chiziqni faqat ComposedChart'da birga chizadi
+  const BarRoot = cmp ? ComposedChart : BarChart;
+  const AreaRoot = cmp ? ComposedChart : AreaChart;
 
   return (
     <div ref={boxRef} className={cn('w-full', className)}>
@@ -496,7 +759,7 @@ export function TrendChart({
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           {bars ? (
-            <BarChart data={rows} margin={margin} barGap={0} barCategoryGap={rows.length > 60 ? '14%' : '22%'}>
+            <BarRoot data={rows} margin={margin} barGap={0} barCategoryGap={rows.length > 60 ? '14%' : '22%'}>
               <defs>
                 {series.map((s, i) => (
                   <BarGradient key={s.key} id={`bar-${uid}-${s.key}`} color={s.color ?? seriesColor(i)} />
@@ -579,9 +842,10 @@ export function TrendChart({
                   />
                 );
               })}
-            </BarChart>
+              {compareLine}
+            </BarRoot>
           ) : (
-            <AreaChart data={rows} margin={margin}>
+            <AreaRoot data={rows} margin={margin}>
               <defs>
                 {series.map((s, i) => {
                   const color = s.color ?? seriesColor(i);
@@ -615,7 +879,8 @@ export function TrendChart({
                   />
                 );
               })}
-            </AreaChart>
+              {compareLine}
+            </AreaRoot>
           )}
         </ResponsiveContainer>
       </div>

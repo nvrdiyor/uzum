@@ -51,7 +51,7 @@ import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } 
 import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getSkuCatalog, getStoreIds, getStoreTitles } from '../services/common.js';
 import { notifyCompanyOwners } from '../services/notify.js';
-import { loadReturnLines } from '../services/returns.js';
+import { loadReturns, returnsRate } from '../services/returns.js';
 import { AUTO_LOSS_SOURCES, getBalanceSummary } from '../services/stock-balance.js';
 
 const router = Router();
@@ -976,25 +976,22 @@ router.get(
     const q = req.query as Record<string, string | undefined>;
     const kind = asReturnKind(q);
 
-    const [lines, sales] = await Promise.all([
-      loadReturnLines(storeIds, range.from, range.toExclusive),
-      aggregateSales(storeIds, range.from, range.toExclusive),
-    ]);
-
-    let soldUnits = 0;
-    for (const agg of sales.values()) soldUnits += agg.units;
+    /*
+     * Jamlar va qatorlar BITTA o'qishdan, Boshqaruv panelidagi karta bilan
+     * yagona ta'rif (services/returns.ts): davr — buyurtma sanasi bo'yicha,
+     * qaytarish ulushi — qabul qilingan + qaytgan donadan, bekor qilish —
+     * buyurtma qilingan donadan. Ilgari sahifa qaytarishni taxminiy qaytish
+     * sanasi bilan olib, ulush asosiga yo'ldagi donani ham qo'shardi va
+     * qisman qaytishlarni ko'rmasdi: bir davr uchun panel 7,6%, sahifa 6,2%
+     * ko'rsatardi (2026-10-24).
+     */
+    const { summary, lines } = await loadReturns(storeIds, range.from, range.toExclusive);
 
     // Ikkala tur jamlari — sahifadagi almashtirgich sonlari uchun (qidiruvga bog'liq emas)
     const counts: ReturnsResponse['counts'] = {
-      returned: { qty: 0, amount: 0 },
-      canceled: { qty: 0, amount: 0 },
+      returned: { qty: summary.returned.qty, amount: summary.returned.amount },
+      canceled: { qty: summary.canceled.qty, amount: summary.canceled.amount },
     };
-    for (const l of lines) {
-      counts[l.kind].qty += l.qty;
-      counts[l.kind].amount += l.amount;
-    }
-    counts.returned.amount = round(counts.returned.amount);
-    counts.canceled.amount = round(counts.canceled.amount);
 
     const search = range.search?.toLowerCase();
     const reasonFilter = q.reason && q.reason !== 'all' ? q.reason : undefined;
@@ -1019,6 +1016,8 @@ router.get(
         status: l.kind,
         kind: l.kind,
         returnedAt: toBusinessDate(l.date),
+        // Davr va tartib buyurtma kuni bo'yicha — jadvaldagi sana ham shu, aks holda qatorlar tartibsiz ko'rinardi
+        orderedAt: toBusinessDate(l.orderedAt),
       };
       if (search) {
         const hay = `${row.sku ?? ''} ${row.title ?? ''} ${row.orderCode ?? ''} ${row.reason ?? ''}`.toLowerCase();
@@ -1037,6 +1036,10 @@ router.get(
     /**
      * Kunlik seriya va "eng ko'p qaytariladigan" ro'yxati BUTUN davr bo'yicha
      * hisoblanadi — jadvalning joriy sahifasiga bog'liq emas.
+     *
+     * Kun — BUYURTMA kuni (davr ham shu bo'yicha). Qaytish sanasi bilan
+     * chizilganda o'tgan oy uchun ustunlar keyingi oyga chiqib ketardi, demo
+     * ma'lumotda esa kelajak kunlarga ham tushardi.
      */
     const dailyMap = new Map<string, { qty: number; amount: number }>();
     const riskyMap = new Map<
@@ -1044,7 +1047,7 @@ router.get(
       { key: string; sku: string | null; title: string | null; imageUrl: string | null; qty: number; amount: number }
     >();
     for (const r of rows) {
-      const day = String(r.returnedAt).slice(0, 10);
+      const day = r.orderedAt;
       const d = dailyMap.get(day) ?? { qty: 0, amount: 0 };
       d.qty += r.qty;
       d.amount += r.amount;
@@ -1057,15 +1060,27 @@ router.get(
       riskyMap.set(key, k);
     }
 
+    /*
+     * Filtr (qidiruv, sabab) bo'lmasa jamlar — xulosaning o'zi, panel kartasi
+     * bilan aynan bir xil raqam. Filtr bo'lsa — mos qatorlar yig'indisi, ulush
+     * esa o'sha ta'rif va o'sha davr asosi bilan.
+     */
+    const filtered = Boolean(search || reasonFilter);
+    const both = summary.returned.qty + summary.canceled.qty;
+    const totals: ReturnsResponse['totals'] = filtered
+      ? { qty, amount: round(amount), rate: returnsRate(kind, qty, summary) }
+      : kind === 'all'
+        ? {
+            qty: both,
+            amount: round(summary.returned.amount + summary.canceled.amount),
+            rate: returnsRate('all', both, summary),
+          }
+        : { ...summary[kind] };
+
     const payload: ReturnsResponse = {
       kind,
       counts,
-      totals: {
-        qty,
-        amount: round(amount),
-        // Ulush: shu turdagi dona / (sotilgan + shu turdagi)
-        rate: pct(qty, soldUnits + qty),
-      },
+      totals,
       daily: [...dailyMap.entries()]
         .map(([date, v]) => ({ date, qty: v.qty, amount: round(v.amount) }))
         .sort((a, b) => a.date.localeCompare(b.date)),

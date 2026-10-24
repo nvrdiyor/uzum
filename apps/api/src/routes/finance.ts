@@ -31,7 +31,8 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
-import { aggregateSales, getDailySeries, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
+import { aggregateSales, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
+import { getNetDailySeries, getPreviousNetSeries, type NetDailyPoint } from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
 
@@ -253,26 +254,17 @@ router.get(
 
     const snap = await collectFinance(company.id, storeIds, range.period, taxRate, range.storeId);
 
-    // Kunlik seriya: buyurtmalardan kelgan foydadan qo'lda kiritilgan xarajat,
-    // ombor to'lovi va soliq ayriladi — shunda profit = revenue - expenses bo'ladi.
-    const [series, manualRows, feeRows, paidAgg, pendingAgg, uzumBalance] =
-      await Promise.all([
-      getDailySeries(storeIds, range.period),
-      prisma.expense.findMany({
-        where: {
-          companyId: company.id,
-          date: { gte: range.from, lt: range.toExclusive },
-          // Buyurtma satrlarida allaqachon ayrilgan to'lovlar kunlik grafikda
-          // qayta ayrilmasin — aks holda bitta yetkazish puli ikki marta ushlanardi
-          source: { not: 'uzum-payout' },
-          ...(range.storeId ? { storeId: range.storeId } : {}),
-        },
-        select: { date: true, amount: true },
-      }),
-      prisma.storageFee.findMany({
-        where: { storeId: { in: storeIds }, date: { gte: range.from, lt: range.toExclusive } },
-        select: { date: true, amount: true },
-      }),
+    /*
+     * Kunlik seriya: buyurtmalardan kelgan foydadan davr xarajatlari (qo'lda
+     * kiritilgan, ombor to'lovi) kunma-kun ayriladi — shunda profit = revenue −
+     * expenses bo'ladi. Boshqaruv paneli grafigi bilan BITTA funksiya
+     * (services/pnl.ts): `uzum-payout` satrlari buyurtmada allaqachon ayrilgan,
+     * ikki marta ushlanmaydi; oylik xarajat oy kunlariga bo'linadi.
+     */
+    const [series, previous, paidAgg, pendingAgg, uzumBalance] = await Promise.all([
+      getNetDailySeries(company.id, storeIds, range.period, range.storeId),
+      // Oldingi teng davr — grafikdagi uzuq chiziq; tarix yetmasa null
+      getPreviousNetSeries(company.id, storeIds, range.previous, plan, range.storeId),
       prisma.orderItem.aggregate({
         _sum: { payout: true },
         where: {
@@ -296,31 +288,18 @@ router.get(
     // To'lov jadvali — Pul kalendari bilan BIR XIL manbadan
     const payoutRules = await getPayoutRules(company.id);
 
-    const extraByDay = new Map<string, number>();
-    for (const r of manualRows) {
-      const key = toISODate(r.date);
-      extraByDay.set(key, (extraByDay.get(key) ?? 0) + r.amount);
-    }
-    for (const r of feeRows) {
-      const key = toISODate(r.date);
-      extraByDay.set(key, (extraByDay.get(key) ?? 0) + r.amount);
-    }
-
-    const daily = series.map((row) => {
-      /**
-       * Soliq `orderItem.netProfit` ichida ALLAQACHON ayrilgan (importer.ts),
-       * shuning uchun bu yerda qayta qo'shilmaydi — ilgari kunlik grafik
-       * yuqoridagi "Sof foyda" kartasidan soliq summasi qadar past chiqardi.
-       */
-      const extra = extraByDay.get(row.date) ?? 0;
-      const profit = round(row.profit - extra);
-      return {
-        date: row.date,
-        revenue: round(row.revenue),
-        expenses: round(row.revenue - profit),
-        profit,
-      };
+    /**
+     * Soliq `orderItem.netProfit` ichida ALLAQACHON ayrilgan (importer.ts),
+     * shuning uchun bu yerda qayta qo'shilmaydi — ilgari kunlik grafik
+     * yuqoridagi "Sof foyda" kartasidan soliq summasi qadar past chiqardi.
+     */
+    const toDaily = (row: NetDailyPoint) => ({
+      date: row.date,
+      revenue: round(row.revenue),
+      expenses: round(row.revenue - row.profit),
+      profit: row.profit,
     });
+    const daily = series.map(toDaily);
 
     const payload: FinanceResponse = {
       period: range.period,
@@ -339,6 +318,9 @@ router.get(
       expensesTotal: round(snap.expensesTotal),
       taxAmount: round(snap.taxAmount),
       daily,
+      // Oldingi teng davr, `daily` bilan kunma-kun tekislangan (i-kun ↔ i-kun)
+      previousDaily: previous ? previous.series.map(toDaily) : null,
+      comparePeriod: previous?.period ?? null,
       balance: {
         paidOut: round(paidAgg._sum.payout ?? 0),
         pending: round(pendingAgg._sum.payout ?? 0),

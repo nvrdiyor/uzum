@@ -99,7 +99,9 @@ function spanClass(i: number, n: number): string {
 }
 
 /**
- * "Tavsiyalar" — ma'lumotdan topilgan muhim nuqtalar.
+ * "Davr xulosalari" — tanlangan davr ma'lumotidan topilgan muhim nuqtalar.
+ * "Bugun nima qilish kerak" (TodayTasks) dan farqi: bu "nima bo'ldi"ni
+ * aytadi va davr tanlagichiga bog'liq; bugungi ishlar — alohida ro'yxat.
  *
  * Ilgari har karta daraja rangiga to'liq bo'yalgan edi (bg-warn/10,
  * bg-danger/10): qorong'i mavzuda ular loyqa jigarrang va qizg'ish

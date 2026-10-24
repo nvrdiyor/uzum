@@ -33,13 +33,14 @@ import {
   toast,
   type Tone,
 } from '@/components/ui';
-import { ChartCard, TrendChart, type SeriesDef } from '@/components/charts';
+import { ChartCard, TrendChart, type CompareDef, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { NetProfitHero } from '@/components/finance/NetProfitHero';
 import { PeriodChip } from '@/components/finance/PeriodChip';
 import { PnlTable } from '@/components/finance/PnlTable';
 import { RevenueSplitCard } from '@/components/finance/RevenueSplitCard';
 import { normalizePnl } from '@/components/finance/financeData';
+import { ComparePeriodChip } from '@/components/trust/ComparePeriod';
 import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -85,6 +86,7 @@ registerNamespace('finance', {
     'series.revenue': 'Tushum',
     'series.expenses': 'Xarajatlar',
     'series.profit': 'Sof foyda',
+    'series.prevProfit': 'O‘tgan davr sof foydasi',
 
     'exp.title': 'Tushum qayerga ketdi',
     'exp.subtitle': 'Har bir modda tushumga nisbatan',
@@ -178,6 +180,7 @@ registerNamespace('finance', {
     'series.revenue': 'Выручка',
     'series.expenses': 'Расходы',
     'series.profit': 'Чистая прибыль',
+    'series.prevProfit': 'Чистая прибыль прошлого периода',
 
     'exp.title': 'Куда ушла выручка',
     'exp.subtitle': 'Каждая статья — в доле от выручки',
@@ -271,6 +274,7 @@ registerNamespace('finance', {
     'series.revenue': 'Revenue',
     'series.expenses': 'Expenses',
     'series.profit': 'Net profit',
+    'series.prevProfit': 'Previous period net profit',
 
     'exp.title': 'Where revenue went',
     'exp.subtitle': 'Every line as a share of revenue',
@@ -446,6 +450,17 @@ export default function Finance() {
     [t],
   );
 
+  // Oldingi teng davrning sof foydasi — uzuq chiziq (Boshqaruv paneli grafigi bilan bir xil ta'rif); tarix yetmasa null
+  const compare = useMemo<CompareDef | null>(() => {
+    const prev = data?.previousDaily;
+    if (!prev?.length) return null;
+    return {
+      rows: prev.map((d) => ({ date: d.date, revenue: d.revenue, expenses: d.expenses, profit: d.profit })),
+      key: 'profit',
+      name: t('series.prevProfit'),
+    };
+  }, [data?.previousDaily, t]);
+
   const sparks = useMemo(
     () => ({
       revenue: (data?.daily ?? []).map((d) => d.revenue),
@@ -487,6 +502,7 @@ export default function Finance() {
           <PeriodChip />
           <DataFreshness />
           <CostCoverage />
+          {data?.comparePeriod ? <ComparePeriodChip period={data.comparePeriod} /> : null}
         </>
       }
       badge={<PreviewBadge feature="unit_economics" />}
@@ -623,7 +639,13 @@ export default function Finance() {
                 {isLoading ? (
                   <Skeleton className={cn('w-full', wide ? 'h-[410px]' : 'h-[300px]')} />
                 ) : chartData.length > 1 ? (
-                  <TrendChart data={chartData} series={chartSeries} height={chartHeight} variant="bars" />
+                  <TrendChart
+                    data={chartData}
+                    series={chartSeries}
+                    height={chartHeight}
+                    variant="bars"
+                    compare={compare}
+                  />
                 ) : (
                   <EmptyState
                     className="py-14"

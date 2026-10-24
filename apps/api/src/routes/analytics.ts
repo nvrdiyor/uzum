@@ -37,7 +37,6 @@ import { resolveRange } from '../lib/period.js';
 import {
   daysSince,
   getAvgDaily,
-  getDailySeries,
   getLastSaleDates,
   getLatestStocks,
   getSkuCatalog,
@@ -48,7 +47,13 @@ import {
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
-import { getAdFeesBySku, getPeriodCosts, getPeriodCostsByDay, investedIn } from '../services/pnl.js';
+import {
+  getAdFeesBySku,
+  getNetDailySeries,
+  getPeriodCosts,
+  getPreviousNetSeries,
+  investedIn,
+} from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 
 const router = Router();
@@ -77,7 +82,7 @@ interface SkuAgg {
   returns: number;
 }
 
-interface PeriodTotals {
+export interface PeriodTotals {
   revenue: number;
   payout: number;
   netProfit: number;
@@ -128,9 +133,11 @@ const emptyTotals = (): PeriodTotals => ({
  * Davr bo'yicha to'liq yig'indi: buyurtma darajasida (status, do'kon) va
  * SKU darajasida (top mahsulotlar uchun) bir o'tishda hisoblanadi.
  */
-async function collectTotals(storeIds: string[], from: Date, toExclusive: Date): Promise<PeriodTotals> {
+// Eksport: oylik maqsadlar (routes/goals.ts) sof foydani aynan shu hisob bilan oladi — ikki joyda ikki xil raqam chiqmasin
+export async function collectTotals(storeIds: string[], from: Date, toExclusive: Date): Promise<PeriodTotals> {
   const t = emptyTotals();
   if (storeIds.length === 0) return t;
+  const now = Date.now();
 
   const orders = await prisma.order.findMany({
     where: { storeId: { in: storeIds }, orderedAt: { gte: from, lt: toExclusive } },
@@ -190,15 +197,16 @@ async function collectTotals(storeIds: string[], from: Date, toExclusive: Date):
        * qaytish ham sanaladi (services/common.ts aggregateSales bilan bir xil)
        * (2026-10-24).
        */
+      // Qoida services/returns.ts splitLine bilan bir xil: panel kartasi va "Davr xulosalari" bitta foiz aytsin
       let returnedUnits = 0;
-      if (returned) returnedUnits = it.returnedQty > 0 ? it.returnedQty : it.qty;
+      if (returned) returnedUnits = it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1);
       else if (it.status !== 'canceled') returnedUnits = it.returnedQty;
       t.returnsUnits += returnedUnits;
       if (skuAgg) skuAgg.returns += returnedUnits;
 
       if (!returned && it.status !== 'canceled') {
-        // Qaytarish foizi asosi — faqat xaridor qabul qilgan dona, yo'ldagilar emas
-        if (o.deliveredAt) t.handedUnits += it.qty;
+        // Qaytarish foizi asosi — faqat xaridor HOZIRGACHA qabul qilgan dona, yo'ldagilar emas (summarizeReturns kabi)
+        if (o.deliveredAt && o.deliveredAt.getTime() <= now) t.handedUnits += it.qty;
         t.units += it.qty;
         t.revenue += it.revenue;
         t.payout += it.payout;
@@ -281,8 +289,9 @@ interface InsightInput {
 const LEVEL_RANK: Record<Insight['level'], number> = { danger: 0, warning: 1, success: 2, info: 3 };
 
 /**
- * Dashboard uchun 3-6 ta avtomatik xulosa.
+ * "Davr xulosalari" — tanlangan davr bo'yicha 0–6 ta avtomatik xulosa.
  * Har biri aniq raqamlar bilan — foydalanuvchi darhol harakat qila olsin.
+ * Bugungi vazifalar (pul bo'yicha) alohida: routes/today.ts.
  */
 function buildInsights(inp: InsightInput): Insight[] {
   const out: Insight[] = [];
@@ -442,38 +451,14 @@ function buildInsights(inp: InsightInput): Insight[] {
     });
   }
 
-  // Kamida 3 ta xulosa bo'lishi uchun umumiy holat kartalari
-  const fallbacks: Insight[] = [
-    {
-      id: 'stock_value',
-      level: 'info',
-      title: `Omborda ${num(inp.stockValue.units)} dona tovar`,
-      body: `Tannarx bo‘yicha qiymati ${money(inp.stockValue.amount)}. FBO: ${num(inp.stockValue.fbo)} dona, FBS: ${num(inp.stockValue.fbs)} dona.`,
-      link: '/stocks',
-      metric: 'stockValue',
-    },
-    {
-      id: 'avg_check',
-      level: 'info',
-      title: `O‘rtacha chek ${money(inp.avgCheck)}`,
-      body: `Davrda ${num(inp.ordersTotal)} ta buyurtma qayd etildi. Chekni oshirish uchun to‘plam va qo‘shimcha savdoni sinab ko‘ring.`,
-      link: '/sales',
-      metric: 'avgCheck',
-    },
-    {
-      id: 'margin_now',
-      level: 'info',
-      title: `Joriy sof marja ${num(inp.margin, 1)}%`,
-      body: `Tushum ${money(inp.revenue.value)}. Marja 15% dan yuqori bo‘lsa biznes barqaror hisoblanadi.`,
-      link: '/finance',
-      metric: 'margin',
-    },
-  ];
-  for (const f of fallbacks) {
-    if (out.length >= 3) break;
-    if (!out.some((i) => i.id === f.id)) out.push(f);
-  }
-
+  /*
+   * To'ldiruvchi kartalar ATAYLAB yo'q. Ilgari ro'yxat kamida 3 taga
+   * "Omborda N dona tovar", "O'rtacha chek", "Joriy sof marja" bilan
+   * to'ldirilardi: ular hech narsa topmagan, lekin topilgan muhim nuqta
+   * qiyofasida turardi va toza davrda "Hammasi joyida" holati hech qachon
+   * chiqmasdi. Bu raqamlar panelning o'zida bor (2026-10-24).
+   * `stockValue` va `avgCheck` kirishda qolgan — faqat shu kartalar uchun edi.
+   */
   return out.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]).slice(0, 6);
 }
 
@@ -489,19 +474,20 @@ router.get(
     const prevFrom = businessDayStart(range.previous.from);
     const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev, catalog, stocks, avgDaily, lastSale, rawSeries, costs, prevCosts, expenseByDay, taxRate, storeTitles] = await Promise.all([
+    const [cur, prev, catalog, stocks, avgDaily, lastSale, series, previous, costs, prevCosts, taxRate, storeTitles] = await Promise.all([
       collectTotals(storeIds, range.from, range.toExclusive),
       collectTotals(storeIds, prevFrom, prevToExclusive),
       getSkuCatalog(storeIds, true),
       getLatestStocks(storeIds),
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
-      getDailySeries(storeIds, range.period),
+      // Grafik: kunlik seriya, foyda chizig'idan davr xarajatlari ham kunma-kun ayrilgan
+      getNetDailySeries(company.id, storeIds, range.period, range.storeId),
+      // Oldingi teng davr — grafikdagi uzuq chiziq, AYNAN shu ta'rifda; tarix yetmasa null
+      getPreviousNetSeries(company.id, storeIds, range.previous, plan, range.storeId),
       // Davr xarajatlari — Moliya va Oylik hisobot bilan BIR XIL ta'rif (services/pnl.ts)
       getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getPeriodCosts(company.id, storeIds, prevFrom, prevToExclusive, range.storeId),
-      // Kunma-kun — grafikdagi foyda chizig'i ham ularni ayirsin
-      getPeriodCostsByDay(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getTaxRate(company.id),
       getStoreTitles(company.id),
     ]);
@@ -543,8 +529,6 @@ router.get(
     const curPeriodOnly = costs.total;
     const curNet = cur.netProfit - curPeriodOnly;
     const prevNet = prev.netProfit - prevCosts.total;
-
-    const series = rawSeries.map((p) => ({ ...p, profit: round(p.profit - (expenseByDay.get(p.date) ?? 0)) }));
 
     // Ko'rsatkichlar
     const curMargin = pct(curNet, cur.revenue);
@@ -692,6 +676,13 @@ router.get(
       expectedOrdersToday: expected.orders,
       expenses,
       series: series satisfies TimeSeriesPoint[],
+      /*
+       * Oldingi teng davr kunma-kun (i-kun ↔ i-kun) — grafikdagi uzuq chiziq.
+       * Yig'indisi KPI'dagi `previous` bilan teng: o'sha oyna, o'sha ta'rif.
+       * Joriy seriya bugun bilan tugasa ham bu to'liq uzunlikda qoladi.
+       */
+      previousSeries: (previous?.series ?? null) satisfies TimeSeriesPoint[] | null,
+      comparePeriod: previous?.period ?? null,
       storesBreakdown,
       topProducts,
       insights,

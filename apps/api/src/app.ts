@@ -35,6 +35,9 @@ import exportRoutes from './routes/export.js';
 import batchesRoutes from './routes/batches.js';
 import cardsRoutes from './routes/cards.js';
 import adminRoutes from './routes/admin.js';
+import todayRoutes from './routes/today.js';
+import goalsRoutes from './routes/goals.js';
+import returnsSummaryRoutes from './routes/returnsSummary.js';
 
 export function createApp() {
   const app = express();
@@ -100,6 +103,10 @@ export function createApp() {
   api.use('/export', exportRoutes);
   api.use('/batches', batchesRoutes);
   api.use('/cards', cardsRoutes);
+  // Boshqaruv paneli bloklari — har biri o'z faylida
+  api.use('/dashboard/today', todayRoutes);
+  api.use('/dashboard/goals', goalsRoutes);
+  api.use('/dashboard/returns', returnsSummaryRoutes);
   api.use('/admin', adminRoutes);
 
   app.use('/api/v1', api);

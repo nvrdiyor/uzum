@@ -3,7 +3,7 @@ import type { DashboardResponse } from '@savdoiq/shared';
 import { Amount, Card, CardBody, CardHeader, Delta, ProgressBar, ProgressRing, type Tone } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { clamp, cn } from '@/lib/utils';
-import { buyoutTone, marginTone, ppDelta, rateBases, returnsTone, roiTone } from './rates';
+import { buyoutTone, marginTone, ppDelta, rateBases, roiTone } from './rates';
 
 const DOT: Record<Tone, string> = {
   brand: 'bg-brand',
@@ -93,12 +93,18 @@ export function PayoutsCard({ data }: { data: DashboardResponse }) {
 }
 
 /**
- * "Marja va ROI" — ikki halqa va ikki stavka plitkasi.
+ * "Marja va ROI" — ikki halqa va sotib olish darajasi plitkasi.
  *
  * Halqa rangi qiymatdan (rates.ts): 0,8% marja endi "yashil to'liq emas
  * halqa" emas, aniq sariq ogohlantirish. O'zgarish — foiz PUNKTIDA.
  * Kartochka chizig'i marja holatini takrorlaydi: qator ko'zdan
  * kechirilganda muammo shu yerdaligi darhol ko'rinadi.
+ *
+ * Qaytarish ulushi plitkasi bu yerdan ATAYLAB olib tashlandi (2026-10-24):
+ * u endi "Qaytarish va bekor qilish" kartasida (ReturnsCard) yagona ta'rif
+ * bilan. Ikkalasi bir panelda tursa, bir davr uchun ikki xil foiz chiqadi
+ * (demo, joriy oy: 7,4% va 7,8%). Yolg'iz qolgan sotib olish plitkasi butun
+ * qatorni oladi — 2 ustunli to'rda uning yonida yarim qator bo'sh turardi.
  */
 export function MarginRoiCard({ data }: { data: DashboardResponse }) {
   const t = useT('dashboard');
@@ -125,25 +131,11 @@ export function MarginRoiCard({ data }: { data: DashboardResponse }) {
     },
   ];
 
-  const rates = [
-    {
-      key: 'buyout',
-      label: t('margin.buyout'),
-      value: data.buyoutRate.value,
-      tone: buyoutTone(data.buyoutRate.value),
-      delta: ppDelta(data.buyoutRate, base.buyout),
-      invert: false,
-    },
-    {
-      key: 'returns',
-      label: t('margin.returns'),
-      value: data.returnsRate.value,
-      tone: returnsTone(data.returnsRate.value),
-      delta: ppDelta(data.returnsRate, base.returns),
-      // Qaytarish kamaysa — yaxshi
-      invert: true,
-    },
-  ];
+  const buyout = {
+    value: data.buyoutRate.value,
+    tone: buyoutTone(data.buyoutRate.value),
+    delta: ppDelta(data.buyoutRate, base.buyout),
+  };
 
   return (
     <Card tone={gauges[0]?.tone ?? 'brand'} className="flex flex-col">
@@ -168,17 +160,13 @@ export function MarginRoiCard({ data }: { data: DashboardResponse }) {
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {rates.map((r) => (
-            <div key={r.key} className="well flex min-w-0 flex-col p-3">
-              <p className="text-xs leading-4 text-muted">{r.label}</p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                <span className="tnum font-display text-[17px] font-bold leading-6 text-ink">{f.pct(r.value)}</span>
-                <Delta value={r.delta} unit="pp" invert={r.invert} className="px-2 py-0.5 text-2xs" />
-              </div>
-              <ProgressBar className="mt-auto pt-2" tone={r.tone} value={r.value} />
-            </div>
-          ))}
+        <div className="well flex min-w-0 flex-col p-3">
+          <p className="text-xs leading-4 text-muted">{t('margin.buyout')}</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <span className="tnum font-display text-[17px] font-bold leading-6 text-ink">{f.pct(buyout.value)}</span>
+            <Delta value={buyout.delta} unit="pp" className="px-2 py-0.5 text-2xs" />
+          </div>
+          <ProgressBar className="mt-auto pt-2" tone={buyout.tone} value={buyout.value} />
         </div>
       </CardBody>
     </Card>

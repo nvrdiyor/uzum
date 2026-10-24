@@ -17,8 +17,18 @@
  *   ROI                     = sof foyda ÷ tovarga sarflangan pul (tannarx + qo'shimcha)
  */
 import { prisma } from '@savdoiq/db';
-import { toBusinessDate } from '@savdoiq/shared';
-import { aggregateSales, getExpenses, type SalesAgg } from './common.js';
+import {
+  addDays,
+  businessDayStart,
+  eachDay,
+  getPlan,
+  round,
+  toBusinessDate,
+  toISODate,
+  type Period,
+  type PlanId,
+} from '@savdoiq/shared';
+import { aggregateSales, getDailySeries, getExpenses, type SalesAgg } from './common.js';
 
 export interface PeriodCosts {
   /** Omborga yetkazish va boshqa buyurtmaga bog'lanmagan logistika */
@@ -76,7 +86,22 @@ export async function getPeriodCosts(
   return { ...costs, total: Object.values(costs).reduce((s, v) => s + v, 0) };
 }
 
-/** Davr xarajatlari kunma-kun (savdo kuni → summa) — foyda grafigi uchun */
+/**
+ * Davr xarajatlari kunma-kun (savdo kuni → summa) — foyda grafigi uchun.
+ *
+ * QO'LDA KIRITILGAN xarajat (`source: 'manual'`) o'z oyining shu oynaga
+ * tushgan kunlariga TENG bo'linadi. Sotuvchi ish haqi, ijara yoki oylik
+ * reklamani bitta sana bilan kiritadi (odatda oyning 1-kuni) — ilgari butun
+ * summa o'sha kunga yozilardi va grafikda bir kunlik katta "zarar" ustuni
+ * chiqardi, oyning qolgan kunlari esa xarajatsizdek ko'rinardi (2026-10-24).
+ * Uzumdan keladigan xarajat va saqlash to'lovi kunlik — o'z kunida qoladi.
+ *
+ * Yig'indi O'ZGARMAYDI (getPeriodCosts bilan aynan teng): xarajat faqat
+ * oynaning o'z kunlariga bo'linadi, ulushlar butun so'mda, qoldiq oxirgi
+ * kunda. Bugundan keyingi kunlarga bo'linmaydi: grafik seriyasi
+ * (getDailySeries) bugun bilan tugaydi va ulushning bir qismi grafikdan
+ * tushib qolardi.
+ */
 export async function getPeriodCostsByDay(
   companyId: string,
   storeIds: string[],
@@ -92,7 +117,7 @@ export async function getPeriodCostsByDay(
         source: { not: 'uzum-payout' },
         ...(storeId ? { storeId } : {}),
       },
-      select: { date: true, amount: true },
+      select: { date: true, amount: true, source: true },
     }),
     storeIds.length
       ? prisma.storageFee.findMany({
@@ -102,11 +127,113 @@ export async function getPeriodCostsByDay(
       : Promise.resolve([]),
   ]);
   const out = new Map<string, number>();
-  for (const r of [...rows, ...fees]) {
-    const key = toBusinessDate(r.date);
-    out.set(key, (out.get(key) ?? 0) + r.amount);
+  const add = (day: string, amount: number) => out.set(day, (out.get(day) ?? 0) + amount);
+
+  // Bo'lish mumkin bo'lgan kunlar: oyna ichida va bugundan kech emas
+  const firstDay = toBusinessDate(from);
+  const windowLast = toBusinessDate(addDays(toExclusive, -1));
+  const today = toBusinessDate(new Date());
+  const lastDay = windowLast < today ? windowLast : today;
+
+  for (const r of fees) add(toBusinessDate(r.date), r.amount);
+  for (const r of rows) {
+    const day = toBusinessDate(r.date);
+    const days = r.source === 'manual' ? monthDaysWithin(day, firstDay, lastDay) : [];
+    if (days.length === 0) {
+      add(day, r.amount);
+      continue;
+    }
+    // Kumulyativ yaxlitlash: har ulush butun so'm, yig'indisi aynan `amount`
+    let given = 0;
+    days.forEach((d, i) => {
+      const upTo = i === days.length - 1 ? r.amount : Math.round((r.amount * (i + 1)) / days.length);
+      add(d, upTo - given);
+      given = upTo;
+    });
   }
   return out;
+}
+
+/** `day` oyining [first, last] oraliqqa tushgan kunlari (ISO sanalar) */
+function monthDaysWithin(day: string, first: string, last: string): string[] {
+  const monthFirst = `${day.slice(0, 7)}-01`;
+  // Keyingi oyning 0-kuni — shu oyning oxirgi kuni
+  const monthLast = toISODate(new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0)));
+  const from = monthFirst > first ? monthFirst : first;
+  const to = monthLast < last ? monthLast : last;
+  return from <= to ? eachDay({ from, to }) : [];
+}
+
+// ─────────────────────────── Kunlik grafik va oldingi davr ───────────────────────────
+
+/** Kunlik grafik nuqtasi; `profit` — davr xarajatlari ayrilgandan keyin */
+export type NetDailyPoint = Awaited<ReturnType<typeof getDailySeries>>[number];
+
+/**
+ * Kunlik seriya, foyda DAVR XARAJATLARIDAN KEYIN — Boshqaruv paneli va Moliya
+ * grafigidagi "Sof foyda". Joriy va oldingi davr shu bitta funksiyadan
+ * olinadi: ta'rif farq qilsa, oldingi davr chizig'i tizimli ravishda baland
+ * yoki past turib, yo'q "o'sish"ni ko'rsatardi.
+ */
+export async function getNetDailySeries(
+  companyId: string,
+  storeIds: string[],
+  period: Period,
+  storeId?: string,
+): Promise<NetDailyPoint[]> {
+  const [series, costs] = await Promise.all([
+    getDailySeries(storeIds, period),
+    getPeriodCostsByDay(
+      companyId,
+      storeIds,
+      businessDayStart(period.from),
+      addDays(businessDayStart(period.to), 1),
+      storeId,
+    ),
+  ]);
+  return series.map((p) => ({ ...p, profit: round(p.profit - (costs.get(p.date) ?? 0)) }));
+}
+
+/**
+ * Oldingi davr grafikda taqqoslashga yaroqlimi; yaroqli bo'lsa — o'sha davr.
+ *
+ * Saqlangan tarixdan tashqaridagi kunlar bazada NOL bo'lib turadi, lekin bu
+ * "o'tgan safar sotuv bo'lmagan" emas, "bizda ma'lumot yo'q" degani. Bunday
+ * oyna chizilsa, uzuq chiziq nolda yotib, har qanday davr keskin o'sishdek
+ * ko'rinardi. Shuning uchun oldingi davr ikkala chegaradan keyin boshlanishi shart:
+ *  • tarif tarixi (`historyDays`) — joriy davr ham shu chegarada kesiladi
+ *    (lib/period.ts), sinxron ham undan nariga bormaydi;
+ *  • birinchi saqlangan buyurtma — birinchi to'liq sinxron undan oldingisini
+ *    olmagan (ko'pi bilan 365 kun) yoki do'kon o'shanda hali sotmagan.
+ */
+export async function comparablePeriod(storeIds: string[], previous: Period, plan: PlanId): Promise<Period | null> {
+  if (storeIds.length === 0) return null;
+  const floor = toBusinessDate(addDays(new Date(), -getPlan(plan).limits.historyDays));
+  if (previous.from < floor) return null;
+  const first = await prisma.order.aggregate({
+    _min: { orderedAt: true },
+    where: { storeId: { in: storeIds } },
+  });
+  const firstAt = first._min.orderedAt;
+  if (!firstAt || previous.from < toBusinessDate(firstAt)) return null;
+  return previous;
+}
+
+/**
+ * Oldingi teng davr seriyasi — joriy davr bilan kunma-kun tekislangan:
+ * `previousPeriod` bir xil uzunlikdagi siljish, shuning uchun i-nuqta joriy
+ * davrning i-kuniga to'g'ri keladi. Tarix yetmasa null (comparablePeriod).
+ */
+export async function getPreviousNetSeries(
+  companyId: string,
+  storeIds: string[],
+  previous: Period,
+  plan: PlanId,
+  storeId?: string,
+): Promise<{ period: Period; series: NetDailyPoint[] } | null> {
+  const period = await comparablePeriod(storeIds, previous, plan);
+  if (!period) return null;
+  return { period, series: await getNetDailySeries(companyId, storeIds, period, storeId) };
 }
 
 /** ROI maxraji: tovarga sarflangan pul — tannarx va bir donaga qo'shimcha xarajat */

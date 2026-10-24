@@ -5,11 +5,13 @@ import { AlertTriangle, BarChart3, CalendarRange, Coins, Download, Percent, PieC
 import { type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
+import { useReturnReasonLabel } from '@/lib/returnReasons';
 import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
 import { CHART_COLORS, ChartCard, DonutChart, TrendChart, seriesColor } from '@/components/charts';
 import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { returnsTone } from '@/components/dashboard/rates';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Badge,
@@ -42,13 +44,13 @@ registerNamespace('returns', {
     'kpi.amount': 'Qaytarish summasi',
     'kpi.amountHint': 'Yo‘qotilgan tushum',
     'kpi.rate': 'Qaytarish ulushi',
-    'kpi.rateHint': 'Sotuvdagi qaytarishlar foizi',
+    'kpi.rateHint': 'Qabul qilingan va qaytgan donadan',
     'kpi.avg': 'O‘rtacha qaytarish qiymati',
     'kpi.avgHint': 'Bitta dona uchun',
     'chart.reasons': 'Sabablar bo‘yicha',
     'chart.reasonsSub': 'Qaytarishlar sabablarining taqsimoti',
     'chart.dynamics': 'Vaqt bo‘yicha dinamika',
-    'chart.dynamicsSub': 'Kunlik qaytarishlar soni',
+    'chart.dynamicsSub': 'Qaytgan dona — buyurtma kuni bo‘yicha',
     'chart.count': 'Qaytarishlar',
     'chart.center': 'Jami',
     'col.product': 'Mahsulot',
@@ -64,13 +66,13 @@ registerNamespace('returns', {
     'status.canceled': 'Bekor qilingan',
     'status.rejected': 'Rad etilgan',
     'col.status': 'Holat',
-    'col.date': 'Sana',
+    'col.date': 'Buyurtma sanasi',
+    'col.returnedAt': 'Taxminiy qaytish sanasi: {d}',
     'table.title': 'Qaytarishlar ro‘yxati',
     'table.pageTotal': 'Sahifadagi jami',
     'alert.title': 'Yuqori qaytarish ulushiga ega mahsulotlar',
     'alert.hint': 'Ushbu mahsulotlar barcha qaytarishlarning katta qismini tashkil qiladi — tavsif, o‘lcham jadvali va qadoqni tekshiring',
     'alert.share': 'qaytarishlardan',
-    'reason.unknown': 'Sabab ko‘rsatilmagan',
     'search.placeholder': 'Mahsulot yoki buyurtma kodi',
     'empty.title': 'Qaytarishlar yo‘q',
     'empty.hint': 'Tanlangan davrda qaytarish qayd etilmagan',
@@ -82,6 +84,7 @@ registerNamespace('returns', {
     'kind.returnedHint': 'Tovar punktga keldi: xaridor olmadi yoki oldi-yu qaytardi',
     'kind.canceledHint': 'Xaridor buyurtma berib, tovarni olmasdan bekor qildi',
     'kind.allHint': 'Qaytarishlar va bekor qilishlar birga',
+    'period.hint': 'Davr — buyurtma sanasi bo‘yicha, Boshqaruv paneli va Sotuv voronkasi bilan bir xil.',
     'col.kind': 'Turi',
     'kpi.count.canceled': 'Bekor qilishlar soni',
     'kpi.amount.canceled': 'Bekor qilingan summa',
@@ -97,8 +100,8 @@ registerNamespace('returns', {
     'kpi.avg.all': 'O‘rtacha qiymat',
     'chart.reasonsSub.canceled': 'Bekor qilish sabablarining taqsimoti',
     'chart.reasonsSub.all': 'Barcha sabablar taqsimoti',
-    'chart.dynamicsSub.canceled': 'Kunlik bekor qilishlar soni',
-    'chart.dynamicsSub.all': 'Kunlik qaytarish va bekor qilishlar',
+    'chart.dynamicsSub.canceled': 'Bekor qilingan dona — buyurtma kuni bo‘yicha',
+    'chart.dynamicsSub.all': 'Qaytgan va bekor qilingan dona — buyurtma kuni bo‘yicha',
     'chart.count.canceled': 'Bekor qilishlar',
     'chart.count.all': 'Jami',
     'table.title.canceled': 'Bekor qilishlar ro‘yxati',
@@ -107,10 +110,6 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'Tanlangan davrda bekor qilish qayd etilmagan',
     'empty.title.all': 'Qaytarish va bekor qilishlar yo‘q',
     'empty.hint.all': 'Tanlangan davrda hech narsa qaytmagan va bekor qilinmagan',
-    'reason.cancelBeforeReceipt': 'Qabul qilishdan oldin bekor qilindi',
-    'reason.sizeMismatch': 'O‘lchami to‘g‘ri kelmadi',
-    'reason.noReason': 'Xaridor sabab ko‘rsatmadi',
-    'reason.missingItem': 'Buyurtmada tovar bo‘lmagan',
   },
   ru: {
     title: 'Возвраты',
@@ -120,13 +119,13 @@ registerNamespace('returns', {
     'kpi.amount': 'Сумма возвратов',
     'kpi.amountHint': 'Потерянная выручка',
     'kpi.rate': 'Доля возвратов',
-    'kpi.rateHint': 'Процент возвратов от продаж',
+    'kpi.rateHint': 'От полученных и возвращённых штук',
     'kpi.avg': 'Средняя стоимость возврата',
     'kpi.avgHint': 'На одну штуку',
     'chart.reasons': 'По причинам',
     'chart.reasonsSub': 'Распределение причин возвратов',
     'chart.dynamics': 'Динамика по времени',
-    'chart.dynamicsSub': 'Количество возвратов по дням',
+    'chart.dynamicsSub': 'Возвращённые штуки — по дню заказа',
     'chart.count': 'Возвраты',
     'chart.center': 'Всего',
     'col.product': 'Товар',
@@ -142,13 +141,13 @@ registerNamespace('returns', {
     'status.canceled': 'Отменён',
     'status.rejected': 'Отклонён',
     'col.status': 'Статус',
-    'col.date': 'Дата',
+    'col.date': 'Дата заказа',
+    'col.returnedAt': 'Примерная дата возврата: {d}',
     'table.title': 'Список возвратов',
     'table.pageTotal': 'Итого на странице',
     'alert.title': 'Товары с высокой долей возвратов',
     'alert.hint': 'На эти товары приходится основная часть возвратов — проверьте описание, размерную сетку и упаковку',
     'alert.share': 'от возвратов',
-    'reason.unknown': 'Причина не указана',
     'search.placeholder': 'Товар или код заказа',
     'empty.title': 'Возвратов нет',
     'empty.hint': 'За выбранный период возвраты не зафиксированы',
@@ -160,6 +159,7 @@ registerNamespace('returns', {
     'kind.returnedHint': 'Товар пришёл в пункт выдачи: покупатель не забрал или забрал и вернул',
     'kind.canceledHint': 'Покупатель отменил заказ, не получив товар',
     'kind.allHint': 'Возвраты и отмены вместе',
+    'period.hint': 'Период — по дате заказа, как на дашборде и в воронке продаж.',
     'col.kind': 'Тип',
     'kpi.count.canceled': 'Количество отмен',
     'kpi.amount.canceled': 'Сумма отмен',
@@ -175,8 +175,8 @@ registerNamespace('returns', {
     'kpi.avg.all': 'Средняя стоимость',
     'chart.reasonsSub.canceled': 'Распределение причин отмен',
     'chart.reasonsSub.all': 'Распределение всех причин',
-    'chart.dynamicsSub.canceled': 'Количество отмен по дням',
-    'chart.dynamicsSub.all': 'Возвраты и отмены по дням',
+    'chart.dynamicsSub.canceled': 'Отменённые штуки — по дню заказа',
+    'chart.dynamicsSub.all': 'Возвраты и отмены — по дню заказа',
     'chart.count.canceled': 'Отмены',
     'chart.count.all': 'Всего',
     'table.title.canceled': 'Список отмен',
@@ -185,10 +185,6 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'За выбранный период отмены не зафиксированы',
     'empty.title.all': 'Возвратов и отмен нет',
     'empty.hint.all': 'За выбранный период ничего не вернули и не отменили',
-    'reason.cancelBeforeReceipt': 'Отменён до получения',
-    'reason.sizeMismatch': 'Не подошёл размер',
-    'reason.noReason': 'Клиент не указал причину',
-    'reason.missingItem': 'Товара не оказалось в заказе',
   },
   en: {
     title: 'Returns',
@@ -198,13 +194,13 @@ registerNamespace('returns', {
     'kpi.amount': 'Returned amount',
     'kpi.amountHint': 'Revenue lost to returns',
     'kpi.rate': 'Return rate',
-    'kpi.rateHint': 'Share of sales that came back',
+    'kpi.rateHint': 'Of units received or returned',
     'kpi.avg': 'Average return value',
     'kpi.avgHint': 'Per single unit',
     'chart.reasons': 'By reason',
     'chart.reasonsSub': 'How return reasons are distributed',
     'chart.dynamics': 'Trend over time',
-    'chart.dynamicsSub': 'Returned units per day',
+    'chart.dynamicsSub': 'Returned units by order date',
     'chart.count': 'Returns',
     'chart.center': 'Total',
     'col.product': 'Product',
@@ -220,13 +216,13 @@ registerNamespace('returns', {
     'status.canceled': 'Canceled',
     'status.rejected': 'Rejected',
     'col.status': 'Status',
-    'col.date': 'Date',
+    'col.date': 'Order date',
+    'col.returnedAt': 'Estimated return date: {d}',
     'table.title': 'Return records',
     'table.pageTotal': 'Page total',
     'alert.title': 'Products with a high return share',
     'alert.hint': 'These products drive most of your returns — review the description, size chart and packaging',
     'alert.share': 'of all returns',
-    'reason.unknown': 'Reason not provided',
     'search.placeholder': 'Product or order code',
     'empty.title': 'No returns',
     'empty.hint': 'Nothing was returned in the selected period',
@@ -238,6 +234,7 @@ registerNamespace('returns', {
     'kind.returnedHint': 'Reached the pickup point: the buyer didn’t collect it, or collected and returned it',
     'kind.canceledHint': 'The buyer cancelled the order before receiving it',
     'kind.allHint': 'Returns and cancellations together',
+    'period.hint': 'The period is by order date, the same as on the dashboard and in the sales funnel.',
     'col.kind': 'Type',
     'kpi.count.canceled': 'Cancelled units',
     'kpi.amount.canceled': 'Cancelled amount',
@@ -253,8 +250,8 @@ registerNamespace('returns', {
     'kpi.avg.all': 'Average value',
     'chart.reasonsSub.canceled': 'How cancellation reasons are distributed',
     'chart.reasonsSub.all': 'All reasons combined',
-    'chart.dynamicsSub.canceled': 'Cancelled units per day',
-    'chart.dynamicsSub.all': 'Returns and cancellations per day',
+    'chart.dynamicsSub.canceled': 'Cancelled units by order date',
+    'chart.dynamicsSub.all': 'Returns and cancellations by order date',
     'chart.count.canceled': 'Cancellations',
     'chart.count.all': 'Total',
     'table.title.canceled': 'Cancellations',
@@ -263,10 +260,6 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'Nothing was cancelled in the selected period',
     'empty.title.all': 'No returns or cancellations',
     'empty.hint.all': 'Nothing was returned or cancelled in the selected period',
-    'reason.cancelBeforeReceipt': 'Cancelled before receipt',
-    'reason.sizeMismatch': 'Size didn’t fit',
-    'reason.noReason': 'Buyer gave no reason',
-    'reason.missingItem': 'Item missing from the order',
   },
 });
 
@@ -297,19 +290,6 @@ const STATUS_TONE: Record<string, Tone> = {
   rejected: 'danger',
 };
 
-/**
- * Uzum sababni asl (ruscha) matnda yuboradi. Ko'p uchraydiganlari tarjima
- * qilinadi, qolgani o'zgarishsiz ko'rsatiladi.
- */
-const REASON_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/до\s+получени/i, 'reason.cancelBeforeReceipt'],
-  [/размер/i, 'reason.sizeMismatch'],
-  [/не\s+указал\s+причин/i, 'reason.noReason'],
-  [/не\s+оказалось/i, 'reason.missingItem'],
-];
-/** Server sababsiz yozuvlarni shu matn bilan guruhlaydi */
-const SERVER_NO_REASON = 'Sabab ko‘rsatilmagan';
-
 type Kind = ReturnKind | 'all';
 
 export default function Returns() {
@@ -334,12 +314,8 @@ export default function Returns() {
 
   /** Turga bog'liq matn: `kpi.count` → `kpi.count.canceled` (qaytarish — asosiy kalit) */
   const tk = (key: string) => (kind === 'returned' ? t(key) : t(`${key}.${kind}`));
-  const reasonLabel = (raw: string | null | undefined) => {
-    const value = raw?.trim();
-    if (!value || value === SERVER_NO_REASON) return t('reason.unknown');
-    const rule = REASON_RULES.find(([re]) => re.test(value));
-    return rule ? t(rule[1]) : value;
-  };
+  // Sabab tarjimasi Boshqaruv panelidagi karta bilan umumiy (lib/returnReasons.ts)
+  const reasonLabel = useReturnReasonLabel();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['warehouse-returns', query],
@@ -362,7 +338,7 @@ export default function Returns() {
         value: r.qty,
         color: seriesColor(i),
       })),
-    [reasons, t],
+    [reasons, reasonLabel],
   );
 
   /** Kunlik dinamika — javobda tayyor seriya yo'q, shuning uchun qatorlardan yig'amiz */
@@ -451,16 +427,28 @@ export default function Returns() {
           ]
         : []),
       {
+        /*
+         * Buyurtma sanasi — davr va qatorlar tartibi shu bo'yicha. Ilgari bu
+         * yerda taxminiy qaytish sanasi turardi: davrdan tashqaridagi sanalar
+         * chiqib, jadval tartibsizdek ko'rinardi. Qaytish sanasi — izohda.
+         */
         key: 'date',
         header: t('col.date'),
         align: 'right',
         hideOnMobile: true,
-        render: (r) => <span className="tnum whitespace-nowrap text-muted">{f.date(r.returnedAt)}</span>,
+        render: (r) => (
+          <span
+            className="tnum whitespace-nowrap text-muted"
+            title={r.kind === 'returned' && r.returnedAt !== r.orderedAt ? t('col.returnedAt', { d: f.date(r.returnedAt) }) : undefined}
+          >
+            {f.date(r.orderedAt)}
+          </span>
+        ),
         sortable: true,
-        sortValue: (r) => r.returnedAt,
+        sortValue: (r) => r.orderedAt,
       },
     ],
-    [t, f, kind],
+    [t, f, kind, reasonLabel],
   );
 
   const pageQty = rows.reduce((s, r) => s + r.qty, 0);
@@ -515,12 +503,17 @@ export default function Returns() {
 
       <PlanGate feature="returns_report">
         <div className="space-y-5">
-          <p className="-mt-1 text-sm text-muted">{t(`kind.${kind}Hint`)}</p>
+          {/* Davr ta'rifi ochiq aytiladi: panel kartasi va voronka bilan bir xil son shu sababli (2026-10-24) */}
+          <p className="-mt-1 text-sm text-muted">
+            {t(`kind.${kind}Hint`)}. {t('period.hint')}
+          </p>
           {/*
             Ohanglar ma'no bo'yicha: qaytgan summa — haqiqiy yo'qotish (qizil),
             bekor qilingani esa sotilmay qolgan pul, xarajatsiz (za'faron).
-            Ulush Oylik hisobotdagi zonalar bilan: 5% gacha — firuza, 10% gacha —
-            za'faron, undan yuqori — qizil.
+            Qaytarish ulushi — Boshqaruv panelidagi kartadagi bilan BIR XIL
+            chegaralar (rates.ts returnsTone): kartada sariq 4,5% bu yerda
+            yashil chiqmasin. Bekor qilish va ikkalasi birga uchun eski zonalar:
+            5% gacha — firuza, 10% gacha — za'faron, undan yuqori — qizil.
           */}
           <StatGrid>
             <StatCard
@@ -544,7 +537,15 @@ export default function Returns() {
               value={f.pct(totals.rate)}
               hint={tk('kpi.rateHint')}
               icon={<Percent className="h-5 w-5" />}
-              tone={totals.rate >= 10 ? 'danger' : totals.rate >= 5 ? 'warn' : 'brand'}
+              tone={
+                kind === 'returned'
+                  ? returnsTone(totals.rate)
+                  : totals.rate >= 10
+                    ? 'danger'
+                    : totals.rate >= 5
+                      ? 'warn'
+                      : 'brand'
+              }
               loading={isLoading}
             />
             <StatCard
