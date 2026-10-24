@@ -97,10 +97,16 @@ export function PnlTable({
 
   const flow = useMemo(() => waterfall(lines), [lines]);
   const range = flow.hi - flow.lo;
+  // Oldingi davr tarixdan tashqarida (server previous: null) — sarlavha "taqqoslab" demasin
+  const comparable = lines.length === 0 || lines.some((l) => l.previous !== null);
 
   return (
     <Card className={cn('flex flex-col', className)}>
-      <CardHeader icon={<Scale className="h-4 w-4" />} title={t('pnl.title')} subtitle={t('pnl.subtitle')} />
+      <CardHeader
+        icon={<Scale className="h-4 w-4" />}
+        title={t('pnl.title')}
+        subtitle={t(comparable ? 'pnl.subtitle' : 'pnl.subtitleNoCompare')}
+      />
 
       {loading ? (
         <div className="p-5">
@@ -191,14 +197,20 @@ export function PnlTable({
                       )}
                     >
                       {isCost ? cost(line.current) : money(line.current)}
-                      {/* Oldingi davr ustuni yashirilgan oraliqda (xl) — summa ostida */}
-                      <span className="hidden text-2xs font-normal text-muted xl:block 2xl:hidden">
-                        {tc('common.prevValue', { v: isCost ? cost(line.previous) : money(line.previous) })}
-                      </span>
+                      {/* Oldingi davr ustuni yashirilgan oraliqda (xl) — summa ostida; taqqoslab bo'lmasa yozilmaydi */}
+                      {line.previous !== null ? (
+                        <span className="hidden text-2xs font-normal text-muted xl:block 2xl:hidden">
+                          {tc('common.prevValue', { v: isCost ? cost(line.previous) : money(line.previous) })}
+                        </span>
+                      ) : null}
                     </td>
 
-                    <td className="tnum hidden whitespace-nowrap px-2 py-2.5 text-right text-muted sm:table-cell sm:px-4 xl:hidden 2xl:table-cell">
-                      {isCost ? cost(line.previous) : money(line.previous)}
+                    <td
+                      className="tnum hidden whitespace-nowrap px-2 py-2.5 text-right text-muted sm:table-cell sm:px-4 xl:hidden 2xl:table-cell"
+                      // Oldingi davr saqlangan tarixdan tashqarida — "0 so'm" emas, tire (sababi izohda)
+                      title={line.previous === null ? tc('common.noCompare') : undefined}
+                    >
+                      {line.previous === null ? '—' : isCost ? cost(line.previous) : money(line.previous)}
                     </td>
 
                     <td className="px-2 py-2.5 text-right sm:px-4">

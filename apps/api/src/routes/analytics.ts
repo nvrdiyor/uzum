@@ -48,6 +48,7 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import {
+  comparablePeriod,
   getAdFeesBySku,
   getNetDailySeries,
   getPeriodCosts,
@@ -258,9 +259,14 @@ async function payoutWindow(
   return { amount: round(amount), orders: rows.length };
 }
 
-/** MetricValue yasash (digits — kasr xonalari, foizlar uchun 2) */
-const metric = (value: number, previous: number, digits = 0): MetricValue => {
+/**
+ * MetricValue yasash (digits — kasr xonalari, foizlar uchun 2). `previous`
+ * null — oldingi davr bilan taqqoslab bo'lmaydi (services/pnl.ts
+ * comparablePeriod): o'zgarish ham, "oldin" qiymati ham yo'q.
+ */
+const metric = (value: number, previous: number | null, digits = 0): MetricValue => {
   const cur = round(value, digits);
+  if (previous === null) return { value: cur, deltaPct: null, previous: null };
   const prev = round(previous, digits);
   return { value: cur, deltaPct: deltaPct(cur, prev), previous: prev };
 };
@@ -279,7 +285,8 @@ interface InsightInput {
   revenue: MetricValue;
   margin: number;
   returnsRate: number;
-  prevReturnsRate: number;
+  /** Oldingi davr bilan taqqoslab bo'lmasa null — "o'sdi" xulosasi chiqmaydi */
+  prevReturnsRate: number | null;
   buyoutRate: number;
   ordersTotal: number;
   avgCheck: number;
@@ -375,7 +382,7 @@ function buildInsights(inp: InsightInput): Insight[] {
   }
 
   // 4) Qaytarishlar ulushi o'sdi
-  if (inp.returnsRate > 0 && inp.returnsRate >= inp.prevReturnsRate + 1) {
+  if (inp.prevReturnsRate !== null && inp.returnsRate > 0 && inp.returnsRate >= inp.prevReturnsRate + 1) {
     out.push({
       id: 'returns_up',
       level: inp.returnsRate >= 8 ? 'danger' : 'warning',
@@ -551,7 +558,17 @@ router.get(
     const curReturns = pct(cur.returnsUnits, cur.handedUnits + cur.returnsUnits);
     const prevReturns = pct(prev.returnsUnits, prev.handedUnits + prev.returnsUnits);
 
-    const revenueMetric = metric(cur.revenue, prev.revenue);
+    /*
+     * Oldingi teng davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi
+     * yoki birinchi sinxrondan oldin) u yerdagi nol "sotuv bo'lmagan" emas,
+     * "ma'lumot yo'q" degani. Ilgari KPI'lar baribir shu qisman oynaga
+     * solishtirilardi: yangi do'konda "90 kun" tanlansa tushum "+302%" o'sardi.
+     * Endi grafikdagi uzuq chiziq bilan BITTA qoida (comparablePeriod):
+     * taqqoslab bo'lmasa o'zgarish ham, "oldin" qiymati ham yo'q (2026-10-24).
+     */
+    const was = (v: number): number | null => (previous ? v : null);
+
+    const revenueMetric = metric(cur.revenue, was(prev.revenue));
 
     /*
      * Xarajatlar tuzilmasi. Har kategoriya = buyurtma pozitsiyalaridagi qism +
@@ -647,7 +664,7 @@ router.get(
       revenue: revenueMetric,
       margin: curMargin,
       returnsRate: curReturns,
-      prevReturnsRate: prevReturns,
+      prevReturnsRate: was(prevReturns),
       buyoutRate: curBuyout,
       ordersTotal: cur.ordersTotal,
       avgCheck: curAvgCheck,
@@ -658,17 +675,17 @@ router.get(
       period: range.period,
       currency: company.currency,
       revenue: revenueMetric,
-      payout: metric(cur.payout, prev.payout),
-      netProfit: metric(curNet, prevNet),
+      payout: metric(cur.payout, was(prev.payout)),
+      netProfit: metric(curNet, was(prevNet)),
       itemProfit: round(cur.netProfit),
-      margin: metric(curMargin, prevMargin, 2),
-      roi: metric(curRoi, prevRoi, 2),
+      margin: metric(curMargin, was(prevMargin), 2),
+      roi: metric(curRoi, was(prevRoi), 2),
       // Bekor qilingan va qaytarilgan buyurtmalar sanoqqa kirmaydi (Sotuv tahlili bilan bir xil)
-      ordersCount: metric(cur.ordersActive, prev.ordersActive),
-      unitsSold: metric(cur.units, prev.units),
-      avgCheck: metric(curAvgCheck, prevAvgCheck),
-      buyoutRate: metric(curBuyout, prevBuyout, 2),
-      returnsRate: metric(curReturns, prevReturns, 2),
+      ordersCount: metric(cur.ordersActive, was(prev.ordersActive)),
+      unitsSold: metric(cur.units, was(prev.units)),
+      avgCheck: metric(curAvgCheck, was(prevAvgCheck)),
+      buyoutRate: metric(curBuyout, was(prevBuyout), 2),
+      returnsRate: metric(curReturns, was(prevReturns), 2),
       paidYesterday: paid.amount,
       expectedToday: expected.amount,
       uzumBalance,
@@ -729,23 +746,26 @@ router.get(
     const prevFrom = businessDayStart(range.previous.from);
     const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev, costs, prevCosts] = await Promise.all([
+    const [cur, prev, costs, prevCosts, comparable] = await Promise.all([
       lightTotals(storeIds, range.from, range.toExclusive),
       lightTotals(storeIds, prevFrom, prevToExclusive),
       getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getPeriodCosts(company.id, storeIds, prevFrom, prevToExclusive, range.storeId),
+      // Boshqaruv paneli bilan bir qoida: oldingi davr tarixdan tashqarida bo'lsa o'zgarish yo'q
+      comparablePeriod(storeIds, range.previous, plan),
     ]);
     // Sof foyda — davr xarajatlaridan keyin, boshqaruv panelidagi bilan bir xil
     const curNet = cur.netProfit - costs.total;
     const prevNet = prev.netProfit - prevCosts.total;
+    const was = (v: number): number | null => (comparable ? v : null);
 
     const payload: KpiResponse = {
       period: range.period,
       currency: company.currency,
-      revenue: metric(cur.revenue, prev.revenue),
-      netProfit: metric(curNet, prevNet),
-      ordersCount: metric(cur.orders, prev.orders),
-      margin: metric(pct(curNet, cur.revenue), pct(prevNet, prev.revenue), 2),
+      revenue: metric(cur.revenue, was(prev.revenue)),
+      netProfit: metric(curNet, was(prevNet)),
+      ordersCount: metric(cur.orders, was(prev.orders)),
+      margin: metric(pct(curNet, cur.revenue), was(pct(prevNet, prev.revenue)), 2),
     };
 
     res.json(payload);

@@ -102,6 +102,7 @@ registerNamespace('finance', {
 
     'pnl.title': 'Foyda va zarar (P&L)',
     'pnl.subtitle': 'Tushumdan sof foydagacha — oldingi davr bilan taqqoslab',
+    'pnl.subtitleNoCompare': 'Tushumdan sof foydagacha',
     'pnl.empty': 'P&L uchun ma’lumot yo‘q',
     'pnl.emptyHint': 'Sotuv va xarajatlar paydo bo‘lgach jadval to‘ladi',
     'pnl.col.item': 'Modda',
@@ -196,6 +197,7 @@ registerNamespace('finance', {
 
     'pnl.title': 'Прибыль и убытки (P&L)',
     'pnl.subtitle': 'От выручки до чистой прибыли — в сравнении с прошлым периодом',
+    'pnl.subtitleNoCompare': 'От выручки до чистой прибыли',
     'pnl.empty': 'Нет данных для P&L',
     'pnl.emptyHint': 'Таблица заполнится, когда появятся продажи и расходы',
     'pnl.col.item': 'Статья',
@@ -290,6 +292,7 @@ registerNamespace('finance', {
 
     'pnl.title': 'Profit & loss (P&L)',
     'pnl.subtitle': 'From revenue to net profit — compared with the previous period',
+    'pnl.subtitleNoCompare': 'From revenue to net profit',
     'pnl.empty': 'No P&L data yet',
     'pnl.emptyHint': 'The table fills in once sales and expenses appear',
     'pnl.col.item': 'Line item',
@@ -366,7 +369,7 @@ export default function Finance() {
   const grossDelta = useMemo(() => {
     const rev = lineMap.get('revenue');
     const cogs = lineMap.get('cogs');
-    if (!rev || !data) return null;
+    if (!rev || !data || rev.previous === null) return null;
     const previousGross = rev.previous - (cogs?.previous ?? 0);
     return deltaPct(data.grossProfit, previousGross);
   }, [lineMap, data]);
@@ -379,11 +382,14 @@ export default function Finance() {
   /*
    * Oldingi davr qiymatlari — P&L javobidan (u alohida so'rov, kechroq
    * kelishi mumkin). Kelmaguncha null: "oldin: 0 so'm" deb yozish yolg'on bo'lardi.
+   * Oldingi davr saqlangan tarixdan tashqarida bo'lsa ham null (server
+   * `comparePeriod: null`) — Boshqaruv paneli va grafikdagi chiziq kabi.
    */
   const pnlReady = pnlLines.length > 0;
-  const prevOf = (id: string) => lineMap.get(id)?.previous ?? 0;
-  const operPrevious = pnlReady ? prevOf('operatingProfit') : null;
-  const revenuePrevious = pnlReady ? prevOf('revenue') : null;
+  const canCompare = pnlReady && (pnl.data?.comparable ?? false);
+  const prevOf = (id: string): number | null => (canCompare ? (lineMap.get(id)?.previous ?? 0) : null);
+  const operPrevious = prevOf('operatingProfit');
+  const revenuePrevious = prevOf('revenue');
   const marginPrevious =
     revenuePrevious !== null && revenuePrevious > 0 && operPrevious !== null
       ? (operPrevious / revenuePrevious) * 100
@@ -397,7 +403,7 @@ export default function Finance() {
   const uzumNow = pnlReady
     ? (lineMap.get('commission')?.current ?? 0) + (lineMap.get('delivery')?.current ?? 0)
     : null;
-  const uzumPrev = pnlReady ? prevOf('commission') + prevOf('delivery') : null;
+  const uzumPrev = canCompare ? (prevOf('commission') ?? 0) + (prevOf('delivery') ?? 0) : null;
   const uzumDelta = uzumNow !== null && uzumPrev !== null ? deltaPct(uzumNow, uzumPrev) : null;
 
   /*
@@ -406,7 +412,7 @@ export default function Finance() {
    * qo'shib olinadi (routes/finance.ts collectFinance bilan aynan bir xil).
    */
   const splitPrevious = useMemo<Partial<Record<string, number>>>(() => {
-    if (!pnlLines.length) return {};
+    if (!canCompare) return {};
     const p = (id: string) => lineMap.get(id)?.previous ?? 0;
     return {
       cogs: p('cogs'),
@@ -418,7 +424,7 @@ export default function Finance() {
       salary: p('salary'),
       other: p('itemOther') + p('other'),
     };
-  }, [pnlLines, lineMap]);
+  }, [canCompare, lineMap]);
 
   const chartData = useMemo(
     () =>
@@ -502,7 +508,8 @@ export default function Finance() {
           <PeriodChip />
           <DataFreshness />
           <CostCoverage />
-          {data?.comparePeriod ? <ComparePeriodChip period={data.comparePeriod} /> : null}
+          {/* Davrda tushum bo'lsa — nima bilan taqqoslanyapti yoki nega taqqoslanmayapti */}
+          {data && (data.comparePeriod || data.revenue > 0) ? <ComparePeriodChip period={data.comparePeriod ?? null} /> : null}
         </>
       }
       badge={<PreviewBadge feature="unit_economics" />}
@@ -589,7 +596,7 @@ export default function Finance() {
                   label={t('kpi.gross')}
                   value={f.money(data?.grossProfit ?? 0)}
                   delta={grossDelta}
-                  previous={pnlReady ? f.compact(prevOf('grossProfit')) : undefined}
+                  previous={canCompare ? f.compact(prevOf('grossProfit') ?? 0) : undefined}
                   hint={t('kpi.grossHint', { v: f.pct(grossMargin) })}
                   icon={<TrendingUp className="h-5 w-5" />}
                   tone={(data?.grossProfit ?? 0) < 0 ? 'danger' : 'brand'}
@@ -615,7 +622,7 @@ export default function Finance() {
                   label={t('kpi.net')}
                   value={f.money(data?.netProfit ?? 0)}
                   delta={netDelta}
-                  previous={pnlReady ? f.compact(prevOf('netProfit')) : undefined}
+                  previous={canCompare ? f.compact(prevOf('netProfit') ?? 0) : undefined}
                   hint={t('kpi.netHint', { v: f.pct(margin) })}
                   icon={<PiggyBank className="h-5 w-5" />}
                   tone={(data?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}

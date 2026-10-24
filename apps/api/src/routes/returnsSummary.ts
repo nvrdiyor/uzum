@@ -23,6 +23,7 @@ import { ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
 import { getStoreIds } from '../services/common.js';
+import { comparablePeriod } from '../services/pnl.js';
 import { summarizeReturns } from '../services/returns.js';
 
 const router = Router();
@@ -62,10 +63,17 @@ router.get(
     const now = new Date();
     const [current, prev] = await Promise.all([
       summarizeReturns(storeIds, range.from, range.toExclusive, now),
-      summarizeReturns(storeIds, prevFrom, prevToExclusive, now),
+      /*
+       * Oldingi davr saqlangan tarixdan tashqarida bo'lsa — taqqoslash yo'q:
+       * panelning KPI'lari va grafikdagi uzuq chiziq bilan bitta qoida
+       * (services/pnl.ts comparablePeriod), qisman oyna "−5 p.p." bermasin.
+       */
+      comparablePeriod(storeIds, range.previous, plan).then((cmp) =>
+        cmp ? summarizeReturns(storeIds, prevFrom, prevToExclusive, now) : null,
+      ),
     ]);
 
-    const previous = prev.orderedUnits > 0 ? prev : null;
+    const previous = prev && prev.orderedUnits > 0 ? prev : null;
     const deltaPp: DashboardReturnsResponse['deltaPp'] = previous
       ? {
           returned: ppDelta(

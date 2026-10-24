@@ -536,7 +536,10 @@ export default function Dashboard() {
         <>
           <DataFreshness />
           <CostCoverage />
-          {data?.comparePeriod ? <ComparePeriodChip period={data.comparePeriod} /> : null}
+          {/* Davrda sotuv bo'lsa — nima bilan taqqoslanyapti yoki nega taqqoslanmayapti */}
+          {data && (data.comparePeriod || data.revenue.value > 0 || data.ordersCount.value > 0) ? (
+            <ComparePeriodChip period={data.comparePeriod ?? null} />
+          ) : null}
         </>
       }
       actions={

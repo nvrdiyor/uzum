@@ -110,7 +110,8 @@ export interface PnlLine {
   label: string;
   kind: PnlKind;
   current: number;
-  previous: number;
+  /** Oldingi teng davr; u saqlangan tarixdan tashqarida bo'lsa null — "oldin: 0 so'm" yozilmaydi */
+  previous: number | null;
   deltaPct: number | null;
   /** tushumga nisbatan ulush, % */
   share: number;
@@ -119,6 +120,11 @@ export interface PnlLine {
 export interface PnlData {
   lines: PnlLine[];
   currency: string | null;
+  /**
+   * Oldingi davr bilan taqqoslab bo'ladimi. Server `comparePeriod: null` qaytarsa
+   * (tarix yetmaydi) — yo'q: Boshqaruv paneli va grafikdagi uzuq chiziq bilan bitta qoida.
+   */
+  comparable: boolean;
 }
 
 /** Server yorlig'i o'rniga tarjima ishlatiladigan moddalar */
@@ -154,9 +160,10 @@ function guessKind(id: string): PnlKind {
   return 'cost';
 }
 
-function deltaOf(current: number, previous: number, raw: unknown): number | null {
+function deltaOf(current: number, previous: number | null, raw: unknown): number | null {
   const given = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
   if (given !== null) return given;
+  if (previous === null) return null;
   if (previous === 0) return current === 0 ? 0 : null;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
@@ -166,7 +173,8 @@ function toPnlLine(v: unknown, index: number): PnlLine | null {
   const id = str(v.id ?? v.key, `line-${index}`);
   const label = str(v.label ?? v.name, id);
   const current = num(v.current ?? v.amount ?? v.value);
-  const previous = num(v.previous ?? v.prev);
+  // null — server taqqoslamadi (tarix yetmaydi); kalit umuman bo'lmasa eski javob — 0
+  const previous = v.previous === null ? null : num(v.previous ?? v.prev);
   const kindRaw = str(v.kind);
   const kind: PnlKind =
     kindRaw === 'income' || kindRaw === 'cost' || kindRaw === 'subtotal' || kindRaw === 'total'
@@ -200,10 +208,12 @@ export function normalizePnl(raw: unknown): PnlData {
   const lines = source
     .map(toPnlLine)
     .filter((l): l is PnlLine => l !== null)
-    .filter((l) => l.current !== 0 || l.previous !== 0 || l.kind === 'total' || l.kind === 'subtotal');
+    .filter((l) => l.current !== 0 || (l.previous ?? 0) !== 0 || l.kind === 'total' || l.kind === 'subtotal');
 
   const currency = isRecord(raw) && typeof raw.currency === 'string' ? raw.currency : null;
-  return { lines, currency };
+  const comparable =
+    isRecord(raw) && 'comparePeriod' in raw ? raw.comparePeriod !== null : lines.some((l) => l.previous !== null);
+  return { lines, currency, comparable };
 }
 
 // ─────────────────────────── Xarajatlar ro'yxati ───────────────────────────

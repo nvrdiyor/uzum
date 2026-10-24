@@ -32,7 +32,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
 import { aggregateSales, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
-import { getNetDailySeries, getPreviousNetSeries, type NetDailyPoint } from '../services/pnl.js';
+import { comparablePeriod, getNetDailySeries, getPreviousNetSeries, type NetDailyPoint } from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
 
@@ -342,7 +342,8 @@ interface PnlLine {
   /** 'income' — tushum, 'cost' — xarajat, 'total' — yakuniy natija */
   kind: 'income' | 'cost' | 'subtotal' | 'total';
   amount: number;
-  previous: number;
+  /** Oldingi teng davr; u saqlangan tarixdan tashqarida bo'lsa null (comparePeriod) */
+  previous: number | null;
   deltaPct: number | null;
   /** tushumga nisbatan ulush, % */
   share: number;
@@ -351,6 +352,8 @@ interface PnlLine {
 interface PnlResponse {
   period: Period;
   previous: Period;
+  /** Taqqoslanadigan oldingi davr; saqlangan tarix yetmasa null — qatorlarda `previous` ham null */
+  comparePeriod: Period | null;
   currency: string;
   lines: PnlLine[];
   totals: {
@@ -361,7 +364,7 @@ interface PnlResponse {
     expensesTotal: number;
     netProfit: number;
     margin: number;
-    previousNetProfit: number;
+    previousNetProfit: number | null;
     netProfitDeltaPct: number | null;
   };
 }
@@ -375,9 +378,16 @@ router.get(
     const storeIds = await getStoreIds(company.id, range.storeId);
     const taxRate = company.taxRate;
 
-    const [cur, prev] = await Promise.all([
+    const [cur, prev, comparable] = await Promise.all([
       collectFinance(company.id, storeIds, range.period, taxRate, range.storeId),
       collectFinance(company.id, storeIds, range.previous, taxRate, range.storeId),
+      /*
+       * Boshqaruv paneli va grafikdagi uzuq chiziq bilan bitta qoida: oldingi
+       * davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi, birinchi
+       * sinxron) — "oldin" ham, o'zgarish ham yo'q. Ilgari yangi do'konda
+       * qisman oyna bilan solishtirilib, "+302%" kabi yolg'on o'sish chiqardi.
+       */
+      comparablePeriod(storeIds, range.previous, plan),
     ]);
 
     const line = (
@@ -391,8 +401,8 @@ router.get(
       label,
       kind,
       amount: round(amount),
-      previous: round(previous),
-      deltaPct: deltaPct(round(amount), round(previous)),
+      previous: comparable ? round(previous) : null,
+      deltaPct: comparable ? deltaPct(round(amount), round(previous)) : null,
       share: pct(amount, cur.revenue),
     });
 
@@ -434,6 +444,7 @@ router.get(
     const payload: PnlResponse = {
       period: range.period,
       previous: range.previous,
+      comparePeriod: comparable,
       currency: company.currency,
       lines,
       totals: {
@@ -445,8 +456,8 @@ router.get(
         // Sof foyda — HAMMA xarajatdan keyin: tushum − tannarx − jami xarajat (yuqoridagi uch qator bilan yopiladi)
         netProfit: round(cur.operatingProfit),
         margin: pct(cur.operatingProfit, cur.revenue),
-        previousNetProfit: round(prev.operatingProfit),
-        netProfitDeltaPct: deltaPct(round(cur.operatingProfit), round(prev.operatingProfit)),
+        previousNetProfit: comparable ? round(prev.operatingProfit) : null,
+        netProfitDeltaPct: comparable ? deltaPct(round(cur.operatingProfit), round(prev.operatingProfit)) : null,
       },
     };
 

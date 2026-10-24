@@ -2314,7 +2314,10 @@ export interface DashboardReturnsResponse {
   period: Period;
   previousPeriod: Period;
   current: ReturnsSummary;
-  /** Oldingi davrda buyurtma bo'lmasa null */
+  /**
+   * Oldingi davrda buyurtma bo'lmasa yoki u saqlangan tarixdan tashqarida
+   * bo'lsa (taqqoslab bo'lmaydi — DashboardResponse.comparePeriod null) null
+   */
   previous: ReturnsSummary | null;
   /**
    * Ulush o'zgarishi FOIZ PUNKTIDA (joriy − oldingi, 1 xona). Oldingi davr
