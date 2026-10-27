@@ -11,6 +11,7 @@ import { prisma } from '../lib/db.js';
 import { isAdmin } from '../lib/env.js';
 import { clampMessage, sleep, t, type BotContext } from './context.js';
 import { countOpenTickets, localDayStart } from './data.js';
+import { toBotLang } from '../i18n.js';
 
 /** Ketma-ket yuborishda Telegram limitiga urilmaslik uchun pauza (ms) */
 const BROADCAST_DELAY_MS = 60;
@@ -183,11 +184,15 @@ export async function onGrant(ctx: BotContext, payload: string): Promise<void> {
 
   // Foydalanuvchiga ham xabar beramiz (chat ulangan bo'lsa)
   if (user.botChatId) {
-    const lang = user.languageCode === 'ru' ? 'ru' : 'uz';
+    // toBotLang: saytda inglizchani tanlagan sotuvchi xabarni inglizcha oladi (2026-10-27)
+    const lang = toBotLang(user.languageCode);
+    const until = formatDate(expiresAt, lang);
     const text =
       lang === 'ru'
-        ? `💎 Ваш тариф обновлён: <b>${planName}</b> до ${formatDate(expiresAt, lang)}.`
-        : `💎 Tarifingiz yangilandi: <b>${planName}</b> — ${formatDate(expiresAt, lang)} gacha.`;
+        ? `💎 Ваш тариф обновлён: <b>${planName}</b> до ${until}.`
+        : lang === 'en'
+          ? `💎 Your plan has been updated: <b>${planName}</b> until ${until}.`
+          : `💎 Tarifingiz yangilandi: <b>${planName}</b> — ${until} gacha.`;
     try {
       await ctx.api.sendMessage(user.botChatId, text, { parse_mode: 'HTML' });
     } catch {

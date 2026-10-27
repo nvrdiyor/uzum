@@ -255,6 +255,9 @@ export default function Stocks() {
    * mahsulot ID'si yoki uzum.uz havolasi — qator kalitlari serverdan keladi.
    * Ilgari faqat nom va SKU kodi edi (2026-10-24). KPI kartochkalari
    * qidiruvga bog'liq emas (butun ombor), taqsimot va jadval — qidiruv bo'yicha.
+   * Mahsulot nomi ham — server skuInfoMatches bilan AYNAN bir xil maydonlar:
+   * u yo'qligida variant nomli («ЧЕРН») SKU sahifada topilmay, Excel'da
+   * chiqardi (2026-10-27).
    */
   const query = useSkuQuery(search);
   const searched = useMemo(() => {
@@ -263,7 +266,7 @@ export default function Stocks() {
       matchesSkuQuery(
         query,
         { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
-        { id: r.productId, uzumProductId: r.uzumProductId },
+        { id: r.productId, title: r.productTitle, uzumProductId: r.uzumProductId },
       ),
     );
   }, [allRows, query]);
@@ -336,7 +339,16 @@ export default function Stocks() {
   async function handleExport() {
     setExporting(true);
     try {
-      const blob = await api.blob('/export/stocks', { ...q, status: status === 'all' ? undefined : status });
+      /*
+       * Fayl — jadvalning o'zi: do'kon, holat VA qidiruv (server o'sha umumiy
+       * qoida bilan filtrlaydi). Ilgari qidiruv yuborilmasdi: "naushnik"
+       * qidirilgan jadvaldan Excel bosilsa, faylda butun ombor chiqardi (2026-10-27).
+       */
+      const blob = await api.blob('/export/stocks', {
+        ...q,
+        status: status === 'all' ? undefined : status,
+        search: search.trim() || undefined,
+      });
       downloadBlob(blob, `stocks-${q.from}-${q.to}.xlsx`);
       toast.success(t('export.done'));
     } catch {

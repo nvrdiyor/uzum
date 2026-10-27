@@ -31,6 +31,7 @@ import {
   storageFeePerDay,
   storageTariffKind,
   turnoverDays,
+  parseSkuQuery,
   pct,
   round,
   safeDiv,
@@ -54,6 +55,7 @@ import {
   getStoreIds,
   getStoreTitles,
   isSalesStockVisible,
+  skuInfoMatches,
   stockState,
   withSoldSkus,
   type SkuInfo,
@@ -72,6 +74,8 @@ import {
 } from '@savdoiq/shared';
 import type { ResolvedRange } from '../lib/period.js';
 import {
+  RETURNS_DANGER_PCT,
+  RETURNS_WARN_PCT,
   buildMonthlyReport,
   collectMonthCompare,
   monthLabel,
@@ -80,6 +84,7 @@ import {
 import {
   loadPlanData,
   parseStatusFilter,
+  parseStockStatus,
   planProduct,
   planSku,
   planStockStatus,
@@ -499,6 +504,15 @@ router.get(
     const stocks = planData.stocks;
     // Sahifadagidek: yashirilgan, lekin davrda sotilgan SKU ham faylda — ilgari JAMI tushum sahifadagidan kam chiqardi
     await withSoldSkus(catalog, sales.keys(), storeIds);
+    /*
+     * Sahifa (GET /stocks/sales-stock) `?status=` va `?search=` ni serverda
+     * qo'llaydi va tugma ularni faylga ham yuboradi — fayl o'sha qoidalar
+     * bilan: holat planStockStatus'dan, qidiruv services/common.ts
+     * skuInfoMatches. Ilgari ikkalasi e'tiborsiz qolardi: "Kritik" yoki
+     * qidiruv bilan turgan sahifadan Excel bosilsa, faylda barcha SKU chiqardi (2026-10-27).
+     */
+    const onlyStatus = parseStockStatus(req.query.status);
+    const query = parseSkuQuery(range.search);
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 16 },
@@ -518,6 +532,7 @@ router.get(
     ];
 
     const list = [...catalog.values()]
+      .filter((info) => query === null || skuInfoMatches(info, query))
       .map((info) => {
         const agg = sales.get(info.id);
         const st = stocks.get(info.id);
@@ -549,7 +564,9 @@ router.get(
       })
       // Sahifa bilan bir xil qoida (services/common.ts); ilgari sur'ati bor, qoldig'i tugagan SKU faylga tushmasdi
       .filter((r) => isSalesStockVisible(r.sold, r.revenue, r.total, r.avg))
-      .sort((a, b) => b.revenue - a.revenue);
+      .filter((r) => onlyStatus === null || r.state.status === onlyStatus)
+      // Sahifaning standart tartibi (tushum, kamayish) — sahifadagi yaxlitlangan tushum bo'yicha
+      .sort((a, b) => round(b.revenue) - round(a.revenue));
 
     const rows: Cell[][] = list.slice(0, MAX_ROWS).map((r) => [
       r.info.sku,
@@ -776,6 +793,16 @@ router.get(
       getLastSaleDates(storeIds),
     ]);
     const stocks = planData.stocks;
+    /*
+     * Fayl — sahifadagi jadvalning AYNAN o'zi: do'kon, `?status=` (sahifadagi
+     * holat tugmasi) va `?search=` (umumiy qidiruv qoidasi, services/common.ts
+     * skuInfoMatches — sahifa ham shu maydonlar bilan qidiradi). Ilgari ikkalasi
+     * e'tiborsiz qolardi va faylda doim butun ombor chiqardi; qoldig'i 0 bo'lgan
+     * SKU esa (sahifada qizil "0" bilan turgan "Kritik") faylga umuman
+     * tushmasdi (2026-10-27).
+     */
+    const onlyStatus = parseStockStatus(req.query.status);
+    const query = parseSkuQuery(range.search);
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 16 },
@@ -795,6 +822,7 @@ router.get(
     ];
 
     const list = [...catalog.values()]
+      .filter((info) => query === null || skuInfoMatches(info, query))
       .map((info) => {
         const st = stocks.get(info.id);
         const avg = avgDaily.get(info.id) ?? 0;
@@ -819,8 +847,9 @@ router.get(
           ),
         };
       })
-      .filter((r) => r.total > 0 || r.reserved > 0 || r.inTransit > 0)
-      .sort((a, b) => b.costValue - a.costValue);
+      .filter((r) => onlyStatus === null || r.state.status === onlyStatus)
+      // Sahifaning standart tartibi (GET /stocks: tannarx qiymati, kamayish) — o'sha yaxlitlangan qiymat bo'yicha
+      .sort((a, b) => round(b.costValue) - round(a.costValue));
 
     const rows: Cell[][] = list.slice(0, MAX_ROWS).map((r) => [
       r.info.sku,
@@ -1229,10 +1258,23 @@ export function buildMonthlyWorkbook(
     { label: '', value: null },
     { label: 'Buyurtmalar', value: r.ordersTotal, fmt: 'int', note: 'Bekor va qaytganlar bilan' },
     { label: 'Muvaffaqiyatli', value: r.ordersSuccess, fmt: 'int', note: 'Bekor qilinmagan, qaytmagan' },
-    { label: 'Muvaffaqiyat ulushi', value: r.successRate, fmt: 'percent' },
-    { label: 'Bekor qilingan', value: r.canceled, fmt: 'int', note: 'Yetkazilmagan buyurtmalar' },
-    { label: 'Qaytarilgan', value: r.returns, fmt: 'int', note: 'Mijoz qaytargan buyurtmalar' },
-    { label: 'Qaytarish ulushi', value: r.returnRate, fmt: 'percent', note: '5% gacha — normal, 10% dan yuqori — xavfli' },
+    /*
+     * Ulushlar nomida asosi yoziladi: muvaffaqiyat — BUYURTMA bo'yicha,
+     * qaytarish — DONA bo'yicha (Boshqaruv paneli kartasi bilan bir xil son,
+     * services/returns.ts). Ilgari ikkalasi ham buyurtmadan edi va fayldagi
+     * "Qaytarish ulushi" paneldagidan farq qilardi; bekor/qaytarilgan esa
+     * buyurtma SONI bo'lib qoladi (2026-10-27).
+     */
+    { label: 'Muvaffaqiyat ulushi (buyurtma)', value: r.successRate, fmt: 'percent', note: 'Muvaffaqiyatli ÷ jami buyurtmalar' },
+    { label: 'Bekor qilingan buyurtma', value: r.canceled, fmt: 'int', note: 'Yetkazilmagan buyurtmalar soni' },
+    { label: 'Qaytarilgan buyurtma', value: r.returns, fmt: 'int', note: 'Mijoz qaytargan buyurtmalar soni' },
+    {
+      label: 'Qaytarish ulushi (dona)',
+      // Asos yo'q (hamma tovar hali yo'lda) — panel kartasidagidek tire, "0%" emas
+      value: r.receivedUnits + r.returnedUnits > 0 ? r.returnRate : '—',
+      fmt: 'percent',
+      note: `Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — Boshqaruv paneli bilan bir xil. ${n0(r.returnedUnits)} dona qaytdi, ${n0(r.receivedUnits)} dona qabul qilindi. ${RETURNS_WARN_PCT}% gacha — normal, ${RETURNS_DANGER_PCT}% dan — xavfli`,
+    },
     { label: 'Sotildi, dona', value: r.unitsSold, fmt: 'int', note: 'Muvaffaqiyatli buyurtmalarda' },
     { label: 'O‘rtacha chek', value: r.avgCheck, fmt: 'money', note: `${n0(activeOrders)} buyurtma asosida` },
     { label: '', value: null },

@@ -49,7 +49,7 @@ import {
 import type { ResolvedRange } from '../lib/period.js';
 import { getDailySeries, getLatestStocks, getSkuCatalog, type SkuInfo } from './common.js';
 import { getAdFeesBySku, getPeriodCosts, getPeriodCostsByDay } from './pnl.js';
-import { splitLine } from './returns.js';
+import { splitLine, summarizeReturns } from './returns.js';
 
 // ─────────────────────────── Doimiylar ───────────────────────────
 
@@ -100,6 +100,16 @@ const UNKNOWN_CATEGORY = 'Kategoriyasiz';
  * sezilarli o'zgaradi (yo'ldagi tovar bekor bo'lishi yoki qaytishi mumkin).
  */
 export const FINAL_COMPLETION_PCT = 95;
+
+/**
+ * Qaytarish ulushi chegaralari, % — Boshqaruv panelidagi kartaniki bilan bir
+ * xil (web components/dashboard/rates.ts returnsTone, analytics.ts
+ * tavsiyalari): 4% dan — diqqat, 8% dan — xavfli. Ulush endi panelniki
+ * bo'lgani uchun (dona bo'yicha) chegaralar ham o'sha: ilgari hisobot 5/10
+ * ishlatardi va bir xil 9% panelda qizil, hisobotda sariq chiqardi (2026-10-27).
+ */
+export const RETURNS_WARN_PCT = 4;
+export const RETURNS_DANGER_PCT = 8;
 
 const money = (v: number): string => `${formatCompact(Math.round(v), 'uz')} so‘m`;
 const num = (v: number, digits = 0): string => formatNumber(v, 'uz', digits);
@@ -386,10 +396,15 @@ interface InsightInput {
   avgCheck: number;
   ordersTotal: number;
   ordersSuccess: number;
+  /** Bekor qilingan va qaytarilgan BUYURTMALAR soni */
   canceled: number;
   returns: number;
+  /** Muvaffaqiyatli buyurtmalar ÷ jami buyurtmalar, % */
   successRate: number;
+  /** Qaytarish ulushi DONA bo'yicha — Boshqaruv paneli bilan bir ta'rif (services/returns.ts) */
   returnRate: number;
+  returnedUnits: number;
+  receivedUnits: number;
   categories: Record<ExpenseCategory, number>;
   expensesTotal: number;
   taxAmount: number;
@@ -434,14 +449,31 @@ function buildInsights(inp: InsightInput): Insight[] {
     });
   }
 
-  // 3) Bekor qilingan va qaytarilgan buyurtmalar
-  if (inp.ordersTotal > 0 && (inp.canceled > 0 || inp.returns > 0)) {
+  /*
+   * 3) Bekor qilingan va qaytarilgan buyurtmalar. Sonlar — BUYURTMA, qaytarish
+   * ulushi esa DONA bo'yicha: Boshqaruv paneli kartasi bilan bitta ta'rif
+   * (services/returns.ts). Ilgari ulush "qaytgan buyurtma ÷ barcha buyurtma"
+   * edi — bir oy uchun panel va hisobot ikki xil "qaytarish ulushi"
+   * ko'rsatardi (2026-10-27). Tirik buyurtmadagi qisman qaytish (buyurtma
+   * "qaytarilgan" emas, lekin dona qaytgan) ham xulosa beradi.
+   */
+  const returnBase = inp.receivedUnits + inp.returnedUnits;
+  if (inp.ordersTotal > 0 && (inp.canceled > 0 || inp.returns > 0 || inp.returnedUnits > 0)) {
     const lost = inp.canceled + inp.returns;
+    const rateText =
+      returnBase > 0
+        ? ` Qaytarish ulushi ${num(inp.returnRate, 1)}% (dona bo‘yicha, Boshqaruv panelidagi kabi): xaridorlar ${num(inp.receivedUnits)} dona qabul qildi, ${num(inp.returnedUnits)} dona qaytdi.`
+        : ' Qaytarish ulushi hali yo‘q — xaridorlar hali birorta donani qabul qilmagan.';
     out.push({
       id: 'order_quality',
-      level: inp.successRate < 80 ? 'danger' : inp.returnRate >= 5 ? 'warning' : 'info',
+      level:
+        inp.successRate < 80 || inp.returnRate >= RETURNS_DANGER_PCT
+          ? 'danger'
+          : inp.returnRate >= RETURNS_WARN_PCT
+            ? 'warning'
+            : 'info',
       title: `Buyurtmalarning ${num(inp.successRate, 1)}% i muvaffaqiyatli yakunlangan`,
-      body: `${num(inp.ordersTotal)} ta buyurtmadan ${num(inp.canceled)} tasi bekor qilingan, ${num(inp.returns)} tasi qaytarilgan (qaytarish ulushi ${num(inp.returnRate, 1)}%). Jami ${num(lost)} ta buyurtma yo‘qotildi.`,
+      body: `${num(inp.ordersTotal)} ta buyurtmadan ${num(inp.canceled)} tasi bekor qilingan, ${num(inp.returns)} tasi qaytarilgan — jami ${num(lost)} ta buyurtma yo‘qotildi.${rateText}`,
       link: '/returns',
       metric: 'successRate',
     });
@@ -573,12 +605,22 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
   const from = businessDayStart(period.from);
   const toExclusive = addDays(businessDayStart(period.to), 1);
 
-  const [snap, stats, catalog, stocks, series] = await Promise.all([
+  const [snap, stats, catalog, stocks, series, returnsSummary] = await Promise.all([
     collectSnapshot(companyId, storeIds, from, toExclusive, range.storeId, now),
     collectOrderStats(storeIds, from, toExclusive),
     getSkuCatalog(storeIds, true),
     getLatestStocks(storeIds),
     getDailySeries(storeIds, period),
+    /*
+     * Qaytarish ulushi — Boshqaruv panelidagi "Qaytarish va bekor qilish"
+     * kartasining AYNAN o'zi (routes/returnsSummary.ts → summarizeReturns):
+     * qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona), buyurtma sanasi
+     * bo'yicha, xuddi shu "hozir" holatida. Ilgari hisobot "qaytgan buyurtma ÷
+     * barcha buyurtma" deb o'zi hisoblardi va bir oy uchun panel bilan ikki xil
+     * foiz chiqardi (2026-10-27). Buyurtma sonlari (bekor/qaytarilgan) — son
+     * bo'lib qoladi.
+     */
+    summarizeReturns(storeIds, from, toExclusive, now),
   ]);
 
   // Mahsulotga bog'langan reklama to'lovi (mahsulot foydasidan) va davr xarajatlari kunma-kun (grafik uchun)
@@ -651,8 +693,12 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
   };
 
   // ── Ko'rsatkichlar ──
+  // Buyurtmalar bo'yicha (sonlar ulushi) — "Buyurtmalar oqimi"
   const successRate = pct(stats.success, stats.total);
-  const returnRate = pct(stats.returned, stats.total);
+  // Dona bo'yicha — panel kartasi bilan bir xil son (yuqoridagi summarizeReturns)
+  const returnRate = returnsSummary.returned.rate;
+  const returnedUnits = returnsSummary.returned.qty;
+  const receivedUnits = returnsSummary.soldUnits;
   const grossMargin = pct(snap.grossProfit, snap.revenue);
   const margin = pct(snap.netProfit, snap.revenue);
   const avgCheck = safeDiv(snap.revenue, stats.active);
@@ -682,6 +728,8 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
     returns: stats.returned,
     successRate,
     returnRate,
+    returnedUnits,
+    receivedUnits,
     categories: snap.categories,
     expensesTotal: snap.expensesTotal,
     taxAmount: snap.taxAmount,
@@ -707,6 +755,8 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
     canceled: stats.canceled,
     returns: stats.returned,
     returnRate,
+    returnedUnits,
+    receivedUnits,
     successRate,
     grossMargin,
     taxRate,

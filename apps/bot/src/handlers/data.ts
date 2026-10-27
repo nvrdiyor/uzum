@@ -3,7 +3,7 @@
  *
  * Handler'lar bazaga to'g'ridan-to'g'ri murojaat qilmaydi: shunda hisob-kitob mantiqi
  * bitta joyda bo'ladi va kunlik hisobot (jobs/daily.ts) bilan «📊 Bugungi hisobot»
- * bir xil formuladan foydalanadi.
+ * (bugun / kecha / shu oy / shu yil) bir xil formuladan — `buildPeriodReport` dan foydalanadi.
  *
  * Ma'lumot bo'lmasa xato emas — nol qiymatlar va bo'sh ro'yxat qaytadi.
  */
@@ -19,7 +19,15 @@ import {
 import { prisma } from '../lib/db.js';
 import { env } from '../lib/env.js';
 import { encryptSecret, randomCode, randomTicketCode } from '../crypto.js';
-import type { BotLang } from '../i18n.js';
+import { toBotLang, type BotLang } from '../i18n.js';
+import {
+  dashboardKpis,
+  isLiveLine,
+  periodCostsTotal,
+  sumLineTotals,
+  type DashboardKpis,
+  type ReportRange,
+} from '../lib/dashboard-kpi.js';
 
 const DAY_MS = 86_400_000;
 /** O'rtacha kunlik sotuvni hisoblash oynasi (kun) */
@@ -65,7 +73,7 @@ export async function getStoreIds(companyId: string): Promise<string[]> {
   return stores.map((s) => s.id);
 }
 
-// ─────────────────────────── Kunlik hisobot ───────────────────────────
+// ─────────────────────────── Davr hisoboti ───────────────────────────
 
 export interface TopProduct {
   title: string;
@@ -73,70 +81,81 @@ export interface TopProduct {
   units: number;
 }
 
-export interface DayReport {
-  revenue: number;
-  orders: number;
-  units: number;
-  netProfit: number;
-  avgCheck: number;
+/** Saytdagi Boshqaruv paneli KPI'lari (lib/dashboard-kpi.ts) + top mahsulotlar */
+export interface PeriodReport extends DashboardKpis {
   top: TopProduct[];
 }
 
-const EMPTY_REPORT: DayReport = { revenue: 0, orders: 0, units: 0, netProfit: 0, avgCheck: 0, top: [] };
+const EMPTY_REPORT: PeriodReport = { revenue: 0, orders: 0, units: 0, netProfit: 0, avgCheck: 0, top: [] };
 
 /**
- * Bir kunlik (yoki ixtiyoriy davr) natijalari: tushum, buyurtma, sof foyda,
- * o'rtacha chek va top mahsulotlar. Bekor qilingan/qaytarilgan pozitsiyalar hisobga olinmaydi.
+ * Davr natijalari: tushum, buyurtma, dona, o'rtacha chek, davr
+ * xarajatlaridan keyingi sof foyda va top mahsulotlar.
+ *
+ * «📊 Hisobot» tugmasi ham, 09:00 dagi kunlik xabar ham FAQAT shu funksiyadan
+ * oladi: ilgari ikkalasi o'z qoidasi bilan hisoblardi va bitta kun uchun bot
+ * saytdagidan boshqa buyurtma soni va o'rtacha chek ko'rsatardi (2026-10-27).
+ * So'rovlar panel bilan bir xil (analytics.ts collectTotals, pnl.ts
+ * getPeriodCosts), hisob esa lib/dashboard-kpi.ts dagi nusxada.
  */
-export async function buildDayReport(
-  companyId: string,
-  from: Date,
-  toExclusive: Date,
-  topLimit = 3,
-): Promise<DayReport> {
+export async function buildPeriodReport(companyId: string, range: ReportRange, topLimit = 3): Promise<PeriodReport> {
   const storeIds = await getStoreIds(companyId);
   if (storeIds.length === 0) return { ...EMPTY_REPORT, top: [] };
 
-  const items = await prisma.orderItem.findMany({
-    where: { orderedAt: { gte: from, lt: toExclusive }, order: { storeId: { in: storeIds } } },
-    select: {
-      orderId: true,
-      skuId: true,
-      skuCode: true,
-      title: true,
-      qty: true,
-      revenue: true,
-      netProfit: true,
-      status: true,
-      returnedAt: true,
-    },
-  });
+  const { from, toExclusive } = range;
+  const [orders, expenses, storage] = await Promise.all([
+    // collectTotals: davr BUYURTMA sanasi bo'yicha, pozitsiyalar buyurtma ichida
+    prisma.order.findMany({
+      where: { storeId: { in: storeIds }, orderedAt: { gte: from, lt: toExclusive } },
+      select: {
+        status: true,
+        items: {
+          select: {
+            skuId: true,
+            skuCode: true,
+            title: true,
+            qty: true,
+            revenue: true,
+            netProfit: true,
+            status: true,
+            returnedAt: true,
+          },
+        },
+      },
+    }),
+    /*
+     * Davr xarajatlari — getExpenses + getPeriodCosts: pozitsiyaga
+     * bog'lanmaydigan to'lovlar (reklama, omborga logistika, ish haqi…).
+     * `uzum-payout` satrlari pozitsiyada allaqachon ayrilgan.
+     */
+    prisma.expense.findMany({
+      where: { companyId, date: { gte: from, lt: toExclusive }, source: { not: 'uzum-payout' } },
+      select: { category: true, amount: true },
+    }),
+    // Uzum saqlash to'lovi (StorageFee) — pnl.ts storageFees
+    prisma.storageFee.aggregate({
+      _sum: { amount: true },
+      where: { storeId: { in: storeIds }, date: { gte: from, lt: toExclusive } },
+    }),
+  ]);
 
-  let revenue = 0;
-  let netProfit = 0;
-  let units = 0;
-  const orderIds = new Set<string>();
+  const kpis = dashboardKpis(sumLineTotals(orders), periodCostsTotal(expenses, storage._sum.amount ?? 0));
+
+  // Top mahsulotlar — o'sha tirik pozitsiyalardan; variantlar bitta mahsulot
+  // ostida jamlanadi (nom bo'yicha), nom bo'lmasa SKU bo'yicha
   const byProduct = new Map<string, { title: string | null; skuId: string | null; revenue: number; units: number }>();
-
-  for (const it of items) {
-    const returned = it.status === 'returned' || Boolean(it.returnedAt);
-    if (returned || it.status === 'canceled') continue;
-
-    revenue += it.revenue;
-    netProfit += it.netProfit;
-    units += it.qty;
-    orderIds.add(it.orderId);
-
-    // Variantlar bitta mahsulot ostida jamlanadi (nom bo'yicha), nom bo'lmasa SKU bo'yicha
-    const key = it.title ?? it.skuId ?? it.skuCode ?? 'unknown';
-    const row = byProduct.get(key) ?? { title: it.title, skuId: it.skuId, revenue: 0, units: 0 };
-    row.revenue += it.revenue;
-    row.units += it.qty;
-    if (!row.title && it.title) row.title = it.title;
-    byProduct.set(key, row);
+  for (const o of orders) {
+    for (const it of o.items) {
+      if (!isLiveLine(it)) continue;
+      const key = it.title ?? it.skuId ?? it.skuCode ?? 'unknown';
+      const row = byProduct.get(key) ?? { title: it.title, skuId: it.skuId, revenue: 0, units: 0 };
+      row.revenue += it.revenue;
+      row.units += it.qty;
+      if (!row.title && it.title) row.title = it.title;
+      byProduct.set(key, row);
+    }
   }
 
-  const orders = orderIds.size;
   const topRows = [...byProduct.values()].sort((a, b) => b.revenue - a.revenue).slice(0, topLimit);
 
   // Nomi yo'q pozitsiyalar uchun SKU katalogidan nom olamiz
@@ -150,46 +169,14 @@ export async function buildDayReport(
     for (const s of skus) titles.set(s.id, s.title || s.sku);
   }
 
-  /*
-   * SOF FOYDA — davr xarajatlaridan keyin, saytdagi bilan bir xil ta'rif
-   * (apps/api/src/services/pnl.ts): pozitsiyaga bog'lanmaydigan to'lovlar —
-   * reklama, omborga logistika, saqlash — shu kunniki bo'lsa ayriladi.
-   * `uzum-payout` satrlari pozitsiyada allaqachon ayrilgan.
-   */
-  const [expenses, storage] = await Promise.all([
-    prisma.expense.aggregate({
-      _sum: { amount: true },
-      where: { companyId, date: { gte: from, lt: toExclusive }, source: { not: 'uzum-payout' } },
-    }),
-    prisma.storageFee.aggregate({
-      _sum: { amount: true },
-      where: { storeId: { in: storeIds }, date: { gte: from, lt: toExclusive } },
-    }),
-  ]);
-  netProfit -= (expenses._sum.amount ?? 0) + (storage._sum.amount ?? 0);
-
   return {
-    revenue: Math.round(revenue),
-    orders,
-    units,
-    netProfit: Math.round(netProfit),
-    avgCheck: orders > 0 ? Math.round(revenue / orders) : 0,
+    ...kpis,
     top: topRows.map((r) => ({
       title: r.title ?? (r.skuId ? (titles.get(r.skuId) ?? '—') : '—'),
       revenue: Math.round(r.revenue),
       units: r.units,
     })),
   };
-}
-
-/** Bugungi hisobot (mahalliy kun bo'yicha) */
-export function todayRange(now = new Date()): { from: Date; to: Date; key: string } {
-  return { from: localDayStart(now), to: localDayStart(now, 1), key: localDateKey(now) };
-}
-
-/** Kechagi hisobot (kunlik yuborish uchun) */
-export function yesterdayRange(now = new Date()): { from: Date; to: Date; key: string } {
-  return { from: localDayStart(now, -1), to: localDayStart(now), key: localDateKey(now, -1) };
 }
 
 // ─────────────────────────── Kritik qoldiqlar ───────────────────────────
@@ -563,7 +550,8 @@ function toTicketRow(row: {
   lastMessageAt: Date;
   user: TicketOwner;
 }): TicketRow {
-  return { ...row, lang: row.lang === 'ru' ? 'ru' : 'uz' };
+  // toBotLang: ingliz tilidagi murojaatga operator javobi sarlavhasi ham inglizcha (2026-10-27)
+  return { ...row, lang: toBotLang(row.lang) };
 }
 
 /** Takrorlanmaydigan murojaat kodi (createLoginCode naqshi bo'yicha) */

@@ -15,14 +15,14 @@ import { clampMessage, sleep, type BotContext } from '../handlers/context.js';
 import { pricingKeyboard, siteKeyboard } from '../handlers/keyboards.js';
 import {
   buildCriticalStocks,
-  buildDayReport,
+  buildPeriodReport,
   localDateKey,
   localHour,
-  yesterdayRange,
-  type DayReport,
+  type PeriodReport,
   type StockAlert,
 } from '../handlers/data.js';
 import { dailyDigestText } from '../handlers/reports.js';
+import { resolveReportPeriod, type ReportRange } from '../lib/dashboard-kpi.js';
 
 /** Har daqiqada tekshiramiz — kerakli soat kelganida bir marta ishlaydi */
 const CHECK_INTERVAL_MS = 60_000;
@@ -80,7 +80,6 @@ async function alreadySent(dayKey: string): Promise<boolean> {
  */
 export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): Promise<DailyStats> {
   const stats: DailyStats = { sent: 0, offers: 0, failed: 0, skipped: 0 };
-  const range = yesterdayRange(now);
 
   const users = await prisma.user.findMany({
     where: { notifyDaily: true, status: 'active', botChatId: { not: null } },
@@ -111,7 +110,7 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
   const subByCompany = new Map<string, SubRow>(subs.map((s) => [s.companyId, s]));
   const todayKey = localDateKey(now);
 
-  const cache = new Map<string, { report: DayReport; alert: StockAlert }>();
+  const cache = new Map<string, { range: ReportRange; report: PeriodReport; alert: StockAlert }>();
 
   for (const user of users) {
     const companyId = user.memberships[0]?.companyId;
@@ -127,7 +126,8 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
      * Telegramga kelaverardi.
      */
     const sub = subByCompany.get(companyId) ?? null;
-    if (!hasFeature(resolvePlan(sub, now.getTime()), 'telegram_notifications')) {
+    const plan = resolvePlan(sub, now.getTime());
+    if (!hasFeature(plan, 'telegram_notifications')) {
       const lang = toBotLang(user.languageCode);
       if (!sub || !LOCKED_OFFER_DAYS.has(daysBetweenKeys(lockedSinceKey(sub), todayKey))) {
         stats.skipped += 1;
@@ -148,11 +148,18 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
 
     let data = cache.get(companyId);
     if (!data) {
+      /*
+       * Kecha — «📊 Hisobot → Kecha» tugmasi va saytdagi "Kecha" davri bilan
+       * BITTA hisob (buildPeriodReport): sof foyda davr xarajatlaridan keyin,
+       * buyurtma soni panel qoidasida. Bot bitta kun uchun hech qachon ikki
+       * xil foyda ko'rsatmasin (2026-10-27).
+       */
+      const range = resolveReportPeriod('yesterday', plan, now);
       const [report, alert] = await Promise.all([
-        buildDayReport(companyId, range.from, range.to),
+        buildPeriodReport(companyId, range),
         buildCriticalStocks(companyId, 5),
       ]);
-      data = { report, alert };
+      data = { range, report, alert };
       cache.set(companyId, data);
     }
 
@@ -163,7 +170,7 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
      */
     const member = user.memberships[0];
     const seesMoney = member?.role === 'owner' || viewSeesMoney(asMemberView(member?.view));
-    const text = clampMessage(dailyDigestText(lang, range.key, data.report, data.alert, seesMoney));
+    const text = clampMessage(dailyDigestText(lang, data.range, data.report, data.alert, seesMoney));
 
     try {
       await bot.api.sendMessage(chatId, text, {

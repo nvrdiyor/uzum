@@ -1426,6 +1426,13 @@ export interface StockRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;
+  /**
+   * Mahsulot nomi — faqat qidiruv uchun (sahifa jadvalni o'zi qidiradi).
+   * Jonli Uzumda SKU nomi ko'pincha faqat variant («ЧЕРН»): ilgari sahifa
+   * mahsulot nomi bo'yicha bunday SKU'ni topmasdi, Excel fayli (server qoidasi,
+   * services/common.ts skuInfoMatches) esa topardi — ro'yxatlar farq qilardi (2026-10-27).
+   */
+  productTitle?: string;
   imageUrl: string | null;
   storeTitle: string;
   fbo: number;
@@ -1687,9 +1694,23 @@ export interface MonthlyReportResponse {
   ordersTotal: number;
   ordersSuccess: number;
   unitsSold: number;
+  /** Bekor qilingan BUYURTMALAR soni */
   canceled: number;
+  /** Qaytarilgan BUYURTMALAR soni */
   returns: number;
+  /**
+   * Qaytarish ulushi, % — DONA bo'yicha, Boshqaruv paneli kartasi
+   * (/dashboard/returns `current.returned.rate`) bilan bir ta'rif:
+   * returnedUnits ÷ (receivedUnits + returnedUnits). Ilgari "qaytgan buyurtma ÷
+   * barcha buyurtma" edi (2026-10-27). Maydon nomi o'zgarmadi — oylik
+   * Telegram dayjesti shuni o'qiydi.
+   */
   returnRate: number;
+  /** Qaytgan dona (to'liq va qisman qaytishlar) — /dashboard/returns `current.returned.qty` */
+  returnedUnits: number;
+  /** Xaridor qabul qilgan dona — /dashboard/returns `current.soldUnits`; returnedUnits bilan qaytarish ulushi asosi */
+  receivedUnits: number;
+  /** Muvaffaqiyatli buyurtmalar ÷ jami buyurtmalar, % (BUYURTMA bo'yicha) */
   successRate: number;
   grossMargin: number;
   taxRate: number;

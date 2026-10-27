@@ -37,6 +37,15 @@ const COMMANDS_RU = [
   { command: 'cancel', description: 'Отменить текущее действие' },
 ];
 
+/** Ingliz tilidagi Telegram klientlari uchun (2026-10-27: bot inglizcha ham gapiradi) */
+const COMMANDS_EN = [
+  { command: 'start', description: 'Start / sign up' },
+  { command: 'help', description: 'Help and features' },
+  { command: 'id', description: 'Telegram ID' },
+  { command: 'support', description: 'Support' },
+  { command: 'cancel', description: 'Cancel the current action' },
+];
+
 function missingTokenNotice(): void {
   console.error(
     [
@@ -91,6 +100,7 @@ async function main(): Promise<void> {
   try {
     await bot.api.setMyCommands(COMMANDS_UZ);
     await bot.api.setMyCommands(COMMANDS_RU, { language_code: 'ru' });
+    await bot.api.setMyCommands(COMMANDS_EN, { language_code: 'en' });
   } catch {
     // Buyruqlar ro'yxatini o'rnatib bo'lmasa ham bot ishlayveradi
   }

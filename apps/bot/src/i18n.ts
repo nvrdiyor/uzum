@@ -1,16 +1,23 @@
 /**
- * Bot matnlari — o'zbek va rus tillari.
- * Har bir kalit ikkala tilda ham bo'lishi shart (Messages interfeysi buni majburlaydi).
+ * Bot matnlari — o'zbek, rus va ingliz tillari.
+ * Har bir kalit uchala tilda ham bo'lishi shart (Messages interfeysi buni majburlaydi),
+ * `{o'rinbosar}` lar ham bir xil bo'lsin — scratchpad p6-bot/i18n-parity.mts tekshiradi.
  * O'rinbosarlar: `{name}` ko'rinishida.
  */
 
-export type BotLang = 'uz' | 'ru';
+export type BotLang = 'uz' | 'ru' | 'en';
 
-export const BOT_LANGS: readonly BotLang[] = ['uz', 'ru'] as const;
+export const BOT_LANGS: readonly BotLang[] = ['uz', 'ru', 'en'] as const;
 
-/** Bazadagi `languageCode` ni bot tiliga keltirish (en → uz) */
+/**
+ * Bazadagi `languageCode` ni bot tiliga keltirish; noma'lum — o'zbekcha.
+ * Ilgari 'en' ham o'zbekchaga tushardi: saytda inglizchani tanlagan sotuvchi
+ * botda o'zbekcha matn olardi (2026-10-27).
+ */
 export function toBotLang(code: string | null | undefined): BotLang {
-  return code === 'ru' ? 'ru' : 'uz';
+  if (code === 'ru') return 'ru';
+  if (code === 'en') return 'en';
+  return 'uz';
 }
 
 export interface Messages {
@@ -18,6 +25,7 @@ export interface Messages {
   lang_ask: string;
   lang_uz: string;
   lang_ru: string;
+  lang_en: string;
   lang_saved: string;
 
   // ── Ro'yxatdan o'tish ───────────────────────────────
@@ -53,7 +61,7 @@ export interface Messages {
   btn_open_site: string;
   btn_back: string;
 
-  // ── Bugungi hisobot ─────────────────────────────────
+  // ── Hisobot (bugun / kecha / shu oy / shu yil) ──────
   today_title: string;
   today_revenue: string;
   today_orders: string;
@@ -61,6 +69,17 @@ export interface Messages {
   today_avg: string;
   today_units: string;
   today_empty: string;
+  rep_title_yesterday: string;
+  rep_title_month: string;
+  rep_title_year: string;
+  rep_empty_month: string;
+  rep_empty_year: string;
+  /** Tarif tarixi davr boshini kesganda (masalan, sinovda «Shu yil» = 60 kun) */
+  rep_clamped: string;
+  btn_rep_today: string;
+  btn_rep_yesterday: string;
+  btn_rep_month: string;
+  btn_rep_year: string;
 
   // ── Qoldiqlar ───────────────────────────────────────
   stocks_title: string;
@@ -219,9 +238,10 @@ export interface Messages {
 }
 
 const uz: Messages = {
-  lang_ask: 'Tilni tanlang / Выберите язык:',
+  lang_ask: 'Tilni tanlang / Выберите язык / Choose a language:',
   lang_uz: "🇺🇿 O'zbek",
   lang_ru: '🇷🇺 Русский',
+  lang_en: '🇬🇧 English',
   lang_saved: 'Til tanlandi: O‘zbek ✅',
 
   start_greet:
@@ -274,6 +294,16 @@ const uz: Messages = {
   today_avg: '🧮 O‘rtacha chek: <b>{value}</b>',
   today_units: '📦 Sotilgan dona: <b>{value}</b>',
   today_empty: 'Bugun hozircha buyurtma yo‘q.',
+  rep_title_yesterday: '📊 <b>Kechagi hisobot</b> ({date})',
+  rep_title_month: '📊 <b>Shu oy hisoboti</b> ({from} – {to})',
+  rep_title_year: '📊 <b>Shu yil hisoboti</b> ({from} – {to})',
+  rep_empty_month: 'Shu oyda hozircha buyurtma yo‘q.',
+  rep_empty_year: 'Shu yilda hozircha buyurtma yo‘q.',
+  rep_clamped: 'ℹ️ Tarifingizda {days} kunlik tarix ochiq — hisob {date} dan boshlab.',
+  btn_rep_today: 'Bugun',
+  btn_rep_yesterday: 'Kecha',
+  btn_rep_month: 'Shu oy',
+  btn_rep_year: 'Shu yil',
 
   stocks_title: '📦 <b>Kritik qoldiqlar</b> (7 kundan kam)',
   stocks_empty: '✅ Kritik qoldiq yo‘q — hammasi joyida.',
@@ -339,7 +369,7 @@ const uz: Messages = {
 
   help:
     '<b>SavdoIQ bot</b>\n\n'
-    + '📊 Bugungi hisobot — bugungi tushum va foyda\n'
+    + '📊 Bugungi hisobot — bugun, kecha, shu oy va shu yil\n'
     + '📦 Qoldiqlar — kritik SKU’lar\n'
     + '🔑 Saytga kirish — bir martalik kod\n'
     + '💳 Tarif — tarif va muddat\n'
@@ -485,9 +515,10 @@ const uz: Messages = {
 };
 
 const ru: Messages = {
-  lang_ask: 'Tilni tanlang / Выберите язык:',
+  lang_ask: 'Tilni tanlang / Выберите язык / Choose a language:',
   lang_uz: "🇺🇿 O'zbek",
   lang_ru: '🇷🇺 Русский',
+  lang_en: '🇬🇧 English',
   lang_saved: 'Язык выбран: Русский ✅',
 
   start_greet:
@@ -540,6 +571,16 @@ const ru: Messages = {
   today_avg: '🧮 Средний чек: <b>{value}</b>',
   today_units: '📦 Продано штук: <b>{value}</b>',
   today_empty: 'Сегодня заказов пока нет.',
+  rep_title_yesterday: '📊 <b>Отчёт за вчера</b> ({date})',
+  rep_title_month: '📊 <b>Отчёт за месяц</b> ({from} – {to})',
+  rep_title_year: '📊 <b>Отчёт за год</b> ({from} – {to})',
+  rep_empty_month: 'В этом месяце заказов пока нет.',
+  rep_empty_year: 'В этом году заказов пока нет.',
+  rep_clamped: 'ℹ️ На вашем тарифе доступна история за {days} дн. — расчёт с {date}.',
+  btn_rep_today: 'Сегодня',
+  btn_rep_yesterday: 'Вчера',
+  btn_rep_month: 'Этот месяц',
+  btn_rep_year: 'Этот год',
 
   stocks_title: '📦 <b>Критические остатки</b> (меньше 7 дней)',
   stocks_empty: '✅ Критических остатков нет — всё в порядке.',
@@ -605,7 +646,7 @@ const ru: Messages = {
 
   help:
     '<b>Бот SavdoIQ</b>\n\n'
-    + '📊 Отчёт за сегодня — выручка и прибыль\n'
+    + '📊 Отчёт за сегодня — сегодня, вчера, месяц и год\n'
     + '📦 Остатки — критические SKU\n'
     + '🔑 Вход на сайт — одноразовый код\n'
     + '💳 Тариф — тариф и срок\n'
@@ -748,7 +789,293 @@ const ru: Messages = {
   age_day: '{n} дн. назад',
 };
 
-const DICT: Record<BotLang, Messages> = { uz, ru };
+/*
+ * Ingliz tili (2026-10-27). Sayt uchala tilda ishlaydi, bot esa faqat uz/ru
+ * edi — saytda inglizchani tanlagan sotuvchi botda o'zbekcha matn olardi.
+ * Tugma yorliqlari ham shu yerda; eski klaviaturalar `matchButton` da uchala
+ * til bilan solishtiriladi.
+ */
+const en: Messages = {
+  lang_ask: 'Tilni tanlang / Выберите язык / Choose a language:',
+  lang_uz: "🇺🇿 O'zbek",
+  lang_ru: '🇷🇺 Русский',
+  lang_en: '🇬🇧 English',
+  lang_saved: 'Language set: English ✅',
+
+  start_greet:
+    'Hello, {name}! 👋\n\n<b>SavdoIQ</b> is an analytics platform for Uzum Market sellers.\n\nSales, profit, stock and losses — all in one place.',
+  start_welcome_back: 'Welcome back, {name}! Use the menu below 👇',
+  onb_phone_ask: 'To get started, share your phone number.\n\nTap the <b>“📱 Share number”</b> button below.',
+  btn_share_phone: '📱 Share number',
+  onb_phone_need_button: 'Please share your number using the <b>“📱 Share number”</b> button below.',
+  onb_company_ask:
+    'Thank you! ✅\n\nNow type your <b>company (store) name</b>.\nFor example: <i>Alfa Trade</i>',
+  onb_company_invalid: 'The name must be 2 to 60 characters long. Please try again.',
+  onb_tax_ask:
+    'Enter your <b>tax rate</b> as a percentage.\n\nFor most sellers it is <b>1</b> (turnover tax).\nIf you are not sure, just send <code>1</code>.',
+  onb_tax_invalid: 'The tax rate must be a number from 0 to 50. For example: 1',
+  onb_api_ask:
+    'Last step — your <b>Uzum API key</b>. 🔑\n\nHow to get it:\n1️⃣ Go to <a href="https://seller.uzum.uz">seller.uzum.uz</a>\n2️⃣ Open <b>My profile</b>\n3️⃣ Go to <b>API keys</b>\n4️⃣ Copy the key and send it here\n\n🔒 The key is stored encrypted and is used only to fetch your data.',
+  onb_api_checking: '🔍 Checking the key…',
+  onb_api_rejected:
+    '❌ <b>The key was not accepted.</b>\n\nUzum did not recognise it — it may have been copied incorrectly or revoked.\n\nCopy it again from seller.uzum.uz → My profile → API keys and send it here.',
+  onb_api_no_shops:
+    '⚠️ <b>The key works, but no store is linked to it.</b>\n\nGive the key access to at least one store in your Uzum account, then send it again.',
+  onb_api_network:
+    '🌐 <b>Could not check the key right now</b> — Uzum is not responding.\n\nPlease send it again in a few minutes.',
+  onb_api_invalid:
+    'This does not look like an API key. A key is at least 16 characters long.\nPlease copy the whole key and send it again.',
+  onb_syncing:
+    '✅ Key accepted!\n\n⏳ <b>Collecting your data — this usually takes a few minutes.</b>\nWe will let you know when it is ready.\n\nMeanwhile, you can open the website and follow the progress.',
+  onb_ref_applied: '🎁 Referral link applied.',
+  onb_api_deleted:
+    '🔒 For security, the message with your key was deleted from the chat. The key is stored encrypted.',
+  onb_resume: 'Let’s finish signing up 👇',
+
+  menu_title: 'Main menu 👇',
+  btn_today: '📊 Today’s report',
+  btn_stocks: '📦 Stock',
+  btn_login: '🔑 Sign in to website',
+  btn_billing: '💳 Plan',
+  btn_referral: '👥 Referrals',
+  btn_settings: '⚙️ Settings',
+  btn_support: '🆘 Support',
+  btn_open_site: '🌐 Open website',
+  btn_back: '⬅️ Back',
+
+  today_title: '📊 <b>Today’s report</b> ({date})',
+  today_revenue: '💰 Revenue: <b>{value}</b>',
+  today_orders: '🧾 Orders: <b>{value}</b>',
+  today_profit: '📈 Net profit: <b>{value}</b>',
+  today_avg: '🧮 Average order: <b>{value}</b>',
+  today_units: '📦 Units sold: <b>{value}</b>',
+  today_empty: 'No orders yet today.',
+  rep_title_yesterday: '📊 <b>Yesterday’s report</b> ({date})',
+  rep_title_month: '📊 <b>This month</b> ({from} – {to})',
+  rep_title_year: '📊 <b>This year</b> ({from} – {to})',
+  rep_empty_month: 'No orders yet this month.',
+  rep_empty_year: 'No orders yet this year.',
+  rep_clamped: 'ℹ️ Your plan includes {days} days of history, so this report starts on {date}.',
+  btn_rep_today: 'Today',
+  btn_rep_yesterday: 'Yesterday',
+  btn_rep_month: 'This month',
+  btn_rep_year: 'This year',
+
+  stocks_title: '📦 <b>Critical stock</b> (under 7 days)',
+  stocks_empty: '✅ No critical stock — all good.',
+  stocks_row: '• <b>{title}</b>\n  stock: {stock} pcs · lasts ~{days} days',
+  stocks_row_zero: '• <b>{title}</b>\n  out of stock ❗️',
+  stocks_more: '\n… and {count} more SKUs. Full list on the website.',
+
+  login_title: '🔑 <b>Sign in to the website</b>',
+  login_code: 'Your code: <code>{code}</code>',
+  login_hint: 'The code is valid for <b>10 minutes</b>. Tap the link or enter the code on the website.',
+  btn_login_link: '🔓 Sign in',
+
+  billing_title: '💳 <b>Plan</b>',
+  billing_plan: 'Current plan: <b>{plan}</b>',
+  billing_status: 'Status: <b>{status}</b>',
+  billing_until: 'Valid until: <b>{date}</b>',
+  billing_days: 'Days left: <b>{days}</b>',
+  billing_expired: '⚠️ Your plan has expired. Tap the button below to renew it.',
+  plan_locked_reports:
+    '🔒 <b>Your subscription has expired</b>\n\n'
+    + 'Reports and stock are locked for now. Your data is kept — '
+    + 'renew your plan and everything comes back right away.',
+  plan_locked_digest:
+    '📊 <b>Daily report paused</b>\n\n'
+    + 'Your subscription has expired, so the report is not being sent. Your sales, profit and stock '
+    + 'are kept — renew your plan and the report will resume the next day.',
+  billing_none: 'You do not have an active plan yet.',
+  billing_card: '\n💳 Payment card: <code>{card}</code> ({owner})',
+  btn_pricing: '💎 Renew plan',
+  sub_active: 'active',
+  sub_expired: 'expired',
+  sub_canceled: 'canceled',
+  sub_pending: 'awaiting payment',
+
+  ref_title: '👥 <b>Referral program</b>',
+  ref_percent: 'You get a <b>{percent}%</b> bonus on every payment.',
+  ref_code: 'Your code: <code>{code}</code>',
+  ref_link: '🔗 Link: {link}',
+  ref_bot_link: '🤖 Bot link: {link}',
+  ref_invited: 'Invited: <b>{count}</b>',
+  ref_paying: 'Of them, paying: <b>{count}</b>',
+  ref_earned: 'Total bonus: <b>{amount}</b>',
+  ref_pending: 'Pending: <b>{amount}</b>',
+  ref_paid: 'Paid out: <b>{amount}</b>',
+
+  set_title: '⚙️ <b>Settings</b>',
+  set_lang: '🌐 Language: {value}',
+  set_notify_daily: '📅 Daily report: {value}',
+  set_notify_orders: '🧾 Order notifications: {value}',
+  set_notify_stock: '📦 Stock alerts: {value}',
+  set_notify_weekly: '🗓 Weekly report (Monday): {value}',
+  set_notify_monthly: '📆 Monthly report (1st): {value}',
+  set_api: '🔑 Update API key',
+  set_saved: 'Saved ✅',
+  set_api_ask:
+    'Send your new <b>Uzum API key</b>.\n\nseller.uzum.uz → My profile → API keys\n\nTo cancel, send /cancel',
+  set_api_done: '✅ Key updated. Your data is being collected again.',
+  set_api_owner_only:
+    '🔑 Only the company owner can connect or update the Uzum API key. If you need a key, please ask the owner.',
+  set_lang_ask: 'Which language would you like to continue in?',
+  on: 'on',
+  off: 'off',
+
+  help:
+    '<b>SavdoIQ bot</b>\n\n'
+    + '📊 Today’s report — today, yesterday, this month and this year\n'
+    + '📦 Stock — critical SKUs\n'
+    + '🔑 Sign in to website — one-time code\n'
+    + '💳 Plan — plan and expiry date\n'
+    + '👥 Referrals — code and bonuses\n'
+    + '⚙️ Settings — language and notifications\n'
+    + '🆘 Support — ask an operator\n\n'
+    + 'You can also just type your question in this chat — it will reach an operator.\n\n'
+    + 'Commands: /start /help /id /support /cancel',
+  id_text: 'Your Telegram ID: <code>{id}</code>',
+  support:
+    '🆘 <b>Support</b>\n\n'
+    + 'Type your question in this chat — it goes to an operator, and the reply comes back here.\n'
+    + 'You can also send a screenshot, video or document.\n\n'
+    + 'Any time: <code>/support your question</code>\n\n'
+    + '🕘 Working hours: 9:00–20:00 (Tashkent).\n'
+    + '🔒 Do not send your Uzum API key here — enter it via “⚙️ Settings → 🔑 Update API key”.',
+  need_start: 'Please send /start first.',
+  need_company: 'Please sign up first: /start',
+  need_api_key: 'Please connect your Uzum API key first: /start',
+  error_generic: 'Something went wrong. Please try again in a moment.',
+  canceled: 'Canceled.',
+  unknown_text: 'Sorry, I didn’t get that 🤔 Use the menu below or send /help.',
+  sync_running: '⏳ Your data is still being collected. We will let you know when it is ready.',
+
+  sync_done:
+    '🎉 <b>Your data is ready!</b>\n\nSales, profit and stock have been calculated.\nOpen the website to see the full analytics.',
+  sync_failed:
+    '⚠️ There was a problem collecting your data.\nCheck your API key and reconnect it via “⚙️ Settings → 🔑 Update API key”.',
+
+  daily_title: '☀️ <b>Yesterday’s results</b> ({date})',
+  daily_top: '\n🏆 <b>Top 3 products</b>',
+  daily_top_row: '{n}. {title} — {revenue} ({units} pcs)',
+  daily_critical: '\n⚠️ <b>Critical stock:</b> {count} SKUs',
+  daily_critical_row: '• {title} — {stock} pcs',
+  daily_nothing: 'No orders yesterday.',
+
+  stock_alert_title: '📦 <b>Stock and storage</b> · {date}',
+  stock_alert_paid_head: '💸 <b>Moved to paid storage: {count} SKUs</b>',
+  stock_alert_paid_row: '• {title} — turnover {turnover} days · {fee}/day',
+  stock_alert_paid_row_nosales: '• {title} — no sales in 15 days · {fee}/day',
+  stock_alert_excess: '   ↳ sell or remove {n} pcs',
+  stock_alert_near_head: '⏳ <b>Paid storage soon: {count} SKUs</b> (turnover {from}–{to} days)',
+  stock_alert_near_row: '• {title} — {turnover} days · if paid, ~{fee}/day',
+  stock_alert_near_row_novol: '• {title} — {turnover} days',
+  stock_alert_out_head: '🔻 <b>Running out: {count} SKUs</b> (lead time {lead} days)',
+  stock_alert_out_row: '• {title} — {stock} pcs · lasts ~{days} days',
+  stock_alert_out_zero: '📭 Out of stock (had sales): {count} SKUs',
+  stock_alert_more: '… and {count} more',
+  stock_alert_total: '💰 Total in paid storage: {count} SKUs · ~{fee}/day',
+  stock_alert_total_novol: ' ({n} with unknown volume)',
+  btn_storage: '💸 Paid storage',
+  btn_planner: '📦 Planner',
+
+  admin_only: 'This command is for administrators only.',
+  admin_stats:
+    '📈 <b>Statistics</b>\n\nUsers: <b>{users}</b> (today +{usersToday})\nCompanies: <b>{companies}</b>\nConnected accounts: <b>{accounts}</b>\nActive subscriptions: <b>{active}</b>\nTrial: <b>{trial}</b> · Paid: <b>{paid}</b>\nQueued syncs: <b>{queued}</b>\nChats with the bot: <b>{chats}</b>\n📥 Unanswered tickets: <b>{tickets}</b>',
+  admin_broadcast_usage: 'Usage: <code>/broadcast text</code>',
+  admin_broadcast_done: '📣 Sent: {sent}, failed: {failed}.',
+  admin_grant_usage: 'Usage: <code>/grant &lt;telegramId&gt; &lt;plan&gt; &lt;months&gt;</code>\nExample: <code>/grant 123456789 business 3</code>',
+  admin_grant_done: '✅ Plan <b>{plan}</b> granted to {telegramId} for {months} months (until {date}).',
+  admin_grant_nouser: 'No user found with this Telegram ID.',
+  admin_grant_nocompany: 'This user has no company.',
+  admin_grant_badplan: 'Invalid plan. Allowed: trial, standard, business, vip',
+
+  support_onb_note:
+    '\n\n⚠️ You are still signing up, so plain text is treated as a sign-up answer.'
+    + ' To write to an operator, use <code>/support your question</code>.',
+  support_offhours: '\n🌙 We are outside working hours — we will reply after 9:00 in the morning.',
+  support_sent:
+    '✅ Your question was sent to an operator — ticket <b>{code}</b>.\nThe reply will come to this chat.{note}',
+  support_added:
+    '➕ Added to ticket <b>{code}</b>. You will get a message here when the operator replies.{note}',
+  support_failed:
+    '⚠️ Could not reach an operator right now, but your question is saved (<b>{code}</b>).'
+    + ' The operator will reply as soon as they see it.',
+  support_throttled:
+    '⏳ Too many messages. This one was saved to your ticket, but no notification was sent'
+    + ' — the operator will see it together with your earlier questions.',
+  support_media_bad:
+    'I can’t accept this type of file 🤔\nPlease send text, a photo, video, voice message or document.',
+  support_reply_head: '💬 <b>Operator reply</b> · {code}',
+  btn_support_more: '✍️ Ask another question',
+
+  sup_card:
+    '🆘 <b>{code}</b> · new ticket\n'
+    + '👤 {name} {username} · <code>{tid}</code>\n'
+    + '🏢 {company} · {lang}\n\n'
+    + '{body}\n\n'
+    + '↩️ Reply to this message to answer.',
+  sup_card_media:
+    '🆘 <b>{code}</b> · {name} {username} · <code>{tid}</code>\n'
+    + '↩️ Reply to this message to answer.\n\n{body}',
+  sup_reply_ok: '✅ Reply sent to {code} ({name}).',
+  sup_reply_fail: '⚠️ {code}: could not deliver to the user — they may have blocked the bot.',
+  sup_which: '❓ Who is this text for? You did not reply to a message — choose a ticket:',
+  sup_sent_via_button: '✅ Sent to {code} ({name}).',
+  sup_draft_expired: '⚠️ Could not find the text. Send it like this: /reply {code} text',
+  sup_tickets_title: '📥 <b>Open tickets: {count}</b>',
+  sup_tickets_row: '<b>{code}</b> · {name} · {age}\n{subject}',
+  sup_tickets_empty: '📥 No open tickets.',
+  sup_reply_usage: 'Usage: <code>/reply CODE text</code>\nList: /tickets',
+  sup_close_usage: 'Usage: <code>/close CODE</code>',
+  sup_not_found: 'Ticket not found. See the list with /tickets.',
+  sup_closed: '✅ {code} closed.',
+  btn_sup_close: '✅ Close',
+  btn_sup_cancel: '❌ Cancel',
+
+  btn_faq_key: '🔑 Where do I get an API key?',
+  btn_faq_sync: '🔄 When is data updated?',
+  btn_faq_billing: '💳 Plans and payment',
+  btn_faq_ask: '✍️ I want to ask a question',
+  faq_key:
+    '🔑 <b>Where to get an API key</b>\n\n'
+    + '1. Go to <a href="https://seller.uzum.uz">seller.uzum.uz</a>\n'
+    + '2. Open “My profile” → “API keys”\n'
+    + '3. Create a new key and copy it\n'
+    + '4. In the bot, tap “⚙️ Settings → 🔑 Update API key” and send the key\n\n'
+    + 'The key is stored encrypted and is used only to read your data.',
+  faq_sync:
+    '🔄 <b>When data is updated</b>\n\n'
+    + 'Automatically every 30–60 minutes, depending on your plan. On first connection, the history included in your plan (up to 1 year) is collected — this usually takes a few minutes.\n\n'
+    + 'The last update time is shown on the website dashboard. If the data looks out of date, refresh the page first.',
+  faq_billing:
+    '💳 <b>Plans and payment</b>\n\n'
+    + 'The “💳 Plan” button shows your current plan.\n'
+    + 'Compare plans and pay: {link}\n\n'
+    + 'After payment, your plan is activated within a few minutes. If it is not, write to us here.',
+  faq_ask:
+    '✍️ Just type your question in this chat — it will reach an operator.\n'
+    + 'A screenshot helps us understand the problem faster.',
+  support_looks_like_key:
+    '🔒 This looks like an <b>API key</b>, so I did not send it to the operator.\n\n'
+    + 'The key is entered only via “⚙️ Settings → 🔑 Update API key”, where it is encrypted.\n'
+    + 'If this is your key, revoke it in your Uzum account and create a new one.\n\n'
+    + 'If you have a question, please write it in plain words.',
+  sup_reply_unsupported:
+    '⚠️ Could not send this type of reply. Please reply with text, a photo or a document.',
+  age_min: '{n} min ago',
+  age_hour: '{n} h ago',
+  age_day: '{n} d ago',
+};
+
+const DICT: Record<BotLang, Messages> = { uz, ru, en };
+
+/**
+ * Lug'atlar — faqat o'qish uchun: kalitlar va `{o'rinbosar}` lar uchala tilda
+ * tengligini tekshiruvchi skript shu yerdan oladi (Messages interfeysi
+ * kalitlarni majburlaydi, o'rinbosarlarni esa yo'q).
+ */
+export const MESSAGES: Readonly<Record<BotLang, Readonly<Messages>>> = DICT;
 
 export type TKey = keyof Messages;
 
@@ -762,7 +1089,10 @@ export function tr(lang: BotLang, key: TKey, vars?: Record<string, string | numb
   });
 }
 
-/** Menyu tugmasi matni bo'yicha kalitni topish (uz va ru — ikkalasi ham) */
+/**
+ * Menyu tugmasi matni bo'yicha kalitni topish — UCHALA til bilan: til
+ * almashganda klientda eski tildagi klaviatura qolishi mumkin.
+ */
 export function matchButton(text: string): TKey | null {
   const keys: TKey[] = [
     'btn_today',
@@ -775,7 +1105,7 @@ export function matchButton(text: string): TKey | null {
   ];
   const clean = text.trim();
   for (const key of keys) {
-    if (uz[key] === clean || ru[key] === clean) return key;
+    if (uz[key] === clean || ru[key] === clean || en[key] === clean) return key;
   }
   return null;
 }

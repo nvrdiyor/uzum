@@ -46,7 +46,7 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
-import { loadPlanData, planSku, planSkuSummary, planStockStatus } from '../services/plan.js';
+import { loadPlanData, parseStockStatus, planSku, planSkuSummary, planStockStatus } from '../services/plan.js';
 import { estimateStockValue, stockLineValue } from '../services/stock-value.js';
 
 const router = Router();
@@ -100,13 +100,12 @@ function matches(info: SkuInfo, query: SkuQuery | null): boolean {
   return query === null || skuInfoMatches(info, query);
 }
 
-/** Ruxsat etilgan holat filtri (?status=critical|low|ok|excess|dead) */
+/**
+ * Holat filtri (?status=critical|low|ok|excess|dead) — services/plan.ts
+ * `parseStockStatus`: Excel eksporti (routes/export.ts) ham aynan shuni o'qiydi.
+ */
 type StockStatus = StockRow['status'];
-const STATUSES: StockStatus[] = ['critical', 'low', 'ok', 'excess', 'dead'];
-
-function statusFilter(value: string | undefined): StockStatus | null {
-  return value && (STATUSES as string[]).includes(value) ? (value as StockStatus) : null;
-}
+const statusFilter = parseStockStatus;
 
 // ─────────────────────────── GET / — qoldiqlar ───────────────────────────
 
@@ -191,8 +190,9 @@ router.get(
         title: info.title,
         imageUrl: info.imageUrl,
         storeTitle: info.storeTitle,
-        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        // Sahifa jadvalni o'zi qidiradi — shtrix-kod, Uzum ID va mahsulot nomi bo'yicha ham topsin (shared search.ts)
         productId: info.productId,
+        productTitle: info.productTitle,
         uzumProductId: info.uzumProductId,
         barcode: info.barcode,
         uzumSkuId: info.uzumSkuId,

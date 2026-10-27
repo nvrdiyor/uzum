@@ -13,9 +13,9 @@
  */
 import type { Bot } from 'grammy';
 import { loadState, clearFlow, t, type BotContext } from './context.js';
-import { matchButton } from '../i18n.js';
+import { matchButton, toBotLang } from '../i18n.js';
 import { currentStep, onCancel, onContact, onLangChosen, onOnboardingText, onStart, promptStep } from './start.js';
-import { onMenuButton, showHelp, showId } from './menu.js';
+import { onMenuButton, onReportAction, showHelp, showId } from './menu.js';
 import {
   askWhichTicket,
   onAdminReply,
@@ -90,11 +90,15 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   });
 
   // ── 3. Inline tugmalar ─────────────────────────────────────
-  bot.callbackQuery(/^lang:(uz|ru)$/, async (ctx) => {
-    await onLangChosen(ctx, group(ctx.match) === 'ru' ? 'ru' : 'uz');
+  bot.callbackQuery(/^lang:(uz|ru|en)$/, async (ctx) => {
+    await onLangChosen(ctx, toBotLang(group(ctx.match)));
   });
   bot.callbackQuery(/^set:(\w+)$/, async (ctx) => {
     await onSettingsAction(ctx, group(ctx.match));
+  });
+  // Hisobot ostidagi davr tugmalari: rep:today | rep:yesterday | rep:month | rep:year
+  bot.callbackQuery(/^rep:(\w+)$/, async (ctx) => {
+    await onReportAction(ctx, group(ctx.match));
   });
   // Qo'llab-quvvatlash tugmalari. Pastdagi catch-all `next()` chaqirmaydi,
   // shuning uchun bu ro'yxat undan OLDIN turishi shart — aks holda o'lik kod.

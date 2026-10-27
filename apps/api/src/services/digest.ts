@@ -430,8 +430,9 @@ async function buildWeekly(company: DigestCompany, plan: PlanId, due: DigestDue)
 
 /**
  * Oylik: "Oylik hisobot" sahifasi `?month=YYYY-MM` (buildMonthlyReport) va
- * undan oldingi oy — o'sha funksiya bilan. Qaytarish ulushi ham sahifadagi
- * (buyurtma bo'yicha) — xabar qaysi sahifaga olib borsa, o'sha raqam.
+ * undan oldingi oy — o'sha funksiya bilan. Qaytarish ulushi ham sahifadagi —
+ * DONA bo'yicha, Boshqaruv panelidagi qaytarish kartasi bilan bir ta'rif
+ * (summarizeReturns, 2026-10-27): xabar qaysi sahifaga olib borsa, o'sha raqam.
  */
 async function buildMonthly(company: DigestCompany, plan: PlanId, due: DigestDue): Promise<DigestData> {
   const range = rangeOf(due.period, 'prevMonth', plan);
@@ -487,7 +488,11 @@ async function buildMonthly(company: DigestCompany, plan: PlanId, due: DigestDue
     units: { value: report.unitsSold, delta: p ? deltaPct(report.unitsSold, p.unitsSold) : null },
     returnRate: {
       value: report.returnRate,
-      delta: p && p.ordersTotal > 0 && report.ordersTotal > 0 ? round(report.returnRate - p.returnRate, 1) : null,
+      // Ulush dona asosida — ikkala oyda qabul qilingan yoki qaytgan dona bo'lsagina solishtiriladi
+      delta:
+        p && p.receivedUnits + p.returnedUnits > 0 && report.receivedUnits + report.returnedUnits > 0
+          ? round(report.returnRate - p.returnRate, 1)
+          : null,
     },
     top: topByProfit(report.topProducts),
     reorder,

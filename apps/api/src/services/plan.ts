@@ -499,6 +499,19 @@ export function planStockStatus(
   return { status: excess ? 'excess' : 'ok', daysLeft: row.daysLeft };
 }
 
+const STOCK_BADGE_STATUSES: StockBadgeStatus[] = ['critical', 'low', 'ok', 'excess', 'dead'];
+
+/**
+ * `?status=critical|low|ok|excess|dead` — Qoldiqlar va "Sotuv va qoldiq"
+ * sahifalari hamda ularning Excel fayllari uchun BITTA o'quvchi; berilmasa
+ * yoki noma'lum bo'lsa null (filtr yo'q). Ilgari ro'yxat faqat
+ * routes/stocks.ts ichida edi, eksport esa `?status=` ni umuman o'qimasdi:
+ * sahifada "Kritik" tanlab Excel bosilsa, faylda barcha SKU chiqardi (2026-10-27).
+ */
+export function parseStockStatus(raw: unknown): StockBadgeStatus | null {
+  return typeof raw === 'string' && (STOCK_BADGE_STATUSES as string[]).includes(raw) ? (raw as StockBadgeStatus) : null;
+}
+
 // ─────────────────────────── Jadval (Rejalashtiruvchi, Excel, namuna) ───────────────────────────
 
 export type PlanStatusFilter = PlannerRow['status'] | 'all';

@@ -53,6 +53,7 @@ import {
   type Tone,
 } from '@/components/ui';
 import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { returnsTone } from '@/components/dashboard/rates';
 import { useCountUp } from '@/hooks/useCountUp';
 import { CHART_COLORS, COST_COLORS } from '@/lib/theme';
 import { useFormat, useLang, useT } from '@/i18n';
@@ -528,14 +529,36 @@ export function OrdersFlowCard({ report }: { report: MonthlyReportResponse }) {
 
 // ─────────────────────────── Xavf va qaytarishlar ───────────────────────────
 
+/** Shkala 0–20%: chiziq uzunligi = ulush × 5 */
+const RISK_SCALE = 5;
+/** Xavfli zona chegarasi, % — rates.ts returnsTone dagi "danger" bilan bir xil */
+const RISK_DANGER_PCT = 8;
+
 export function RiskCard({ report }: { report: MonthlyReportResponse }) {
   const t = useT('reports');
   const f = useFormat();
-  const rate = Number.isFinite(report.returnRate) ? report.returnRate : 0;
+  /*
+   * Qaytarish ulushi — DONA bo'yicha: Boshqaruv panelidagi "Qaytarish va
+   * bekor qilish" kartasining aynan o'zi (server: services/returns.ts) va
+   * o'sha ranglar bilan (rates.ts returnsTone: 4% dan sariq, 8% dan qizil).
+   * Ilgari bu yerda "qaytgan buyurtma ÷ barcha buyurtma" va 5/10% chegaralar
+   * turardi — bir oy uchun panel bilan ikki xil foiz va ikki xil rang
+   * (2026-10-27). Asos (qabul qilingan + qaytgan dona) 0 bo'lsa — tire, panel
+   * kartasidagidek: yashil "0%" "qaytarish yo'q" deb o'qilardi. Pastdagi
+   * ikki plitka esa buyurtma SONI.
+   */
+  const hasBase = report.receivedUnits + report.returnedUnits > 0;
+  const rate = hasBase && Number.isFinite(report.returnRate) ? report.returnRate : 0;
 
   // Zona ohangi kartochkaning o'ziga ham beriladi: xavfsiz bo'lsa firuza, diqqat — za'faron, xavfli — qizil
-  const zone: Tone = rate >= 10 ? 'danger' : rate >= 5 ? 'warn' : 'brand';
-  const zoneLabel = zone === 'danger' ? t('risk.zoneHigh') : zone === 'warn' ? t('risk.zoneMid') : t('risk.zoneLow');
+  const zone: Tone = hasBase ? returnsTone(rate) : 'muted';
+  const zoneLabel = !hasBase
+    ? t('risk.zoneNone')
+    : zone === 'danger'
+      ? t('risk.zoneHigh')
+      : zone === 'warn'
+        ? t('risk.zoneMid')
+        : t('risk.zoneLow');
 
   return (
     <Card tone={zone} className="print-avoid-break">
@@ -557,19 +580,25 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
               <p
                 className={cn(
                   'tnum mt-1.5 font-display text-[28px] font-bold leading-none tracking-[-0.02em]',
-                  VALUE_TONE[zone === 'brand' ? 'brand' : zone === 'warn' ? 'warn' : 'danger'],
+                  VALUE_TONE[zone === 'muted' ? 'ink' : zone],
                 )}
               >
-                {f.pct(rate, 1)}
+                {hasBase ? f.pct(rate, 1) : '—'}
+              </p>
+              <p className="tnum mt-1 text-2xs text-muted">
+                {hasBase
+                  ? t('risk.units', { r: f.num(report.returnedUnits), s: f.num(report.receivedUnits) })
+                  : t('risk.noBase')}
               </p>
             </div>
-            <p className="max-w-[16rem] text-2xs leading-snug text-muted sm:text-right">{t('risk.rateHint')}</p>
+            {/* Formula — butun kenglikda, chapdan: tor ustunda o'ngga tekislangan uzun matn qiyin o'qilardi */}
+            <p className="w-full text-2xs leading-snug text-muted">{t('risk.rateHint')}</p>
           </div>
-          {/* Shkala 0–20%: belgi 10% da — undan o'ngi xavfli zona */}
+          {/* Shkala 0–20%: belgi 8% da — undan o'ngi xavfli zona (panel kartasidagi qizil chegara) */}
           <ProgressBar
-            value={Math.min(100, rate * 5)}
+            value={Math.min(100, rate * RISK_SCALE)}
             tone={zone}
-            marker={50}
+            marker={RISK_DANGER_PCT * RISK_SCALE}
             markerLabel={t('risk.marker')}
             className="mt-3"
           />

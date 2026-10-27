@@ -44,7 +44,7 @@ import {
 } from './keyboards.js';
 import { currentStep } from './start.js';
 import { env, isAdmin } from '../lib/env.js';
-import { tr } from '../i18n.js';
+import { tr, type BotLang } from '../i18n.js';
 
 /** Ketma-ket yuborishda Telegram limitiga urilmaslik uchun pauza (ms) — admin.ts bilan bir xil */
 const PUSH_DELAY_MS = 60;
@@ -139,7 +139,7 @@ function offHoursNote(ctx: BotContext): string {
 }
 
 /** «3 soat oldin» ko'rinishidagi qisqa yosh — /tickets ro'yxati uchun */
-function ageLabel(lang: 'uz' | 'ru', from: Date): string {
+function ageLabel(lang: BotLang, from: Date): string {
   // Pastga yaxlitlanadi: 90 daqiqa «2 soat» emas, «1 soat» bo'lishi kerak
   const mins = Math.max(0, Math.floor((Date.now() - from.getTime()) / 60_000));
   if (mins < 60) return tr(lang, 'age_min', { n: mins });
