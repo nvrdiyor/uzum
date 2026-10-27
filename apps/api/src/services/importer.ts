@@ -43,6 +43,7 @@ import type {
   UzumStorageFee,
 } from '../uzum/types.js';
 import { recalcSkuOrderItems } from './item-cost.js';
+import { adProductId } from './pnl.js';
 
 // ─────────────────────────── Umumiy tiplar va yordamchilar ───────────────────────────
 
@@ -1584,7 +1585,17 @@ export async function upsertExpenses(
      * Uzumdagi kabi hisoblash uchun kerak.
      */
     const source = e.inPayout ? 'uzum-payout' : 'uzum';
-    const id = stableId('ex', companyId, storeId ?? '', toISODate(date), category, source);
+    /*
+     * Reklama — MAHSULOT bo'yicha alohida qator (izohdagi "tovar IDsi"). Ilgari
+     * bir kunning hamma reklama to'lovlari bitta qatorga qo'shilib, faqat
+     * birinchisining izohi qolardi: butun kunlik reklama o'sha bitta mahsulotga
+     * yozilib, qolganlari reklamasiz ko'rinardi (Mahsulot foydasi, ABC foyda
+     * rejimi, unit-iqtisod). Mahsulotga bog'lanmagan qatorlar avvalgi kalitda.
+     */
+    const productKey = category === 'marketing' ? (adProductId(text(e.note)) ?? '') : '';
+    const id = productKey
+      ? stableId('ex', companyId, storeId ?? '', toISODate(date), category, source, productKey)
+      : stableId('ex', companyId, storeId ?? '', toISODate(date), category, source);
     const amount = round(num(e.amount));
     const cur = merged.get(id);
     if (cur) {
@@ -1614,6 +1625,35 @@ export async function upsertExpenses(
    */
   const rows = [...merged.values()];
   if (rows.length === 0) return res;
+
+  /*
+   * Reklama kuni TO'LIQ qayta yoziladi: shu do'kon, kun va manba bo'yicha
+   * bazadagi, lekin bu safar kelmagan reklama qatorlari o'chiriladi. Kerak:
+   * mahsulot kesimiga o'tishda eski "bir kunlik bitta qator" qolib, summa
+   * ikki marta hisoblanmasin; mahsulot to'lovi bekor bo'lsa ham shunday.
+   * Sinxron oynasi kun boshidan boshlanadi — kelgan kunning hamma qatorlari
+   * shu ro'yxatda (2026-10-27).
+   */
+  const adDays = new Map<string, { storeId: string | null; date: Date; source: string; ids: string[] }>();
+  for (const r of rows) {
+    if (r.category !== 'marketing') continue;
+    const key = `${r.storeId ?? ''}|${r.date.toISOString()}|${r.source}`;
+    const day = adDays.get(key) ?? { storeId: r.storeId, date: r.date, source: r.source, ids: [] };
+    day.ids.push(r.id);
+    adDays.set(key, day);
+  }
+  for (const day of adDays.values()) {
+    await prisma.expense.deleteMany({
+      where: {
+        companyId,
+        storeId: day.storeId,
+        date: day.date,
+        category: 'marketing',
+        source: day.source,
+        id: { notIn: day.ids },
+      },
+    });
+  }
 
   for (const batch of chunked(rows)) {
     const existing = await prisma.expense.findMany({

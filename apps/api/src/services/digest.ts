@@ -877,6 +877,13 @@ export async function runDigest(due: DigestDue, opts: RunDigestOptions = {}): Pr
         botChatId: { not: null },
         ...(due.kind === 'weekly' ? { notifyWeekly: true } : { notifyMonthly: true }),
       },
+      /*
+       * Faqat do'konini ULAGAN kompaniyalar: Uzum kabineti faol (kalit ishlaydi,
+       * sinxron bo'lgan) va kamida bitta do'kon bor. Kalit kiritilmagan yoki
+       * buzilgan kompaniyaga hisobot — bo'sh yoki eskirgan raqamlar, bu spam
+       * (egasi qarori, 2026-10-27).
+       */
+      company: { stores: { some: {} }, uzumAccounts: { some: { status: 'active' } } },
     },
     select: {
       role: true,
