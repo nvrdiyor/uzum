@@ -119,6 +119,45 @@ export function abcGroup(cumulativeShare: number): 'A' | 'B' | 'C' {
   return 'C';
 }
 
+export interface AbcClassified<T> {
+  item: T;
+  /** Jamidagi ulush, % (2 xonagacha) */
+  share: number;
+  /** Shu qatorgacha jamg'arma ulush, % (100 dan oshmaydi) */
+  cumulativeShare: number;
+  group: 'A' | 'B' | 'C';
+}
+
+/**
+ * ABC guruhlash — ABC sahifasi, Excel va Boshqaruv paneli uchun BITTA qoida:
+ * qiymat bo'yicha kamayish tartibida har qator ulushi (2 xonagacha) jamg'arib
+ * boriladi; jamg'arma ≤ 80% — A, ≤ 95% — B, qolgani — C. Ilgari sahifa va
+ * Excel bu hisobni alohida yozardi va chegaradagi SKU (80,004%) ikkisida
+ * boshqa guruhga tushardi (2026-10-27).
+ *
+ * Qiymati nol yoki manfiy qator (foyda rejimida zarardagi tovar) ulushga
+ * kirmaydi va C guruhida — u assortimentning pul keltirmaydigan qismi.
+ */
+export function classifyAbc<T>(items: readonly T[], valueOf: (item: T) => number): AbcClassified<T>[] {
+  const sorted = [...items].sort((a, b) => valueOf(b) - valueOf(a));
+  const total = sorted.reduce((s, x) => s + Math.max(0, valueOf(x)), 0);
+  let cumulative = 0;
+  return sorted.map((item) => {
+    const value = valueOf(item);
+    if (!(value > 0) || total <= 0) {
+      return { item, share: 0, cumulativeShare: round(Math.min(100, cumulative), 2), group: 'C' };
+    }
+    const share = pct(value, total);
+    cumulative += share;
+    return {
+      item,
+      share,
+      cumulativeShare: round(Math.min(100, cumulative), 2),
+      group: abcGroup(round(cumulative, 2)),
+    };
+  });
+}
+
 /** Oddiy chiziqli prognoz — o'rtacha kunlik sotuv asosida */
 export function forecastUnits(avgDaily: number, days: number): number {
   return Math.max(0, Math.round(avgDaily * days));

@@ -27,9 +27,9 @@ import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
   STOCK_THRESHOLDS,
-  abcGroup,
   addDays,
   calcUnitEconomics,
+  classifyAbc,
   costPriceBulkSchema,
   matchesProductQuery,
   parseISODate,
@@ -718,11 +718,8 @@ router.get(
 
     const totalRevenue = base.reduce((s, r) => s + r.agg.revenue, 0);
 
-    let cumulative = 0;
-    const rows: AbcRow[] = base.map((r) => {
-      const share = pct(r.agg.revenue, totalRevenue);
-      cumulative += share;
-      const group = abcGroup(round(cumulative, 2));
+    // Guruhlash — Boshqaruv panelidagi mini-karta va Excel bilan bitta qoida (shared classifyAbc)
+    const rows: AbcRow[] = classifyAbc(base, (r) => r.agg.revenue).map(({ item: r, share, cumulativeShare, group }) => {
       return {
         skuId: r.agg.skuId,
         sku: r.info.sku,
@@ -732,7 +729,7 @@ router.get(
         profit: round(r.agg.netProfit),
         units: r.agg.units,
         share,
-        cumulativeShare: round(Math.min(100, cumulative), 2),
+        cumulativeShare,
         group,
         xyzGroup: xyzGroup(buckets.get(r.agg.skuId) ?? []),
         // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)

@@ -523,8 +523,15 @@ export function TrendChart({
   stacked,
   variant = 'area',
   compare,
+  layered = true,
 }: BaseProps & {
   variant?: 'area' | 'bars';
+  /**
+   * Ustunlarda birinchi seriya keng "tashqi" ustun, qolganlari uning ichida
+   * (tushum ichida foyda). `false` — hamma seriya teng huquqli: `stacked`
+   * bilan bitta ustunga yig'iladi (masalan, do'konlar kesimida kun jami).
+   */
+  layered?: boolean;
   /** Sahifa uni useMemo bilan bersin — har chizishda yangi obyekt hisobni qayta boshlaydi */
   compare?: CompareDef | null;
 }) {
@@ -589,7 +596,7 @@ export function TrendChart({
   const { rows, gran } = prep;
   const bars = variant === 'bars';
   const [outer, ...inner] = series;
-  const overlay = bars && series.length > 1;
+  const overlay = bars && layered && series.length > 1;
   const cmp = prep.shift !== null && compare ? { ...compare, shift: prep.shift } : null;
   const cmpSeries = cmp ? series.find((s) => s.key === cmp.key) : undefined;
 

@@ -13,7 +13,10 @@ import type { Prisma } from '@savdoiq/db';
 import {
   STOCK_THRESHOLDS,
   addDays,
+  asMemberView,
+  classifyAbc,
   deltaPct,
+  featureAccess,
   formatCompact,
   formatNumber,
   parseISODate,
@@ -23,9 +26,13 @@ import {
   toISODate,
   businessDayStart,
   toBusinessDate,
+  viewSeesMoney,
   type CompareMode,
   type CostCoverageResponse,
+  type DashboardAbc,
+  type DashboardAbcMode,
   type DashboardResponse,
+  type DashboardStoreSeries,
   type Insight,
   type MetricValue,
   type Period,
@@ -38,22 +45,28 @@ import { companyCtx, requireAuth, requireCompany } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
 import {
   daysSince,
+  getAvgDaily,
   getLastSaleDates,
   getSkuCatalog,
+  getStoreDailySeries,
   getStoreIds,
   getStoreTitles,
   getTaxRate,
+  stockState,
   type SkuInfo,
   type StockInfo,
+  type StoreDaily,
 } from '../services/common.js';
-import { compareRows, loadPlanData, type PlanData } from '../services/plan.js';
+import { compareRows, loadPlanData, planSku, planStockStatus, type PlanData } from '../services/plan.js';
 import {
+  aggregateSalesNet,
   comparablePeriod,
   getAdFeesBySku,
   getNetDailySeries,
   getPeriodCosts,
   getPreviousNetSeries,
   investedIn,
+  type SalesNet,
 } from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 
@@ -496,6 +509,92 @@ function buildInsights(inp: InsightInput): Insight[] {
   return out.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]).slice(0, 6);
 }
 
+// ─────────────────────────── ABC mini-karta va do'konlar dinamikasi ───────────────────────────
+
+/** Dinamika grafigida alohida ko'rsatiladigan do'konlar; qolgani bitta "Boshqa" ustuniga */
+const MAX_CHART_STORES = 7;
+/** ABC mini-kartadagi A guruhi yetakchilari */
+const ABC_LEADERS = 5;
+
+type AbcBase = { agg: SalesNet extends Map<string, infer V> ? V : never; info: SkuInfo };
+
+/**
+ * Bitta rejim (tushum yoki foyda) bo'yicha ABC — ABC sahifasi bilan BITTA
+ * qoida (shared classifyAbc) va bitta manba (aggregateSalesNet: foydadan
+ * mahsulot reklamasi ayirilgan). Guruh ulushi sahifadagidek: guruh qiymati ÷
+ * jami; foyda rejimida zarardagi tovarlar C da, ulushga kirmaydi.
+ */
+function abcMode(base: AbcBase[], valueOf: (r: AbcBase) => number): DashboardAbcMode {
+  const classified = classifyAbc(base, valueOf);
+  const total = base.reduce((s, r) => s + Math.max(0, round(valueOf(r))), 0);
+  const groups = (['A', 'B', 'C'] as const).map((group) => {
+    const inGroup = classified.filter((c) => c.group === group);
+    const value = inGroup.reduce((s, c) => s + round(valueOf(c.item)), 0);
+    const positive = inGroup.reduce((s, c) => s + Math.max(0, round(valueOf(c.item))), 0);
+    return { group, skuCount: inGroup.length, value: round(value), share: pct(positive, total) };
+  });
+  const leaders = classified
+    .filter((c) => c.group === 'A')
+    .slice(0, ABC_LEADERS)
+    .map((c) => ({
+      skuId: c.item.agg.skuId,
+      sku: c.item.info.sku,
+      title: c.item.info.title,
+      productTitle: c.item.info.productTitle,
+      imageUrl: c.item.info.imageUrl,
+      value: round(valueOf(c.item)),
+      share: c.share,
+    }));
+  return { total: round(total), groups, leaders };
+}
+
+function buildDashboardAbc(sales: SalesNet, catalog: Map<string, SkuInfo>, seesMoney: boolean): DashboardAbc {
+  // ABC sahifasidagi to'plamning o'zi: katalogdagi (arxivdagisi ham), davrda sotilgan SKU'lar
+  const base: AbcBase[] = [...sales.values()]
+    .map((agg) => ({ agg, info: catalog.get(agg.skuId) }))
+    .filter((r): r is AbcBase => Boolean(r.info))
+    .filter((r) => r.agg.units > 0 || r.agg.revenue > 0);
+  return {
+    revenue: abcMode(base, (r) => r.agg.revenue),
+    // Pulsiz shablonda foyda rejimi umuman yuborilmaydi — ulushlardan ham foyda taqsimoti ko'rinmasin
+    profit: seesMoney ? abcMode(base, (r) => r.agg.netProfit) : null,
+  };
+}
+
+/**
+ * Dinamika do'konlar kesimida: tushum bo'yicha eng katta 7 do'kon alohida,
+ * qolgani bitta "Boshqa". Faqat tushum, buyurtma va dona — sof foyda emas:
+ * kompaniya xarajatlarini (reklama, saqlash, ish haqi) do'konlarga ishonchli
+ * taqsimlab bo'lmaydi. Sotuvi bor do'kon bittadan kam bo'lsa — null.
+ */
+function buildStoreSeries(
+  daily: { keys: string[]; byStore: Map<string, StoreDaily> },
+  titles: Map<string, string>,
+): DashboardStoreSeries | null {
+  const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
+  const ranked = [...daily.byStore.entries()]
+    .map(([storeId, s]) => ({ storeId, s, revenue: sum(s.revenue) }))
+    .filter((r) => r.revenue > 0 || sum(r.s.units) > 0)
+    .sort((a, b) => b.revenue - a.revenue);
+  if (ranked.length < 2) return null;
+  const top = ranked.slice(0, MAX_CHART_STORES);
+  const rest = ranked.slice(MAX_CHART_STORES);
+  const stores: DashboardStoreSeries['stores'] = top.map((r) => ({
+    storeId: r.storeId,
+    title: titles.get(r.storeId) ?? 'Do‘kon',
+    revenue: round(r.revenue),
+  }));
+  if (rest.length > 0) stores.push({ storeId: null, title: 'Boshqa', revenue: round(sum(rest.map((r) => r.revenue))) });
+  const pick = (key: keyof StoreDaily, i: number): number[] => [
+    ...top.map((r) => round(r.s[key][i] ?? 0)),
+    ...(rest.length > 0 ? [round(sum(rest.map((r) => r.s[key][i] ?? 0)))] : []),
+  ];
+  return {
+    stores,
+    points: daily.keys.map((date, i) => ({ date, revenue: pick('revenue', i), orders: pick('orders', i), units: pick('units', i) })),
+  };
+}
+
 // ─────────────────────────── GET /analytics/dashboard ───────────────────────────
 
 router.get(
@@ -508,7 +607,27 @@ router.get(
     const prevFrom = businessDayStart(range.previous.from);
     const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev, catalog, planData, lastSale, series, previous, costs, prevCosts, taxRate, storeTitles] = await Promise.all([
+    // ABC mini-karta faqat tarifda ABC tahlil to'liq bo'lsa (server tomonda — ma'lumot umuman yuborilmaydi)
+    const abcFull = featureAccess(plan, 'abc_analysis') === 'full';
+    const member = companyCtx(req).membership;
+    const seesMoney = !member || member.role === 'owner' || viewSeesMoney(asMemberView(member.view));
+
+    const [
+      cur,
+      prev,
+      catalog,
+      planData,
+      lastSale,
+      series,
+      previous,
+      costs,
+      prevCosts,
+      taxRate,
+      storeTitles,
+      avgDaily,
+      abcSales,
+      storeDaily,
+    ] = await Promise.all([
       collectTotals(storeIds, range.from, range.toExclusive),
       collectTotals(storeIds, prevFrom, prevToExclusive),
       getSkuCatalog(storeIds, true),
@@ -524,6 +643,12 @@ router.get(
       getPeriodCosts(company.id, storeIds, prevFrom, prevToExclusive, range.storeId),
       getTaxRate(company.id),
       getStoreTitles(company.id),
+      // Top mahsulotlar holati — Qoldiqlar sahifasidagi qoida (rejaga kirmagan SKU uchun eski qoidaning sur'ati)
+      getAvgDaily(storeIds, 30),
+      // ABC — ABC sahifasining manbai (foydadan mahsulot reklamasi ayirilgan)
+      abcFull ? aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId) : Promise.resolve(null),
+      // Do'konlar dinamikasi — faqat bir nechta do'kon ko'rinayotganda
+      storeIds.length > 1 ? getStoreDailySeries(storeIds, range.period) : Promise.resolve(null),
     ]);
     // Rejaning o'zi `getLatestStocks` ni yuklaydi (do'konlarning BARCHA SKU'lari) — qayta so'ralmaydi
     const stocks = planData.stocks;
@@ -658,11 +783,36 @@ router.get(
           units: agg.units,
           share: pct(agg.revenue, cur.revenue),
           margin: pct(profit, agg.revenue),
+          productId: info?.productId,
         } satisfies TopProductRow;
       })
       .filter((r) => r.units > 0 || r.revenue > 0)
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 8);
+      .slice(0, 8)
+      /*
+       * Qoldiq, "yetadi", holat va oylik potensial — Qoldiqlar va "Sotuv va
+       * qoldiq" sahifalaridagi raqamlarning o'zi (planStockStatus: kompaniyaning
+       * yetkazish muddati, yo'ldagi tovar bilan). Faqat 8 qator uchun, so'rovsiz:
+       * reja va qoldiq yuqorida allaqachon yuklangan (2026-10-27).
+       */
+      .map((r) => {
+        const info = catalog.get(r.skuId);
+        const total = stocks.get(r.skuId)?.total ?? 0;
+        const avg = avgDaily.get(r.skuId) ?? 0;
+        const row = planSku(planData, r.skuId);
+        const state = planStockStatus(
+          row,
+          stockState(total, avg, daysSince(lastSale.get(r.skuId)), info ? daysSince(info.createdAt) : undefined),
+        );
+        const daily = row && row.status !== 'no_action' ? row.avgDaily : avg;
+        return {
+          ...r,
+          stock: total,
+          daysLeft: state.daysLeft,
+          stockStatus: state.status,
+          monthPotential: Math.round(daily * 30),
+        };
+      });
 
     // Qoldiq qiymati (tannarx bo'yicha)
     let stockUnits = 0;
@@ -734,6 +884,8 @@ router.get(
       topProducts,
       insights,
       stockValue,
+      abc: abcSales ? buildDashboardAbc(abcSales, catalog, seesMoney) : null,
+      storeSeries: storeDaily ? buildStoreSeries(storeDaily, storeTitles) : null,
     };
 
     res.json(payload);

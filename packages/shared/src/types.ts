@@ -308,6 +308,10 @@ export interface DashboardResponse {
   topProducts: TopProductRow[];
   insights: Insight[];
   stockValue: { units: number; amount: number; fbo: number; fbs: number };
+  /** ABC mini-karta; tarifda ABC tahlil to'liq bo'lmasa null */
+  abc?: DashboardAbc | null;
+  /** Dinamika do'konlar kesimida; bitta do'kon tanlangan bo'lsa null */
+  storeSeries?: DashboardStoreSeries | null;
 }
 
 export interface TimeSeriesPoint {
@@ -333,6 +337,47 @@ export interface TopProductRow {
   units: number;
   share: number;
   margin: number;
+  /** Mahsulot sahifasiga o'tish uchun */
+  productId?: string;
+  /** Hozirgi qoldiq (barcha omborlar, dona) */
+  stock?: number;
+  /** Qoldiq necha kunga yetadi — Rejalashtiruvchi (yetkazish muddati bilan); sotuv yo'q — null */
+  daysLeft?: number | null;
+  /** Qoldiqlar sahifasidagi nishonning o'zi (planStockStatus) */
+  stockStatus?: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
+  /** Oyiga potensial sotuv, dona: kunlik sur'at × 30 ("Sotuv va qoldiq" bilan bir xil) */
+  monthPotential?: number;
+}
+
+/** Boshqaruv panelidagi ABC mini-karta — bitta rejim (tushum yoki foyda) bo'yicha */
+export interface DashboardAbcMode {
+  /** Jami: tushum yoki IJOBIY foydalar yig'indisi, so'm */
+  total: number;
+  groups: { group: 'A' | 'B' | 'C'; skuCount: number; value: number; share: number }[];
+  /** A guruhining yetakchilari (5 tagacha) */
+  leaders: {
+    skuId: string;
+    sku: string;
+    title: string;
+    productTitle?: string;
+    imageUrl: string | null;
+    value: number;
+    share: number;
+  }[];
+}
+
+export interface DashboardAbc {
+  revenue: DashboardAbcMode;
+  /** Pulni ko'rmaydigan ko'rinish shablonida null */
+  profit: DashboardAbcMode | null;
+}
+
+/** Dinamika grafigi do'konlar kesimida (faqat 2+ do'kon tanlanganda) */
+export interface DashboardStoreSeries {
+  /** Tushum bo'yicha eng katta 7 do'kon, qolgani bitta "Boshqa" (storeId = null) */
+  stores: { storeId: string | null; title: string; revenue: number }[];
+  /** `series` bilan bir xil kunlar; massivlar `stores` tartibida */
+  points: { date: string; revenue: number[]; orders: number[]; units: number[] }[];
 }
 
 export interface Insight {

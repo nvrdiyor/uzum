@@ -26,7 +26,7 @@ import type { Workbook, Worksheet } from 'exceljs';
 import { prisma } from '@savdoiq/db';
 import {
   DEFAULTS,
-  abcGroup,
+  classifyAbc,
   logisticsFee,
   storageFeePerDay,
   storageTariffKind,
@@ -889,34 +889,29 @@ router.get(
           units: agg?.units ?? 0,
         };
       })
-      .filter((r) => r.revenue > 0 || r.units > 0)
-      .sort((a, b) => b.revenue - a.revenue);
+      .filter((r) => r.revenue > 0 || r.units > 0);
 
-    const totalRevenue = list.reduce((s, r) => s + r.revenue, 0);
-    let cumulative = 0;
+    // ABC sahifasi bilan bitta qoida (shared classifyAbc) — chegaradagi SKU ikkalasida bir guruhda
+    const classified = classifyAbc(list, (r) => r.revenue);
 
-    const rows: Cell[][] = list.slice(0, MAX_ROWS).map((r) => {
-      const share = pct(r.revenue, totalRevenue);
-      cumulative = Math.min(100, cumulative + share);
-      return [
-        r.info.sku,
-        r.info.title,
-        r.info.storeTitle,
-        round(r.revenue),
-        round(r.profit),
-        r.units,
-        share,
-        round(cumulative, 2),
-        abcGroup(cumulative),
-      ];
-    });
+    const rows: Cell[][] = classified.slice(0, MAX_ROWS).map(({ item: r, share, cumulativeShare, group }) => [
+      r.info.sku,
+      r.info.title,
+      r.info.storeTitle,
+      round(r.revenue),
+      round(r.profit),
+      r.units,
+      share,
+      cumulativeShare,
+      group,
+    ]);
 
     const wb = newWorkbook();
     addSheet(wb, {
       name: 'ABC tahlil',
       columns,
       rows,
-      totals: totalsRow(columns, rows, { 6: totalRevenue > 0 ? 100 : 0, 7: null }),
+      totals: totalsRow(columns, rows, { 6: list.some((r) => r.revenue > 0) ? 100 : 0, 7: null }),
       note: limitNote(list.length),
     });
 

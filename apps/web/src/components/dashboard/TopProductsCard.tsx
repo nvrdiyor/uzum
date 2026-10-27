@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Trophy } from '@/components/icons';
 import type { TopProductRow } from '@savdoiq/shared';
 import {
@@ -15,7 +15,8 @@ import {
 } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { useSeesMoney } from '@/lib/view';
+import { useCanOpen, useSeesMoney } from '@/lib/view';
+import { STATE_TONE, TONE_TEXT } from '@/components/stock/common';
 import { splitProductName } from './productName';
 import { marginTone } from './rates';
 
@@ -25,6 +26,10 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
   const f = useFormat();
   // Pulsiz ko'rinish shablonida foyda va marja null — ustunlarning o'zi chizilmaydi
   const money = useSeesMoney();
+  const navigate = useNavigate();
+  const canOpen = useCanOpen();
+  // Qator bosilsa — mahsulot sahifasi (shablon mahsulotlarni ochmasa — bosilmaydi)
+  const openProduct = canOpen('/products') ? (r: TopProductRow) => r.productId && navigate(`/products/${r.productId}`) : undefined;
 
   /*
    * O'rin — TUSHUM bo'yicha (server shu tartibda yuboradi), jadvaldagi joriy
@@ -64,7 +69,20 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       align: 'right',
       sortable: true,
       sortValue: (r) => r.units,
-      render: (r) => f.num(r.units),
+      /*
+       * Ostida — oylik potensial (hozirgi sur'at × 30): ikkalasi ham sotuv
+       * sur'ati. Alohida ustun 1366px da jadvalni karta chetidan chiqarardi.
+       */
+      render: (r) => (
+        <div className="text-right">
+          <p className="tnum">{f.num(r.units)}</p>
+          {r.monthPotential !== undefined ? (
+            <p className="tnum whitespace-nowrap text-2xs text-muted" title={t('top.potentialHint')}>
+              {t('top.potential', { n: f.num(r.monthPotential) })}
+            </p>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'revenue',
@@ -93,11 +111,40 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       sortValue: (r) => r.margin,
       render: (r) => <Badge tone={marginTone(r.margin)}>{f.pct(r.margin)}</Badge>,
     },
+    /*
+     * Qoldiq va "yetadi" — Qoldiqlar sahifasidagi raqamlarning o'zi (server:
+     * Rejalashtiruvchi, yetkazish muddati bilan); rang — o'sha sahifadagi
+     * nishon rangi. Eng ko'p sotilayotgan tovar tugab qolsa, shu yerda ko'rinsin.
+     */
+    {
+      key: 'stock',
+      header: t('top.col.stock'),
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.daysLeft ?? Number.MAX_SAFE_INTEGER,
+      render: (r) => {
+        if (r.stock === undefined) return <span className="text-muted">—</span>;
+        const tone = r.stockStatus ? TONE_TEXT[STATE_TONE[r.stockStatus]] : 'text-muted';
+        const note =
+          r.stock <= 0
+            ? t('top.stockOut')
+            : r.daysLeft === null || r.daysLeft === undefined
+              ? t('top.stockNoSales')
+              : t('top.stockDays', { n: f.num(r.daysLeft) });
+        return (
+          <div className="text-right" title={t('top.stockHint')}>
+            <p className="tnum font-semibold text-ink">{f.num(r.stock)}</p>
+            <p className={cn('tnum text-2xs font-medium', tone)}>{note}</p>
+          </div>
+        );
+      },
+    },
     {
       key: 'share',
       header: t('top.col.share'),
       align: 'right',
-      hideOnMobile: true,
+      // Ulush ABC mini-kartada ham bor — 1536px dan torroq ekranda joyni qoldiq ustuniga beramiz
+      hideBelow: '2xl',
       width: 156,
       sortable: true,
       sortValue: (r) => r.share,
@@ -132,6 +179,7 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
           rows={rows}
           loading={loading}
           rowKey={(r) => r.skuId}
+          onRowClick={openProduct ? (r) => void openProduct(r) : undefined}
           empty={<EmptyState icon={<Trophy className="h-6 w-6" />} title={t('top.empty')} hint={t('top.emptyHint')} />}
         />
       </div>

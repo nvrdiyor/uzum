@@ -453,31 +453,95 @@ export async function getExpenses(
 }
 
 /** Kunlik seriya (tushum/foyda/buyurtma) */
+/**
+ * Grafik kunlari — savdo mintaqasi (Toshkent) bo'yicha: chegaralar ham,
+ * kunlarga ajratish ham. Seriya bugundan nariga o'tmaydi: "shu oy"
+ * tanlanganda oy oxirigacha nol kunlar chizilsa, grafik har doim nolga
+ * qulagandek ko'rinardi.
+ */
+function seriesWindow(period: Period): { from: Date; to: Date; keys: string[] } {
+  const from = businessDayStart(period.from);
+  const tomorrow = addDays(businessDayStart(toBusinessDate(new Date())), 1);
+  const periodEnd = addDays(businessDayStart(period.to), 1);
+  const to = periodEnd < tomorrow ? periodEnd : tomorrow;
+  const keys: string[] = [];
+  for (let cur = new Date(from); cur < to; cur = addDays(cur, 1)) keys.push(toBusinessDate(cur));
+  return { from, to, keys };
+}
+
+/** Bitta do'konning kunlik qiymatlari — `keys` tartibida */
+export interface StoreDaily {
+  revenue: number[];
+  orders: number[];
+  units: number[];
+}
+
+/**
+ * Kunlik tushum, buyurtma va dona DO'KONLAR kesimida — Boshqaruv panelidagi
+ * dinamika grafigining "Do'konlar" rejimi. Qoida `getDailySeries` bilan bir
+ * xil (bekor qilingan va qaytarilgan pozitsiyalar kirmaydi; buyurtma — tirik
+ * pozitsiyasi bo'lsa), shuning uchun har kunning do'konlar yig'indisi jami
+ * seriyaga teng: buyurtma bitta do'konga tegishli.
+ */
+export async function getStoreDailySeries(
+  storeIds: string[],
+  period: Period,
+): Promise<{ keys: string[]; byStore: Map<string, StoreDaily> }> {
+  const { from, to, keys } = seriesWindow(period);
+  const byStore = new Map<string, StoreDaily>();
+  if (storeIds.length === 0) return { keys, byStore };
+  const index = new Map(keys.map((k, i) => [k, i]));
+
+  const items = await prisma.orderItem.findMany({
+    where: { orderedAt: { gte: from, lt: to }, order: { storeId: { in: storeIds } } },
+    select: {
+      orderedAt: true,
+      revenue: true,
+      qty: true,
+      status: true,
+      orderId: true,
+      returnedAt: true,
+      order: { select: { storeId: true } },
+    },
+  });
+
+  const ordersPerDay = new Map<string, Set<string>>();
+  for (const it of items) {
+    if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
+    const i = index.get(toBusinessDate(it.orderedAt));
+    if (i === undefined) continue;
+    const storeId = it.order.storeId;
+    let s = byStore.get(storeId);
+    if (!s) {
+      s = { revenue: keys.map(() => 0), orders: keys.map(() => 0), units: keys.map(() => 0) };
+      byStore.set(storeId, s);
+    }
+    s.revenue[i] += it.revenue;
+    s.units[i] += it.qty;
+    const slot = `${storeId}|${i}`;
+    const set = ordersPerDay.get(slot) ?? new Set<string>();
+    set.add(it.orderId);
+    ordersPerDay.set(slot, set);
+  }
+  for (const [slot, set] of ordersPerDay) {
+    const [storeId, i] = slot.split('|') as [string, string];
+    const s = byStore.get(storeId);
+    if (s) s.orders[Number(i)] = set.size;
+  }
+  return { keys, byStore };
+}
+
 export async function getDailySeries(
   storeIds: string[],
   period: Period,
 ): Promise<{ date: string; revenue: number; profit: number; orders: number; units: number; payout: number; returns: number }[]> {
-  // Kun — savdo mintaqasi (Toshkent) bo'yicha: chegaralar ham, kunlarga ajratish ham
-  const from = businessDayStart(period.from);
-  /**
-   * Seriya bugundan nariga o'tmaydi: "shu oy" tanlanganda oy oxirigacha nol
-   * kunlar chizilsa, grafik har doim nolga qulagandek ko'rinardi.
-   */
-  const tomorrow = addDays(businessDayStart(toBusinessDate(new Date())), 1);
-  const periodEnd = addDays(businessDayStart(period.to), 1);
-  const to = periodEnd < tomorrow ? periodEnd : tomorrow;
+  const { from, to, keys } = seriesWindow(period);
 
   const map = new Map<
     string,
     { date: string; revenue: number; profit: number; orders: number; units: number; payout: number; returns: number }
   >();
-
-  let cur = new Date(from);
-  while (cur < to) {
-    const key = toBusinessDate(cur);
-    map.set(key, { date: key, revenue: 0, profit: 0, orders: 0, units: 0, payout: 0, returns: 0 });
-    cur = addDays(cur, 1);
-  }
+  for (const key of keys) map.set(key, { date: key, revenue: 0, profit: 0, orders: 0, units: 0, payout: 0, returns: 0 });
 
   if (storeIds.length === 0) return [...map.values()];
 

@@ -19,7 +19,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
-import { ChartCard, TrendChart, type CompareDef, type SeriesDef } from '@/components/charts';
+import { ChartCard, SERIES_OTHER, TrendChart, seriesColor, type CompareDef, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import {
   Button,
@@ -42,6 +42,7 @@ import { MarginRoiCard, PayoutsCard, StockValueCard } from '@/components/dashboa
 import { ExpensesCard } from '@/components/dashboard/ExpensesCard';
 import { StoresCard } from '@/components/dashboard/StoresCard';
 import { TopProductsCard } from '@/components/dashboard/TopProductsCard';
+import { AbcMiniCard } from '@/components/dashboard/AbcMiniCard';
 import { ProfitRankList, type ProfitRankRow } from '@/components/dashboard/ProfitRankList';
 import { MarginMap } from '@/components/dashboard/MarginMap';
 import { splitProductName } from '@/components/dashboard/productName';
@@ -156,6 +157,32 @@ registerNamespace('dashboard', {
     'top.col.profit': 'Foyda',
     'top.col.margin': 'Marja',
     'top.col.share': 'Ulush',
+    'top.col.stock': 'Qoldiq',
+    'top.stockDays': '{n} kunga',
+    'top.stockNoSales': 'sotuv yo‘q',
+    'top.stockOut': 'tugagan',
+    'top.stockHint': 'Qoldiq necha kunga yetadi — Rejalashtiruvchi bo‘yicha, yetkazish muddati va yo‘ldagi tovar bilan',
+    'top.potential': '~{n} dona/oy',
+    'top.potentialHint': 'Hozirgi sur’atda oyiga sotilishi mumkin bo‘lgan dona: kunlik sur’at × 30',
+
+    'chart.mode.total': 'Jami',
+    'chart.mode.stores': 'Do‘konlar',
+    'chart.subtitleStores': 'Kunlik ko‘rsatkichlar do‘konlar kesimida',
+    'chart.otherStores': 'Boshqa do‘konlar',
+
+    'abc.title': 'ABC tahlil',
+    'abc.subtitle': 'Qaysi SKU’lar tushumning 80% ini beradi',
+    'abc.subtitleProfit': 'Qaysi SKU’lar foydaning 80% ini beradi',
+    'abc.mode.revenue': 'Tushum',
+    'abc.mode.profit': 'Foyda',
+    'abc.group.A': 'A — asosiy',
+    'abc.group.B': 'B — o‘rta',
+    'abc.group.C': 'C — kam ulush',
+    'abc.skus': '{n} SKU',
+    'abc.leaders': 'A guruhi yetakchilari',
+    'abc.hint': 'A — jamining 80% i, B — keyingi 15%, C — qolgani. Foyda rejimida zarardagi tovarlar C da.',
+    'abc.all': 'ABC tahlilni ochish',
+    'abc.empty': 'Bu davrda sotuv yo‘q',
 
     'empty.title': 'Hozircha ko‘rsatiladigan ma’lumot yo‘q',
     'empty.hint':
@@ -272,6 +299,32 @@ registerNamespace('dashboard', {
     'top.col.profit': 'Прибыль',
     'top.col.margin': 'Маржа',
     'top.col.share': 'Доля',
+    'top.col.stock': 'Остаток',
+    'top.stockDays': 'на {n} дн.',
+    'top.stockNoSales': 'нет продаж',
+    'top.stockOut': 'закончился',
+    'top.stockHint': 'На сколько дней хватит остатка — по Планировщику, с учётом срока поставки и товара в пути',
+    'top.potential': '~{n} шт./мес.',
+    'top.potentialHint': 'Сколько штук можно продать за месяц в текущем темпе: продажи в день × 30',
+
+    'chart.mode.total': 'Всего',
+    'chart.mode.stores': 'Магазины',
+    'chart.subtitleStores': 'Показатели по дням в разрезе магазинов',
+    'chart.otherStores': 'Другие магазины',
+
+    'abc.title': 'ABC-анализ',
+    'abc.subtitle': 'Какие SKU дают 80% выручки',
+    'abc.subtitleProfit': 'Какие SKU дают 80% прибыли',
+    'abc.mode.revenue': 'Выручка',
+    'abc.mode.profit': 'Прибыль',
+    'abc.group.A': 'A — основные',
+    'abc.group.B': 'B — средние',
+    'abc.group.C': 'C — малая доля',
+    'abc.skus': '{n} SKU',
+    'abc.leaders': 'Лидеры группы A',
+    'abc.hint': 'A — 80% итога, B — следующие 15%, C — остальное. В режиме прибыли убыточные товары — в C.',
+    'abc.all': 'Открыть ABC-анализ',
+    'abc.empty': 'За этот период продаж нет',
 
     'empty.title': 'Пока нечего показать',
     'empty.hint':
@@ -386,6 +439,32 @@ registerNamespace('dashboard', {
     'top.col.profit': 'Profit',
     'top.col.margin': 'Margin',
     'top.col.share': 'Share',
+    'top.col.stock': 'Stock',
+    'top.stockDays': '{n} days',
+    'top.stockNoSales': 'no sales',
+    'top.stockOut': 'out of stock',
+    'top.stockHint': 'How many days the stock lasts — from the Planner, with lead time and goods in transit',
+    'top.potential': '~{n} units/mo',
+    'top.potentialHint': 'Units you could sell in a month at the current pace: daily rate × 30',
+
+    'chart.mode.total': 'Total',
+    'chart.mode.stores': 'Stores',
+    'chart.subtitleStores': 'Daily performance by store',
+    'chart.otherStores': 'Other stores',
+
+    'abc.title': 'ABC analysis',
+    'abc.subtitle': 'Which SKUs bring 80% of revenue',
+    'abc.subtitleProfit': 'Which SKUs bring 80% of profit',
+    'abc.mode.revenue': 'Revenue',
+    'abc.mode.profit': 'Profit',
+    'abc.group.A': 'A — core',
+    'abc.group.B': 'B — middle',
+    'abc.group.C': 'C — small share',
+    'abc.skus': '{n} SKUs',
+    'abc.leaders': 'Group A leaders',
+    'abc.hint': 'A — 80% of the total, B — the next 15%, C — the rest. In profit mode, loss-making items are in C.',
+    'abc.all': 'Open ABC analysis',
+    'abc.empty': 'No sales in this period',
 
     'empty.title': 'Nothing to show yet',
     'empty.hint':
@@ -424,6 +503,7 @@ export default function Dashboard() {
   const f = useFormat();
   const q = usePeriodQuery();
   const [metric, setMetric] = useState<MetricKey>('revenue');
+  const [chartMode, setChartMode] = useState<'total' | 'stores'>('total');
   /*
    * Pulsiz ko'rinish shablonida (Marketolog) server foyda, marja, to'lov va
    * tannarxni null qilib yuboradi — faqat shulardan iborat kartalar (to'lovlar,
@@ -535,6 +615,34 @@ export default function Dashboard() {
       name: shownMetric === 'revenue' ? t('chart.prevRevenue') : t('chart.prev'),
     };
   }, [data?.previousSeries, shownMetric, t]);
+
+  /*
+   * Do'konlar rejimi: har do'kon alohida rangda, ustma-ust ustun (kun jami —
+   * "Jami" rejimdagi ustunning o'zi). Faqat tushum, buyurtma va dona: sof
+   * foydani do'konlarga taqsimlab bo'lmaydi (kompaniya xarajatlari umumiy),
+   * shuning uchun "Foyda" tanlanganda rejim ko'rsatilmaydi (2026-10-27).
+   */
+  const storeSeries = data?.storeSeries ?? null;
+  const storeMode = chartMode === 'stores' && storeSeries !== null && shownMetric !== 'profit';
+  const storeChart = useMemo(() => {
+    if (!storeSeries || shownMetric === 'profit') return null;
+    const key = shownMetric;
+    return {
+      data: storeSeries.points.map((p) => {
+        const row: Record<string, string | number> = { date: p.date };
+        p[key].forEach((v, i) => {
+          row[`s${i}`] = v;
+        });
+        return row;
+      }),
+      series: storeSeries.stores.map<SeriesDef>((s, i) => ({
+        key: `s${i}`,
+        name: s.storeId ? s.title : t('chart.otherStores'),
+        color: s.storeId ? seriesColor(i) : SERIES_OTHER,
+        money: key === 'revenue',
+      })),
+    };
+  }, [storeSeries, shownMetric, t]);
 
   const header = (
     <PageHeader
@@ -765,22 +873,37 @@ export default function Dashboard() {
         <ChartCard
           icon={<BarChart3 />}
           title={t('chart.title')}
-          subtitle={t('chart.subtitle')}
+          subtitle={t(storeMode ? 'chart.subtitleStores' : 'chart.subtitle')}
           actions={
-            <Segmented<MetricKey>
-              size="sm"
-              value={shownMetric}
-              onChange={setMetric}
-              options={[
-                { value: 'revenue' as const, label: t('metric.revenue') },
-                { value: 'profit' as const, label: t('metric.profit') },
-                { value: 'orders' as const, label: t('metric.orders') },
-                { value: 'units' as const, label: t('metric.units') },
-              ].filter((o) => money || o.value !== 'profit')}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {storeChart ? (
+                <Segmented<'total' | 'stores'>
+                  size="sm"
+                  value={storeMode ? 'stores' : 'total'}
+                  onChange={setChartMode}
+                  options={[
+                    { value: 'total', label: t('chart.mode.total') },
+                    { value: 'stores', label: t('chart.mode.stores') },
+                  ]}
+                />
+              ) : null}
+              <Segmented<MetricKey>
+                size="sm"
+                value={shownMetric}
+                onChange={setMetric}
+                options={[
+                  { value: 'revenue' as const, label: t('metric.revenue') },
+                  { value: 'profit' as const, label: t('metric.profit') },
+                  { value: 'orders' as const, label: t('metric.orders') },
+                  { value: 'units' as const, label: t('metric.units') },
+                ].filter((o) => money || o.value !== 'profit')}
+              />
+            </div>
           }
         >
-          {chartData.length > 1 ? (
+          {chartData.length > 1 && storeMode && storeChart ? (
+            <TrendChart data={storeChart.data} series={storeChart.series} height={320} variant="bars" stacked layered={false} />
+          ) : chartData.length > 1 ? (
             <TrendChart data={chartData} series={chartSeries} height={320} variant="bars" compare={compare} />
           ) : (
             <EmptyState
@@ -831,7 +954,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 8. Top mahsulotlar */}
+        {/* 8. ABC — tarifda ABC tahlil to'liq bo'lsa (server shundagina yuboradi); keyin top mahsulotlar */}
+        {data.abc ? <AbcMiniCard abc={data.abc} currency={data.currency} /> : null}
         <TopProductsCard rows={data.topProducts} />
       </div>
     </>
