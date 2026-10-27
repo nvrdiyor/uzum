@@ -4,35 +4,55 @@
  *  GET    /              → kompaniya + obuna + do'konlar + tarif limitlari
  *  PATCH  /              → kompaniya ma'lumotlarini tahrirlash (faqat owner)
  *  POST   /              → yangi kompaniya ochish (tarif bo'yicha cheklangan)
- *  GET    /members       → jamoa a'zolari
+ *  GET    /members       → jamoa a'zolari (rol va ko'rinish shabloni bilan)
  *  POST   /members       → telegram username bo'yicha taklif qilish
- *  PATCH  /members/:id   → a'zoning rolini o'zgartirish
+ *  PATCH  /members/:id   → a'zoning roli va/yoki ko'rinish shabloni
  *  DELETE /members/:id   → a'zoni jamoadan chiqarish
+ *  POST   /invites       → taklif havolasi (havola faqat shu javobda, bir marta)
+ *  GET    /invites       → faol takliflar (havolasiz)
+ *  DELETE /invites/:id   → taklifni bekor qilish
  *  GET    /settings      → kompaniya sozlamalari (kalit-qiymat)
  *  PUT    /settings      → sozlamalarni saqlash
+ *
+ * Havolani ochish va qabul qilish — routes/invites.ts (/api/v1/invites).
  *
  * Ma'lumot bo'lmasa ham marshrutlar 200 va bo'sh ro'yxat qaytaradi.
  */
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '@savdoiq/db';
-import type { User } from '@savdoiq/db';
+import type { Invite, Membership, User } from '@savdoiq/db';
 import {
+  MEMBER_VIEWS,
   PLAN_ORDER,
+  asMemberView,
   companySchema,
   getPlan,
   type CompanySummary,
-  type Lang,
   type PlanId,
   type StoreSummary,
   type SubscriptionSummary,
+  type TeamInviteCreated,
+  type TeamInviteRow,
+  type TeamInvitesResponse,
+  type TeamMemberRow,
+  type TeamMembersResponse,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, ctx, requireAuth, requireCompany, requireRole } from '../lib/auth.js';
+import { hashToken, randomToken } from '../lib/crypto.js';
 import { notifyUser } from '../services/notify.js';
 import {
+  INVITE_TTL_DAYS,
+  displayName,
+  inviteUrl,
+  memberLimit,
+  memberLimitError,
+  teamAudit,
+  teamText,
+} from '../services/team.js';
+import {
   activePlan,
-  asLang,
   asMemberRole,
   ensureSubscription,
   toCompanySummary,
@@ -59,27 +79,6 @@ interface CompanyDetailResponse {
   limits: PlanLimitsPayload;
 }
 
-interface MemberRow {
-  /** A'zolik yozuvining id'si (rolni o'zgartirish/chiqarish uchun) */
-  id: string;
-  userId: string;
-  name: string;
-  username: string | null;
-  photoUrl: string | null;
-  role: CompanySummary['role'];
-  /** So'rov yuborgan foydalanuvchining o'zimi */
-  isSelf: boolean;
-  createdAt: string;
-}
-
-interface MembersResponse {
-  members: MemberRow[];
-  limit: number;
-  used: number;
-  /** Joriy foydalanuvchi a'zolarni boshqara oladimi */
-  canManage: boolean;
-}
-
 interface SettingsResponse {
   settings: Record<string, string>;
 }
@@ -87,14 +86,31 @@ interface SettingsResponse {
 // ─────────────────────────── Sxemalar ───────────────────────────
 
 const roleSchema = z.enum(['owner', 'manager', 'viewer']);
+/** Ko'rinish shabloni; null — rol ruxsat bergan hamma narsa (views.ts) */
+const viewSchema = z.enum(MEMBER_VIEWS).nullable();
 
 const memberInviteSchema = z.object({
   /** @username yoki username */
   username: z.string().trim().min(2).max(64),
   role: roleSchema.default('manager'),
+  view: viewSchema.optional(),
 });
 
-const memberRoleSchema = z.object({ role: roleSchema });
+const memberPatchSchema = z
+  .object({ role: roleSchema.optional(), view: viewSchema.optional() })
+  .refine((v) => v.role !== undefined || v.view !== undefined, {
+    message: 'O‘zgartirish uchun rol yoki ko‘rinish yuboring',
+  });
+
+/**
+ * Havola bilan EGA qilib bo'lmaydi: havola uzatilishi mumkin, egalik esa
+ * kompaniyaning hamma narsasini (to'lov, kalit, jamoa) beradi. Kerak bo'lsa
+ * a'zo qo'shilgach rolini PATCH bilan o'zgartirish mumkin.
+ */
+const inviteCreateSchema = z.object({
+  role: z.enum(['manager', 'viewer']).default('manager'),
+  view: viewSchema.optional(),
+});
 
 const settingValueSchema = z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]);
 const settingsMapSchema = z.record(settingValueSchema);
@@ -111,58 +127,42 @@ const MAX_SETTINGS = 60;
  */
 const COMPANY_LIMIT: Record<PlanId, number> = { trial: 1, standard: 2, vip: 20, expired: 1 };
 
-/**
- * Jamoa bildirishnomalari — qabul qiluvchining tilida (bot xabarlari ham `languageCode`
- * bo'yicha). Ilgari matnga xom rol kodi tushardi: “Sizga “manager” roli berildi” (2026-10-24).
- * Rol nomlari saytdagi `team.role.*` bilan bir xil.
- */
-const ROLE_NAMES: Record<Lang, Record<CompanySummary['role'], string>> = {
-  uz: { owner: 'Egasi', manager: 'Menejer', viewer: 'Kuzatuvchi' },
-  ru: { owner: 'Владелец', manager: 'Менеджер', viewer: 'Наблюдатель' },
-  en: { owner: 'Owner', manager: 'Manager', viewer: 'Viewer' },
-};
-
-const TEAM_TEXT: Record<
-  Lang,
-  {
-    addedTitle: (company: string) => string;
-    addedBody: (role: string) => string;
-    roleTitle: (company: string) => string;
-    roleBody: (role: string) => string;
-  }
-> = {
-  uz: {
-    addedTitle: (c) => `“${c}” jamoasiga qo‘shildingiz`,
-    addedBody: (r) => `Sizga “${r}” roli berildi. Hisobotlarni saytda ko‘rishingiz mumkin.`,
-    roleTitle: (c) => `“${c}” kompaniyasida rolingiz o‘zgardi`,
-    roleBody: (r) => `Yangi rol: ${r}`,
-  },
-  ru: {
-    addedTitle: (c) => `Вас добавили в команду «${c}»`,
-    addedBody: (r) => `Вам назначена роль «${r}». Отчёты доступны на сайте.`,
-    roleTitle: (c) => `Ваша роль в компании «${c}» изменена`,
-    roleBody: (r) => `Новая роль: ${r}`,
-  },
-  en: {
-    addedTitle: (c) => `You were added to the “${c}” team`,
-    addedBody: (r) => `You have the “${r}” role. Reports are available on the website.`,
-    roleTitle: (c) => `Your role in “${c}” has changed`,
-    roleBody: (r) => `New role: ${r}`,
-  },
-};
-
-/** Qabul qiluvchi tilidagi matnlar va rol nomi */
-function teamText(languageCode: string | null | undefined, role: string) {
-  const lang = asLang(languageCode);
-  return { text: TEAM_TEXT[lang], roleName: ROLE_NAMES[lang][asMemberRole(role)] };
-}
-
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
-/** Foydalanuvchining ko'rinadigan ismi */
-function displayName(u: Pick<User, 'firstName' | 'lastName' | 'username' | 'telegramId'>): string {
-  const full = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
-  return full || u.username || `ID ${u.telegramId}`;
+/** Prisma a'zolik (+ foydalanuvchi) → API qatori. Egasida shablon doim null */
+function toMemberRow(m: Membership & { user: User }, selfId: string): TeamMemberRow {
+  const role = asMemberRole(m.role);
+  return {
+    id: m.id,
+    userId: m.userId,
+    name: displayName(m.user),
+    username: m.user.username,
+    photoUrl: m.user.photoUrl,
+    role,
+    view: role === 'owner' ? null : asMemberView(m.view),
+    isSelf: m.userId === selfId,
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+
+/** Prisma taklif → API qatori (havola/xesh hech qachon chiqmaydi) */
+function toInviteRow(i: Invite, creators: Map<string, string>): TeamInviteRow {
+  return {
+    id: i.id,
+    role: i.role === 'viewer' ? 'viewer' : 'manager',
+    view: asMemberView(i.view),
+    createdAt: i.createdAt.toISOString(),
+    expiresAt: i.expiresAt.toISOString(),
+    createdBy: i.createdById ? (creators.get(i.createdById) ?? null) : null,
+  };
+}
+
+/** Taklif yaratganlarning ismlari (bitta so'rov bilan) */
+async function inviteCreators(invites: Invite[]): Promise<Map<string, string>> {
+  const ids = [...new Set(invites.map((i) => i.createdById).filter((v): v is string => Boolean(v)))];
+  if (ids.length === 0) return new Map();
+  const users = await prisma.user.findMany({ where: { id: { in: ids } } });
+  return new Map(users.map((u) => [u.id, displayName(u)]));
 }
 
 /** Kompaniya bo'yicha tarif limitlari va haqiqiy foydalanish */
@@ -257,7 +257,7 @@ router.get(
     const [stores, limits] = await Promise.all([companyStores(company.id), planLimits(company.id, plan)]);
 
     const payload: CompanyDetailResponse = {
-      company: toCompanySummary(company, membership?.role ?? 'viewer'),
+      company: toCompanySummary(company, membership?.role ?? 'viewer', membership?.view),
       subscription: toSubscriptionSummary(subscription),
       stores,
       limits,
@@ -299,7 +299,7 @@ router.patch(
       },
     });
 
-    res.json(toCompanySummary(updated, membership?.role ?? 'owner'));
+    res.json(toCompanySummary(updated, membership?.role ?? 'owner', membership?.view));
   }),
 );
 
@@ -364,18 +364,9 @@ router.get(
       orderBy: { createdAt: 'asc' },
     });
 
-    const members: MemberRow[] = rows.map((m) => ({
-      id: m.id,
-      userId: m.userId,
-      name: displayName(m.user),
-      username: m.user.username,
-      photoUrl: m.user.photoUrl,
-      role: asMemberRole(m.role),
-      isSelf: m.userId === user.id,
-      createdAt: m.createdAt.toISOString(),
-    }));
+    const members = rows.map((m) => toMemberRow(m, user.id));
 
-    const payload: MembersResponse = {
+    const payload: TeamMembersResponse = {
       members,
       limit: getPlan(plan).limits.members,
       used: members.length,
@@ -397,22 +388,16 @@ router.post(
   requireCompany,
   requireRole('owner'),
   ah(async (req, res) => {
-    const { company } = companyCtx(req);
+    const { user, company } = companyCtx(req);
     const input = memberInviteSchema.parse(req.body ?? {});
-
-    const subscription = await ensureSubscription(company.id);
-    const plan = activePlan(subscription);
-    const limit = getPlan(plan).limits.members;
-
-    const used = await prisma.membership.count({ where: { companyId: company.id } });
-    if (used >= limit) {
-      throw AppError.limit(`Tarifingizda ${limit} tagacha jamoa a'zosi mumkin — tarifni yangilang`, {
-        limit,
-        used,
-        plan,
-        planName: getPlan(plan).name,
-      });
+    // Egaga shablon qo'yilmaydi (views.ts)
+    const view = input.role === 'owner' ? null : (input.view ?? null);
+    if (input.role === 'owner' && input.view) {
+      throw AppError.badRequest('Kompaniya egasiga ko‘rinish shablonini qo‘yib bo‘lmaydi — u hamma narsani ko‘radi');
     }
+
+    const limit = await memberLimit(company.id);
+    if (limit.used >= limit.limit) throw memberLimitError(limit);
 
     const invitee = await findUserByUsername(input.username);
     if (!invitee) {
@@ -427,42 +412,43 @@ router.post(
     if (existing) throw AppError.conflict('Bu foydalanuvchi allaqachon jamoada');
 
     const created = await prisma.membership.create({
-      data: { userId: invitee.id, companyId: company.id, role: input.role },
+      data: { userId: invitee.id, companyId: company.id, role: input.role, view },
       include: { user: true },
     });
 
-    const added = teamText(invitee.languageCode, input.role);
+    const added = teamText(invitee.languageCode, input.role, view);
     await notifyUser(invitee.id, {
       type: 'info',
       title: added.text.addedTitle(company.name),
-      body: added.text.addedBody(added.roleName),
+      body: view ? `${added.text.addedBody(added.roleName)} ${added.text.viewBody(added.viewName)}` : added.text.addedBody(added.roleName),
       link: '/dashboard',
     });
 
-    const row: MemberRow = {
-      id: created.id,
-      userId: created.userId,
-      name: displayName(created.user),
-      username: created.user.username,
-      photoUrl: created.user.photoUrl,
-      role: asMemberRole(created.role),
-      isSelf: false,
-      createdAt: created.createdAt.toISOString(),
-    };
+    await teamAudit(req, user.id, 'member.add', 'membership', created.id, {
+      companyId: company.id,
+      userId: invitee.id,
+      role: input.role,
+      view,
+      via: 'username',
+    });
 
-    res.status(201).json(row);
+    res.status(201).json(toMemberRow(created, user.id));
   }),
 );
 
 // ─────────────────────────── PATCH /members/:id ───────────────────────────
 
+/**
+ * Rol va/yoki ko'rinish shabloni. Egaga shablon qo'yilmaydi: egaga aylantirilgan
+ * a'zoning shabloni o'zi tozalanadi, egaga shablon yuborilsa — 400.
+ */
 router.patch(
   '/members/:id',
   requireCompany,
   requireRole('owner'),
   ah(async (req, res) => {
     const { user, company } = companyCtx(req);
-    const input = memberRoleSchema.parse(req.body ?? {});
+    const input = memberPatchSchema.parse(req.body ?? {});
     const id = String(req.params.id);
 
     const target = await prisma.membership.findFirst({
@@ -470,41 +456,67 @@ router.patch(
       include: { user: true },
     });
     if (!target) throw AppError.notFound('Jamoa a’zosi topilmadi');
-    if (target.role === input.role) {
-      throw AppError.badRequest('Bu a’zoda allaqachon shu rol mavjud');
+
+    const nextRole = input.role ?? asMemberRole(target.role);
+    if (nextRole === 'owner' && input.view) {
+      throw AppError.badRequest('Kompaniya egasiga ko‘rinish shablonini qo‘yib bo‘lmaydi — u hamma narsani ko‘radi');
+    }
+    const prevView = target.role === 'owner' ? null : asMemberView(target.view);
+    const nextView = nextRole === 'owner' ? null : input.view !== undefined ? input.view : prevView;
+
+    const roleChanged = nextRole !== target.role;
+    const viewChanged = nextView !== prevView;
+    if (!roleChanged && !viewChanged) {
+      throw AppError.badRequest(
+        input.role !== undefined && input.view === undefined
+          ? 'Bu a’zoda allaqachon shu rol mavjud'
+          : 'Bu a’zoda allaqachon shu rol va ko‘rinish mavjud',
+      );
     }
 
     // Oxirgi egani rolsiz qoldirmaymiz
-    if (target.role === 'owner' && input.role !== 'owner' && (await countOwners(company.id)) <= 1) {
+    if (target.role === 'owner' && nextRole !== 'owner' && (await countOwners(company.id)) <= 1) {
       throw AppError.badRequest('Kompaniyada kamida bitta egasi (owner) qolishi kerak');
     }
 
     const updated = await prisma.membership.update({
       where: { id: target.id },
-      data: { role: input.role },
+      data: { role: nextRole, view: nextView },
       include: { user: true },
     });
 
-    const changed = teamText(updated.user.languageCode, input.role);
+    const changed = teamText(updated.user.languageCode, nextRole, nextView);
+    const body = [
+      roleChanged ? changed.text.roleBody(changed.roleName) : null,
+      viewChanged ? changed.text.viewBody(changed.viewName) : null,
+    ]
+      .filter(Boolean)
+      .join('. ');
     await notifyUser(updated.userId, {
       type: 'info',
       title: changed.text.roleTitle(company.name),
-      body: changed.text.roleBody(changed.roleName),
+      body,
       link: '/settings',
     });
 
-    const row: MemberRow = {
-      id: updated.id,
-      userId: updated.userId,
-      name: displayName(updated.user),
-      username: updated.user.username,
-      photoUrl: updated.user.photoUrl,
-      role: asMemberRole(updated.role),
-      isSelf: updated.userId === user.id,
-      createdAt: updated.createdAt.toISOString(),
-    };
+    if (roleChanged) {
+      await teamAudit(req, user.id, 'member.role', 'membership', updated.id, {
+        companyId: company.id,
+        userId: updated.userId,
+        from: target.role,
+        to: nextRole,
+      });
+    }
+    if (viewChanged) {
+      await teamAudit(req, user.id, 'member.view', 'membership', updated.id, {
+        companyId: company.id,
+        userId: updated.userId,
+        from: prevView,
+        to: nextView,
+      });
+    }
 
-    res.json(row);
+    res.json(toMemberRow(updated, user.id));
   }),
 );
 
@@ -515,7 +527,7 @@ router.delete(
   requireCompany,
   requireRole('owner'),
   ah(async (req, res) => {
-    const { company } = companyCtx(req);
+    const { user, company } = companyCtx(req);
     const id = String(req.params.id);
 
     const target = await prisma.membership.findFirst({
@@ -529,12 +541,124 @@ router.delete(
     }
 
     await prisma.membership.delete({ where: { id: target.id } });
+    await teamAudit(req, user.id, 'member.remove', 'membership', target.id, {
+      companyId: company.id,
+      userId: target.userId,
+      role: target.role,
+      view: target.view ?? null,
+    });
 
     res.json({
       ok: true,
       id: target.id,
       message: `${displayName(target.user)} jamoadan chiqarildi`,
     });
+  }),
+);
+
+// ─────────────────────────── Taklif havolalari ───────────────────────────
+
+/** Faol taklif: ishlatilmagan, bekor qilinmagan va muddati o'tmagan */
+const activeInviteWhere = (companyId: string) => ({
+  companyId,
+  usedAt: null,
+  revokedAt: null,
+  expiresAt: { gt: new Date() },
+});
+
+/**
+ * POST /invites — taklif havolasi. Havolaning o'zi (32 bayt, base64url) faqat
+ * shu javobda qaytadi; bazada uning xeshi (Session.tokenHash kabi), shuning
+ * uchun keyin uni hech kim — egasi ham — qayta ko'ra olmaydi.
+ * Limit POST /members bilan bir xil: a'zolar soni tarif chegarasida bo'lsa —
+ * 402 (qabul qilishda ham yana tekshiriladi).
+ */
+router.post(
+  '/invites',
+  requireCompany,
+  requireRole('owner'),
+  ah(async (req, res) => {
+    const { user, company } = companyCtx(req);
+    const input = inviteCreateSchema.parse(req.body ?? {});
+    const view = input.view ?? null;
+
+    const limit = await memberLimit(company.id);
+    if (limit.used >= limit.limit) throw memberLimitError(limit);
+
+    const token = randomToken(32);
+    const invite = await prisma.invite.create({
+      data: {
+        companyId: company.id,
+        tokenHash: hashToken(token),
+        role: input.role,
+        view,
+        createdById: user.id,
+        expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000),
+      },
+    });
+
+    await teamAudit(req, user.id, 'invite.create', 'invite', invite.id, {
+      companyId: company.id,
+      role: input.role,
+      view,
+      expiresAt: invite.expiresAt.toISOString(),
+    });
+
+    const payload: TeamInviteCreated = {
+      invite: toInviteRow(invite, new Map([[user.id, displayName(user)]])),
+      url: inviteUrl(token),
+    };
+    res.status(201).json(payload);
+  }),
+);
+
+/** GET /invites — faol takliflar; havola va xesh qaytarilmaydi */
+router.get(
+  '/invites',
+  requireCompany,
+  requireRole('owner'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const rows = await prisma.invite.findMany({
+      where: activeInviteWhere(company.id),
+      orderBy: { createdAt: 'desc' },
+    });
+    const creators = await inviteCreators(rows);
+    const payload: TeamInvitesResponse = { invites: rows.map((i) => toInviteRow(i, creators)) };
+    res.json(payload);
+  }),
+);
+
+/** DELETE /invites/:id — bekor qilish. Ishlatilgan taklifni bekor qilib bo'lmaydi (a'zoni o'chiring) */
+router.delete(
+  '/invites/:id',
+  requireCompany,
+  requireRole('owner'),
+  ah(async (req, res) => {
+    const { user, company } = companyCtx(req);
+    const id = String(req.params.id);
+
+    const invite = await prisma.invite.findFirst({ where: { id, companyId: company.id } });
+    if (!invite) throw AppError.notFound('Taklif topilmadi');
+    if (invite.usedAt) {
+      throw new AppError(409, 'invite_used', 'Bu taklif allaqachon ishlatilgan — kerak bo‘lsa a’zoni jamoadan chiqaring');
+    }
+
+    // Atomar: shu payt kimdir qabul qilayotgan bo'lsa, ikkalasidan bittasi yutadi
+    const revoked = await prisma.invite.updateMany({
+      where: { id: invite.id, usedAt: null, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (revoked.count > 0) {
+      await teamAudit(req, user.id, 'invite.revoke', 'invite', invite.id, { companyId: company.id });
+    } else {
+      const again = await prisma.invite.findUnique({ where: { id: invite.id } });
+      if (again?.usedAt) {
+        throw new AppError(409, 'invite_used', 'Bu taklif allaqachon ishlatilgan — kerak bo‘lsa a’zoni jamoadan chiqaring');
+      }
+    }
+
+    res.json({ ok: true, id: invite.id });
   }),
 );
 

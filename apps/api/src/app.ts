@@ -38,6 +38,10 @@ import adminRoutes from './routes/admin.js';
 import todayRoutes from './routes/today.js';
 import goalsRoutes from './routes/goals.js';
 import returnsSummaryRoutes from './routes/returnsSummary.js';
+import categoriesRoutes from './routes/categories.js';
+import radarRoutes from './routes/radar.js';
+import competitorsRoutes from './routes/competitors.js';
+import invitesRoutes from './routes/invites.js';
 
 export function createApp() {
   const app = express();
@@ -107,6 +111,13 @@ export function createApp() {
   api.use('/dashboard/today', todayRoutes);
   api.use('/dashboard/goals', goalsRoutes);
   api.use('/dashboard/returns', returnsSummaryRoutes);
+  // "O'sish" bo'limi — faqat sotuvchining o'z ma'lumotidan (bozor o'qilmaydi)
+  api.use('/growth/categories', categoriesRoutes);
+  api.use('/growth/radar', radarRoutes);
+  // Raqobatchilar narxi — sotuvchi o'zi kiritadi, havolalar ochilmaydi (routes/competitors.ts)
+  api.use('/competitors', competitorsRoutes);
+  // Jamoaga taklif havolasi: ochiq oldindan ko'rish va qabul qilish (kompaniyasiz foydalanuvchi ham)
+  api.use('/invites', invitesRoutes);
   api.use('/admin', adminRoutes);
 
   app.use('/api/v1', api);

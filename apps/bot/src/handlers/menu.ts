@@ -71,7 +71,7 @@ export async function showToday(ctx: BotContext): Promise<void> {
     return;
   }
 
-  await ctx.reply(todayReportText(ctx.sp.lang, range.key, report), {
+  await ctx.reply(todayReportText(ctx.sp.lang, range.key, report, ctx.sp.company?.seesMoney ?? true), {
     parse_mode: 'HTML',
     reply_markup: siteKeyboard(ctx.sp.lang),
   });

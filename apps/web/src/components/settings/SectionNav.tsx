@@ -18,10 +18,13 @@ const ICONS: Record<SectionId, ReactNode> = {
  * Desktop — chapda yopishqoq ustun, mobil — gorizontal skroll qatori.
  */
 export function SectionNav({
+  ids = SECTION_IDS,
   active,
   onSelect,
   badges,
 }: {
+  /** Ko'rinadigan bo'limlar — ko'rinish shablonida ba'zilari yo'q (Settings sahifasi beradi) */
+  ids?: readonly SectionId[];
   active: SectionId;
   onSelect: (id: SectionId) => void;
   badges?: Partial<Record<SectionId, ReactNode>>;
@@ -33,7 +36,7 @@ export function SectionNav({
       {/* ── Mobil: gorizontal skroll ── */}
       <div className="-mx-4 mb-4 overflow-x-auto no-scrollbar px-4 sm:-mx-6 sm:px-6 lg:hidden">
         <div className="flex w-max gap-2">
-          {SECTION_IDS.map((id) => {
+          {ids.map((id) => {
             const on = id === active;
             return (
               <button
@@ -60,7 +63,7 @@ export function SectionNav({
       <nav className="hidden lg:sticky lg:top-20 lg:block">
         <p className="label px-2">{t('nav.sections')}</p>
         <div className="space-y-1">
-          {SECTION_IDS.map((id) => {
+          {ids.map((id) => {
             const on = id === active;
             return (
               <button

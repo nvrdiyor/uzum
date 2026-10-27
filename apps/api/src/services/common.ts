@@ -8,9 +8,14 @@ import {
   STOCK_THRESHOLDS,
   addDays,
   businessDayStart,
+  matchesSkuQuery,
+  parseSkuQuery,
   toBusinessDate,
   type ExpenseCategory,
   type Period,
+  type ProductSearchFields,
+  type SkuQuery,
+  type SkuSearchFields,
 } from '@savdoiq/shared';
 
 export interface SkuInfo {
@@ -35,6 +40,14 @@ export interface SkuInfo {
   commissionPct: number;
   /** Uzum hisoblagan bir dona uchun oylik saqlash to'lovi (0 — bermagan) */
   storagePerItem: number;
+  /**
+   * Qidiruv kalitlari (skuInfoMatches): shtrix-kod, Uzum SKU va mahsulot
+   * ID'si. Katalog ular bilan birga yuklanadi — har qidiruvli marshrut
+   * ularni alohida so'ramasin (2026-10-24).
+   */
+  barcode: string | null;
+  uzumSkuId: string | null;
+  uzumProductId: string | null;
 }
 
 export interface StockInfo {
@@ -87,7 +100,7 @@ export async function getStoreTitles(companyId: string): Promise<Map<string, str
  * ular katalogdan emas, o'z yozuvidan nom oladi va jami summalarda qoladi.
  */
 const SKU_INFO_INCLUDE = {
-  product: { select: { id: true, title: true, category: true, imageUrl: true } },
+  product: { select: { id: true, title: true, category: true, imageUrl: true, uzumProductId: true } },
   store: { select: { id: true, title: true } },
 } as const;
 
@@ -145,7 +158,41 @@ function toSkuInfo(s: Prisma.SkuGetPayload<{ include: typeof SKU_INFO_INCLUDE }>
     createdAt: s.createdAt,
     commissionPct: s.commissionPct,
     storagePerItem: s.storagePerItem,
+    barcode: s.barcode,
+    uzumSkuId: s.uzumSkuId,
+    uzumProductId: s.product.uzumProductId,
   };
+}
+
+// ─────────────────────────── Qidiruv ───────────────────────────
+
+/**
+ * SKU qidiruv so'roviga mos keladimi — butun ilovada BITTA qoida (shared
+ * search.ts): nom, SKU kodi, shtrix-kod, Uzum SKU / mahsulot ID'si va
+ * uzum.uz havolasi. Ilgari har marshrut o'zicha `title`/`sku` ni
+ * solishtirardi: kartochkadagi "ID: 701009" hech qayerda topilmasdi,
+ * "SKU holati" esa bazadagi `contains` bilan PostgreSQL'da registrga sezgir
+ * edi (2026-10-24).
+ *
+ * `query` — xom matn yoki bir marta tahlil qilingan so'rov (parseSkuQuery);
+ * bo'sh bo'lsa — hammasi mos (filtr yo'q).
+ */
+export function skuMatches(
+  sku: SkuSearchFields | null,
+  product: ProductSearchFields | null,
+  query: SkuQuery | string | null | undefined,
+): boolean {
+  const q = typeof query === 'string' || query === null || query === undefined ? parseSkuQuery(query) : query;
+  return q === null || matchesSkuQuery(q, sku, product);
+}
+
+/** Katalog yozuvi (SkuInfo) uchun: SKU va uning mahsuloti maydonlari bilan */
+export function skuInfoMatches(info: SkuInfo, query: SkuQuery | string | null | undefined): boolean {
+  return skuMatches(
+    { id: info.id, sku: info.sku, title: info.title, barcode: info.barcode, uzumSkuId: info.uzumSkuId },
+    { id: info.productId, title: info.productTitle, uzumProductId: info.uzumProductId },
+    query,
+  );
 }
 
 /** Har bir SKU uchun eng so'nggi qoldiq */

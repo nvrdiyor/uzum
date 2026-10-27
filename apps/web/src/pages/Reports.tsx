@@ -7,6 +7,7 @@ import {
   History,
   Printer,
   Receipt,
+  Send,
   ShoppingBag,
   TrendingUp,
 } from '@/components/icons';
@@ -31,6 +32,7 @@ import {
   CategoriesCard,
   DeliveryTypesCard,
   ExpensesCard,
+  FinalityChip,
   InsightsBlock,
   OrdersFlowCard,
   PrintHead,
@@ -42,7 +44,7 @@ import {
 } from '@/components/reports/ReportBlocks';
 import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
 import { downloadBlob } from '@/lib/utils';
@@ -58,6 +60,27 @@ registerNamespace('reports', {
     exporting: 'Tayyorlanmoqda...',
     exportOk: 'Excel fayl yuklab olindi',
     exportErr: 'Excel faylni yuklab bo‘lmadi',
+    // Qisqa yorliq — "PDF" va "Excel" yonida sarlavha ostiga tushib ketmasin; to'liq ma'nosi `tg.sendHint` da
+    'tg.send': 'Telegram’ga',
+    'tg.sendHint': 'Excel faylni Telegram botingizga yuborish',
+    'tg.sending': 'Yuborilmoqda...',
+    'tg.sent': 'Hisobot Telegram’ga yuborildi',
+    'tg.sentHint': 'Fayl SavdoIQ botidagi chatingizda',
+    'tg.notLinked': 'Avval Sozlamalarda Telegram’ni ulang',
+    'tg.notLinkedHint': 'Sozlamalar → Bildirishnomalar: botni oching va /start bosing',
+    'tg.blocked': 'Bot bloklangan',
+    'tg.blockedHint': 'Telegram’da botni oching, /start bosing va qayta yuboring',
+    'tg.tooMany': 'Soatiga {n} martagacha yuborish mumkin',
+    'tg.tooManyHint': '{min} daqiqadan keyin qayta urinib ko‘ring',
+    'tg.planLimit': 'Telegram’ga yuborish tarifingizda mavjud emas',
+    'tg.err': 'Telegram’ga yuborib bo‘lmadi',
+    'final.final': 'Yakuniy · {v} yakunlangan',
+    'final.preliminary': 'Oraliq · {v} yakunlangan',
+    'final.currentHint': 'Davr hali tugamagan — yangi buyurtma, bekor qilish va qaytarishlar raqamlarni o‘zgartiradi',
+    'final.transitHint': '{n} dona hali xaridorga yetib bormagan — ular bekor bo‘lishi yoki qaytishi mumkin',
+    'final.finalHint': 'Davr tugagan va buyurtmalar yakunlangan — raqamlar endi deyarli o‘zgarmaydi',
+    'final.rule':
+      '{done} / {total} dona yakunlangan (xaridor qabul qilgan, bekor qilingan yoki qaytgan). Yakuniy bo‘lishi uchun kamida {v}',
     'print.head': 'SavdoIQ — davr hisoboti',
     'meta.orders': '{n} buyurtma',
 
@@ -65,6 +88,8 @@ registerNamespace('reports', {
     'kpi.revenueSub': '{orders} buyurtma · {units} dona',
     'kpi.avgCheck': 'O‘rtacha chek',
     'kpi.avgCheckHint': '{v} buyurtma asosida',
+    'kpi.payout': 'To‘lov (Uzum o‘tkazadi)',
+    'kpi.payoutHint': 'Tushum − komissiya − logistika: Uzum hisobingizga o‘tkazadigan summa',
 
     'hero.profit': 'Sof foyda',
     'hero.loss': 'Zarar',
@@ -190,6 +215,26 @@ registerNamespace('reports', {
     exporting: 'Готовим...',
     exportOk: 'Excel-файл скачан',
     exportErr: 'Не удалось скачать Excel',
+    'tg.send': 'В Telegram',
+    'tg.sendHint': 'Отправить Excel-файл в ваш Telegram-бот',
+    'tg.sending': 'Отправляем...',
+    'tg.sent': 'Отчёт отправлен в Telegram',
+    'tg.sentHint': 'Файл в вашем чате с ботом SavdoIQ',
+    'tg.notLinked': 'Сначала подключите Telegram в Настройках',
+    'tg.notLinkedHint': 'Настройки → Уведомления: откройте бота и нажмите /start',
+    'tg.blocked': 'Бот заблокирован',
+    'tg.blockedHint': 'Откройте бота в Telegram, нажмите /start и отправьте снова',
+    'tg.tooMany': 'Отправлять можно до {n} раз в час',
+    'tg.tooManyHint': 'Повторите через {min} мин.',
+    'tg.planLimit': 'Отправка в Telegram недоступна на вашем тарифе',
+    'tg.err': 'Не удалось отправить в Telegram',
+    'final.final': 'Итоговый · завершено {v}',
+    'final.preliminary': 'Предварительный · завершено {v}',
+    'final.currentHint': 'Период ещё не закончился — новые заказы, отмены и возвраты изменят цифры',
+    'final.transitHint': 'Ещё не доставлено покупателю, шт.: {n} — их могут отменить или вернуть',
+    'final.finalHint': 'Период закончился, заказы завершены — цифры почти не изменятся',
+    'final.rule':
+      'Завершено {done} из {total} шт. (получено покупателем, отменено или возвращено). Итоговым отчёт становится от {v}',
     'print.head': 'SavdoIQ — отчёт за период',
     'meta.orders': 'Заказов: {n}',
 
@@ -197,6 +242,8 @@ registerNamespace('reports', {
     'kpi.revenueSub': 'Заказов: {orders} · {units} шт.',
     'kpi.avgCheck': 'Средний чек',
     'kpi.avgCheckHint': 'На основе {v} заказов',
+    'kpi.payout': 'К выплате от Uzum',
+    'kpi.payoutHint': 'Выручка − комиссия − логистика: сумма, которую Uzum перечислит вам',
 
     'hero.profit': 'Чистая прибыль',
     'hero.loss': 'Убыток',
@@ -322,6 +369,26 @@ registerNamespace('reports', {
     exporting: 'Preparing...',
     exportOk: 'Excel file downloaded',
     exportErr: 'Could not download the Excel file',
+    'tg.send': 'Telegram',
+    'tg.sendHint': 'Send the Excel file to your Telegram bot',
+    'tg.sending': 'Sending...',
+    'tg.sent': 'Report sent to Telegram',
+    'tg.sentHint': 'The file is in your chat with the SavdoIQ bot',
+    'tg.notLinked': 'Connect Telegram in Settings first',
+    'tg.notLinkedHint': 'Settings → Notifications: open the bot and press /start',
+    'tg.blocked': 'The bot is blocked',
+    'tg.blockedHint': 'Open the bot in Telegram, press /start and send again',
+    'tg.tooMany': 'You can send up to {n} times per hour',
+    'tg.tooManyHint': 'Try again in {min} min',
+    'tg.planLimit': 'Sending to Telegram is not available on your plan',
+    'tg.err': 'Could not send to Telegram',
+    'final.final': 'Final · {v} completed',
+    'final.preliminary': 'Preliminary · {v} completed',
+    'final.currentHint': 'The period is not over yet — new orders, cancellations and returns will change the numbers',
+    'final.transitHint': '{n} units have not reached the buyer yet — they may still be cancelled or returned',
+    'final.finalHint': 'The period is over and orders are completed — the numbers will barely change',
+    'final.rule':
+      '{done} of {total} units completed (received, cancelled or returned). A report becomes final at {v} or more',
     'print.head': 'SavdoIQ — period report',
     'meta.orders': '{n} orders',
 
@@ -329,6 +396,8 @@ registerNamespace('reports', {
     'kpi.revenueSub': '{orders} orders · {units} units',
     'kpi.avgCheck': 'Average check',
     'kpi.avgCheckHint': 'Based on {v} orders',
+    'kpi.payout': 'Payout from Uzum',
+    'kpi.payoutHint': 'Revenue − commission − logistics: what Uzum transfers to you',
 
     'hero.profit': 'Net profit',
     'hero.loss': 'Loss',
@@ -463,6 +532,7 @@ export default function Reports() {
   const f = useFormat();
   const q = usePeriodQuery();
   const [exporting, setExporting] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const report = useQuery({
     queryKey: ['reports-monthly', q],
@@ -513,11 +583,15 @@ export default function Reports() {
     return prev && prev.revenue > 0 && Number.isFinite(prev.margin) ? prev.margin : null;
   }, [data, compare.data]);
 
+  // Davr chipi javobdagi davrdan (tarif chegarasi bilan qisqargan bo'lishi mumkin), u kelguncha — so'ralgan davr
+  const period = data?.period ?? { from: q.from, to: q.to };
+
   const onExport = async () => {
     setExporting(true);
     try {
       const blob = await api.blob('/export/monthly', q);
-      downloadBlob(blob, `savdoiq-report-${q.from}_${q.to}.xlsx`);
+      // Nom serverdagidek (Content-Disposition) va fayl ichidagi davrdan — Telegram'ga ketgan fayl bilan bir xil atalsin
+      downloadBlob(blob, `savdoiq-monthly-${period.from}_${period.to}.xlsx`);
       toast.success(t('exportOk'));
     } catch {
       toast.error(t('exportErr'));
@@ -526,8 +600,32 @@ export default function Reports() {
     }
   };
 
-  // Davr chipi javobdagi davrdan (tarif chegarasi bilan qisqargan bo'lishi mumkin), u kelguncha — so'ralgan davr
-  const period = data?.period ?? { from: q.from, to: q.to };
+  /*
+   * Telegram'ga — Excel tugmasidagi faylning AYNAN o'zi (server o'sha
+   * hisobotdan quradi), parametrlar ham o'sha: so'rov qatorida `q`.
+   * Xato kodi bo'yicha aniq matn: ulanmagan bot — Sozlamalarga yo'l.
+   */
+  const onSendTelegram = async () => {
+    setSending(true);
+    try {
+      await api.post<{ ok: boolean; fileName: string }>('/reports/send-telegram', {}, q);
+      toast.success(t('tg.sent'), t('tg.sentHint'));
+    } catch (err) {
+      const e = err instanceof ApiError ? err : null;
+      const details = (e?.details ?? {}) as { retryAfterSec?: number; limit?: number };
+      if (e?.code === 'telegram_not_linked') toast.error(t('tg.notLinked'), t('tg.notLinkedHint'));
+      else if (e?.code === 'telegram_blocked') toast.error(t('tg.blocked'), t('tg.blockedHint'));
+      else if (e?.status === 429) {
+        toast.warning(
+          t('tg.tooMany', { n: f.num(details.limit ?? 5) }),
+          t('tg.tooManyHint', { min: f.num(Math.max(1, Math.ceil((details.retryAfterSec ?? 60) / 60))) }),
+        );
+      } else if (e?.isPlanLimit) toast.error(t('tg.planLimit'));
+      else toast.error(t('tg.err'), e?.message);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <>
@@ -550,6 +648,8 @@ export default function Reports() {
                 {t('meta.orders', { n: f.num(data.ordersTotal) })}
               </span>
             ) : null}
+            {/* Excel va Telegram'dagi faylning "Holat" qatori bilan bitta qiymat */}
+            {data ? <FinalityChip finality={data.finality} /> : null}
             <DataFreshness />
             <CostCoverage />
           </>
@@ -558,6 +658,16 @@ export default function Reports() {
           <div className="no-print flex flex-wrap items-center gap-2">
             <Button variant="outline" icon={<Receipt className="h-4 w-4" />} loading={exporting} onClick={onExport}>
               {exporting ? t('exporting') : 'Excel'}
+            </Button>
+            <Button
+              variant="outline"
+              icon={<Send className="h-4 w-4" />}
+              loading={sending}
+              onClick={onSendTelegram}
+              title={t('tg.sendHint')}
+              aria-label={t('tg.sendHint')}
+            >
+              {sending ? t('tg.sending') : t('tg.send')}
             </Button>
             <Button icon={<Printer className="h-4 w-4" />} title={t('printHint')} onClick={() => window.print()}>
               {t('print')}
@@ -608,7 +718,7 @@ export default function Reports() {
           </Card>
         ) : (
           <div className="report-sheet space-y-5">
-            <PrintHead from={data.period.from} to={data.period.to} />
+            <PrintHead from={data.period.from} to={data.period.to} finality={data.finality} />
 
             {/*
               ── Davr natijasi ──
@@ -627,6 +737,13 @@ export default function Reports() {
                   icon={<TrendingUp className="h-5 w-5" />}
                   spark={dailyData.map((d) => d.revenue)}
                   tone="brand"
+                  // To'lov — Excel'dagi "To‘lov (Uzum o‘tkazadi)" qatori; alohida kartochka emas: o'ng ustun ikki kartochkada qolsin
+                  footer={
+                    <span className="flex items-center justify-between gap-3" title={t('kpi.payoutHint')}>
+                      <span className="truncate">{t('kpi.payout')}</span>
+                      <span className="tnum shrink-0 font-semibold text-ink-soft">{f.money(data.payout)}</span>
+                    </span>
+                  }
                 />
                 {/* Buyurtma ko'rsatkichi — "Buyurtmalar oqimi" kabi ko'k (info) */}
                 <StatCard

@@ -7,9 +7,11 @@
  *  GET /stocks          → omborlardagi qoldiqlar
  *  GET /abc             → ABC tahlil
  *  GET /unit-economics  → unit-iqtisod (1 dona uchun)
- *  GET /monthly         → oylik hisobot (kunlik seriya + xarajatlar)
+ *  GET /product-profit  → mahsulot foydasi (sahifadagi jadval + SKU variantlari)
+ *  GET /monthly         → oylik hisobot — "Oylik hisobot" sahifasi bilan bitta javobdan (services/monthly-report.ts)
  *  GET /losses          → yo'qotishlar
  *  GET /returns         → qaytarishlar
+ *  GET /planner         → sotib olish ro'yxati yetkazib beruvchi uchun (Rejalashtiruvchi, services/plan.ts)
  *
  * Barcha marshrutlar `export_excel` funksiyasini talab qiladi va .xlsx fayl qaytaradi.
  * Ma'lumot bo'lmasa ham fayl yaratiladi: sarlavha qatori va nol qiymatli JAMI bilan.
@@ -25,8 +27,11 @@ import { prisma } from '@savdoiq/db';
 import {
   DEFAULTS,
   abcGroup,
+  logisticsFee,
+  storageFeePerDay,
+  storageTariffKind,
+  turnoverDays,
   pct,
-  recommendedQty,
   round,
   safeDiv,
   toISODate,
@@ -43,8 +48,6 @@ import {
   aggregateSales,
   daysSince,
   getAvgDaily,
-  getDailySeries,
-  getExpenses,
   getLastSaleDates,
   getLatestStocks,
   getSkuCatalog,
@@ -57,6 +60,31 @@ import {
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
 import { loadReturnLines } from '../services/returns.js';
+import type { ProductProfitFlag } from '@savdoiq/shared';
+import { buildProductProfit } from '../services/product-profit.js';
+import {
+  BUSINESS_TZ_OFFSET_MS,
+  EXPENSE_CATEGORIES,
+  formatNumber,
+  type Insight,
+  type MonthlyReportResponse,
+  type PlanId,
+} from '@savdoiq/shared';
+import type { ResolvedRange } from '../lib/period.js';
+import {
+  buildMonthlyReport,
+  collectMonthCompare,
+  monthLabel,
+  type MonthCompareRow,
+} from '../services/monthly-report.js';
+import {
+  loadPlanData,
+  parseStatusFilter,
+  planProduct,
+  planSku,
+  planStockStatus,
+  planTable,
+} from '../services/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('export_excel'));
@@ -298,16 +326,6 @@ const PRODUCT_STATUS_LABEL: Record<string, string> = {
   blocked: 'Bloklangan',
 };
 
-const CATEGORY_ORDER: ExpenseCategory[] = [
-  'commission',
-  'logistics',
-  'marketing',
-  'storage',
-  'tax',
-  'salary',
-  'other',
-];
-
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   commission: 'Komissiya',
   logistics: 'Logistika',
@@ -463,13 +481,22 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, stocks, sales, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, sales, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * "Holat", "Qoldiq (kun)" va "O'rt. kunlik" — Rejalashtiruvchining o'zi
+       * (services/plan.ts planStockStatus, kompaniyaning yetkazish muddati),
+       * sahifadagi va Qoldiqlardagi nishon bilan bir xil. Ilgari fayl 7/14
+       * kunlik qat'iy chegara va oddiy 30 kunlik o'rtacha bilan hisoblardi:
+       * yetkazish 14 kun bo'lsa sahifada "Kritik" turgan SKU faylda
+       * "Tugayapti" edi (2026-10-24). Qoldiq ham rejadan — u `getLatestStocks` ni o'zi yuklaydi.
+       */
+      loadPlanData(company.id, storeIds),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
     // Sahifadagidek: yashirilgan, lekin davrda sotilgan SKU ham faylda — ilgari JAMI tushum sahifadagidan kam chiqardi
     await withSoldSkus(catalog, sales.keys(), storeIds);
 
@@ -496,7 +523,14 @@ router.get(
         const st = stocks.get(info.id);
         const avg = avgDaily.get(info.id) ?? 0;
         const total = st?.total ?? 0;
-        const state = stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt));
+        // Sotuvi yo'q va arxivdagi SKU (rejada `no_action` yoki umuman yo'q) — eski qoldiq qoidasi
+        const planned = planSku(planData, info.id);
+        const state = planStockStatus(
+          planned,
+          stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt)),
+        );
+        // "Yetadi" shu tezlikdan chiqadi — sahifadagi kabi bir manbadan (routes/stocks.ts)
+        const daily = planned && planned.status !== 'no_action' ? planned.avgDaily : avg;
         return {
           info,
           sold: agg?.units ?? 0,
@@ -507,8 +541,9 @@ router.get(
           fbs: st?.fbs ?? 0,
           own: st?.own ?? 0,
           avg,
+          daily,
           state,
-          monthPotential: Math.max(0, Math.round(avg * 30)),
+          monthPotential: Math.max(0, Math.round(round(daily, 2) * 30)),
           total,
         };
       })
@@ -527,7 +562,7 @@ router.get(
       round(r.revenue),
       round(r.payout),
       round(r.netProfit),
-      round(r.avg, 2),
+      round(r.daily, 2),
       r.state.daysLeft,
       r.monthPotential,
       STOCK_STATUS_LABEL[r.state.status],
@@ -556,11 +591,20 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, stocks, sales, avgDaily, products] = await Promise.all([
+    const [catalog, planData, sales, products] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * "Qoldiq (kun)" va "Buyurtma kerak" — Rejalashtiruvchining o'zi
+       * (services/plan.ts planProduct, kompaniyaning yetkazish muddati va zaxira
+       * davri), sahifadagi kartochka bilan bir xil son. Ilgari bu yerda jami
+       * qoldiq jami o'rtachaga bo'linardi va `recommendedQty(o'rtacha, 30, qoldiq)`
+       * qat'iy 30 + 7 kun bilan, yo'ldagi tovarsiz hisoblanardi: fayldagi son
+       * sahifadagidan farq qilardi, tugagan variant esa boshqalarining
+       * qoldig'iga "o'rtacha" bo'lib singib ketardi (2026-10-24). Qoldiq ham
+       * rejadan — u `getLatestStocks` ni o'zi yuklaydi.
+       */
+      loadPlanData(company.id, storeIds),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
-      getAvgDaily(storeIds, 30),
       prisma.product.findMany({
         where: { storeId: { in: storeIds } },
         select: {
@@ -590,7 +634,8 @@ router.get(
       fbo: number;
       fbs: number;
       own: number;
-      avg: number;
+      /** Mahsulot SKU'lari — reja xulosasi (planProduct) shular bo'yicha */
+      skuIds: string[];
     }
 
     const byProduct = new Map<string, ProductAgg>();
@@ -611,10 +656,11 @@ router.get(
         fbo: 0,
         fbs: 0,
         own: 0,
-        avg: 0,
+        skuIds: [],
       });
     }
 
+    const stocks = planData.stocks;
     for (const info of catalog.values()) {
       const p = byProduct.get(info.productId);
       if (!p) continue;
@@ -631,7 +677,7 @@ router.get(
       p.fbo += st?.fbo ?? 0;
       p.fbs += st?.fbs ?? 0;
       p.own += st?.own ?? 0;
-      p.avg += avgDaily.get(info.id) ?? 0;
+      p.skuIds.push(info.id);
     }
 
     const columns: ColumnDef[] = [
@@ -660,8 +706,8 @@ router.get(
       .sort((a, b) => b.revenue - a.revenue);
 
     const rows: Cell[][] = list.slice(0, MAX_ROWS).map((p) => {
-      const stock = p.fbo + p.fbs + p.own;
-      const daysLeft = p.avg > 0 ? Math.round(stock / p.avg) : null;
+      // Eng tez tugaydigan SOTILADIGAN variant va SKU'lar bo'yicha qo'shilgan sotib olish — kartochkadagi kabi
+      const planned = planProduct(planData, p.skuIds);
       return [
         p.title,
         dash(p.category),
@@ -679,9 +725,9 @@ router.get(
         p.fbo,
         p.fbs,
         p.own,
-        daysLeft,
-        // 30 kunlik zaxira + 7 kun yetkazish muddati hisobga olinadi
-        recommendedQty(p.avg, 30, stock),
+        planned?.daysLeft ?? null,
+        // Kompaniyaning zaxira davri + yetkazish muddati, yo'ldagi tovar bilan (Rejalashtiruvchi)
+        planned?.reorderQty ?? 0,
       ];
     });
 
@@ -715,12 +761,21 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * "Holat", "Qoldiq (kun)" va "O'rt. kunlik" — Qoldiqlar sahifasining
+       * o'zi (GET /stocks: planStockStatus, kompaniyaning yetkazish muddati,
+       * yo'ldagi tovar bilan). Ilgari fayl 7/14 kunlik qat'iy chegara va oddiy
+       * 30 kunlik o'rtacha bilan hisoblardi: sahifada "Kritik" turgan SKU
+       * faylda "Tugayapti" edi (2026-10-24). Qoldiq ham rejadan — u
+       * `getLatestStocks` ni o'zi yuklaydi.
+       */
+      loadPlanData(company.id, storeIds),
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 16 },
@@ -744,6 +799,8 @@ router.get(
         const st = stocks.get(info.id);
         const avg = avgDaily.get(info.id) ?? 0;
         const total = st?.total ?? 0;
+        // Sotuvi yo'q va arxivdagi SKU (rejada `no_action` yoki umuman yo'q) — eski qoldiq qoidasi
+        const planned = planSku(planData, info.id);
         return {
           info,
           fbo: st?.fbo ?? 0,
@@ -754,8 +811,12 @@ router.get(
           total,
           costValue: total * (info.purchasePrice + info.extraCost),
           retailValue: total * info.price,
-          avg,
-          state: stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt)),
+          // "Yetadi" shu tezlikdan chiqadi — sahifadagi kabi bir manbadan
+          avg: planned && planned.status !== 'no_action' ? planned.avgDaily : avg,
+          state: planStockStatus(
+            planned,
+            stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt)),
+          ),
         };
       })
       .filter((r) => r.total > 0 || r.reserved > 0 || r.inTransit > 0)
@@ -865,6 +926,32 @@ router.get(
 
 // ─────────────────────────── GET /unit-economics ───────────────────────────
 
+/** Bir donaning omborda turishi shundan uzun hisoblanmaydi (kalkulyatordagi maydon chegarasi bilan bir xil) */
+const UNIT_STORAGE_MAX_DAYS = 365;
+
+/**
+ * Bir sotilgan donaga saqlash — Uzum tarifi (shared tariffs.ts, 01.06.2026 dan).
+ * Aylanma = Uzum omboridagi (FBO) qoldiq ÷ davrdagi o'rtacha kunlik sotuv; 60
+ * kungacha bepul, keyin hajm × stavka har kuni. Dona omborda o'rtacha aylanma
+ * kunicha turadi, shuning uchun bir donaga = kunlik to'lov × aylanma (365 kun
+ * bilan cheklangan). Davrda sotuv bo'lmasa — bir donaning 30 kunlik to'lovi
+ * (ustunning avvalgi "oylik" ma'nosi). Hajm noma'lum yoki FBO qoldiq yo'q — 0.
+ *
+ * Ilgari: hajm × 120 so'm × 30 kun — o'lchanmagan, ~10 baravar katta stavka,
+ * bepul davrsiz (2026-10-24).
+ */
+function storagePerSoldUnit(info: SkuInfo, fbo: number, avgDaily: number): number {
+  const turnover = turnoverDays(fbo, avgDaily);
+  const perDay = storageFeePerDay({
+    units: 1,
+    volumeL: info.volumeL,
+    turnover,
+    kind: storageTariffKind(info.category),
+  });
+  if (perDay === 0) return 0;
+  return perDay * (Number.isFinite(turnover) ? Math.min(turnover, UNIT_STORAGE_MAX_DAYS) : 30);
+}
+
 router.get(
   '/unit-economics',
   requireFeature('unit_economics'),
@@ -873,10 +960,12 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
     const taxRate = company.taxRate;
+    const periodDays = Math.max(1, Math.round((range.toExclusive.getTime() - range.from.getTime()) / 86_400_000));
 
-    const [catalog, sales] = await Promise.all([
+    const [catalog, sales, stocks] = await Promise.all([
       getSkuCatalog(storeIds, true),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
+      getLatestStocks(storeIds),
     ]);
 
     const columns: ColumnDef[] = [
@@ -905,11 +994,15 @@ router.get(
         const price = info.price;
 
         // Haqiqiy sotuvlar bo'lsa — 1 donaga to'g'ri keladigan real xarajat,
-        // aks holda platforma bo'yicha standart taxminlar (DEFAULTS).
+        // aks holda Uzum tarifi (logistika hajmdan) va platforma taxminlari (DEFAULTS).
         const commission = units > 0 ? safeDiv(agg?.commission ?? 0, units) : (price * (info.commissionPct || DEFAULTS.commissionPct)) / 100;
-        const logistics = units > 0 ? safeDiv(agg?.logistics ?? 0, units) : DEFAULTS.logisticsPerUnit;
-        // Saqlash: hajm (litr) × kunlik tarif × 30 kun
-        const storage = (info.storagePerItem > 0 ? info.storagePerItem : info.volumeL * DEFAULTS.storagePerLiterPerDay * 30);
+        const logistics =
+          units > 0 ? safeDiv(agg?.logistics ?? 0, units) : (logisticsFee(info.volumeL) ?? DEFAULTS.logisticsPerUnit);
+        // Saqlash: Uzum kartochkasidagi oylik to'lov, bo'lmasa — Uzum tarifi bo'yicha (aylanmadan)
+        const storage =
+          info.storagePerItem > 0
+            ? info.storagePerItem
+            : storagePerSoldUnit(info, stocks.get(info.id)?.fbo ?? 0, units / periodDays);
         const otherCost = info.extraCost + (units > 0 ? safeDiv(agg?.otherCost ?? 0, units) : 0);
         const tax = (price * taxRate) / 100;
         const commissionPct = price > 0 ? pct(commission, price) : DEFAULTS.commissionPct;
@@ -980,104 +1073,401 @@ router.get(
 
 // ─────────────────────────── GET /monthly ───────────────────────────
 
+/*
+ * Oylik hisobot fayli — "Oylik hisobot" sahifasining AYNAN o'zi (2026-10-24).
+ *
+ * Raqamlar services/monthly-report.ts `buildMonthlyReport` javobidan olinadi:
+ * sahifa ham, bu fayl ham, Telegram'ga yuboriladigan nusxa ham
+ * (routes/reports.ts) bitta javobdan quriladi — bu yerda qayta hisob YO'Q,
+ * faqat joylashtirish. Ilgari fayl o'zicha hisoblardi: kunlik foyda davr
+ * xarajatlarisiz, soliq faqat qo'lda kiritilmagan bo'lsagina, saqlash to'lovi
+ * esa umuman yo'q — fayldagi sof foyda va marja sahifadagidan baland chiqardi.
+ * "Qaytarish (dona)" ustuni ham olib tashlandi: jonli Uzumda qaytgan satrda
+ * qty = 0 keladi va u doim 0 ko'rsatardi; qaytarishlar "Xulosa"da, sahifadagidek.
+ */
+
+/** Xarajat nomlari sahifadagidek (shared EXPENSE_CATEGORIES) — fayl va ekran bitta atamada */
+const reportExpenseLabel = (c: ExpenseCategory): string =>
+  EXPENSE_CATEGORIES.find((x) => x.id === c)?.label.uz ?? CATEGORY_LABEL[c];
+
+const DELIVERY_LABEL: Record<DeliveryType, string> = {
+  FBO: 'Uzum omboridan',
+  FBS: 'O‘z omboringizdan',
+  DBS: 'O‘zingiz yetkazasiz',
+};
+
+const INSIGHT_LEVEL_LABEL: Record<Insight['level'], string> = {
+  danger: 'Xavf',
+  warning: 'Diqqat',
+  success: 'Yaxshi',
+  info: 'Ma’lumot',
+};
+
+/** 2026-10-24 → 24.10.2026 */
+const dmy = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+
+/** Fayl tuzilgan payt, Toshkent vaqti: 24.10.2026 14:05 */
+function tashkentStamp(now: Date): string {
+  const t = new Date(now.getTime() + BUSINESS_TZ_OFFSET_MS);
+  const hh = String(t.getUTCHours()).padStart(2, '0');
+  const mm = String(t.getUTCMinutes()).padStart(2, '0');
+  return `${dmy(toISODate(t))} ${hh}:${mm}`;
+}
+
+const n0 = (v: number): string => formatNumber(v, 'uz');
+const p1 = (v: number): string => `${formatNumber(v, 'uz', 1)}%`;
+
+interface SummaryRow {
+  label: string;
+  value: Cell;
+  fmt?: FormatId;
+  note?: string;
+  /** Asosiy natija qatori — qalin */
+  strong?: boolean;
+}
+
+/**
+ * "Ko'rsatkich — qiymat — izoh" varag'i. Ustunga bitta format bu yerda
+ * yaramaydi (pul, foiz va dona bitta ustunda), shuning uchun format har
+ * katakka alohida; sarlavha boshqa varaqlardagi (addSheet) kabi bo'yaladi.
+ */
+function addSummarySheet(wb: Workbook, name: string, rows: SummaryRow[]): Worksheet {
+  const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = [
+    { header: 'Ko‘rsatkich', width: 30 },
+    { header: 'Qiymat', width: 22 },
+    { header: 'Izoh', width: 80 },
+  ];
+
+  for (const r of rows) {
+    const row = ws.addRow([r.label, r.value, r.note ?? null]);
+    const value = row.getCell(2);
+    if (r.fmt && typeof r.value === 'number') {
+      value.numFmt = FMT[r.fmt];
+      value.alignment = { horizontal: 'right', vertical: 'middle' };
+    } else {
+      value.alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+    row.getCell(3).font = { size: 10, color: { argb: 'FF6B7280' } };
+    if (r.strong) {
+      row.getCell(1).font = { bold: true };
+      value.font = { bold: true };
+    }
+  }
+
+  const head = ws.getRow(1);
+  head.height = 24;
+  head.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+  head.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  head.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+    cell.border = { bottom: { style: 'thin', color: { argb: HEADER_LINE } } };
+  });
+  return ws;
+}
+
+export interface MonthlyFileContext {
+  companyName: string;
+  /** Do'kon filtri bo'lsa — uning nomi; barcha do'konlar bo'yicha null */
+  storeTitle: string | null;
+  /** Sinov uchun: fayl tuzilgan payt */
+  now?: Date;
+}
+
+/** Oylik hisobot fayli — sahifadagi har blok alohida varaqda, raqamlar javobdan o'zgarishsiz */
+export function buildMonthlyWorkbook(
+  r: MonthlyReportResponse,
+  compare: MonthCompareRow[],
+  ctx: MonthlyFileContext,
+): Workbook {
+  const fin = r.finality;
+  const ofRevenue = (v: number): string | undefined => (r.revenue > 0 ? `tushumning ${p1(pct(v, r.revenue))}` : undefined);
+  const activeOrders = Math.max(0, r.ordersTotal - r.canceled - r.returns);
+  const capital = r.warehouse.fboAmount + r.warehouse.fbsAmount;
+
+  const statusNote =
+    fin.reason === 'current'
+      ? 'Davr hali tugamagan — yangi buyurtma, bekor qilish va qaytarishlar raqamlarni o‘zgartiradi'
+      : fin.reason === 'in_transit'
+        ? `${n0(fin.inTransitUnits)} dona hali xaridorga yetib bormagan — ular bekor bo‘lishi yoki qaytishi mumkin`
+        : 'Davr tugagan va buyurtmalar yakunlangan — raqamlar endi deyarli o‘zgarmaydi';
+
+  const wb = newWorkbook();
+
+  // 1-varaq — xulosa: sahifa sarlavhasi, natija kartochkasi, buyurtmalar oqimi va xavf
+  addSummarySheet(wb, 'Xulosa', [
+    { label: 'Kompaniya', value: ctx.companyName },
+    { label: 'Do‘kon', value: ctx.storeTitle ?? 'Barcha do‘konlar' },
+    { label: 'Davr', value: `${dmy(r.period.from)} — ${dmy(r.period.to)}` },
+    { label: 'Holat', value: fin.status === 'final' ? 'Yakuniy' : 'Oraliq', note: statusNote, strong: true },
+    {
+      label: 'Yakunlangan',
+      value: fin.completionPct,
+      fmt: 'percent',
+      note: `${n0(fin.completedUnits)} / ${n0(fin.orderedUnits)} dona — xaridor qabul qilgan, bekor qilingan yoki qaytgan. Yakuniy bo‘lishi uchun kamida ${fin.thresholdPct}%`,
+    },
+    { label: 'Tuzilgan', value: tashkentStamp(ctx.now ?? new Date()), note: 'Toshkent vaqti' },
+    { label: '', value: null },
+    {
+      label: 'Tushum',
+      value: r.revenue,
+      fmt: 'money',
+      note: `${n0(r.ordersTotal)} buyurtma · ${n0(r.unitsSold)} dona`,
+    },
+    { label: 'To‘lov (Uzum o‘tkazadi)', value: r.payout, fmt: 'money', note: 'Tushum − komissiya − logistika' },
+    { label: 'Tannarx', value: r.cogs, fmt: 'money', note: ofRevenue(r.cogs) },
+    { label: 'Yalpi foyda', value: r.grossProfit, fmt: 'money', note: `Marja ${p1(r.grossMargin)} · tannarxdan keyin` },
+    {
+      label: 'Jami xarajatlar',
+      value: r.expensesTotal,
+      fmt: 'money',
+      note: [ofRevenue(r.expensesTotal), 'kategoriyalar «Xarajatlar» varag‘ida'].filter(Boolean).join(' · '),
+    },
+    {
+      label: r.netProfit < 0 ? 'Zarar' : 'Sof foyda',
+      value: r.netProfit,
+      fmt: 'money',
+      note: 'Barcha xarajat va soliqdan keyin — Boshqaruv paneli bilan bir xil',
+      strong: true,
+    },
+    { label: 'Sof marja', value: r.margin, fmt: 'percent' },
+    { label: '', value: null },
+    { label: 'Buyurtmalar', value: r.ordersTotal, fmt: 'int', note: 'Bekor va qaytganlar bilan' },
+    { label: 'Muvaffaqiyatli', value: r.ordersSuccess, fmt: 'int', note: 'Bekor qilinmagan, qaytmagan' },
+    { label: 'Muvaffaqiyat ulushi', value: r.successRate, fmt: 'percent' },
+    { label: 'Bekor qilingan', value: r.canceled, fmt: 'int', note: 'Yetkazilmagan buyurtmalar' },
+    { label: 'Qaytarilgan', value: r.returns, fmt: 'int', note: 'Mijoz qaytargan buyurtmalar' },
+    { label: 'Qaytarish ulushi', value: r.returnRate, fmt: 'percent', note: '5% gacha — normal, 10% dan yuqori — xavfli' },
+    { label: 'Sotildi, dona', value: r.unitsSold, fmt: 'int', note: 'Muvaffaqiyatli buyurtmalarda' },
+    { label: 'O‘rtacha chek', value: r.avgCheck, fmt: 'money', note: `${n0(activeOrders)} buyurtma asosida` },
+    { label: '', value: null },
+    {
+      label: 'Ombor kapitali',
+      value: capital,
+      fmt: 'money',
+      note: `FBO ${n0(r.warehouse.fbo)} dona · FBS ${n0(r.warehouse.fbs)} dona — hozirgi qoldiq, tannarx bo‘yicha`,
+    },
+    { label: 'Soliq stavkasi', value: r.taxRate, fmt: 'percent', note: 'Sozlamalardagi stavka' },
+  ]);
+
+  // 2-varaq — kunlik dinamika (sahifadagi grafik), foyda davr xarajatlaridan keyin
+  const dailyColumns: ColumnDef[] = [
+    { header: 'Sana', width: 14 },
+    { header: 'Tushum', width: 16, fmt: 'money', sum: true },
+    { header: 'Sof foyda', width: 16, fmt: 'money', sum: true },
+    { header: 'To‘lov', width: 16, fmt: 'money', sum: true },
+    { header: 'Buyurtmalar', width: 13, fmt: 'int', sum: true },
+    { header: 'Sotildi (dona)', width: 13, fmt: 'int', sum: true },
+    { header: 'Marja', width: 10, fmt: 'percent' },
+  ];
+  // Kunlar soni tarif tarixi bilan cheklangan, ammo himoya sifatida MAX_ROWS qo'llanadi
+  const dailyRows: Cell[][] = r.daily
+    .slice(0, MAX_ROWS)
+    .map((d) => [d.date, d.revenue, d.profit, d.payout ?? 0, d.orders, d.units, pct(d.profit, d.revenue)]);
+  addSheet(wb, {
+    name: 'Kunlik',
+    columns: dailyColumns,
+    rows: dailyRows,
+    totals: totalsRow(dailyColumns, dailyRows, { 6: r.margin }),
+    note:
+      limitNote(r.daily.length) ??
+      'Sof foyda — davr xarajatlaridan keyin: qo‘lda kiritilgan oylik xarajat (ish haqi, ijara) oy kunlariga teng bo‘lingan. Kunlar yig‘indisi «Xulosa»dagi sof foydaga teng.',
+  });
+
+  // 3-varaq — davr xarajatlari (sahifadagi "Davr xarajatlari" kartochkasi)
+  const expenseColumns: ColumnDef[] = [
+    { header: 'Kategoriya', width: 24 },
+    { header: 'Summa', width: 18, fmt: 'money', sum: true },
+    { header: 'Ulush', width: 10, fmt: 'percent' },
+    { header: 'Tushumga nisbatan', width: 18, fmt: 'percent' },
+  ];
+  const expenseRows: Cell[][] = r.expenses.map((e) => [
+    reportExpenseLabel(e.category),
+    e.amount,
+    pct(e.amount, r.expensesTotal),
+    pct(e.amount, r.revenue),
+  ]);
+  addSheet(wb, {
+    name: 'Xarajatlar',
+    columns: expenseColumns,
+    rows: expenseRows,
+    // Jami — sahifadagi "Jami xarajat" (qatorlar alohida yaxlitlangani uchun yig'indidan 1 so'mga farq qilishi mumkin)
+    totals: totalsRow(expenseColumns, expenseRows, {
+      1: r.expensesTotal,
+      2: r.expensesTotal > 0 ? 100 : 0,
+      3: pct(r.expensesTotal, r.revenue),
+    }),
+    note: 'Tannarx bu yerga kirmaydi — u «Xulosa»da alohida: tushum − tannarx − xarajatlar = sof foyda.',
+  });
+
+  // 4-varaq — top sotuvlar
+  const topColumns: ColumnDef[] = [
+    { header: '#', width: 6, fmt: 'int' },
+    { header: 'SKU', width: 16 },
+    { header: 'Mahsulot', width: 44 },
+    { header: 'Dona', width: 9, fmt: 'int', sum: true },
+    { header: 'Tushum', width: 16, fmt: 'money', sum: true },
+    { header: 'Foyda', width: 16, fmt: 'money', sum: true },
+    { header: 'Marja', width: 10, fmt: 'percent' },
+    { header: 'Ulush', width: 10, fmt: 'percent', sum: true },
+  ];
+  const topRows: Cell[][] = r.topProducts.map((p, i) => [
+    i + 1,
+    p.sku,
+    // SKU nomi ko'pincha faqat variant («ЧЕРН») — faylda mahsulot nomi bilan birga
+    p.productTitle && p.productTitle !== p.title ? `${p.productTitle} — ${p.title}` : p.title,
+    p.units,
+    p.revenue,
+    p.profit,
+    p.margin,
+    p.share,
+  ]);
+  const topRevenue = r.topProducts.reduce((s, p) => s + p.revenue, 0);
+  const topProfit = r.topProducts.reduce((s, p) => s + p.profit, 0);
+  addSheet(wb, {
+    name: 'Top sotuvlar',
+    columns: topColumns,
+    rows: topRows,
+    totals: totalsRow(topColumns, topRows, { 6: pct(topProfit, topRevenue) }, 'JAMI'),
+    note: 'Foyda — mahsulotning o‘z reklama to‘lovi ayirilgan; tushum bo‘yicha eng ko‘p sotilgan 10 ta SKU.',
+  });
+
+  // 5-varaq — kategoriyalar bo'yicha tushum
+  const categoryColumns: ColumnDef[] = [
+    { header: 'Kategoriya', width: 34 },
+    { header: 'Tushum', width: 18, fmt: 'money', sum: true },
+    { header: 'Ulush', width: 10, fmt: 'percent', sum: true },
+  ];
+  const categoryRows: Cell[][] = r.categories.map((c) => [c.category, c.revenue, c.share]);
+  addSheet(wb, {
+    name: 'Kategoriyalar',
+    columns: categoryColumns,
+    rows: categoryRows,
+    totals: totalsRow(categoryColumns, categoryRows),
+  });
+
+  // 6-varaq — yetkazib berish turlari
+  const deliveryTotal = r.deliveryTypes.reduce((s, d) => s + d.orders, 0);
+  const deliverySuccess = r.deliveryTypes.reduce((s, d) => s + d.success, 0);
+  const deliveryColumns: ColumnDef[] = [
+    { header: 'Turi', width: 8 },
+    { header: 'Izoh', width: 22 },
+    { header: 'Buyurtmalar', width: 13, fmt: 'int', sum: true },
+    { header: 'Ulush', width: 10, fmt: 'percent' },
+    { header: 'Muvaffaqiyatli', width: 15, fmt: 'int', sum: true },
+    { header: 'Muvaffaqiyat ulushi', width: 18, fmt: 'percent' },
+  ];
+  const deliveryRows: Cell[][] = r.deliveryTypes.map((d) => [
+    d.type,
+    DELIVERY_LABEL[d.type] ?? d.type,
+    d.orders,
+    pct(d.orders, deliveryTotal),
+    d.success,
+    pct(d.success, d.orders),
+  ]);
+  addSheet(wb, {
+    name: 'Yetkazish',
+    columns: deliveryColumns,
+    rows: deliveryRows,
+    totals: totalsRow(deliveryColumns, deliveryRows, {
+      3: deliveryTotal > 0 ? 100 : 0,
+      5: pct(deliverySuccess, deliveryTotal),
+    }),
+  });
+
+  // 7-varaq — ombor (hozirgi qoldiq, tannarx bo'yicha)
+  const warehouseColumns: ColumnDef[] = [
+    { header: 'Joy', width: 8 },
+    { header: 'Izoh', width: 20 },
+    { header: 'Dona', width: 10, fmt: 'int', sum: true },
+    { header: 'Tannarx qiymati', width: 18, fmt: 'money', sum: true },
+    { header: 'Ulush (qiymat)', width: 15, fmt: 'percent' },
+  ];
+  const warehouseRows: Cell[][] = [
+    ['FBO', 'Uzum omborida', r.warehouse.fbo, r.warehouse.fboAmount, pct(r.warehouse.fboAmount, capital)],
+    ['FBS', 'O‘z omboringizda', r.warehouse.fbs, r.warehouse.fbsAmount, pct(r.warehouse.fbsAmount, capital)],
+  ];
+  addSheet(wb, {
+    name: 'Ombor',
+    columns: warehouseColumns,
+    rows: warehouseRows,
+    totals: totalsRow(warehouseColumns, warehouseRows, { 4: capital > 0 ? 100 : 0 }),
+    note: 'Fayl tuzilgan paytdagi qoldiq — tanlangan davrga bog‘liq emas.',
+  });
+
+  // 8-varaq — oylar taqqoslovi (sahifadagi "Oylar taqqoslash")
+  const compareColumns: ColumnDef[] = [
+    { header: 'Oy', width: 18 },
+    { header: 'Tushum', width: 18, fmt: 'money', sum: true },
+    { header: 'Sof foyda', width: 18, fmt: 'money', sum: true },
+    { header: 'Marja', width: 10, fmt: 'percent' },
+  ];
+  const compareRows: Cell[][] = compare.map((m) => [monthLabel(m.month), m.revenue, m.profit, m.margin]);
+  const compareRevenue = compare.reduce((s, m) => s + m.revenue, 0);
+  const compareProfit = compare.reduce((s, m) => s + m.profit, 0);
+  addSheet(wb, {
+    name: 'Oylar',
+    columns: compareColumns,
+    rows: compareRows,
+    totals: totalsRow(compareColumns, compareRows, { 3: pct(compareProfit, compareRevenue) }),
+    note: 'Oxirgi oylar (joriy oy — bugungacha), tanlangan davrga bog‘liq emas. Sof foyda — davr xarajatlaridan keyin.',
+  });
+
+  // 9-varaq — xulosalar matni
+  const insightColumns: ColumnDef[] = [
+    { header: 'Daraja', width: 12 },
+    { header: 'Xulosa', width: 60 },
+    { header: 'Batafsil', width: 110 },
+  ];
+  const insights = addSheet(wb, {
+    name: 'Xulosalar',
+    columns: insightColumns,
+    rows: r.insights.map((i) => [INSIGHT_LEVEL_LABEL[i.level] ?? i.level, i.title, i.body]),
+  });
+  insights.getColumn(3).alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+
+  return wb;
+}
+
+/**
+ * Hisobot va uning fayli bitta yo'ldan: GET /monthly ham, Telegram'ga
+ * yuborish ham (routes/reports.ts) shuni chaqiradi — ikkalasida bir xil davr
+ * qoidasi (`?month=` yoki from/to/preset, tarif chegarasi), bir xil raqam.
+ */
+export async function loadMonthlyWorkbook(input: {
+  company: { id: string; name: string; taxRate: number };
+  plan: PlanId;
+  range: ResolvedRange;
+  month?: string | null;
+}): Promise<{ report: MonthlyReportResponse; workbook: Workbook; fileName: string }> {
+  const { company, plan, range } = input;
+  const storeIds = await getStoreIds(company.id, range.storeId);
+  const [report, compare, storeTitles] = await Promise.all([
+    buildMonthlyReport({ companyId: company.id, taxRate: company.taxRate, plan, storeIds, range, month: input.month }),
+    collectMonthCompare(company.id, storeIds, plan, range.storeId),
+    range.storeId ? getStoreTitles(company.id) : Promise.resolve(null),
+  ]);
+  const workbook = buildMonthlyWorkbook(report, compare, {
+    companyName: company.name,
+    storeTitle: range.storeId ? (storeTitles?.get(range.storeId) ?? null) : null,
+  });
+  // sendWorkbook bilan bir xil nom — yuklab olingan va Telegram'dagi fayl bir xil atalsin
+  return { report, workbook, fileName: `savdoiq-monthly-${report.period.from}_${report.period.to}.xlsx` };
+}
+
 router.get(
   '/monthly',
   requireFeature('monthly_reports'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
-    const range = resolveRange(req, plan);
-    const storeIds = await getStoreIds(company.id, range.storeId);
-    const taxRate = company.taxRate;
-
-    const [series, sales, manual] = await Promise.all([
-      getDailySeries(storeIds, range.period),
-      aggregateSales(storeIds, range.from, range.toExclusive),
-      getExpenses(company.id, range.from, range.toExclusive, range.storeId),
-    ]);
-
-    // 1-varaq — kunlik seriya
-    const dailyColumns: ColumnDef[] = [
-      { header: 'Sana', width: 14 },
-      { header: 'Tushum', width: 16, fmt: 'money', sum: true },
-      { header: 'Sof foyda', width: 16, fmt: 'money', sum: true },
-      { header: 'To‘lov', width: 16, fmt: 'money', sum: true },
-      { header: 'Buyurtmalar', width: 13, fmt: 'int', sum: true },
-      { header: 'Sotildi (dona)', width: 13, fmt: 'int', sum: true },
-      { header: 'Qaytarish (dona)', width: 15, fmt: 'int', sum: true },
-      { header: 'Marja', width: 10, fmt: 'percent' },
-    ];
-
-    // Kunlar soni tarif tarixi bilan cheklangan, ammo himoya sifatida MAX_ROWS qo'llanadi
-    const dailyRows: Cell[][] = series.slice(0, MAX_ROWS).map((d) => [
-      d.date,
-      round(d.revenue),
-      round(d.profit),
-      round(d.payout),
-      d.orders,
-      d.units,
-      d.returns,
-      pct(d.profit, d.revenue),
-    ]);
-
-    let revenue = 0;
-    let profit = 0;
-    let commission = 0;
-    let logistics = 0;
-    let otherCost = 0;
-    for (const agg of sales.values()) {
-      revenue += agg.revenue;
-      profit += agg.netProfit;
-      commission += agg.commission;
-      logistics += agg.logistics;
-      otherCost += agg.otherCost;
-    }
-
-    const wb = newWorkbook();
-    addSheet(wb, {
-      name: 'Kunlik',
-      columns: dailyColumns,
-      rows: dailyRows,
-      totals: totalsRow(dailyColumns, dailyRows, { 7: pct(profit, revenue) }),
-      note: limitNote(series.length),
+    const q = req.query as Record<string, string | undefined>;
+    const { report, workbook } = await loadMonthlyWorkbook({
+      company,
+      plan,
+      range: resolveRange(req, plan),
+      month: q.month,
     });
-
-    // 2-varaq — xarajatlar kesimi (dashboard bilan bir xil mantiq)
-    const amounts: Record<ExpenseCategory, number> = {
-      commission: commission + manual.commission,
-      logistics: logistics + manual.logistics,
-      marketing: manual.marketing,
-      storage: manual.storage,
-      tax: manual.tax > 0 ? manual.tax : (revenue * taxRate) / 100,
-      salary: manual.salary,
-      other: otherCost + manual.other,
-    };
-    const expensesTotal = CATEGORY_ORDER.reduce((s, c) => s + amounts[c], 0);
-
-    const expenseColumns: ColumnDef[] = [
-      { header: 'Kategoriya', width: 24 },
-      { header: 'Summa', width: 18, fmt: 'money', sum: true },
-      { header: 'Ulush', width: 10, fmt: 'percent' },
-      { header: 'Tushumga nisbatan', width: 18, fmt: 'percent' },
-    ];
-
-    const expenseRows: Cell[][] = CATEGORY_ORDER.map((c) => [
-      CATEGORY_LABEL[c],
-      round(amounts[c]),
-      pct(amounts[c], expensesTotal),
-      pct(amounts[c], revenue),
-    ]);
-
-    addSheet(wb, {
-      name: 'Xarajatlar',
-      columns: expenseColumns,
-      rows: expenseRows,
-      totals: totalsRow(expenseColumns, expenseRows, {
-        2: expensesTotal > 0 ? 100 : 0,
-        3: pct(expensesTotal, revenue),
-      }),
-    });
-
-    await sendWorkbook(res, wb, 'monthly', range.period);
+    await sendWorkbook(res, workbook, 'monthly', report.period);
   }),
 );
 
@@ -1405,12 +1795,21 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * "Holat" — Ombor sahifasi (GET /stocks/warehouse) va Qoldiqlar bilan
+       * bitta qoida: SKU'ning UMUMIY reja holati (planStockStatus — barcha
+       * qoldiq, yo'ldagi tovar, kompaniyaning yetkazish muddati). Ilgari fayl
+       * faqat o'z omboridagi donani 7/14 kunlik qat'iy chegara bilan baholab,
+       * ustunga inglizcha kalitni ("critical") yozardi (2026-10-27). Qoldiq
+       * ham rejadan — u `getLatestStocks` ni o'zi yuklaydi.
+       */
+      loadPlanData(company.id, storeIds),
       getAvgDaily(storeIds, 30),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 18 },
@@ -1429,7 +1828,11 @@ router.get(
       if (!info) continue;
       if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.own, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      // Sotuvi yo'q va arxivdagi SKU — sahifadagi kabi eski qoldiq qoidasi, butun qoldiq bilan
+      const state = planStockStatus(
+        planSku(planData, skuId),
+        stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt)),
+      );
       data.push([
         info.sku,
         info.title,
@@ -1438,7 +1841,7 @@ router.get(
         st.inTransit,
         round(st.own * info.volumeL, 2),
         round(st.own * (info.purchasePrice + info.extraCost)),
-        state.status,
+        STOCK_STATUS_LABEL[state.status],
       ]);
     }
     data.sort((a, b) => Number(b[6]) - Number(a[6]));
@@ -1452,6 +1855,248 @@ router.get(
       note: limitNote(data.length),
     });
     await sendWorkbook(res, wb, 'warehouse', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /product-profit ───────────────────────────
+
+/** "Muammo" ustuni — sahifadagi bo'limlar (tablar) nomi bilan bir xil */
+const PROFIT_FLAG_LABEL: Record<ProductProfitFlag, string> = {
+  loss: 'Zararda',
+  lowMargin: 'Past marja',
+  noCost: 'Tannarxsiz',
+  lowBuyout: 'Past xarid',
+};
+
+router.get(
+  '/product-profit',
+  requireFeature('unit_economics'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+
+    // Sahifa bilan BITTA hisob (services/product-profit.ts) — fayldagi har bir so'm sahifadagidek
+    const data = await buildProductProfit(company, range, storeIds);
+    const { totals } = data;
+    const list = data.rows.slice(0, MAX_ROWS);
+    const perUnitTotal = totals.units > 0 ? round(totals.netProfit / totals.units) : null;
+
+    const columns: ColumnDef[] = [
+      { header: 'Mahsulot', width: 40 },
+      { header: 'Kategoriya', width: 22 },
+      { header: 'SKU soni', width: 9, fmt: 'int', sum: true },
+      { header: 'Sotildi (dona)', width: 12, fmt: 'int', sum: true },
+      { header: 'Buyurtmalar', width: 12, fmt: 'int', sum: true },
+      { header: 'Qaytgan (dona)', width: 13, fmt: 'int', sum: true },
+      { header: 'Tushum', width: 16, fmt: 'money', sum: true },
+      { header: 'Komissiya', width: 14, fmt: 'money', sum: true },
+      { header: 'Yetkazish', width: 14, fmt: 'money', sum: true },
+      { header: 'Chiqarishga', width: 16, fmt: 'money', sum: true },
+      { header: 'Tannarx', width: 14, fmt: 'money', sum: true },
+      { header: 'Qadoq va boshqa', width: 15, fmt: 'money', sum: true },
+      { header: 'Soliq', width: 13, fmt: 'money', sum: true },
+      { header: 'Reklama', width: 13, fmt: 'money', sum: true },
+      { header: 'Sof foyda', width: 16, fmt: 'money', sum: true },
+      { header: '1 donadan sof foyda', width: 17, fmt: 'money' },
+      { header: 'Marja', width: 9, fmt: 'percent' },
+      { header: 'ROI', width: 9, fmt: 'percent' },
+      { header: 'Xarid foizi', width: 11, fmt: 'percent' },
+      { header: 'Muammo', width: 30 },
+    ];
+
+    const rows: Cell[][] = list.map((r) => [
+      // Yashirilgan mahsulot ham faylda — puli hisobda (sahifadagi kabi), nomi yonida belgisi bilan
+      r.hidden ? `${r.title} (katalogdan yashirilgan)` : r.title,
+      dash(r.category),
+      r.skuCount,
+      r.units,
+      r.orders,
+      r.returns,
+      r.revenue,
+      r.commission,
+      r.logistics,
+      r.payout,
+      r.cogs,
+      r.otherCost,
+      r.tax,
+      r.ads,
+      r.netProfit,
+      r.units > 0 ? r.perUnit.netProfit : null,
+      r.margin,
+      // Tannarx kiritilmagan bo'lsa ROI'ni hisoblab bo'lmaydi — sahifadagidek bo'sh, 0% emas
+      r.cogs + r.otherCost > 0 ? r.roi : null,
+      // Yakunlangan dona bo'lmasa bo'sh — "0%" "hech kim olmadi" degani bo'lib qolardi
+      r.buyoutRate,
+      r.flags.map((f) => PROFIT_FLAG_LABEL[f]).join(', '),
+    ]);
+
+    /*
+     * Mahsulotlar foydasi yig'indisi do'konnikidan nega farq qiladi — sahifadagi
+     * "Do'kon sof foydasi" plitkasi bilan bir xil izoh, faylning o'zida.
+     */
+    const notes: string[] = [];
+    const tooMany = limitNote(data.rows.length);
+    if (tooMany) notes.push(tooMany);
+    if (data.unallocated > 0 && data.rows.length > 0) {
+      const fmt = (v: number) => v.toLocaleString('ru-RU');
+      notes.push(
+        `Mahsulotga bog‘lab bo‘lmaydigan xarajatlar (omborga logistika, umumiy reklama, saqlash): ${fmt(data.unallocated)} so‘m. ` +
+          `Ular ayirilsa do‘kon sof foydasi — ${fmt(totals.netProfit - data.unallocated)} so‘m, Boshqaruv panelidagi bilan bir xil.`,
+      );
+    }
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Mahsulot foydasi',
+      columns,
+      rows,
+      totals: totalsRow(columns, rows, {
+        // Bitta buyurtmada ikki mahsulot bo'lsa bir marta — sahifadagi jami bilan bir xil
+        4: totals.orders,
+        15: perUnitTotal,
+        16: totals.margin,
+        17: totals.cogs + totals.otherCost > 0 ? totals.roi : null,
+        18: totals.buyoutRate,
+      }),
+      note: notes.length ? notes.join(' ') : undefined,
+    });
+
+    // 2-varaq — SKU variantlari (sahifada qator ochilganda ko'rinadigani); yig'indisi 1-varaqqa so'mgacha teng
+    const variantColumns: ColumnDef[] = [
+      { header: 'Mahsulot', width: 38 },
+      { header: 'SKU', width: 18 },
+      { header: 'Variant', width: 26 },
+      { header: 'Sotildi (dona)', width: 12, fmt: 'int', sum: true },
+      { header: 'Tushum', width: 16, fmt: 'money', sum: true },
+      { header: 'Tannarx', width: 14, fmt: 'money', sum: true },
+      { header: 'Sof foyda', width: 16, fmt: 'money', sum: true },
+      { header: '1 donadan sof foyda', width: 17, fmt: 'money' },
+      { header: 'Marja', width: 9, fmt: 'percent' },
+      { header: 'Xarid foizi', width: 11, fmt: 'percent' },
+      { header: 'Yakunlangan (dona)', width: 15, fmt: 'int', sum: true },
+      { header: 'Yo‘lda (dona)', width: 12, fmt: 'int', sum: true },
+    ];
+    const variantRows: Cell[][] = list
+      .flatMap((r) =>
+        r.variants.map((v): Cell[] => [
+          r.title,
+          v.sku,
+          v.variant ?? v.title,
+          v.units,
+          v.revenue,
+          v.cogs,
+          v.netProfit,
+          v.units > 0 ? v.perUnitProfit : null,
+          v.margin,
+          v.buyoutRate,
+          v.completedUnits,
+          v.transitUnits,
+        ]),
+      )
+      .slice(0, MAX_ROWS);
+
+    addSheet(wb, {
+      name: 'SKU variantlari',
+      columns: variantColumns,
+      rows: variantRows,
+      totals: totalsRow(variantColumns, variantRows, {
+        7: perUnitTotal,
+        8: totals.margin,
+        9: totals.buyoutRate,
+      }),
+    });
+
+    await sendWorkbook(res, wb, 'product-profit', range.period);
+  }),
+);
+
+// ─────────────────────────── GET /planner — sotib olish ro'yxati ───────────────────────────
+
+/** `in` ro'yxati bo'laklari (SQLite o'zgaruvchilar chegarasi) */
+const PLANNER_IN_CHUNK = 500;
+
+/**
+ * Yetkazib beruvchiga yuboriladigan ro'yxat — Rejalashtiruvchidagi "Sotib
+ * oling" miqdori. Hisob va filtrlar sahifa bilan AYNAN bir xil
+ * (services/plan.ts): do'kon, holat yorlig'i (?status=), qidiruv; yetkazish
+ * muddati va zaxira davri — kompaniya sozlamasi. Faqat sotib olinadigan
+ * SKU'lar: o'z ombori/FBS dan FBO'ga jo'natiladigan qism bu yerda emas — u
+ * yetkazma qoralamasida (2026-10-24).
+ *
+ * Narx — SOF sotib olish narxi: yetkazib beruvchi shuni oladi. Sahifadagi
+ * "Xarid qiymati" ga qo'shimcha xarajat (qadoq, marker) ham kiradi — farq
+ * bo'lsa fayl ostida yoziladi, sotuvchi "summa nega boshqa" deb o'ylamasin.
+ */
+router.get(
+  '/planner',
+  requireFeature('planner'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const q = req.query as Record<string, string | undefined>;
+    const storeIds = await getStoreIds(company.id, range.storeId);
+    const data = await loadPlanData(company.id, storeIds, { cover: q.cover, lead: q.lead });
+    const table = planTable(data, { filter: parseStatusFilter(q.status), search: range.search });
+    const buy = table.rows.filter((r) => r.recommendedQty > 0);
+
+    // Shtrix-kod katalog (SkuInfo) tarkibida yo'q — alohida, bo'laklab
+    const barcodes = new Map<string, string | null>();
+    const ids = buy.map((r) => r.skuId);
+    for (let i = 0; i < ids.length; i += PLANNER_IN_CHUNK) {
+      const rows = await prisma.sku.findMany({
+        where: { id: { in: ids.slice(i, i + PLANNER_IN_CHUNK) } },
+        select: { id: true, barcode: true },
+      });
+      for (const s of rows) barcodes.set(s.id, s.barcode);
+    }
+
+    const columns: ColumnDef[] = [
+      { header: 'SKU', width: 18 },
+      { header: 'Mahsulot', width: 42 },
+      { header: 'Variant', width: 22 },
+      { header: 'Shtrix-kod', width: 18 },
+      { header: 'Sotib olish, dona', width: 15, fmt: 'int', sum: true },
+      { header: 'Sotib olish narxi', width: 17, fmt: 'money' },
+      { header: 'Jami', width: 18, fmt: 'money', sum: true },
+    ];
+
+    let withExtra = 0;
+    const rows: Cell[][] = buy.slice(0, MAX_ROWS).map((r) => {
+      const info = data.catalog.get(r.skuId);
+      const price = round(info?.purchasePrice ?? 0);
+      withExtra += r.purchaseCost;
+      return [
+        r.sku,
+        r.title,
+        dash(r.variant),
+        dash(barcodes.get(r.skuId)),
+        r.recommendedQty,
+        price,
+        round(price * r.recommendedQty),
+      ];
+    });
+
+    const total = rows.reduce((s, row) => s + (typeof row[6] === 'number' ? row[6] : 0), 0);
+    const today = toBusinessDate(new Date());
+    const notes = [
+      `${today.slice(8, 10)}.${today.slice(5, 7)}.${today.slice(0, 4)} holatiga · yetkazish muddati ${data.leadDays} kun, zaxira davri ${data.coverDays} kun (kompaniya sozlamasi).`,
+      round(withExtra) !== round(total)
+        ? `Rejalashtiruvchidagi xarid qiymati qo'shimcha xarajat (qadoq, marker) bilan: ${formatNumber(round(withExtra), 'uz')} so'm.`
+        : '',
+      limitNote(buy.length) ?? '',
+    ].filter(Boolean);
+
+    const wb = newWorkbook();
+    addSheet(wb, {
+      name: 'Sotib olish',
+      columns,
+      rows,
+      totals: totalsRow(columns, rows),
+      note: notes.join(' '),
+    });
+
+    await sendWorkbook(res, wb, 'sotib-olish', { from: today, to: today });
   }),
 );
 

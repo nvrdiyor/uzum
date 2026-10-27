@@ -1,7 +1,7 @@
 /**
  * Qaytarish va bekor qilish xulosasi — /api/v1/dashboard/returns
  *
- *  GET / → DashboardReturnsResponse (tanlangan davr va oldingi teng davr)
+ *  GET / → DashboardReturnsResponse (tanlangan davr va taqqoslanadigan davr — ?compare rejimi)
  *
  * Hisob — services/returns.ts `summarizeReturns`: "Qaytarishlar" sahifasi
  * jamlari va Sotuv voronkasidagi qaytgan/bekor qilingan dona aynan shu

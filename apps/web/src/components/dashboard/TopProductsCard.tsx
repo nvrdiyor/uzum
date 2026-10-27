@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import { splitProductName } from './productName';
 import { marginTone } from './rates';
 
@@ -22,6 +23,8 @@ import { marginTone } from './rates';
 export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; loading?: boolean }) {
   const t = useT('dashboard');
   const f = useFormat();
+  // Pulsiz ko'rinish shablonida foyda va marja null — ustunlarning o'zi chizilmaydi
+  const money = useSeesMoney();
 
   /*
    * O'rin — TUSHUM bo'yicha (server shu tartibda yuboradi), jadvaldagi joriy
@@ -125,7 +128,7 @@ export function TopProductsCard({ rows, loading }: { rows: TopProductRow[]; load
       />
       <div className="mt-4">
         <DataTable<TopProductRow>
-          columns={columns}
+          columns={money ? columns : columns.filter((c) => c.key !== 'profit' && c.key !== 'margin')}
           rows={rows}
           loading={loading}
           rowKey={(r) => r.skuId}

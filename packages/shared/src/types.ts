@@ -5,6 +5,7 @@
 
 import type { PlanId, FeatureAccess, FeatureId } from './plans.js';
 import type { CardAuditResult, CardLang, CardSectionId } from './card-seo.js';
+import type { MemberView } from './views.js';
 
 export type Lang = 'uz' | 'ru' | 'en';
 export type DeliveryType = 'FBO' | 'FBS' | 'DBS';
@@ -74,6 +75,11 @@ export interface CompanySummary {
   onboarded: boolean;
   onboardStep: 'company' | 'tax' | 'api_key' | 'syncing' | 'done';
   role: 'owner' | 'manager' | 'viewer';
+  /**
+   * Ko'rinish shabloni (views.ts): null — rol ruxsat bergan hamma bo'lim.
+   * Egasida doim null.
+   */
+  view: MemberView | null;
 }
 
 export interface SubscriptionSummary {
@@ -184,6 +190,44 @@ export interface SyncStatus {
   lastSuccessAt: string | null;
   /** Eng yaqin rejali sinxron */
   nextSyncAt: string | null;
+  /**
+   * Saqlangan tarix chuqurligi va uni tarif chegarasigacha yuklash holati.
+   * Kabinet ulanmagan bo'lsa yoki hisoblab bo'lmasa — null/yo'q.
+   */
+  history?: HistoryCoverage | null;
+}
+
+/**
+ * Tarix qamrovi (backfill). Sinovda 60 kunlik tarix bilan ulangan kabinet
+ * 365 kunlik tarifga o'tsa, yetishmagan oylar alohida, past ustuvorlikdagi
+ * jarayonda yuklanadi — oddiy sinxronlarni kutdirmaydi (2026-10-24).
+ */
+export interface HistoryCoverage {
+  /** Ma'lumot shu kundan beri to'liq (YYYY-MM-DD); null — hali to'liq sinxron bo'lmagan */
+  from: string | null;
+  /** Tarif ruxsat bergan tarix boshi (YYYY-MM-DD) */
+  floor: string;
+  /** Tarifdagi tarix chuqurligi, kun */
+  planDays: number;
+  /** Tarif ochgan, lekin hali yuklanmagan kunlar; 0 — tarix to'liq */
+  missingDays: number;
+  /** idle — jarayon yo'q · queued — navbatda · running — yuklanmoqda · done — yuklandi · failed — yuklab bo'lmadi */
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  /** 0..100 — yuklash davomida */
+  progress: number;
+  /** Taxminiy qolgan vaqt (s); 0 — hali noma'lum */
+  etaSeconds: number;
+  error: string | null;
+  /** "Tarixni yuklash" tugmasi ma'noga egami (yetishmagan kun bor va jarayon ketmayapti) */
+  canBackfill: boolean;
+  /** Yuklash vaqtincha to'xtab turibdi — qachongacha (ISO) */
+  pausedUntil: string | null;
+  /** night — tungi tinch soatlar · budget — Uzum so'rovlari soatlik chegarasi · retry — vaqtinchalik xatodan keyin kutish */
+  pauseReason: 'night' | 'budget' | 'retry' | null;
+  /** Eski birinchi sinxron Uzum chegarasida kesilgan bo'lishi mumkin — tarixda bo'shliq ehtimoli */
+  suspectGap: boolean;
+  /** "Tarixni qayta tekshirish" (butun tarif oralig'ini qayta o'qish) mumkinmi */
+  canRescan: boolean;
 }
 
 // ─────────────────────────── Dashboard ───────────────────────────
@@ -247,9 +291,11 @@ export interface DashboardResponse {
   };
   series: TimeSeriesPoint[];
   /**
-   * Oldingi teng davr kunma-kun, `series` bilan o'sha ta'rifda (foyda davr
-   * xarajatlaridan keyin). Indeks bo'yicha tekislangan: i-nuqta joriy davrning
-   * i-kuniga to'g'ri keladi, `date` — oldingi davrdagi haqiqiy sana. Joriy
+   * Taqqoslash davri (`comparePeriod`, rejimi `?compare=`) kunma-kun, `series`
+   * bilan o'sha ta'rifda (foyda davr xarajatlaridan keyin). Indeks bo'yicha
+   * tekislangan: i-nuqta taqqoslash davrining i-kuni, `date` — o'sha haqiqiy
+   * sana. 'prev' rejimida uzunligi joriy davr bilan teng; 'prevMonth' /
+   * 'prevYear' da qisqa yoki uzun bo'lishi mumkin (fevral ↔ mart). Joriy
    * seriya bugun bilan tugasa ham bu davrning to'liq uzunligida — yig'indisi
    * KPI'lardagi `previous` bilan teng. Oldingi davr saqlangan tarixdan (tarif
    * chuqurligi, birinchi sinxron) tashqarida bo'lsa null: nol chiziq "o'sish"
@@ -405,17 +451,103 @@ export interface FunnelStep {
   /** So'm */
   amount: number;
   /**
-   * Oldingi teng davr — TENG YOSHDA: sotildi/yo'lda bo'linishi o'sha davr
-   * hozirgi davr yoshida bo'lgan paytdagi holat (hozir − davr uzunligi).
-   * Ilgari yakuniy holat olinardi va "Sotildi" o'zgarishi sun'iy tushardi
-   * (2026-10-24). Bekor/qaytgan esa yakuniy holat bo'yicha.
+   * Taqqoslash davri (`FunnelResponse.previous`, rejimi `?compare=`) — TENG
+   * YOSHDA: sotildi/yo'lda bo'linishi o'sha davr hozirgi davr yoshida bo'lgan
+   * paytdagi holat (hozir − ikki davr boshlari orasidagi farq; 'prev' da bu
+   * davr uzunligi, 'prevMonth' / 'prevYear' da bir oy / yil). Ilgari yakuniy
+   * holat olinardi va "Sotildi" o'zgarishi sun'iy tushardi (2026-10-24).
+   * Bekor/qaytgan esa yakuniy holat bo'yicha.
+   *
+   * null — taqqoslash davri saqlangan tarixdan tashqarida (`FunnelResponse.comparePeriod`
+   * null): u yerdagi nol "sotuv bo'lmagan" emas, "ma'lumot yo'q" degani.
    */
-  prevValue: number;
-  prevAmount: number;
-  /** Oldingi davrga nisbatan o'zgarish, % */
+  prevValue: number | null;
+  prevAmount: number | null;
+  /** Taqqoslash davriga nisbatan o'zgarish, %; taqqoslab bo'lmasa null */
   deltaPct: number | null;
   /** Buyurtma qilingan donalardagi ulushi, % */
   conversion: number | null;
+}
+
+/**
+ * Yo'qotish voronkasining to'rt bosqichi — har birida dona kamayadi:
+ *   ordered  — buyurtma qilindi;
+ *   shipped  — bekor qilinmadi (jo'natildi) = buyurtma − bekor qilingan;
+ *   received — xaridor qabul qildi = jo'natilgan − hali yo'ldagi;
+ *   kept     — qaytarilmadi (sotildi) = qabul qilingan − qaytgan.
+ * Yo'ldagi dona "shipped" da bor, "received" da yo'q: u na sotilgan, na
+ * yo'qotilgan, shuning uchun bu ikki bosqich orasidagi farq yo'qotish emas —
+ * natija kutilmoqda. "received" ga qaytganlar ham kiradi: Uzum topshirish
+ * punktida olinmaganini va olib qaytarilganini ajratmaydi (services/returns.ts).
+ */
+export type FunnelStageId = 'ordered' | 'shipped' | 'received' | 'kept';
+
+/** Oldingi bosqichdan shu bosqichgacha ajralgan qism */
+export interface FunnelStageDrop {
+  /**
+   * `steps` dagi mos holat — o'zgarish foizi va oldingi qiymat o'sha yerda.
+   * canceled, returned — yo'qotish; inTransit — hali natija yo'q.
+   */
+  id: Extract<FunnelStepId, 'canceled' | 'inTransit' | 'returned'>;
+  units: number;
+  amount: number;
+  /**
+   * Oldingi bosqich donasidan, %. Bekor qilishda bu bekor qilish ulushi
+   * (÷ buyurtma qilingan), qaytarishda — qaytarish ulushi (÷ xaridor qabul
+   * qilgan + qaytgan): Boshqaruv panelidagi karta bilan aynan bir xil ta'rif.
+   * Oldingi bosqichda dona bo'lmasa null.
+   */
+  rate: number | null;
+}
+
+export interface FunnelStage {
+  id: FunnelStageId;
+  units: number;
+  /** So'm; bosqichlar ayirmasi `drop.amount` ga aynan teng */
+  amount: number;
+  /** Buyurtma qilingan donadan, %; buyurtma bo'lmasa null */
+  share: number | null;
+  /** Oldingi bosqichdan ajralgan qism; birinchi bosqichda null */
+  drop: FunnelStageDrop | null;
+}
+
+/** Yo'qotilgan qiymat — bekor qilingan va qaytgan donalar (yo'ldagilar kirmaydi) */
+export interface FunnelLost {
+  units: number;
+  /** Yo'qotilgan tushum: sotuv narxi × dona (bekor + qaytgan) */
+  amount: number;
+  /** Buyurtmalar summasidagi ulushi, %; buyurtma bo'lmasa null */
+  share: number | null;
+  /**
+   * Yo'qotilgan foyda — shu donalar sotilganda keltirgan bo'lardi: har SKU
+   * uchun shu davrdagi tirik (bekor qilinmagan, qaytmagan) donalarining
+   * o'rtacha sof foydasi × yo'qotilgan dona. Yo'qotilgan dona bo'lmasa 0; bor-u,
+   * bittasi ham baholanmasa null. Qaytarish bilan bog'liq qo'shimcha xarajat
+   * (bo'lsa) bu yerga kirmaydi.
+   */
+  profit: number | null;
+  /** Foydasi baholanmagan dona: davrda shu SKU'ning tirik donasi yo'q yoki SKU noma'lum */
+  unpricedUnits: number;
+  /** O'sha donalarning tushumi — yo'qotilgan tushumga kirgan, foydaga kirmagan */
+  unpricedAmount: number;
+  /** Taqqoslash davri (yakuniy holat); taqqoslab bo'lmasa null */
+  prevAmount: number | null;
+  prevProfit: number | null;
+  amountDeltaPct: number | null;
+  profitDeltaPct: number | null;
+}
+
+/** Bekor qilish yoki qaytarish sababi — dona va so'mda */
+export interface FunnelReason {
+  /**
+   * Uzum bergan asl matn; null — sabab ko'rsatilmagan (bo'sh yoki "Клиент не
+   * указал причину" — services/returns.ts `realReason` qoidasi)
+   */
+  raw: string | null;
+  units: number;
+  amount: number;
+  /** Shu turdagi (bekor yoki qaytgan) yo'qotilgan summadagi ulushi, % */
+  share: number;
 }
 
 export interface FunnelProductRow {
@@ -444,7 +576,10 @@ export interface FunnelProductRow {
   avgPrice: number;
   /** Sotilgan summadagi ulushi, % */
   share: number;
-  /** Oldingi teng davrga nisbatan, % — teng yoshda (`FunnelStep.prevValue` dagi kabi) */
+  /**
+   * Taqqoslash davriga nisbatan, % — teng yoshda (`FunnelStep.prevValue`
+   * dagi kabi); taqqoslab bo'lmasa (`comparePeriod` null) hammasi null
+   */
   deltas: {
     ordered: number | null;
     sold: number | null;
@@ -464,7 +599,7 @@ export interface FunnelResponse {
      * "Buyurtma qilindi" yorlig'i ostida dona ko'rsatilardi (2026-10-24).
      */
     orders: number;
-    /** Buyurtmalar sonining oldingi teng davrga nisbatan o'zgarishi, % */
+    /** Buyurtmalar sonining taqqoslash davriga nisbatan o'zgarishi, % */
     ordersDeltaPct: number | null;
     ordered: number;
     orderedAmount: number;
@@ -479,10 +614,30 @@ export interface FunnelResponse {
     returnedAmount: number;
     /** Yakunlangan dona: sotildi + bekor + qaytdi */
     completed: number;
+    /** Yakunlangan donaning buyurtma qilingandagi ulushi, %; buyurtma bo'lmasa null */
+    completedPct: number | null;
     /** Sotib olish foizi: sotildi / yakunlangan; yakunlangani bo'lmasa `null` */
     buyoutRate: number | null;
+    /**
+     * Sotib olish foizi DASTLABKI: buyurtma qilingan donaning 95% idan kami
+     * yakunlangan — yo'ldagilar yetib borgach (yoki bekor bo'lgach) foiz
+     * o'zgaradi. Foizning o'zi bo'lmasa (`buyoutRate` null) — false.
+     */
+    preliminary: boolean;
     avgPrice: number;
   };
+  /**
+   * Taqqoslanadigan davr — `previous` ning o'zi, agar u taqqoslashga yaroqli
+   * bo'lsa (services/pnl.ts comparablePeriod). null — taqqoslash davri
+   * saqlangan tarixdan tashqarida: barcha o'zgarish va oldingi qiymatlar null
+   * ("—"), qisman oyna yolg'on o'sish ko'rsatmasin.
+   */
+  comparePeriod: Period | null;
+  /** Yo'qotish voronkasi — 4 bosqich, `FunnelStageId` tartibida */
+  stages: FunnelStage[];
+  lost: FunnelLost;
+  /** Sabablar so'mda: haqiqiy sabablar summa bo'yicha kamayib, sababsizi (raw null) oxirida */
+  reasons: { canceled: FunnelReason[]; returned: FunnelReason[] };
   /** Kunlik DONA; sold + inTransit + canceled + returned = ordered */
   daily: { date: string; ordered: number; sold: number; inTransit: number; canceled: number; returned: number }[];
   rows: FunnelProductRow[];
@@ -505,12 +660,13 @@ export interface SalesStockRow {
   revenue: number;
   payout: number;
   netProfit: number;
-  /** kunlik o'rtacha sotuv */
+  /** Kunlik sotuv — Rejalashtiruvchi tezligi (tugab turgan kunlarsiz); rejada yo'q SKU'da 30 kunlik o'rtacha (StockRow bilan bir xil) */
   avgDaily: number;
-  /** qoldiq necha kunga yetadi */
+  /** Qoldiq (yo'ldagisi bilan) necha kunga yetadi — Rejalashtiruvchi hisobi */
   daysLeft: number | null;
-  /** oyiga potentsial sotuv (dona) */
+  /** Oyiga potentsial sotuv (dona): `avgDaily` × 30 */
   monthPotential: number;
+  /** Qoldiqlar sahifasidagi nishonning o'zi: critical/low — Rejalashtiruvchidan (yetkazish muddati bilan) */
   status: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
 }
 
@@ -616,11 +772,49 @@ export interface ProductCard {
   stockFbo: number;
   stockFbs: number;
   stockOwn: number;
+  /** Eng tez tugaydigan sotiladigan SKU qoldig'i (yo'ldagisi bilan) necha kunga yetadi — `plan.daysLeft` */
   daysLeft: number | null;
+  /** Sotib olish kerak, dona (SKU'lar yig'indisi) — `plan.reorderQty`, Rejalashtiruvchi bilan bir xil */
   needOrder: number;
+  /** Rejalashtiruvchi xulosasi (services/plan.ts); arxivdagi mahsulotda yo'q */
+  plan?: StockPlanSummary;
+  /** Kartochkadagi belgilar (Tannarxsiz, Kam qoldiq, Nolikvid…) — server hisoblaydi */
+  flags?: ProductCardFlag[];
   /** Arxivdagi tovar SavdoIQ'da o'chirilgan — ro'yxatlarda va tannarxda ko'rinmaydi */
   hidden: boolean;
   skus: ProductCardSku[];
+}
+
+/**
+ * Mahsulot kartochkasidagi belgi — server qoidasi (apps/api routes/products.ts
+ * `cardFlags`), sayt faqat chizadi:
+ *   noCost   — sotuvdagi (yoki davrda sotilgan) variantlardan birining tannarxi kiritilmagan;
+ *   lowStock — Rejalashtiruvchida "Kritik": bugun buyurtma berilsa ham tovar kelguncha tugaydi;
+ *   illiquid — qoldiq bor, 30 kun sotuv yo'q va tovar katalogda 30 kundan beri (Nolikvid sahifasi bilan bir xil chegara);
+ *   excess   — eng tez tugaydigan variant ham 90 kundan ortiqqa yetadi (STOCK_THRESHOLDS.excess);
+ *   loss     — davrda sotuv bor, sof foyda manfiy.
+ */
+export type ProductCardFlag = 'noCost' | 'lowStock' | 'illiquid' | 'excess' | 'loss';
+
+/**
+ * Mahsulot sahifasidagi "Sifat" kartasi (GET /products/:id `quality`).
+ * Qaytarish — "Qaytarishlar" sahifasi va Boshqaruv panelidagi kartadagi
+ * AYNAN o'sha ta'rif (apps/api services/returns.ts splitLine, realReason,
+ * returnsRate), faqat shu mahsulot SKU'lari bo'yicha va tanlangan davrda.
+ */
+export interface ProductQualityStats {
+  /** Davrda xaridor qaytargan dona (bekor qilinganlar kirmaydi) */
+  returnedUnits: number;
+  /** Davrda bekor qilingan dona */
+  canceledUnits: number;
+  /** Xaridor qabul qilgan dona — qaytarish ulushining asosi */
+  handedUnits: number;
+  /** Qaytarish ulushi, %: qaytgan ÷ (qabul qilingan + qaytgan) */
+  returnRate: number;
+  /** Eng ko'p qaytarish sababi (asl matn; "sabab ko'rsatilmagan" kirmaydi); bo'lmasa null */
+  topReason: { raw: string; qty: number; share: number } | null;
+  /** 1–2 yulduzli sharhlar (barcha vaqt — Uzum sharhlari davrga bog'lanmaydi) */
+  negativeReviews: number;
 }
 
 export interface ProductsResponse {
@@ -633,6 +827,13 @@ export interface ProductsResponse {
     /** O'chirilgan (yashirilgan) tovarlar soni — qidiruv hisobga olingan */
     hidden: number;
   };
+  /**
+   * "Buyurtma kerak" va "yetadi" shu muddatlar bilan hisoblangan — kompaniya
+   * sozlamasi (Rejalashtiruvchi) yoki so'rovdagi aniq ?cover=. Sahifa
+   * zaxira davrini o'zi tanlamaydi: Mahsulotlar va Rejalashtiruvchi bir xil
+   * son ko'rsatsin (2026-10-24).
+   */
+  planner?: PlannerSettings;
   items: Paginated<ProductCard>;
 }
 
@@ -662,9 +863,68 @@ export interface ProductProfitMoney {
   netProfit: number;
 }
 
-export interface ProductProfitRow extends ProductProfitMoney {
+/**
+ * Xarid foizi — Sotuv voronkasi bilan AYNAN bir xil ta'rif (routes/funnel.ts,
+ * services/returns.ts splitLine): xaridor qabul qilgan dona ÷ yakunlangan dona
+ * (qabul qilingan + bekor qilingan + qaytgan). Yo'ldagi dona foizga kirmaydi;
+ * yakunlangani bo'lmasa `buyoutRate` null ("—") — "0%" sotuvchini "hech kim
+ * olmadi" deb chalg'itardi. Maydon nomlari ProductCard'dagi bilan bir xil —
+ * saytdagi `useBuyout` ikkalasini ham bir xil o'qiydi.
+ */
+export interface ProductProfitBuyout {
+  buyoutRate: number | null;
+  /** Xaridor qabul qilgan dona */
+  buyoutUnits: number;
+  /** Yakunlangan dona: qabul qilingan + bekor + qaytgan */
+  completedUnits: number;
+  /** Hali yo'ldagi dona — foizga kirmaydi */
+  transitUnits: number;
+}
+
+/**
+ * Mahsulotning muammo belgisi. Server hisoblaydi (services/product-profit.ts):
+ * sahifadagi bo'limlar (tablar), ularning sanog'i, Excel'dagi "Muammo" ustuni
+ * va "E‘tibor talab qiladi" kartalari bitta qoidadan chiqadi. Chegaralar
+ * javobdagi `thresholds` da.
+ *   loss      — sof foyda manfiy (reklama ayirilgandan keyin);
+ *   lowMargin — sotuv bor, zarar yo'q, lekin marja `thresholds.lowMargin` dan past;
+ *   noCost    — sotilgan variantlardan kamida birining tannarxi kiritilmagan;
+ *   lowBuyout — xarid foizi do'kon o'rtachasidan kamida `thresholds.buyoutGap`
+ *               p.p. past (kamida `thresholds.buyoutMinCompleted` yakunlangan dona).
+ */
+export type ProductProfitFlag = 'loss' | 'lowMargin' | 'noCost' | 'lowBuyout';
+
+/** Mahsulotning bitta SKU varianti (rang, o'lcham) — jadvalda qator ochilganda */
+export interface ProductProfitVariant extends ProductProfitBuyout {
+  skuId: string;
+  /** Sotuvchi SKU kodi */
+  sku: string;
+  /** SKU'ning to'liq nomi */
+  title: string;
+  /** Variant qismi (rang, o'lcham); SKU nomi mahsulot nomini takrorlasa null */
+  variant: string | null;
+  /** Sotilgan dona (bekor va qaytarilganlarsiz) */
+  units: number;
+  revenue: number;
+  /** Tannarx (sotib olish narxi × dona); sotuv bor-u 0 bo'lsa — kiritilmagan */
+  cogs: number;
+  /** Reklama ayirilgan sof foyda */
+  netProfit: number;
+  /** Bir donaga sof foyda; sotuv bo'lmasa 0 */
+  perUnitProfit: number;
+  margin: number;
+  /** Variantning o'z belgilari — mahsulotnikidek qoida (noCost — aynan shu variant tannarxsiz) */
+  flags: ProductProfitFlag[];
+  /** Qidiruv uchun (shared search.ts): shtrix-kod va Uzum SKU ID */
+  barcode?: string | null;
+  uzumSkuId?: string | null;
+}
+
+export interface ProductProfitRow extends ProductProfitMoney, ProductProfitBuyout {
   /** Ichki mahsulot id'si — tafsilot sahifasiga havola */
   productId: string;
+  /** Uzum mahsulot ID'si — qidiruv uchun (kartochkadagi "ID: 701009") */
+  uzumProductId?: string | null;
   title: string;
   category: string | null;
   imageUrl: string | null;
@@ -680,12 +940,52 @@ export interface ProductProfitRow extends ProductProfitMoney {
   roi: number;
   /** Bir donaga: shu davrdagi o'rtacha (jami ÷ dona); sotuv bo'lmasa 0 */
   perUnit: ProductProfitMoney;
+  /** Muammo belgilari — bo'limlar, ularning sanog'i va eksport shundan */
+  flags: ProductProfitFlag[];
+  /**
+   * Davrda harakati bo'lgan SKU variantlari, sof foyda bo'yicha kamayish
+   * tartibida. Pul maydonlari variantlarniki yig'indisiga so'mgacha teng.
+   */
+  variants: ProductProfitVariant[];
 }
+
+interface ProductProfitAttentionOf<K extends string, V> {
+  kind: K;
+  productId: string;
+  /**
+   * Matn uchun raqamlar: so'm — butun, foiz — 2 xonagacha, dona. Matnning
+   * o'zi saytda i18n'dan yig'iladi (uch tilda). `impact` — kartalar shu pul
+   * ta'siri (so'm) bo'yicha tartiblangan.
+   */
+  values: V & { impact: number };
+}
+
+/**
+ * "E‘tibor talab qiladi" kartasi. `more` — shu muammoli yana nechta mahsulot
+ * bor (bo'limda ko'rinadi).
+ */
+export type ProductProfitAttention =
+  /** Eng katta sof foyda — tannarxi to'liq, reklama ayirilgan; `share` — foydali mahsulotlar foydasidagi ulushi, % */
+  | ProductProfitAttentionOf<'profitLeader', { netProfit: number; margin: number; share: number }>
+  /** Eng ko'p sotilgan (dona); `share` — sotilgan donalardagi ulushi, % */
+  | ProductProfitAttentionOf<'topSeller', { units: number; share: number; perUnit: number }>
+  /** Xarid foizi do'kon o'rtachasidan past; `lost` — bekor qilingan va qaytgan dona */
+  | ProductProfitAttentionOf<'lowBuyout', { rate: number; storeRate: number; gap: number; lost: number; more: number }>
+  /** Sotuv bor, lekin marja deyarli nol */
+  | ProductProfitAttentionOf<'checkEconomics', { margin: number; revenue: number; perUnit: number; more: number }>
+  /** Tannarxsiz sotilgan dona va ularning tushumi; `skus` — tannarxsiz variantlar */
+  | ProductProfitAttentionOf<'noCost', { units: number; revenue: number; skus: number; more: number }>
+  /** Zarar (manfiy); `ads` — shu mahsulot reklamasi */
+  | ProductProfitAttentionOf<'lossMaker', { netProfit: number; perUnit: number; ads: number; more: number }>;
+
+export type ProductProfitAttentionKind = ProductProfitAttention['kind'];
 
 export interface ProductProfitResponse {
   period: Period;
   currency: string;
-  totals: ProductProfitMoney & { units: number; orders: number; products: number; margin: number; roi: number };
+  /** Jadvaldagi barcha mahsulotlar bo'yicha; xarid foizi — "do'kon o'rtachasi" */
+  totals: ProductProfitMoney &
+    ProductProfitBuyout & { units: number; orders: number; products: number; margin: number; roi: number };
   rows: ProductProfitRow[];
   /**
    * Mahsulotga bog'lab bo'lmaydigan davr xarajatlari: omborga logistika, umumiy
@@ -693,11 +993,340 @@ export interface ProductProfitResponse {
    * do'konning sof foydasi chiqadi (Boshqaruv panelidagi bilan bir xil).
    */
   unallocated: number;
+  /** "E‘tibor talab qiladi" — eng ko'pi 4 ta, har biri boshqa tur va boshqa mahsulot */
+  attention: ProductProfitAttention[];
+  /** `flags` chegaralari — saytdagi izohlar shu raqamlarni ko'rsatadi */
+  thresholds: {
+    /** Past marja, % */
+    lowMargin: number;
+    /** "Iqtisodini tekshiring" kartasi uchun deyarli nol marja, % */
+    nearZeroMargin: number;
+    /** Past xarid: do'kon o'rtachasidan kamida shuncha p.p. past */
+    buyoutGap: number;
+    /** Past xarid: kamida shuncha yakunlangan dona */
+    buyoutMinCompleted: number;
+  };
+}
+
+// ─────────────────────────── O'sish: Kategoriyalarim ───────────────────────────
+
+/**
+ * Kategoriya ko'rsatkichlari — FAQAT sotuvchining o'z katalogi va
+ * buyurtmalaridan (apps/api routes/categories.ts). Bozor va raqobatchilar
+ * ma'lumoti ATAYLAB yo'q: SavdoIQ Uzum'dan faqat sotuvchining o'z kaliti
+ * beradigan ma'lumotni oladi, boshqa saytlarni o'qimaydi (2026-10-24).
+ *
+ *  • pul (tushum, komissiya, sof foyda, marja) — "Mahsulot foydasi" bilan
+ *    BITTA hisob (services/product-profit.ts): kategoriyalar yig'indisi o'sha
+ *    sahifadagi mahsulotlar yig'indisiga so'mgacha teng;
+ *  • qaytarish va bekor qilish ulushi — services/returns.ts ta'rifi
+ *    (`splitLine`, davr buyurtma sanasi bo'yicha);
+ *  • qoldiq va nolikvid qiymati — HOZIRGI holat (davrga bog'liq emas), tannarx bo'yicha.
+ */
+export interface CategoryMetrics {
+  revenue: number;
+  /** Sotilgan dona (bekor qilingan va qaytganlarsiz) */
+  units: number;
+  commission: number;
+  logistics: number;
+  netProfit: number;
+  /** Sof foyda ÷ tushum, % */
+  margin: number;
+  /** Uzum komissiyasining tushumdagi ulushi, %; tushum bo'lmasa null */
+  commissionShare: number | null;
+  /** Davrda buyurtma qilingan barcha dona: sotildi + yo'lda + bekor + qaytdi */
+  orderedUnits: number;
+  returnedUnits: number;
+  canceledUnits: number;
+  /** Qaytgan ÷ (xaridor qabul qilgan + qaytgan), %; asosi bo'lmasa null */
+  returnRate: number | null;
+  /** Bekor qilingan ÷ buyurtma qilingan barcha dona, %; buyurtma bo'lmasa null */
+  cancelRate: number | null;
+}
+
+/** Taqqoslash davridagi qiymatlar — o'sha mahsulotlar HOZIRGI kategoriyasi bo'yicha */
+export interface CategoryPrevious {
+  revenue: number;
+  units: number;
+  netProfit: number;
+  margin: number;
+  returnRate: number | null;
+  /** Do'kon tushumidagi ulushi, % */
+  revenueShare: number;
+}
+
+/**
+ * O'zgarishlar. Taqqoslab bo'lmasa (CategoriesResponse.comparePeriod null) —
+ * hammasi null. Pul va dona — nisbiy, % (shared deltaPct: oldingi qiymat 0
+ * bo'lsa null); marja, qaytarish va ulush — FOIZ PUNKTIDA, ikkala davrda ham
+ * asosi bo'lsagina.
+ */
+export interface CategoryDeltas {
+  revenue: number | null;
+  units: number | null;
+  netProfit: number | null;
+  margin: number | null;
+  returnRate: number | null;
+  revenueShare: number | null;
+}
+
+/** Kategoriyadagi mahsulot — qator ochilganda (eng foydalilari) */
+export interface CategoryProduct {
+  productId: string;
+  title: string;
+  imageUrl: string | null;
+  units: number;
+  revenue: number;
+  netProfit: number;
+  margin: number;
+  /** Kategoriya tushumidagi ulushi, % */
+  share: number;
+  /** Sotilgan variantlardan birining tannarxi kiritilmagan — foyda oshib ko'rinadi */
+  noCost: boolean;
+  /** Sotuvchi katalogdan yashirgan — puli baribir hisobda */
+  hidden: boolean;
+}
+
+export interface CategoryRow extends CategoryMetrics {
+  /** Product.category; null — kategoriyasi ko'rsatilmagan mahsulotlar */
+  category: string | null;
+  /** Do'kon tushumidagi ulushi, % */
+  revenueShare: number;
+  /** Davrda sotilgan (yoki reklamasi yechilgan) mahsulotlar */
+  products: number;
+  /** Faol katalogdagi SKU (arxivdagilarsiz) */
+  skuCount: number;
+  /** Davrda kamida bitta donasi sotilgan SKU */
+  sellingSkus: number;
+  /** Hozirgi qoldiq (dona) va uning tannarx bo'yicha qiymati — "Qoldiqlar" sahifasi bilan bir xil */
+  stockUnits: number;
+  stockValue: number;
+  /** Nolikvid qoldiq qiymati (tannarx) — "Nolikvidlar" sahifasi qoidasi bilan */
+  frozenValue: number;
+  frozenSkus: number;
+  /** Tannarxi kiritilmagan sotuvli mahsulotlar */
+  noCostProducts: number;
+  /**
+   * Taqqoslash davri; taqqoslab bo'lmasa (comparePeriod null) — null. O'sha
+   * davrda kategoriyada harakat bo'lmagan bo'lsa — nollar ("yangi kategoriya").
+   */
+  previous: CategoryPrevious | null;
+  deltas: CategoryDeltas;
+  /** Eng foydali mahsulotlar, sof foyda bo'yicha (eng ko'pi `thresholds.topProducts` ta) */
+  topProducts: CategoryProduct[];
+  /** `topProducts` dan tashqarida yana nechta sotuvli mahsulot bor */
+  moreProducts: number;
+}
+
+export interface CategoryTotals extends CategoryMetrics {
+  categories: number;
+  products: number;
+  skuCount: number;
+  sellingSkus: number;
+  stockUnits: number;
+  stockValue: number;
+  frozenValue: number;
+  frozenSkus: number;
+  noCostProducts: number;
+  previous: Omit<CategoryPrevious, 'revenueShare'> | null;
+  deltas: Omit<CategoryDeltas, 'revenueShare'>;
+}
+
+/** GET /growth/categories — davr, do'kon va taqqoslash filtri boshqa sahifalardagidek */
+export interface CategoriesResponse {
+  period: Period;
+  /** Taqqoslash davri (services/pnl.ts comparablePeriod); tarixdan tashqarida bo'lsa null */
+  comparePeriod: Period | null;
+  currency: string;
+  totals: CategoryTotals;
+  /** Sof foyda bo'yicha kamayish tartibida */
+  rows: CategoryRow[];
+  /**
+   * Mahsulotga bog'lab bo'lmaydigan davr xarajatlari ("Mahsulot foydasi"
+   * bilan bir xil) — kategoriyalar sof foydasiga kirmaydi.
+   */
+  unallocated: number;
+  thresholds: {
+    /** Nolikvid: shuncha kundan beri sotilmagan */
+    illiquidDays: number;
+    /** ...yoki qoldiq shuncha kundan ortiqqa yetadi */
+    excessDays: number;
+    topProducts: number;
+  };
+}
+
+// ─────────────────────────── O'sish: Mening radarim ───────────────────────────
+
+/**
+ * Radar signallari — sotuvchining o'z SKU'lari bo'yicha, faqat bizning
+ * bazadagi sotuv va qoldiqdan (apps/api routes/radar.ts):
+ *  accelerating  — so'nggi 7 kun tezligi oldingi 28 kundagidan ancha yuqori;
+ *  slowing       — ancha past (tovar shu 7 kun davomida omborda bo'lgan);
+ *  newStars      — yaqinda birinchi marta sotilgan va tez sotilayotgan;
+ *  stockout      — Rejalashtiruvchi hisobi: tovar kelguncha yoki tez orada tugaydi;
+ *  returnsRising — qaytarish ulushi oldingi 28 kunga nisbatan o'sgan.
+ */
+export type RadarSignalKind = 'accelerating' | 'slowing' | 'newStars' | 'stockout' | 'returnsRising';
+
+/**
+ * 'noHistory' — taqqoslash oynasi saqlangan tarixdan tashqarida;
+ * 'stale' — oxirgi muvaffaqiyatli sinxron kechagi kunni to'liq qamramaydi
+ *           (yo'q sotuv "sekinlashish" bo'lib ko'rinardi);
+ * 'locked' — tarifda yopiq (`count` baribir aytiladi, qatorlar yo'q).
+ */
+export type RadarSignalState = 'ready' | 'noHistory' | 'stale' | 'locked';
+
+export interface RadarSkuRef {
+  skuId: string;
+  productId: string;
+  sku: string;
+  /** Mahsulot nomi */
+  title: string;
+  /** Variant (rang, o'lcham); SKU nomi mahsulot nomini takrorlasa null */
+  variant: string | null;
+  imageUrl: string | null;
+  category: string | null;
+  /** Oxirgi 35 to'liq savdo kunidagi sotuv (dona), eng eskisi birinchi — kichik grafik uchun */
+  daily: number[];
+}
+
+export interface RadarVelocityRow extends RadarSkuRef {
+  /** So'nggi 7 kun: sotilgan dona va kunlik tezlik */
+  recentUnits: number;
+  recentRate: number;
+  /** Oldingi 28 kun: dona va tezlik — tovar sotuvda bo'lgan kunlar bo'yicha (services/demand.ts) */
+  prevUnits: number;
+  prevRate: number;
+  prevInStockDays: number;
+  /** Tezlik o'zgarishi, % */
+  changePct: number;
+  /** Kunlik tushum farqi, so'm: (yangi − eski tezlik) × o'rtacha sotuv narxi */
+  revenuePerDay: number;
+  /** Hozirgi qoldiq va u necha kunga yetadi (Rejalashtiruvchi hisobi) */
+  stock: number;
+  daysLeft: number | null;
+}
+
+export interface RadarNewStarRow extends RadarSkuRef {
+  /** Birinchi sotuv — Toshkent savdo kuni */
+  firstSaleDate: string;
+  daysOnSale: number;
+  units: number;
+  revenue: number;
+  /** Kunlik tezlik (sotuvda bo'lgan kunlar bo'yicha) */
+  rate: number;
+  stock: number;
+  daysLeft: number | null;
+}
+
+/** Rejalashtiruvchining o'z qatori (services/plan.ts) — raqamlar /planner bilan bir xil */
+export interface RadarStockoutRow extends RadarSkuRef {
+  status: 'critical' | 'ending';
+  stock: number;
+  inbound: number;
+  avgDaily: number;
+  daysLeft: number | null;
+  stockoutDate: string | null;
+  orderBy: string | null;
+  orderInDays: number | null;
+  recommendedQty: number;
+  lostRevenue: number;
+}
+
+export interface RadarReturnsRow extends RadarSkuRef {
+  /** Qaytarish ulushi, % — qaytgan ÷ (xaridor qabul qilgan + qaytgan), services/returns.ts ta'rifi */
+  recentRate: number;
+  prevRate: number;
+  /** Foiz punktida */
+  deltaPp: number;
+  recentReturned: number;
+  /** Ulush asosi: xaridor qabul qilgan + qaytgan dona */
+  recentBase: number;
+  prevReturned: number;
+  prevBase: number;
+  /** So'nggi oynada qaytgan donalar summasi (sotuv narxida), so'm */
+  returnedAmount: number;
+  /** Eng ko'p uchragan haqiqiy sabab (Uzum asl matni); sababsizlari hisobga olinmaydi */
+  topReason: string | null;
+}
+
+export interface RadarSignal<R> {
+  state: RadarSignalState;
+  /** Shartga tushgan SKU'lar soni; qatorlar — eng muhimlari (eng ko'pi `thresholds.maxRows`) */
+  count: number;
+  rows: R[];
+  /**
+   * Bo'lim tarifda faqat ko'rish uchun ochiq ('preview'): qatorlar eng
+   * muhim bir nechtasi bilan cheklangan — Rejalashtiruvchining o'z namunasi
+   * (GET /planner/preview) kabi. Qolgani pullik tarifda.
+   */
+  limited?: boolean;
+}
+
+/** Chegaralar — sayt izohlari shu raqamlarni ko'rsatadi */
+export interface RadarThresholds {
+  /** Tezlashish: so'nggi 7 kunda kamida shuncha dona va tezlik kamida shuncha % yuqori */
+  accelMinUnits: number;
+  accelMinPct: number;
+  /** Sekinlashish: oldingi 28 kunda kamida shuncha dona va tezlik kamida shuncha % past */
+  slowMinPrevUnits: number;
+  slowMinPct: number;
+  /** Taqqoslash oynasida tovar kamida shuncha kun sotuvda bo'lgan */
+  minInStockDays: number;
+  /** Yangi: birinchi sotuvdan beri ko'pi bilan shuncha kun, kamida shuncha dona */
+  newDays: number;
+  newMinUnits: number;
+  /** Yangi yulduz tezligi chegarasi (dona/kun) — do'kondagi eski SKU'lar tezligining yuqori choragi */
+  newMinRate: number;
+  /** Qaytarish: har ikki oynada asos kamida, so'nggisida qaytgan kamida, o'sish kamida (p.p.) */
+  returnsMinBase: number;
+  returnsMinReturned: number;
+  returnsMinPp: number;
+  maxRows: number;
+}
+
+/** GET /growth/radar — davr tanlagichiga bog'liq emas: oynalar oxirgi to'liq savdo kuni bilan tugaydi */
+export interface RadarResponse {
+  /** Oxirgi to'liq savdo kuni (kecha, Toshkent) */
+  asOf: string;
+  windows: {
+    /** So'nggi 7 kun */
+    recent: Period;
+    /** Undan oldingi 28 kun */
+    previous: Period;
+    returnsRecent: Period;
+    returnsPrevious: Period;
+    /** Shu kundan boshlab birinchi marta sotilgan SKU — "yangi" */
+    newSince: string;
+  };
+  /** Kompaniyaning yetkazish muddati (Rejalashtiruvchi sozlamasi), kun */
+  leadDays: number;
+  /** Faol katalogdagi SKU va ulardan oxirgi 35 kunda sotilgani */
+  skus: number;
+  sellingSkus: number;
+  accelerating: RadarSignal<RadarVelocityRow>;
+  slowing: RadarSignal<RadarVelocityRow>;
+  newStars: RadarSignal<RadarNewStarRow>;
+  stockout: RadarSignal<RadarStockoutRow>;
+  returnsRising: RadarSignal<RadarReturnsRow>;
+  thresholds: RadarThresholds;
 }
 
 // ─────────────────────────── ABC tahlil ───────────────────────────
 
-export interface AbcRow {
+/**
+ * Qatordagi qidiruv kalitlari: mahalliy qidiruvli jadvallar (ABC, Qoldiqlar)
+ * nom va SKU kodidan tashqari shtrix-kod, Uzum SKU va mahsulot ID'si bo'yicha
+ * ham topadi — server bilan bir xil qoida (shared search.ts, 2026-10-24).
+ */
+export interface SkuSearchKeys {
+  productId?: string;
+  uzumProductId?: string | null;
+  barcode?: string | null;
+  uzumSkuId?: string | null;
+}
+
+export interface AbcRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;
@@ -748,7 +1377,7 @@ export interface IlliquidResponse {
 
 // ─────────────────────────── Qoldiqlar / ombor ───────────────────────────
 
-export interface StockRow {
+export interface StockRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;
@@ -770,9 +1399,14 @@ export interface StockRow {
   payoutSource: 'sales' | 'estimate';
   /** Kutilayotgan foyda: tushum − tannarx − soliq; tannarx kiritilmagan bo'lsa null */
   profitValue: number | null;
+  /** Kunlik sotuv — Rejalashtiruvchi tezligi (tugab turgan kunlarsiz); rejada yo'q SKU'da 30 kunlik o'rtacha */
   avgDaily: number;
+  /** Qoldiq (yo'ldagisi bilan) necha kunga yetadi — Rejalashtiruvchi hisobi */
   daysLeft: number | null;
+  /** critical/low — Rejalashtiruvchidagi "Kritik"/"Buyurtma vaqti" (yetkazish muddati bilan); excess/dead — qoldiq qoidasi */
   status: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
+  /** "Buyurtma kerak" — Rejalashtiruvchi hisobi (services/plan.ts); arxivdagi SKU'da yo'q */
+  plan?: StockPlanSummary;
 }
 
 export interface StocksResponse {
@@ -825,9 +1459,25 @@ export interface PlannerRow {
   orderBy: string | null;
   /** `orderBy` gacha qolgan kun; 0 va manfiy — bugun berish kerak yoki kechikilgan */
   orderInDays: number | null;
-  /** tanlangan zaxira davri uchun kerakli miqdor */
+  /**
+   * SOTIB OLISH kerak (dona): yetkazish muddati + zaxira davri talabidan butun
+   * ta'minot (FBO + FBS + o'z ombori + yo'ldagi) ayirmasi. Mahsulotlar,
+   * Qoldiqlar va "Bugun nima qilish kerak" ham aynan shu sonni ko'rsatadi
+   * (apps/api services/plan.ts).
+   */
   recommendedQty: number;
+  /** `recommendedQty` × (tannarx + qo'shimcha xarajat) */
   purchaseCost: number;
+  /** Uzum omboridagi (FBO) qoldiq — `stock` ning bir qismi */
+  fbo: number;
+  /** O'z ombori + FBS, band qilingani ayirilgan: FBO'ga jo'natsa bo'ladigan dona */
+  shippable: number;
+  /**
+   * "Ombordan FBO'ga jo'nating" (dona): FBO'ga kerakli miqdorning (talab − FBO −
+   * yo'ldagi) `shippable` qoplay oladigan qismi. Qoplay olmagani — `recommendedQty`.
+   * Yetkazma qoralamasiga faqat shu miqdor tushadi.
+   */
+  shipQty: number;
   /**
    * critical — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
    * ending — buyurtma kuni yetdi yoki bir hafta ichida;
@@ -861,17 +1511,133 @@ export interface PlannerResponse {
     lostPast: number;
     /** Buyurtma kuni yetgan yoki o'tgan SKU'lar soni */
     orderNow: number;
+    /** Sotib olinadigan jami dona (`recommendedQty` yig'indisi) */
+    buyUnits: number;
+    /** O'z ombori/FBS dan FBO'ga jo'natiladigan SKU'lar va dona — "{n} SKU bo'yicha yetkazma" */
+    shipSkus: number;
+    shipUnits: number;
+    /** Shulardan buyurtma kuni yetgan yoki o'tganlari — "Faqat shoshilinchlar" */
+    urgentShipSkus: number;
   };
   rows: PlannerRow[];
 }
 
+/**
+ * Rejalashtiruvchi sozlamasi — KOMPANIYA darajasida (CompanySetting
+ * 'planner.leadDays' va 'planner.coverDays'). Rejalashtiruvchi, "Bugun nima
+ * qilish kerak", Mahsulotlar va Qoldiqlar shu qiymatlar bilan hisoblaydi.
+ * Ilgari yetkazish muddati faqat brauzerda saqlanardi, server esa hamma
+ * joyda 7 kun deb olardi (2026-10-24).
+ */
+export interface PlannerSettings {
+  /** Yetkazib berish muddati, kun: buyurtmadan Uzum omboriga tushgunicha */
+  leadDays: number;
+  /** Zaxira davri, kun: qoldiq necha kunga yetishi kerak */
+  coverDays: number;
+}
+
+export interface PlannerSettingsResponse extends PlannerSettings {
+  defaults: PlannerSettings;
+  limits: { leadMin: number; leadMax: number; coverMin: number; coverMax: number };
+  /** Kompaniya o'zi saqlaganmi (aks holda — standart qiymatlar) */
+  saved: boolean;
+  updatedAt: string | null;
+}
+
+/** Bir bosishda yetkazma: 'needed' — jo'natiladigan hamma SKU, 'urgent' — buyurtma kuni yetganlari */
+export type PlannerDraftScope = 'needed' | 'urgent';
+
+/** POST /planner/shipment-draft javobi: qoralama + unga KIRMAGAN sotib olish qismi */
+export interface PlannerDraftResponse extends ShipmentRow {
+  /** Jo'natadigan tovari yo'q (faqat sotib olish kerak) — qoralamaga kirmagan SKU'lar */
+  skipped: number;
+  /** Tanlangan SKU'lar bo'yicha sotib olish kerak: SKU va dona (yetkazmaga KIRMAYDI) */
+  buySkus: number;
+  buyUnits: number;
+}
+
+/** Sinov tarifidagi namuna: sotuvchining o'z eng shoshilinch SKU'lari, qolgani xiralashgan */
+export interface PlannerPreviewResponse {
+  leadDays: number;
+  coverDays: number;
+  counts: PlannerResponse['counts'];
+  totals: PlannerResponse['totals'];
+  rows: PlannerRow[];
+  /** Ko'rsatilmagan, rejadagi (sotuvi bor) qolgan SKU'lar */
+  more: number;
+}
+
+/**
+ * "Buyurtma kerak" xulosasi — bitta SKU yoki butun mahsulot bo'yicha, Rejalashtiruvchi
+ * qatori bilan AYNAN bir xil hisob (apps/api services/plan.ts planSku / planProduct)
+ * va kompaniyaning yetkazish muddati / zaxira davri bilan.
+ *
+ * Mahsulotda holat va "yetadi" — eng shoshilinch sotiladigan SKU'niki, miqdorlar —
+ * SKU'lar yig'indisi. Ilgari jami qoldiq jami tezlikka bo'linardi: "Paxta choyshab
+ * 22 kunga yetadi", kulrang varianti esa 0 da va kritik edi (2026-10-24).
+ */
+export interface StockPlanSummary {
+  status: PlannerRow['status'];
+  daysLeft: number | null;
+  stockoutDate: string | null;
+  orderBy: string | null;
+  orderInDays: number | null;
+  /** Sotib olish kerak, dona — Rejalashtiruvchidagi "Tavsiya" */
+  reorderQty: number;
+  /** O'z ombori / FBS dan FBO'ga jo'natish, dona */
+  shipQty: number;
+  purchaseCost: number;
+  /** Bugun buyurtma berilsa ham tovar kelguncha yo'qotiladigan tushum */
+  lostRevenue: number;
+  /** Kunlik sotuv tezligi (tugab turgan kunlarsiz) */
+  avgDaily: number;
+  inbound: number;
+  /** Kritik SKU'lar soni (SKU'ning o'zida 0 yoki 1) */
+  criticalSkus: number;
+  /** Hisobga kirgan SKU'lar (arxivdagilar kirmaydi) */
+  skus: number;
+  leadDays: number;
+  coverDays: number;
+}
+
 // ─────────────────────────── Oylik hisobot ───────────────────────────
+
+/**
+ * Oylik hisobot yakuniymi (2026-10-24). Joriy oy, yoki buyurtma qilingan
+ * donaning sezilarli qismi hali xaridorga yetib bormagan oy — ORALIQ: yo'ldagi
+ * tovar hali bekor bo'lishi yoki qaytishi mumkin, raqamlar o'zgaradi. Sotuvchi
+ * faylni buxgalterga yuborganda qaysi biri ekanini bilishi kerak.
+ */
+export interface MonthlyReportFinality {
+  status: 'final' | 'preliminary';
+  /** Nega oraliq: 'current' — davr hali tugamagan, 'in_transit' — yakunlangan ulush chegaradan past; yakuniyda null */
+  reason: 'current' | 'in_transit' | null;
+  /** Taqdiri hal bo'lgan dona ÷ buyurtma qilingan dona, % (buyurtma bo'lmasa 100) */
+  completionPct: number;
+  /** Yakuniy deb hisoblash chegarasi, % */
+  thresholdPct: number;
+  /** Davrda buyurtma qilingan barcha dona (bekor va qaytganlar bilan) */
+  orderedUnits: number;
+  /** Xaridor qabul qilgan, bekor qilingan yoki qaytgan dona */
+  completedUnits: number;
+  /** Hali xaridorga yetib bormagan dona */
+  inTransitUnits: number;
+}
 
 export interface MonthlyReportResponse {
   period: Period;
   revenue: number;
   grossProfit: number;
+  /** Sof foyda — davr xarajatlaridan keyin, Boshqaruv panelidagi bilan bir xil ta'rif */
   netProfit: number;
+  /** To'lov — Uzum o'tkazadigan summa (tushum − komissiya − logistika), tirik pozitsiyalar bo'yicha */
+  payout: number;
+  /** Sotilgan tovarlar tannarxi: tushum − tannarx = yalpi foyda */
+  cogs: number;
+  /** Sof marja, % — sahifa ham, Excel fayl ham shu bitta qiymatni ko'rsatadi */
+  margin: number;
+  /** Yakuniy yoki oraliq hisobot */
+  finality: MonthlyReportFinality;
   avgCheck: number;
   ordersTotal: number;
   ordersSuccess: number;
@@ -919,8 +1685,9 @@ export interface FinanceResponse {
   taxAmount: number;
   daily: { date: string; revenue: number; expenses: number; profit: number }[];
   /**
-   * Oldingi teng davr kunma-kun, `daily` bilan o'sha ta'rifda va indeks bo'yicha
-   * tekislangan (DashboardResponse.previousSeries kabi). Tarix yetmasa null.
+   * Taqqoslash davri kunma-kun, `daily` bilan o'sha ta'rifda va indeks bo'yicha
+   * tekislangan (DashboardResponse.previousSeries kabi — uzunligi rejimga qarab
+   * joriy davrdan farq qilishi mumkin). Tarix yetmasa null.
    */
   previousDaily?: { date: string; revenue: number; expenses: number; profit: number }[] | null;
   /** `previousDaily` qaysi kunlar; taqqoslab bo'lmasa null */
@@ -1481,6 +2248,111 @@ export interface StorageResponse {
   rows: Paginated<StorageRow>;
 }
 
+/**
+ * Pullik saqlash AYLANMA bo'yicha (GET /warehouse/storage/turnover) — Uzum
+ * qo'llanmasi, 01.06.2026 dan (tariffs.ts). Aylanma = oxirgi 15 kunlik
+ * o'rtacha kunlik FBO qoldig'i ÷ o'rtacha kunlik sotuv:
+ *   free      — aylanma 60 kungacha, bepul;
+ *   near      — aylanma 45–60: hozircha bepul, sotuv sekinlashsa yoki tovar
+ *               qo'shilsa pullik bo'ladi;
+ *   paid      — aylanma 60 dan oshgan, to'lov hisoblanadi;
+ *   new_free  — yangi SKU bepul davrida (30 yoki 60 kun);
+ *   no_volume — aylanma 60 dan oshgan, lekin hajmi noma'lum: summa o'ylab
+ *               topilmaydi, "hajm yo'q" deb ko'rsatiladi.
+ */
+export type StorageTurnoverStatus = 'free' | 'near' | 'paid' | 'new_free' | 'no_volume';
+
+/** Aylanma guruhi: free — 60 kungacha, tier1 — 61–180, tier2 — 181–360, tier3 — 361+ (yoki sotuv yo'q) */
+export type StorageTurnoverTier = 'free' | 'tier1' | 'tier2' | 'tier3';
+
+/** Qidiruv kalitlari (SkuSearchKeys) — sahifa jadvalni o'zi qidiradi, shtrix-kod va Uzum ID bo'yicha ham */
+export interface StorageTurnoverRow extends SkuSearchKeys {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  storeId: string;
+  /** Mahsulot toifasi (Uzum bergan nom) — tarif turi shundan aniqlanadi */
+  category: string | null;
+  /** Qo'llangan tarif: imtiyozli (kiyim, poyabzal...) yoki oddiy — toifa nomidan, taxminiy */
+  tariffKind: 'standard' | 'reduced';
+  /** Hozirgi FBO qoldig'i (Uzum omborida), dona — to'lov shundan olinadi */
+  stock: number;
+  /** Oynadagi o'rtacha kunlik FBO qoldig'i, dona */
+  avgStock: number;
+  /** O'rtacha qoldiq necha kunlik yozuvdan; 15 dan kam — qoldiq tarixi hali to'liq yig'ilmagan */
+  stockDays: number;
+  /** Oynada sotilgan dona (bekor qilingan va qaytarilganlarsiz) */
+  sold: number;
+  /** O'rtacha kunlik sotuv = sotilgan ÷ 15 */
+  avgDaily: number;
+  /** Aylanma, kun (yuqoriga yaxlitlangan); null — oynada sotuv yo'q (361+ guruh) */
+  turnoverDays: number | null;
+  tier: StorageTurnoverTier;
+  /** Hisobga olinadigan litr (yuqoriga yaxlitlangan); 0 — hajm noma'lum */
+  liters: number;
+  /** Joriy guruh stavkasi, so'm / litr / kun (bepul guruhda 0) */
+  rate: number;
+  /** Bir dona uchun kunlik to'lov (chegara bilan); hajm noma'lum bo'lsa null */
+  perItemDay: number | null;
+  status: StorageTurnoverStatus;
+  /** Bugungi to'lov prognozi, so'm; hajm noma'lum bo'lsa null */
+  feeToday: number | null;
+  /** Bugundan boshlab 30 kun: joriy sotuv sur'atida, yangi yetkazmasiz; hisoblab bo'lmasa null */
+  fee30d: number | null;
+  /** Shu 30 kun ichida to'lov boshlanadigan kun (0 — bugun); null — boshlanmaydi */
+  paidFromDay: number | null;
+  /** Aylanmani 60 kunga qaytarish uchun sotish yoki olib chiqish kerak: qoldiq − 60 × kunlik sotuv */
+  excessUnits: number;
+  /** Sotuvda necha kun — eng erta dalil (katalogga qo'shilgan kun yoki birinchi buyurtma); `ageKnown` false bo'lsa — kamida shuncha */
+  daysOnSale: number;
+  /**
+   * Yoshi aniqmi: SKU do'kon SavdoIQ'ga ulangandan KEYIN paydo bo'lgan. Ulanish
+   * paytida bor tovarning Uzumdagi haqiqiy yoshi noma'lum — unga bepul davr
+   * qo'llanmaydi (to'lov ko'rsatiladi, yashirilmaydi).
+   */
+  ageKnown: boolean;
+  /** Yangi SKU bepul kunlari: 30, qo'llanmaning 2-ilovasidagi toifalarda 60 */
+  newSkuFreeDays: number;
+  /** new_free: shu kungacha (shu jumladan) bepul */
+  freeUntil: string | null;
+  /** Uzum oxirgi 30 kunda shu SKU uchun haqiqatda ushlagan saqlash to'lovi (StorageFee), so'm */
+  actual30d: number;
+}
+
+export interface StorageTurnoverResponse {
+  /** Hisob kuni (Toshkent) */
+  date: string;
+  /** Aylanma oynasi — tugagan 15 kun: [bugun − 15, kecha] */
+  window: Period;
+  rules: {
+    /** Shu aylanmagacha bepul (60) */
+    freeTurnoverDays: number;
+    /** "Tez orada pullik" shu aylanmadan boshlanadi (45) */
+    nearFromDays: number;
+    windowDays: number;
+    projectionDays: number;
+    /** Tariflar amalga kirgan sana */
+    effectiveFrom: string;
+  };
+  totals: {
+    /** FBO qoldig'i bor SKU'lar */
+    skus: number;
+    byStatus: Record<StorageTurnoverStatus, number>;
+    /** Prognoz: bugun va 30 kun (hajmi noma'lumlar kirmaydi) */
+    feeToday: number;
+    fee30d: number;
+    fee30dByStatus: Record<StorageTurnoverStatus, number>;
+    excessUnits: number;
+    /** Uzum haqiqatda ushlagan: oxirgi 30 kun va oxirgi to'lov kuni (StorageFee) */
+    actual30d: number;
+    actualLastDay: number;
+    actualLastDate: string | null;
+  };
+  /** Shoshilinchlik tartibida: pullik → hajmi noma'lum → tez orada → yangi → bepul */
+  rows: StorageTurnoverRow[];
+}
+
 // ─────────────────────────── Yetkazmalar ───────────────────────────
 
 export interface ShipmentItemRow {
@@ -1507,6 +2379,72 @@ export interface ShipmentRow {
   /** manual — saytda yaratilgan; uzum — Uzum nakladnoyidan (faqat o'qiladi) */
   source: 'manual' | 'uzum';
   items?: ShipmentItemRow[];
+}
+
+// ─────────────────────────── Hajm va VGH (logistika yig'imi) ───────────────────────────
+
+/**
+ * Uzum logistika yig'imini kartochkadagi hajm bo'yicha olyaptimi (tarif —
+ * tariffs.ts `logisticsFee`):
+ *  ok            — Uzum kartochkadagi litr bo'yicha oladi;
+ *  mismatch      — Uzum boshqa litr hisoblayapti (`direction` — ko'p yoki kam);
+ *  no_dimensions — kartochkada o'lcham yo'q: hajmdan qat'i nazar 50 000 so'm;
+ *  insufficient  — davrda yig'im olingan topshirilgan satr yetarli emas.
+ */
+export type VghStatus = 'ok' | 'mismatch' | 'no_dimensions' | 'insufficient';
+
+export interface VghRow {
+  skuId: string;
+  sku: string;
+  title: string;
+  imageUrl: string | null;
+  storeTitle: string;
+  /** Kartochkadagi hajm, litr (0 — o'lcham yo'q) */
+  volumeL: number;
+  /** Tarif hisoblaydigan litr — butun songa yuqoriga; o'lcham yo'q bo'lsa 0 */
+  billableL: number;
+  /** Vazn, gramm (0 — noma'lum). Logistika yig'imiga ta'sir qilmaydi */
+  weightGr: number;
+  /** Kartochkadagi hajm bo'yicha kutilgan yig'im, so'm/dona (o'lchamsiz — 50 000) */
+  expectedFee: number;
+  /** Uzum haqiqatda ushlagan yig'im — davr satrlarining medianasi, so'm/dona; satr yetarli bo'lmasa null */
+  actualFee: number | null;
+  /** Shu yig'imga mos litr; 50 000 (chegara yoki o'lchamsiz tarif) litr bermaydi — null */
+  actualL: number | null;
+  /** Medianaga kirgan satrlar: topshirilgan, qaytarilmagan, yig'im olingan */
+  lines: number;
+  /** Shu satrlardagi dona */
+  units: number;
+  status: VghStatus;
+  /** Faqat mismatch: 'over' — Uzum ko'proq litr hisoblayapti, 'under' — kamroq */
+  direction: 'over' | 'under' | null;
+  /** Dona uchun farq (Uzum oldi − kutilgan), so'm; mos — 0; solishtirib bo'lmasa null */
+  extraPerUnit: number | null;
+  /** Davr uchun farq: extraPerUnit × units */
+  extraTotal: number | null;
+}
+
+export interface VghResponse {
+  period: Period;
+  /** Solishtirish qoidalari — sahifadagi izoh shu qiymatlar bilan yoziladi */
+  rules: {
+    /** Uzum yig'imi shuncha satrdan kam bo'lsa solishtirilmaydi */
+    minLines: number;
+    /** Tarif shu sanadan amalda: undan oldin topshirilgan buyurtmalar kirmaydi */
+    effectiveFrom: string;
+  };
+  totals: {
+    skuCount: number;
+    /** Holatlar bo'yicha SKU soni — holat filtridan qat'i nazar */
+    byStatus: Record<VghStatus, number>;
+    /** mismatch ichida Uzum ko'proq olayotganlari */
+    over: number;
+    /** Ortiqcha to'langan logistika — faqat 'over' SKU'lar bo'yicha, so'm */
+    extraPaid: number;
+    /** Shu ortiqcha to'lov tushgan dona */
+    extraUnits: number;
+  };
+  rows: Paginated<VghRow>;
 }
 
 // ─────────────────────────── Sharhlar ───────────────────────────
@@ -2309,7 +3247,7 @@ export interface ReturnsSummary {
   } | null;
 }
 
-/** GET /dashboard/returns — tanlangan davr va oldingi teng davr */
+/** GET /dashboard/returns — tanlangan davr va taqqoslash davri (`?compare=`, standart — oldingi teng davr) */
 export interface DashboardReturnsResponse {
   period: Period;
   previousPeriod: Period;
@@ -2324,4 +3262,76 @@ export interface DashboardReturnsResponse {
    * bo'lmasa null; ulushlardan birining asosi 0 bo'lsa o'sha kalit null.
    */
   deltaPp: { returned: number | null; canceled: number | null } | null;
+}
+
+// ─────────────────────────── Jamoa va takliflar (/team) ───────────────────────────
+
+export type MemberRole = CompanySummary['role'];
+
+/** GET /company/members — bitta a'zo */
+export interface TeamMemberRow {
+  /** A'zolik yozuvining id'si (PATCH/DELETE /company/members/:id) */
+  id: string;
+  userId: string;
+  name: string;
+  username: string | null;
+  photoUrl: string | null;
+  role: MemberRole;
+  /** Ko'rinish shabloni; egasida doim null */
+  view: MemberView | null;
+  /** So'rov yuborgan foydalanuvchining o'zimi */
+  isSelf: boolean;
+  createdAt: string;
+}
+
+export interface TeamMembersResponse {
+  members: TeamMemberRow[];
+  /** Tarif bo'yicha a'zolar limiti */
+  limit: number;
+  used: number;
+  /** Joriy foydalanuvchi jamoani boshqara oladimi (egasi) */
+  canManage: boolean;
+}
+
+/** Faol taklif havolasi — havolaning o'zi hech qachon qaytarilmaydi (faqat yaratilganda bir marta) */
+export interface TeamInviteRow {
+  id: string;
+  role: Exclude<MemberRole, 'owner'>;
+  view: MemberView | null;
+  createdAt: string;
+  expiresAt: string;
+  /** Kim yaratgan; foydalanuvchi o'chirilgan bo'lsa null */
+  createdBy: string | null;
+}
+
+export interface TeamInvitesResponse {
+  invites: TeamInviteRow[];
+}
+
+/** POST /company/invites — havola FAQAT shu javobda, bir marta */
+export interface TeamInviteCreated {
+  invite: TeamInviteRow;
+  url: string;
+}
+
+/** GET /invites/:token — ochiq oldindan ko'rish (kirmagan foydalanuvchiga ham) */
+export interface InvitePreviewResponse {
+  companyName: string;
+  role: Exclude<MemberRole, 'owner'>;
+  view: MemberView | null;
+  expiresAt: string;
+  /** Taklif qilgan odamning ismi; noma'lum bo'lsa null */
+  inviterName: string | null;
+  /** Kirgan foydalanuvchi allaqachon shu jamoada (kirmagan bo'lsa yo'q) */
+  alreadyMember?: boolean;
+  /** Kirgan foydalanuvchi a'zo bo'lsa — kompaniya id'si (o'tish uchun) */
+  companyId?: string;
+}
+
+/** POST /invites/:token/accept */
+export interface InviteAcceptResponse {
+  companyId: string;
+  companyName: string;
+  role: Exclude<MemberRole, 'owner'>;
+  view: MemberView | null;
 }

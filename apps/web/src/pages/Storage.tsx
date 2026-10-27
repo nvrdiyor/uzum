@@ -11,6 +11,8 @@ import { COST_COLORS } from '@/lib/theme';
 import { FilterBar } from '@/components/filters';
 import { BarsChart, ChartCard } from '@/components/charts';
 import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { SectionHeading } from '@/components/storage/SectionHeading';
+import { TurnoverSection } from '@/components/storage/TurnoverSection';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   Button,
@@ -34,6 +36,8 @@ registerNamespace('storage', {
   uz: {
     title: 'Pullik saqlash',
     subtitle: 'Uzum omborida saqlash xarajati va uning foydangizga ta’siri',
+    'actual.title': 'Uzum ushlagan to‘lov',
+    'actual.subtitle': 'Tanlangan davrdagi haqiqiy saqlash to‘lovlari',
     'kpi.amount': 'Davr uchun saqlash to‘lovi',
     'kpi.amountHint': 'Tanlangan davrdagi jami',
     'kpi.perDay': 'Kunlik o‘rtacha',
@@ -68,6 +72,8 @@ registerNamespace('storage', {
   ru: {
     title: 'Платное хранение',
     subtitle: 'Стоимость хранения на складе Uzum и её влияние на прибыль',
+    'actual.title': 'Удержано Uzum',
+    'actual.subtitle': 'Фактическая плата за хранение за выбранный период',
     'kpi.amount': 'Хранение за период',
     'kpi.amountHint': 'Итого за выбранный период',
     'kpi.perDay': 'В среднем за день',
@@ -102,6 +108,8 @@ registerNamespace('storage', {
   en: {
     title: 'Paid storage',
     subtitle: 'What Uzum warehousing costs you and how it eats into profit',
+    'actual.title': 'Charged by Uzum',
+    'actual.subtitle': 'Actual storage fees for the selected period',
     'kpi.amount': 'Storage fee for the period',
     'kpi.amountHint': 'Total for the selected period',
     'kpi.perDay': 'Daily average',
@@ -304,6 +312,29 @@ export default function Storage() {
 
       <PlanGate feature="paid_storage">
         <div className="space-y-5">
+          {/*
+            Ikki bo'lim: avval bugungi holat (aylanma va tarif — davrga bog'liq
+            emas, Uzum to'lovni har kuni oxirgi 15 kundan hisoblaydi), keyin
+            Uzum tanlangan davrda haqiqatda ushlagan to'lov. Ilgari sahifada
+            faqat ikkinchisi bor edi — qaysi SKU nega pullik bo'lgani va
+            ertaga qancha ketishi ko'rinmasdi (2026-10-24).
+          */}
+          <TurnoverSection storeId={q.storeId} />
+
+          <SectionHeading
+            id="storage-actual-title"
+            className="pt-4"
+            tone="violet"
+            icon={<Coins />}
+            title={t('actual.title')}
+            subtitle={t('actual.subtitle')}
+            meta={
+              <span className="meta-chip tnum">
+                <CalendarRange className="h-3.5 w-3.5" />
+                {f.date(q.from)} — {f.date(q.to)}
+              </span>
+            }
+          />
           {/*
             Ohanglar: saqlash to'lovini Uzum ushlab qoladi — binafsha; kunlik
             sarf — davom etayotgan xarajat (za'faron); hajm — qoldiq (ko'k);

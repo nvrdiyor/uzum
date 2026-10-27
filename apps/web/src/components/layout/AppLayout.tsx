@@ -6,6 +6,10 @@ import { Topbar } from './Topbar';
 import { useUi } from '@/store/ui';
 import { SkeletonRows } from '@/components/ui';
 import { SyncBanner } from './SyncBanner';
+import { PaletteHost } from '@/components/palette/PaletteHost';
+import { PaletteTrigger } from '@/components/palette/PaletteTrigger';
+import { CompanySwitcher } from '@/components/team/CompanySwitcher';
+import { ViewGate } from '@/components/team/ViewGate';
 
 function MobileNav() {
   const open = useUi((s) => s.mobileNav);
@@ -29,7 +33,13 @@ function MobileNav() {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="absolute inset-y-0 left-0 w-[280px] border-r border-line bg-bg-soft"
           >
-            <SidebarContent onNavigate={() => setOpen(false)} />
+            <SidebarContent
+              onNavigate={() => setOpen(false)}
+              // Telefonda profil menyusi tor — kompaniya almashtirgich menyuning tepasida (2+ kompaniyada)
+              top={<CompanySwitcher className="mx-3 mb-2 rounded-xl border border-line bg-surface p-1.5" onDone={() => setOpen(false)} />}
+            />
+            {/* Planshet kengligida yuqori panelda qidiruvga joy qolmasa ham, u shu yerda bir bosishda */}
+            <PaletteTrigger variant="drawer" className="absolute right-3 top-3.5" />
           </motion.aside>
         </div>
       ) : null}
@@ -49,6 +59,8 @@ export function AppLayout() {
     <div className="min-h-screen bg-bg">
       <Sidebar />
       <MobileNav />
+      {/* "Sahifaga o‘tish" oynasi (Ctrl K) — faqat kirgan foydalanuvchi qobig‘ida */}
+      <PaletteHost />
 
       <div
         className="transition-[padding] duration-300 ease-spring"
@@ -80,7 +92,10 @@ export function AppLayout() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               >
-                <Outlet />
+                {/* Ko'rinish shablonida yopiq sahifa o'rniga "Bu bo'lim sizga yopiq" */}
+                <ViewGate>
+                  <Outlet />
+                </ViewGate>
               </motion.div>
             </Suspense>
           </main>

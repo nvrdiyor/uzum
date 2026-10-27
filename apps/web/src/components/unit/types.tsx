@@ -34,7 +34,8 @@ export const DEFAULT_INPUT: UnitCalcInput = {
   otherCost: 0,
   taxPct: DEFAULTS.taxPct,
   buyoutPct: DEFAULTS.buyoutPct,
-  returnLogistics: 10_000,
+  // Uzum qaytgan tovarning logistika yig'imini qaytaradi — bu sotuvchining o'z xarajati
+  returnLogistics: 0,
   qty: 100,
 };
 

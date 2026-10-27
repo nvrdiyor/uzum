@@ -11,6 +11,7 @@ import { BOT_LINK, BOT_USERNAME, EASE, TelegramIcon } from '@/components/landing
 import { AuthShell, BenefitRow, OrDivider } from '@/components/auth/primitives';
 import { CodeInput } from '@/components/auth/CodeInput';
 import { TelegramLoginButton, isTelegramWidgetSupported } from '@/components/auth/TelegramWidget';
+import { pendingInvitePath } from '@/components/team/pendingInvite';
 
 /** Sahifaga xos qo'shimcha kalitlar (asosiy 'auth' lug'ati components/auth/primitives.tsx da) */
 registerNamespace('auth', {
@@ -69,7 +70,10 @@ export default function Login() {
   const [demoAvailable, setDemoAvailable] = useState(true);
   const [refCode] = useState(() => resolveRef(params.get('ref')));
 
-  const target = safePath(params.get('next') ?? (location.state as { from?: string } | null)?.from);
+  // Taklif havolasidan kelgan bo'lsa — kirgach o'sha taklifga qaytamiz (onboarding'ga emas)
+  const target = safePath(
+    params.get('next') ?? (location.state as { from?: string } | null)?.from ?? pendingInvitePath(),
+  );
   const botStartLink = BOT_USERNAME ? `${BOT_LINK}?start=login` : BOT_LINK;
 
   /** Token olindi → sessiyani yuklaymiz va ichkariga o'tamiz */

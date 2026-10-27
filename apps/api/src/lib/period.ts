@@ -1,19 +1,32 @@
 import type { Request } from 'express';
 import {
   businessDayStart,
+  comparePeriodFor,
   getPlan,
+  isCompareMode,
   parseISODate,
   presetPeriod,
-  previousPeriod,
   toBusinessDate,
   addDays,
+  type CompareMode,
   type Period,
   type PlanId,
 } from '@savdoiq/shared';
 
 export interface ResolvedRange {
   period: Period;
+  /**
+   * Taqqoslanadigan davr — `compare` rejimi bo'yicha (shared comparePeriodFor),
+   * tarif chegarasida kesilgan `period` dan hisoblanadi. 'prev' da oldingi teng
+   * davr; 'prevMonth' / 'prevYear' da o'tgan oy (yil)ning o'sha sanalari —
+   * uzunligi joriy davrdan farq qilishi MUMKIN (fevral ↔ mart, butun oy ↔ butun
+   * oy), shuning uchun "previous joriy bilan teng uzunlikda" deb hisoblamang.
+   * Saqlangan tarixdan tashqarida bo'lsa ham shu yerda turadi: taqqoslashga
+   * yaroqliligini services/pnl.ts comparablePeriod hal qiladi.
+   */
   previous: Period;
+  /** `?compare=` rejimi; noma'lum yoki yo'q qiymat — 'prev' (standart so'rov avvalgidek) */
+  compare: CompareMode;
   from: Date;
   to: Date;
   /**
@@ -38,10 +51,12 @@ const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{
 
 /**
  * Query'dan davrni ajratib oladi, tarif tarix chuqurligiga qarab cheklaydi.
- * Standart davr — joriy oy.
+ * Standart davr — joriy oy, standart taqqoslash — oldingi teng davr.
  */
 export function resolveRange(req: Request, plan: PlanId = 'trial'): ResolvedRange {
   const q = req.query as Record<string, string | undefined>;
+  // Takrorlangan (?compare=a&compare=b — massiv) yoki noma'lum qiymat ham 'prev': xato emas, standart
+  const compare: CompareMode = isCompareMode(q.compare) ? q.compare : 'prev';
 
   let period: Period;
   if (q.preset) {
@@ -73,7 +88,8 @@ export function resolveRange(req: Request, plan: PlanId = 'trial'): ResolvedRang
 
   return {
     period,
-    previous: previousPeriod(period),
+    previous: comparePeriodFor(period, compare),
+    compare,
     from,
     to,
     toExclusive: addDays(to, 1),

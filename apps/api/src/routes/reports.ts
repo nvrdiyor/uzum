@@ -1,463 +1,41 @@
 /**
  * Oylik hisobot moduli — /api/v1/reports
  *
- *  GET /monthly  → MonthlyReportResponse (oyning to'liq moliyaviy va sotuv kesimi)
- *  GET /compare  → oxirgi 6 oy taqqoslovi: { month, revenue, profit, margin }[]
+ *  GET  /monthly        → MonthlyReportResponse (oyning to'liq moliyaviy va sotuv kesimi)
+ *  GET  /compare        → oxirgi 6 oy taqqoslovi: { month, revenue, profit, margin }[]
+ *  POST /send-telegram  → o'sha hisobotning Excel faylini foydalanuvchining Telegram chatiga yuboradi
  *
  * Davrni tanlash: `?month=YYYY-MM` (o'sha oy) yoki umumiy `from`/`to`/`preset` filtrlari.
  * Tarif tarix chuqurligidan tashqaridagi sanalar avtomatik qisqartiriladi.
  *
- * Foyda hisobi finance.ts bilan bir xil:
+ * Hisob services/monthly-report.ts da — sahifa, Excel fayl (GET /export/monthly)
+ * va Telegram nusxasi uchun BITTA:
  *   grossProfit = tushum − tannarx
- *   netProfit   = grossProfit − barcha xarajatlar (komissiya, logistika, ombor, marketing,
- *                 soliq, ish haqi, boshqa — platforma va qo'lda kiritilganlari birga)
+ *   netProfit   = tovarlar bo'yicha foyda − davr xarajatlari (Boshqaruv paneli bilan bir xil)
  *
  * Ma'lumot bo'lmasa ham 200 va bo'sh/nol qiymatlar qaytariladi.
  */
-import { Router } from 'express';
-import { prisma } from '@savdoiq/db';
-import {
-  addDays,
-  formatCompact,
-  formatNumber,
-  getPlan,
-  parseISODate,
-  pct,
-  round,
-  safeDiv,
-  toISODate,
-  businessDayStart,
-  toBusinessDate,
-  type DeliveryType,
-  type ExpenseCategory,
-  type Insight,
-  type MonthlyReportResponse,
-  type Period,
-  type PlanId,
-  type TimeSeriesPoint,
-  type TopProductRow,
-} from '@savdoiq/shared';
-import { ah } from '../lib/errors.js';
+import { Router, type Request } from 'express';
+import { formatMoney, formatNumber, type Lang, type MonthlyReportResponse } from '@savdoiq/shared';
+import { ah, AppError } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
+import { env } from '../env.js';
+import { getStoreIds } from '../services/common.js';
 import {
-  aggregateSales,
-  getDailySeries,
-  getExpenses,
-  getLatestStocks,
-  getSkuCatalog,
-  getStoreIds,
-  type SkuInfo,
-} from '../services/common.js';
-import { getAdFeesBySku, getPeriodCostsByDay } from '../services/pnl.js';
+  buildMonthlyReport,
+  collectMonthCompare,
+  isMonthKey,
+  monthLabel,
+  type MonthCompareRow,
+} from '../services/monthly-report.js';
+import { escapeHtml, sendTelegramDocument, type TelegramSendResult } from '../services/notify.js';
+import { loadMonthlyWorkbook } from './export.js';
+
+export type { MonthCompareRow };
 
 const router = Router();
 router.use(requireAuth, requireCompany);
-
-// ─────────────────────────── Doimiylar ───────────────────────────
-
-/** Xarajat kategoriyalari — javoblarda doimo shu tartibda */
-const CATEGORY_ORDER: ExpenseCategory[] = [
-  'commission',
-  'logistics',
-  'marketing',
-  'storage',
-  'tax',
-  'salary',
-  'other',
-];
-
-const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
-  commission: 'Komissiya',
-  logistics: 'Logistika',
-  marketing: 'Marketing',
-  storage: 'Ombor (saqlash)',
-  tax: 'Soliq',
-  salary: 'Ish haqi',
-  other: 'Boshqa',
-};
-
-const DELIVERY_TYPES: DeliveryType[] = ['FBO', 'FBS', 'DBS'];
-
-const MONTHS_UZ = [
-  'Yanvar',
-  'Fevral',
-  'Mart',
-  'Aprel',
-  'May',
-  'Iyun',
-  'Iyul',
-  'Avgust',
-  'Sentabr',
-  'Oktabr',
-  'Noyabr',
-  'Dekabr',
-];
-
-const UNKNOWN_CATEGORY = 'Kategoriyasiz';
-
-const emptyCategories = (): Record<ExpenseCategory, number> => ({
-  commission: 0,
-  logistics: 0,
-  marketing: 0,
-  storage: 0,
-  tax: 0,
-  salary: 0,
-  other: 0,
-});
-
-const money = (v: number): string => `${formatCompact(Math.round(v), 'uz')} so‘m`;
-const num = (v: number, digits = 0): string => formatNumber(v, 'uz', digits);
-
-/** Oy kaliti (2026-09) → "Sentabr 2026" */
-function monthLabel(key: string): string {
-  const year = Number(key.slice(0, 4));
-  const name = MONTHS_UZ[Number(key.slice(5, 7)) - 1];
-  return name && Number.isFinite(year) ? `${name} ${year}` : key;
-}
-
-const monthKeyOf = (d: Date): string => toISODate(d).slice(0, 7);
-
-// ─────────────────────────── Davrni aniqlash ───────────────────────────
-
-/** `YYYY-MM` kalitidan davr; kelajakdagi kunlar bugungi sanagacha kesiladi */
-function monthPeriod(key: string, now = new Date()): Period {
-  const year = Number(key.slice(0, 4));
-  const month = Number(key.slice(5, 7));
-  const first = new Date(Date.UTC(year, month - 1, 1));
-  // `day = 0` — oldingi oyning oxirgi kuni, ya'ni shu oyning oxiri
-  const last = new Date(Date.UTC(year, month, 0));
-  const today = parseISODate(toBusinessDate(now));
-  const to = last.getTime() > today.getTime() ? today : last;
-  if (to.getTime() < first.getTime()) return { from: toISODate(first), to: toISODate(first) };
-  return { from: toISODate(first), to: toISODate(to) };
-}
-
-/** Tarif tarix chuqurligiga qarab davrni qisqartirish */
-function clampToPlan(period: Period, plan: PlanId): Period {
-  const earliest = toBusinessDate(addDays(new Date(), -getPlan(plan).limits.historyDays));
-  if (period.from >= earliest) return period;
-  return { from: earliest, to: period.to < earliest ? earliest : period.to };
-}
-
-// ─────────────────────────── Oylik kesim ───────────────────────────
-
-interface ReportSnapshot {
-  revenue: number;
-  cogs: number;
-  units: number;
-  /** buyurtma satrlaridan kelgan sof foyda (top mahsulotlar bilan izchil) */
-  itemProfit: number;
-  categories: Record<ExpenseCategory, number>;
-  expensesTotal: number;
-  taxAmount: number;
-  grossProfit: number;
-  netProfit: number;
-  /** SKU kesimidagi sotuvlar (top mahsulot va kategoriyalar uchun) */
-  bySku: Map<string, { units: number; revenue: number; netProfit: number }>;
-}
-
-/** Davr bo'yicha moliyaviy kesim (finance.ts dagi formulaning aynan o'zi) */
-async function collectSnapshot(
-  companyId: string,
-  storeIds: string[],
-  from: Date,
-  toExclusive: Date,
-  taxRate: number,
-  storeId?: string,
-): Promise<ReportSnapshot> {
-  const [sales, manual, storageAgg] = await Promise.all([
-    aggregateSales(storeIds, from, toExclusive),
-    getExpenses(companyId, from, toExclusive, storeId),
-    prisma.storageFee.aggregate({
-      _sum: { amount: true },
-      where: { storeId: { in: storeIds }, date: { gte: from, lt: toExclusive } },
-    }),
-  ]);
-
-  let revenue = 0;
-  let cogs = 0;
-  let units = 0;
-  let commission = 0;
-  let logistics = 0;
-  let otherCost = 0;
-  let itemProfit = 0;
-  const bySku = new Map<string, { units: number; revenue: number; netProfit: number }>();
-
-  for (const agg of sales.values()) {
-    revenue += agg.revenue;
-    cogs += agg.cogs;
-    units += agg.units;
-    commission += agg.commission;
-    logistics += agg.logistics;
-    otherCost += agg.otherCost;
-    itemProfit += agg.netProfit;
-    bySku.set(agg.skuId, { units: agg.units, revenue: agg.revenue, netProfit: agg.netProfit });
-  }
-
-  const storage = storageAgg._sum.amount ?? 0;
-  const taxAmount = (revenue * taxRate) / 100;
-
-  const categories: Record<ExpenseCategory, number> = {
-    commission: commission + manual.commission,
-    logistics: logistics + manual.logistics,
-    marketing: manual.marketing,
-    storage: storage + manual.storage,
-    tax: taxAmount + manual.tax,
-    salary: manual.salary,
-    other: otherCost + manual.other,
-  };
-
-  const expensesTotal = CATEGORY_ORDER.reduce((s, c) => s + categories[c], 0);
-  const grossProfit = revenue - cogs;
-
-  return {
-    revenue,
-    cogs,
-    units,
-    itemProfit,
-    categories,
-    expensesTotal,
-    taxAmount,
-    grossProfit,
-    netProfit: grossProfit - expensesTotal,
-    bySku,
-  };
-}
-
-interface OrderStats {
-  total: number;
-  success: number;
-  canceled: number;
-  returned: number;
-  /** bekor qilinmagan va qaytarilmagan buyurtmalar (o'rtacha chek uchun) */
-  active: number;
-  byDelivery: Map<DeliveryType, { orders: number; success: number }>;
-}
-
-/** Buyurtma darajasidagi statistika (holat va yetkazish turi kesimida) */
-async function collectOrderStats(storeIds: string[], from: Date, toExclusive: Date): Promise<OrderStats> {
-  const stats: OrderStats = {
-    total: 0,
-    success: 0,
-    canceled: 0,
-    returned: 0,
-    active: 0,
-    byDelivery: new Map(DELIVERY_TYPES.map((t) => [t, { orders: 0, success: 0 }])),
-  };
-  if (storeIds.length === 0) return stats;
-
-  const rows = await prisma.order.findMany({
-    where: { storeId: { in: storeIds }, orderedAt: { gte: from, lt: toExclusive } },
-    select: { status: true, deliveryType: true },
-  });
-
-  /*
-   * Muvaffaqiyatli = bekor qilinmagan va qaytarilmagan (boshqa sahifalardagi
-   * "faol buyurtma" bilan bir xil). Ilgari faqat 'delivered' sanalardi — jonli
-   * Uzumda bu "pul chiqarildi" degani va qabuldan ~10 kun keyin qo'yiladi,
-   * shuning uchun joriy oy hisobotida 42 tadan 6 tasi "muvaffaqiyatli" (14%)
-   * chiqib, qizil ogohlantirish berardi.
-   */
-
-  for (const o of rows) {
-    stats.total += 1;
-    if (o.status === 'canceled') stats.canceled += 1;
-    else if (o.status === 'returned') stats.returned += 1;
-    else {
-      stats.active += 1;
-      stats.success += 1;
-    }
-
-    const type = (DELIVERY_TYPES as string[]).includes(o.deliveryType)
-      ? (o.deliveryType as DeliveryType)
-      : 'FBO';
-    const bucket = stats.byDelivery.get(type);
-    if (bucket) {
-      bucket.orders += 1;
-      if (o.status !== 'canceled' && o.status !== 'returned') bucket.success += 1;
-    }
-  }
-
-  return stats;
-}
-
-// ─────────────────────────── Avtomatik xulosalar ───────────────────────────
-
-const LEVEL_RANK: Record<Insight['level'], number> = { danger: 0, warning: 1, success: 2, info: 3 };
-
-interface InsightInput {
-  periodLabel: string;
-  revenue: number;
-  netProfit: number;
-  grossProfit: number;
-  margin: number;
-  grossMargin: number;
-  avgCheck: number;
-  ordersTotal: number;
-  ordersSuccess: number;
-  canceled: number;
-  returns: number;
-  successRate: number;
-  returnRate: number;
-  categories: Record<ExpenseCategory, number>;
-  expensesTotal: number;
-  taxAmount: number;
-  topProducts: TopProductRow[];
-  categoriesShare: { category: string; revenue: number; share: number }[];
-  warehouse: { fbo: number; fboAmount: number; fbs: number; fbsAmount: number };
-  daily: TimeSeriesPoint[];
-}
-
-/** Oylik hisobot uchun 3-5 ta xulosa — har biri aniq raqamlar bilan */
-function buildInsights(inp: InsightInput): Insight[] {
-  const out: Insight[] = [];
-
-  // 1) Oy yakuni
-  if (inp.ordersTotal > 0 || inp.revenue > 0) {
-    const profitable = inp.netProfit >= 0;
-    out.push({
-      id: 'month_result',
-      level: profitable ? (inp.margin >= 10 ? 'success' : 'warning') : 'danger',
-      title: profitable
-        ? `${inp.periodLabel}: sof foyda ${money(inp.netProfit)}`
-        : `${inp.periodLabel}: zarar ${money(Math.abs(inp.netProfit))}`,
-      body: `Tushum ${money(inp.revenue)}, yalpi foyda ${money(inp.grossProfit)} (${num(inp.grossMargin, 1)}%), sof marja ${num(inp.margin, 1)}%. O‘rtacha chek ${money(inp.avgCheck)}.`,
-      link: '/finance',
-      metric: 'netProfit',
-    });
-  }
-
-  // 2) Eng katta xarajat moddasi
-  const topCost = CATEGORY_ORDER.map((category) => ({ category, amount: inp.categories[category] }))
-    .filter((c) => c.amount > 0)
-    .sort((a, b) => b.amount - a.amount)[0];
-  if (topCost) {
-    const shareOfRevenue = pct(topCost.amount, inp.revenue);
-    out.push({
-      id: 'top_expense',
-      level: shareOfRevenue >= 30 ? 'warning' : 'info',
-      title: `Eng katta xarajat — ${CATEGORY_LABEL[topCost.category]} ${money(topCost.amount)}`,
-      body: `Bu tushumning ${num(shareOfRevenue, 1)}% i va barcha xarajatlarning ${num(pct(topCost.amount, inp.expensesTotal), 1)}% i. Jami xarajatlar ${money(inp.expensesTotal)}, shundan soliq ${money(inp.taxAmount)}.`,
-      link: '/finance',
-      metric: 'expenses',
-    });
-  }
-
-  // 3) Bekor qilingan va qaytarilgan buyurtmalar
-  if (inp.ordersTotal > 0 && (inp.canceled > 0 || inp.returns > 0)) {
-    const lost = inp.canceled + inp.returns;
-    out.push({
-      id: 'order_quality',
-      level: inp.successRate < 80 ? 'danger' : inp.returnRate >= 5 ? 'warning' : 'info',
-      title: `Buyurtmalarning ${num(inp.successRate, 1)}% i muvaffaqiyatli yakunlangan`,
-      body: `${num(inp.ordersTotal)} ta buyurtmadan ${num(inp.canceled)} tasi bekor qilingan, ${num(inp.returns)} tasi qaytarilgan (qaytarish ulushi ${num(inp.returnRate, 1)}%). Jami ${num(lost)} ta buyurtma yo‘qotildi.`,
-      link: '/returns',
-      metric: 'successRate',
-    });
-  }
-
-  // 4) Oyning yetakchi mahsuloti
-  const best = inp.topProducts[0];
-  if (best && best.revenue > 0) {
-    out.push({
-      id: 'top_product',
-      level: 'success',
-      title: `Oyning yetakchisi — “${best.title}”`,
-      body: `${num(best.units)} dona sotildi, tushum ${money(best.revenue)} (barcha savdoning ${num(best.share, 1)}% i), foyda ${money(best.profit)} (marja ${num(best.margin, 1)}%). Qoldiqni yetarli ushlab turing.`,
-      link: '/products',
-      metric: 'revenue',
-    });
-  }
-
-  // 5) Eng samarali kun
-  const bestDay = [...inp.daily].sort((a, b) => b.revenue - a.revenue)[0];
-  if (bestDay && bestDay.revenue > 0) {
-    out.push({
-      id: 'best_day',
-      level: 'info',
-      title: `Eng kuchli kun — ${bestDay.date}`,
-      body: `O‘sha kuni ${num(bestDay.orders)} ta buyurtma va ${money(bestDay.revenue)} tushum qayd etildi. Kunlik o‘rtacha ${money(safeDiv(inp.revenue, Math.max(1, inp.daily.length)))}.`,
-      link: '/sales',
-      metric: 'revenue',
-    });
-  }
-
-  // 6) Yetakchi kategoriya
-  const topCategory = inp.categoriesShare[0];
-  if (topCategory && topCategory.share >= 25) {
-    out.push({
-      id: 'top_category',
-      level: topCategory.share >= 70 ? 'warning' : 'info',
-      title: `Savdoning ${num(topCategory.share, 1)}% i — “${topCategory.category}” kategoriyasi`,
-      body:
-        topCategory.share >= 70
-          ? `${money(topCategory.revenue)} tushum bitta kategoriyaga bog‘liq. Assortimentni kengaytirish xavfni kamaytiradi.`
-          : `${money(topCategory.revenue)} tushum shu kategoriyadan keldi. Uni kengaytirish eng tez natija beradi.`,
-      link: '/abc',
-      metric: 'categories',
-    });
-  }
-
-  // 7) Ombor holati
-  const stockUnits = inp.warehouse.fbo + inp.warehouse.fbs;
-  if (stockUnits > 0) {
-    out.push({
-      id: 'warehouse',
-      level: 'info',
-      title: `Omborda ${num(stockUnits)} dona tovar qoldi`,
-      body: `FBO: ${num(inp.warehouse.fbo)} dona (${money(inp.warehouse.fboAmount)}), FBS: ${num(inp.warehouse.fbs)} dona (${money(inp.warehouse.fbsAmount)}). Tannarx bo‘yicha jami ${money(inp.warehouse.fboAmount + inp.warehouse.fbsAmount)}.`,
-      link: '/stocks',
-      metric: 'stockValue',
-    });
-  }
-
-  // 8) Ma'lumot yo'q holati
-  if (inp.ordersTotal === 0 && inp.revenue === 0) {
-    out.push({
-      id: 'no_data',
-      level: 'info',
-      title: `${inp.periodLabel} uchun buyurtma topilmadi`,
-      body: 'Boshqa oyni tanlang yoki sinxronizatsiya tugashini kuting — birinchi to‘liq yig‘ish odatda bir necha daqiqa oladi.',
-      link: '/settings',
-      metric: 'orders',
-    });
-  }
-
-  // Kamida 3 ta xulosa bo'lishi uchun umumiy holat kartalari
-  const fallbacks: Insight[] = [
-    {
-      id: 'tax_note',
-      level: 'info',
-      title: `Soliq ${money(inp.taxAmount)}`,
-      body: `Davr tushumi ${money(inp.revenue)} bo‘yicha hisoblangan. Soliq stavkasini sozlamalarda o‘zgartirish mumkin.`,
-      link: '/settings',
-      metric: 'tax',
-    },
-    {
-      id: 'avg_check',
-      level: 'info',
-      title: `O‘rtacha chek ${money(inp.avgCheck)}`,
-      body: `Davrda ${num(inp.ordersTotal)} ta buyurtma, ${num(inp.ordersSuccess)} tasi muvaffaqiyatli. To‘plam va qo‘shimcha savdo chekni oshiradi.`,
-      link: '/sales',
-      metric: 'avgCheck',
-    },
-    {
-      id: 'margin_note',
-      level: 'info',
-      title: `Sof marja ${num(inp.margin, 1)}%`,
-      body: `Yalpi marja ${num(inp.grossMargin, 1)}%. Farq — komissiya, logistika, ombor va soliq. Unit-iqtisodni tekshiring.`,
-      link: '/unit-economics',
-      metric: 'margin',
-    },
-  ];
-  for (const f of fallbacks) {
-    if (out.length >= 3) break;
-    if (!out.some((i) => i.id === f.id)) out.push(f);
-  }
-
-  return out.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]).slice(0, 5);
-}
 
 // ─────────────────────────── GET /monthly ───────────────────────────
 
@@ -468,200 +46,23 @@ router.get(
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const q = req.query as Record<string, string | undefined>;
-
-    // `?month=YYYY-MM` ustuvor, aks holda umumiy davr filtri ishlaydi
-    const period =
-      q.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(q.month) ? clampToPlan(monthPeriod(q.month), plan) : range.period;
-    const from = businessDayStart(period.from);
-    const toExclusive = addDays(businessDayStart(period.to), 1);
-
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const taxRate = company.taxRate;
 
-    const [snap, stats, catalog, stocks, series] = await Promise.all([
-      collectSnapshot(company.id, storeIds, from, toExclusive, taxRate, range.storeId),
-      collectOrderStats(storeIds, from, toExclusive),
-      getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
-      getDailySeries(storeIds, period),
-    ]);
-
-    // Mahsulotga bog'langan reklama to'lovi (mahsulot foydasidan) va davr xarajatlari kunma-kun (grafik uchun)
-    const [adBySku, costsByDay] = await Promise.all([
-      getAdFeesBySku(
-        company.id,
-        storeIds,
-        from,
-        toExclusive,
-        new Map([...snap.bySku].map(([id, a]) => [id, a.revenue])),
-        range.storeId,
-      ),
-      getPeriodCostsByDay(company.id, storeIds, from, toExclusive, range.storeId),
-    ]);
-
-    // ── Top mahsulotlar (tushum bo'yicha 10 ta) ──
-    const topProducts: TopProductRow[] = [...snap.bySku.entries()]
-      // Katalogda yo'q — o'chirilgan tovar
-      .filter(([skuId]) => catalog.has(skuId))
-      .map(([skuId, agg]) => {
-        const info: SkuInfo | undefined = catalog.get(skuId);
-        const profit = agg.netProfit - (adBySku.get(skuId) ?? 0);
-        return {
-          skuId,
-          sku: info?.sku ?? '—',
-          title: info?.title ?? 'Noma’lum SKU',
-          productTitle: info?.productTitle,
-          imageUrl: info?.imageUrl ?? null,
-          revenue: round(agg.revenue),
-          profit: round(profit),
-          units: agg.units,
-          share: pct(agg.revenue, snap.revenue),
-          margin: pct(profit, agg.revenue),
-        } satisfies TopProductRow;
-      })
-      .filter((r) => r.units > 0 || r.revenue > 0)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10);
-
-    // ── Kategoriyalar ulushi ──
-    const byCategory = new Map<string, number>();
-    for (const [skuId, agg] of snap.bySku) {
-      if (agg.revenue <= 0 || !catalog.has(skuId)) continue;
-      const name = catalog.get(skuId)?.category?.trim() || UNKNOWN_CATEGORY;
-      byCategory.set(name, (byCategory.get(name) ?? 0) + agg.revenue);
-    }
-    const categories = [...byCategory.entries()]
-      .map(([category, revenue]) => ({ category, revenue: round(revenue), share: pct(revenue, snap.revenue) }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    // ── Ombor (FBO/FBS dona va tannarx bo'yicha summa) ──
-    let fbo = 0;
-    let fbs = 0;
-    let fboAmount = 0;
-    let fbsAmount = 0;
-    for (const [skuId, st] of stocks) {
-      const info = catalog.get(skuId);
-      if (!info) continue;
-      const unitCost = info.purchasePrice + info.extraCost;
-      fbo += st.fbo;
-      fbs += st.fbs;
-      fboAmount += st.fbo * unitCost;
-      fbsAmount += st.fbs * unitCost;
-    }
-    const warehouse = {
-      fbo,
-      fboAmount: round(fboAmount),
-      fbs,
-      fbsAmount: round(fbsAmount),
-    };
-
-    // ── Ko'rsatkichlar ──
-    const successRate = pct(stats.success, stats.total);
-    const returnRate = pct(stats.returned, stats.total);
-    const grossMargin = pct(snap.grossProfit, snap.revenue);
-    const margin = pct(snap.netProfit, snap.revenue);
-    const avgCheck = safeDiv(snap.revenue, stats.active);
-
-    const daily: TimeSeriesPoint[] = series.map((row) => ({
-      date: row.date,
-      revenue: round(row.revenue),
-      // Kunlik foyda ham davr xarajatlaridan keyin — kunlar yig'indisi yuqoridagi "Sof foyda"ga teng
-      profit: round(row.profit - (costsByDay.get(row.date) ?? 0)),
-      orders: row.orders,
-      units: row.units,
-      payout: round(row.payout),
-      returns: row.returns,
-    }));
-
-    const insights = buildInsights({
-      periodLabel: monthLabel(period.from.slice(0, 7)),
-      revenue: snap.revenue,
-      netProfit: snap.netProfit,
-      grossProfit: snap.grossProfit,
-      margin,
-      grossMargin,
-      avgCheck,
-      ordersTotal: stats.total,
-      ordersSuccess: stats.success,
-      canceled: stats.canceled,
-      returns: stats.returned,
-      successRate,
-      returnRate,
-      categories: snap.categories,
-      expensesTotal: snap.expensesTotal,
-      taxAmount: snap.taxAmount,
-      topProducts,
-      categoriesShare: categories,
-      warehouse,
-      daily,
+    const payload: MonthlyReportResponse = await buildMonthlyReport({
+      companyId: company.id,
+      taxRate: company.taxRate,
+      plan,
+      storeIds,
+      range,
+      // `?month=YYYY-MM` ustuvor, aks holda umumiy davr filtri ishlaydi
+      month: q.month,
     });
-
-    const payload: MonthlyReportResponse = {
-      period,
-      revenue: round(snap.revenue),
-      grossProfit: round(snap.grossProfit),
-      netProfit: round(snap.netProfit),
-      avgCheck: round(avgCheck),
-      ordersTotal: stats.total,
-      ordersSuccess: stats.success,
-      unitsSold: snap.units,
-      canceled: stats.canceled,
-      returns: stats.returned,
-      returnRate,
-      successRate,
-      grossMargin,
-      taxRate,
-      expenses: CATEGORY_ORDER.map((category) => ({ category, amount: round(snap.categories[category]) })),
-      expensesTotal: round(snap.expensesTotal),
-      topProducts,
-      categories,
-      deliveryTypes: DELIVERY_TYPES.map((type) => {
-        const agg = stats.byDelivery.get(type) ?? { orders: 0, success: 0 };
-        return { type, orders: agg.orders, success: agg.success };
-      }),
-      warehouse,
-      daily,
-      insights,
-    };
 
     res.json(payload);
   }),
 );
 
 // ─────────────────────────── GET /compare — oxirgi 6 oy ───────────────────────────
-
-/** Oylar taqqoslovi satri */
-export interface MonthCompareRow {
-  /** oy kaliti, `YYYY-MM` */
-  month: string;
-  revenue: number;
-  profit: number;
-  /** sof marja, % */
-  margin: number;
-}
-
-/** Bir oy uchun yig'ilayotgan xom qiymatlar */
-interface MonthBucket {
-  revenue: number;
-  cogs: number;
-  commission: number;
-  logistics: number;
-  otherCost: number;
-  /** qo'lda kiritilgan xarajatlar (barcha kategoriyalar) */
-  manual: number;
-  /** pullik saqlash to'lovlari */
-  storage: number;
-}
-
-const emptyBucket = (): MonthBucket => ({
-  revenue: 0,
-  cogs: 0,
-  commission: 0,
-  logistics: 0,
-  otherCost: 0,
-  manual: 0,
-  storage: 0,
-});
 
 router.get(
   '/compare',
@@ -670,104 +71,232 @@ router.get(
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const taxRate = company.taxRate;
-
-    // Oxirgi 6 oy (joriy oy bilan birga), tarif tarix chuqurligiga qarab qisqartiriladi
-    const today = parseISODate(toBusinessDate(new Date()));
-    const earliest = addDays(new Date(), -getPlan(plan).limits.historyDays);
-
-    const months: { key: string; from: Date; toExclusive: Date }[] = [];
-    for (let back = 5; back >= 0; back -= 1) {
-      const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - back, 1));
-      const next = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1));
-      // Butunlay ruxsat etilgan tarixdan tashqarida qolgan oylarni tashlab ketamiz
-      if (next.getTime() <= earliest.getTime()) continue;
-      // Oy chegaralari ham savdo kuni bo'yicha: 1-kun Toshkentda 00:00 da boshlanadi
-      months.push({
-        key: monthKeyOf(first),
-        from: businessDayStart(toISODate(first)),
-        toExclusive: businessDayStart(toISODate(next)),
-      });
-    }
-
-    if (months.length === 0) {
-      res.json([] satisfies MonthCompareRow[]);
-      return;
-    }
-
-    const spanFrom = months[0].from;
-    const spanTo = months[months.length - 1].toExclusive;
-    const buckets = new Map<string, MonthBucket>(months.map((m) => [m.key, emptyBucket()]));
-
-    const [items, manualRows, feeRows] = await Promise.all([
-      storeIds.length
-        ? prisma.orderItem.findMany({
-            where: { orderedAt: { gte: spanFrom, lt: spanTo }, order: { storeId: { in: storeIds } } },
-            select: {
-              orderedAt: true,
-              qty: true,
-              revenue: true,
-              purchasePrice: true,
-              commission: true,
-              logistics: true,
-              otherCost: true,
-              status: true,
-              returnedAt: true,
-            },
-          })
-        : Promise.resolve([]),
-      prisma.expense.findMany({
-        where: {
-          companyId: company.id,
-          // /monthly bilan bir xil qoida: yetkazish to'lovi buyurtma satrlarida hisoblangan
-          source: { not: 'uzum-payout' },
-          date: { gte: spanFrom, lt: spanTo },
-          ...(range.storeId ? { storeId: range.storeId } : {}),
-        },
-        select: { date: true, amount: true },
-      }),
-      storeIds.length
-        ? prisma.storageFee.findMany({
-            where: { storeId: { in: storeIds }, date: { gte: spanFrom, lt: spanTo } },
-            select: { date: true, amount: true },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    for (const it of items) {
-      // Bekor qilingan va qaytarilgan pozitsiyalar pulda hisoblanmaydi
-      if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
-      const bucket = buckets.get(monthKeyOf(it.orderedAt));
-      if (!bucket) continue;
-      bucket.revenue += it.revenue;
-      bucket.cogs += it.purchasePrice * it.qty;
-      bucket.commission += it.commission;
-      bucket.logistics += it.logistics;
-      bucket.otherCost += it.otherCost;
-    }
-    for (const r of manualRows) {
-      const bucket = buckets.get(monthKeyOf(r.date));
-      if (bucket) bucket.manual += r.amount;
-    }
-    for (const r of feeRows) {
-      const bucket = buckets.get(monthKeyOf(r.date));
-      if (bucket) bucket.storage += r.amount;
-    }
-
-    const payload: MonthCompareRow[] = months.map(({ key }) => {
-      const b = buckets.get(key) ?? emptyBucket();
-      const expensesTotal =
-        b.commission + b.logistics + b.otherCost + b.manual + b.storage + (b.revenue * taxRate) / 100;
-      const profit = b.revenue - b.cogs - expensesTotal;
-      return {
-        month: key,
-        revenue: round(b.revenue),
-        profit: round(profit),
-        margin: pct(profit, b.revenue),
-      };
-    });
-
+    const payload: MonthCompareRow[] = await collectMonthCompare(company.id, storeIds, plan, range.storeId);
     res.json(payload);
+  }),
+);
+
+// ─────────────────────────── POST /send-telegram ───────────────────────────
+
+/**
+ * Yuborish chegarasi — bitta foydalanuvchiga soatiga 5 ta fayl.
+ *
+ * Har yuborish butun hisobotni qaytadan yig'adi (bir necha og'ir so'rov) va
+ * bot nomidan fayl jo'natadi: tugmani ketma-ket bosish bazani ham, botning
+ * Telegram oldidagi chegarasini ham yeb qo'ymasin. Xotirada saqlanadi — API
+ * bitta jarayon (deploy/update.sh), qayta ishga tushganda hisob nolga tushadi,
+ * bu xavfli emas. Telegram ulanmagan so'rov chegaraga kirmaydi: u hech narsa
+ * yubormaydi.
+ */
+const TG_SEND_LIMIT = 5;
+const TG_SEND_WINDOW_MS = 60 * 60_000;
+const tgSends = new Map<string, number[]>();
+
+function takeTelegramSlot(userId: string, now = Date.now()): { ok: true; remaining: number } | { ok: false; retryAfterSec: number } {
+  // Eskirgan foydalanuvchilar xaritada to'planib qolmasin
+  if (tgSends.size > 1000) {
+    for (const [id, list] of tgSends) if (list.every((t) => now - t >= TG_SEND_WINDOW_MS)) tgSends.delete(id);
+  }
+  const recent = (tgSends.get(userId) ?? []).filter((t) => now - t < TG_SEND_WINDOW_MS);
+  if (recent.length >= TG_SEND_LIMIT) {
+    tgSends.set(userId, recent);
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((recent[0] + TG_SEND_WINDOW_MS - now) / 1000)) };
+  }
+  recent.push(now);
+  tgSends.set(userId, recent);
+  return { ok: true, remaining: TG_SEND_LIMIT - recent.length };
+}
+
+/** Davr maydonlari — GET /monthly so'rov qatoridagi bilan bir xil nomlar */
+const PERIOD_FIELDS = ['month', 'from', 'to', 'preset', 'storeId'] as const;
+
+/**
+ * Davr so'rov qatorida ham, tanada ham kelishi mumkin (tana ustuvor) — sayt
+ * Excel tugmasidagi parametrlarni o'zgarishsiz yuboradi, tashqi chaqiruv esa
+ * `{ month: '2026-09' }` tanasi bilan.
+ */
+function periodQuery(req: Request): Record<string, string> {
+  const out: Record<string, string> = {};
+  const sources = [req.query as Record<string, unknown>, (req.body ?? {}) as Record<string, unknown>];
+  for (const src of sources) {
+    for (const key of PERIOD_FIELDS) {
+      const v = src[key];
+      if (typeof v === 'string' && v.trim()) out[key] = v.trim();
+    }
+  }
+  return out;
+}
+
+/**
+ * resolveRange faqat `req.query` ni o'qiydi — tanadagi davr ham shu yo'l bilan
+ * o'tadi. Asl so'rov o'zgartirilmaydi: `query` yangi obyektning o'z xossasi.
+ */
+const withQuery = (req: Request, query: Record<string, string>): Request =>
+  Object.create(req, { query: { value: query, enumerable: true } }) as Request;
+
+/** Fayl izohi tillari — sayt tili (foydalanuvchining `languageCode`) bo'yicha */
+const CAPTION: Record<
+  Lang,
+  {
+    title: string;
+    final: string;
+    preliminary: string;
+    current: string;
+    inTransit: string;
+    done: (pct: string) => string;
+    status: string;
+    revenue: string;
+    profit: string;
+    margin: string;
+  }
+> = {
+  uz: {
+    title: 'Oylik hisobot',
+    final: 'Yakuniy',
+    preliminary: 'Oraliq',
+    current: 'davr hali tugamagan',
+    inTransit: 'buyurtmalarning bir qismi hali yo‘lda',
+    done: (v) => `${v} yakunlangan`,
+    status: 'Holat',
+    revenue: 'Tushum',
+    profit: 'Sof foyda',
+    margin: 'marja',
+  },
+  ru: {
+    title: 'Месячный отчёт',
+    final: 'Итоговый',
+    preliminary: 'Предварительный',
+    current: 'период ещё не закончился',
+    inTransit: 'часть заказов ещё в пути',
+    done: (v) => `завершено ${v}`,
+    status: 'Статус',
+    revenue: 'Выручка',
+    profit: 'Чистая прибыль',
+    margin: 'маржа',
+  },
+  en: {
+    title: 'Monthly report',
+    final: 'Final',
+    preliminary: 'Preliminary',
+    current: 'the period is not over yet',
+    inTransit: 'some orders are still in transit',
+    done: (v) => `${v} completed`,
+    status: 'Status',
+    revenue: 'Revenue',
+    profit: 'Net profit',
+    margin: 'margin',
+  },
+};
+
+const asLang = (v: string | null | undefined): Lang => (v === 'ru' || v === 'en' ? v : 'uz');
+
+/** Davr bitta kalendar oyimi (oy boshidan, o'sha oy ichida tugaydi) — sarlavhada oy nomi chiqadi */
+function monthTitle(period: { from: string; to: string }, lang: Lang): string | null {
+  const key = period.from.slice(0, 7);
+  if (!period.from.endsWith('-01') || period.to.slice(0, 7) !== key) return null;
+  if (lang === 'uz') return monthLabel(key);
+  const first = new Date(`${key}-01T00:00:00Z`);
+  return new Intl.DateTimeFormat(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(first);
+}
+
+const dmy = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+
+/** Fayl ostidagi izoh: oy, holat va ikki asosiy raqam — fayl ochilmasdan ham ko'rinsin */
+function reportCaption(r: MonthlyReportResponse, companyName: string, lang: Lang): string {
+  const c = CAPTION[lang];
+  const pctText = (v: number) => `${formatNumber(v, lang, 1)}%`;
+  const month = monthTitle(r.period, lang);
+  const fin = r.finality;
+  const why = fin.reason === 'current' ? c.current : fin.reason === 'in_transit' ? c.inTransit : null;
+  return [
+    `<b>${escapeHtml(month ? `${c.title} — ${month}` : c.title)}</b>`,
+    `${escapeHtml(companyName)} · ${dmy(r.period.from)} — ${dmy(r.period.to)}`,
+    `${c.status}: <b>${fin.status === 'final' ? c.final : c.preliminary}</b>${why ? ` — ${why}` : ''} · ${c.done(pctText(fin.completionPct))}`,
+    `${c.revenue}: ${formatMoney(r.revenue, lang)}`,
+    `${c.profit}: ${formatMoney(r.netProfit, lang)} · ${c.margin} ${pctText(r.margin)}`,
+  ].join('\n');
+}
+
+/** Telegram rad etgan sababni sotuvchiga tushunarli xatoga aylantiradi */
+function telegramError(result: TelegramSendResult): AppError {
+  const reason = (result.description ?? '').toLowerCase();
+  // 403 — foydalanuvchi botni bloklagan yoki hisobini o'chirgan
+  if (result.status === 403) {
+    return new AppError(409, 'telegram_blocked', 'Bot bloklangan — Telegram’da botni oching va /start bosing');
+  }
+  // Saqlangan chat endi yo'q — sotuvchi botni qaytadan ulashi kerak
+  if (result.status === 400 && reason.includes('chat not found')) {
+    return new AppError(409, 'telegram_not_linked', 'Avval Sozlamalarda Telegram’ni ulang');
+  }
+  return new AppError(502, 'telegram_failed', 'Telegram’ga yuborib bo‘lmadi — birozdan keyin qayta urinib ko‘ring');
+}
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/**
+ * Oylik hisobotni Telegram'ga yuborish — Excel tugmasidagi fayl AYNAN o'zi
+ * (routes/export.ts loadMonthlyWorkbook), foydalanuvchining botdagi chatiga.
+ * Tarif: Excel eksporti bilan bir xil (monthly_reports + export_excel).
+ *
+ * Xatolar (sayt kod bo'yicha matnga aylantiradi):
+ *   409 telegram_not_linked  — Telegram ulanmagan (botChatId yo'q yoki chat topilmadi)
+ *   409 telegram_blocked     — bot bloklangan
+ *   429 too_many_requests    — soatlik chegara (Retry-After sarlavhasi bilan)
+ *   502 telegram_failed      — Telegram javob bermadi
+ *   503 telegram_unavailable — serverda bot sozlanmagan
+ */
+router.post(
+  '/send-telegram',
+  requireFeature('monthly_reports'),
+  requireFeature('export_excel'),
+  ah(async (req, res) => {
+    const { user, company, plan } = companyCtx(req);
+    const query = periodQuery(req);
+    if (query.month !== undefined && !isMonthKey(query.month)) {
+      throw AppError.badRequest('Oy YYYY-MM ko‘rinishida bo‘lishi kerak (masalan, 2026-09)');
+    }
+
+    // Sozlamalardagi "Bot ulangan" belgisi bilan bitta qoida (notifications.ts telegramConnected)
+    const chatId = user.botChatId;
+    if (!chatId) throw new AppError(409, 'telegram_not_linked', 'Avval Sozlamalarda Telegram’ni ulang');
+    if (!env.telegram.botToken) {
+      throw new AppError(503, 'telegram_unavailable', 'Telegram bot hozircha ulanmagan — keyinroq urinib ko‘ring');
+    }
+
+    const slot = takeTelegramSlot(user.id);
+    if (!slot.ok) {
+      res.setHeader('Retry-After', String(slot.retryAfterSec));
+      throw new AppError(
+        429,
+        'too_many_requests',
+        `Soatiga ${TG_SEND_LIMIT} martagacha yuborish mumkin — ${Math.ceil(slot.retryAfterSec / 60)} daqiqadan keyin qayta urinib ko‘ring`,
+        { retryAfterSec: slot.retryAfterSec, limit: TG_SEND_LIMIT },
+      );
+    }
+
+    const { report, workbook, fileName } = await loadMonthlyWorkbook({
+      company,
+      plan,
+      range: resolveRange(withQuery(req, query), plan),
+      month: query.month,
+    });
+    const buffer = Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+
+    const sent = await sendTelegramDocument(
+      chatId,
+      { fileName, data: buffer, contentType: XLSX_MIME },
+      { caption: reportCaption(report, company.name, asLang(user.languageCode)) },
+    );
+    if (!sent.ok) throw telegramError(sent);
+
+    res.json({
+      ok: true,
+      fileName,
+      period: report.period,
+      finality: report.finality.status,
+      // Shu soatda yana nechta yuborish mumkin
+      remaining: slot.remaining,
+    });
   }),
 );
 

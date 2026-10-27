@@ -21,6 +21,7 @@ import {
 import type { Insight } from '@savdoiq/shared';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { useCanOpen } from '@/lib/view';
 import { Skeleton, type Tone } from '@/components/ui';
 
 /** Daraja → ohang. Qizil faqat "danger" (zarar, tugagan qoldiq) uchun — ogohlantirish sariq */
@@ -163,8 +164,11 @@ export function InsightsBlock({ items, loading }: { items: Insight[]; loading?: 
   );
 }
 
-function InsightCard({ insight, className }: { insight: Insight; className?: string }) {
+function InsightCard({ insight: raw, className }: { insight: Insight; className?: string }) {
   const t = useT('dashboard');
+  const canOpen = useCanOpen();
+  // Ko'rinish shablonida yopiq sahifaga havola bo'lmaydi — xulosa matni qoladi
+  const insight = raw.link && !canOpen(raw.link) ? { ...raw, link: undefined } : raw;
   const level = LEVEL[insight.level] ?? LEVEL.info;
   const kind = insightKind(insight);
   // Tushum trendi pasaygan bo'lsa belgi ham pastga qarasin

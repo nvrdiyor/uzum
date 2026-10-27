@@ -2,7 +2,8 @@
  * Moliya moduli — /api/v1/finance
  *
  *  GET    /                  → FinanceResponse (tushum, xarajatlar, kunlik seriya, balans)
- *  GET    /pnl               → foyda va zarar (P&L) jadvali, oldingi davr bilan taqqoslov
+ *  GET    /pnl               → foyda va zarar (P&L) jadvali, oldingi davr bilan taqqoslov,
+ *                               va o'sha raqamlardan pul oqimi (tushum → hisobga tushadi → sof foyda)
  *  GET    /expenses          → qo'lda kiritilgan xarajatlar ro'yxati
  *  POST   /expenses          → yangi xarajat
  *  PATCH  /expenses/:id      → xarajatni tahrirlash
@@ -31,7 +32,7 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
-import { aggregateSales, getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
+import { getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
 import { comparablePeriod, getNetDailySeries, getPreviousNetSeries, type NetDailyPoint } from '../services/pnl.js';
 import { getUzumBalance } from '../services/balance.js';
 import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
@@ -119,6 +120,75 @@ async function storageAmount(storeIds: string[], from: Date, toExclusive: Date):
   return agg._sum.amount ?? 0;
 }
 
+/**
+ * Davrdagi UZUM reklamasi — Uzum'dan import qilingan `marketing` satrlari
+ * (`source: 'uzum'`, importer.ts upsertExpenses: "Buyurtmalarni ko'paytirish"
+ * va boshqa pullik targ'ibot). Doira getExpenses (services/common.ts) bilan
+ * AYNAN bir xil — kompaniya, savdo kunlari, do'kon filtri — shuning uchun
+ * "qo'lda kiritilgan reklama" jami reklamadan ayirib topiladi va ikkalasining
+ * yig'indisi P&L'dagi "Marketing" qatoriga har doim teng chiqadi.
+ */
+async function uzumAdSpend(companyId: string, period: Period, storeId?: string): Promise<number> {
+  const agg = await prisma.expense.aggregate({
+    _sum: { amount: true },
+    where: {
+      companyId,
+      category: 'marketing',
+      source: 'uzum',
+      date: { gte: businessDayStart(period.from), lt: addDays(businessDayStart(period.to), 1) },
+      ...(storeId ? { storeId } : {}),
+    },
+  });
+  return agg._sum.amount ?? 0;
+}
+
+/**
+ * Davrdagi "tirik" pozitsiyalar yig'indisi — Boshqaruv paneli (analytics.ts
+ * collectTotals) va Oylik hisobot (services/monthly-report.ts) bilan AYNAN
+ * bir xil qoida: bekor qilingan va qaytgan pozitsiyalar kirmaydi, SKU'siz
+ * pozitsiyalar KIRADI.
+ *
+ * Ilgari bu yerda aggregateSales (SKU kesimi) olinardi: SKU'si topilmagan
+ * pozitsiyalar tushib qolardi, soliq esa "tushum × joriy stavka" deb
+ * hisoblanardi. Stavka Sozlamalarda o'zgargach eski pozitsiyalarda boshqa
+ * stavka bilan ayrilgan soliq turadi — Moliyadagi sof foyda paneldagidan
+ * farq qilardi. Endi soliq har pozitsiyadan AYNAN qancha ayrilgan bo'lsa
+ * shuncha: netProfit = to'lov − tannarx − qo'shimcha − soliq (importer.ts,
+ * item-cost.ts) (2026-10-24).
+ */
+async function sumLiveLines(storeIds: string[], from: Date, toExclusive: Date) {
+  const t = { revenue: 0, payout: 0, cogs: 0, units: 0, commission: 0, logistics: 0, otherCost: 0, tax: 0 };
+  if (storeIds.length === 0) return t;
+  const items = await prisma.orderItem.findMany({
+    where: { orderedAt: { gte: from, lt: toExclusive }, order: { storeId: { in: storeIds } } },
+    select: {
+      qty: true,
+      revenue: true,
+      payout: true,
+      purchasePrice: true,
+      commission: true,
+      logistics: true,
+      otherCost: true,
+      netProfit: true,
+      status: true,
+      returnedAt: true,
+    },
+  });
+  for (const it of items) {
+    if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
+    const cogs = it.purchasePrice * it.qty;
+    t.revenue += it.revenue;
+    t.payout += it.payout;
+    t.cogs += cogs;
+    t.units += it.qty;
+    t.commission += it.commission;
+    t.logistics += it.logistics;
+    t.otherCost += it.otherCost;
+    t.tax += it.payout - cogs - it.otherCost - it.netProfit;
+  }
+  return t;
+}
+
 interface FinanceSnapshot {
   revenue: number;
   payout: number;
@@ -149,44 +219,26 @@ interface FinanceSnapshot {
 
 /**
  * Davr bo'yicha moliyaviy kesim.
- * Komissiya/logistika/boshqa xarajatlar buyurtma satrlaridan, ombor — StorageFee'dan,
- * soliq — company.taxRate'dan, qolgani esa qo'lda kiritilgan Expense yozuvlaridan olinadi.
+ * Komissiya/logistika/soliq/boshqa xarajatlar buyurtma satrlaridan (sumLiveLines),
+ * ombor — StorageFee'dan, qolgani esa qo'lda kiritilgan Expense yozuvlaridan olinadi.
  */
 async function collectFinance(
   companyId: string,
   storeIds: string[],
   period: Period,
-  taxRate: number,
   storeId?: string,
 ): Promise<FinanceSnapshot> {
   const from = businessDayStart(period.from);
   const toExclusive = addDays(businessDayStart(period.to), 1);
 
-  const [sales, manual, storage] = await Promise.all([
-    aggregateSales(storeIds, from, toExclusive),
+  const [lines, manual, storage] = await Promise.all([
+    sumLiveLines(storeIds, from, toExclusive),
     getExpenses(companyId, from, toExclusive, storeId),
     storageAmount(storeIds, from, toExclusive),
   ]);
 
-  let revenue = 0;
-  let payout = 0;
-  let cogs = 0;
-  let units = 0;
-  let commission = 0;
-  let logistics = 0;
-  let otherCost = 0;
-
-  for (const agg of sales.values()) {
-    revenue += agg.revenue;
-    payout += agg.payout;
-    cogs += agg.cogs;
-    units += agg.units;
-    commission += agg.commission;
-    logistics += agg.logistics;
-    otherCost += agg.otherCost;
-  }
-
-  const taxAmount = (revenue * taxRate) / 100;
+  const { revenue, payout, cogs, units, commission, logistics, otherCost } = lines;
+  const taxAmount = lines.tax;
 
   const categories: Record<ExpenseCategory, number> = {
     commission: commission + manual.commission,
@@ -250,9 +302,8 @@ router.get(
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const taxRate = company.taxRate;
 
-    const snap = await collectFinance(company.id, storeIds, range.period, taxRate, range.storeId);
+    const snap = await collectFinance(company.id, storeIds, range.period, range.storeId);
 
     /*
      * Kunlik seriya: buyurtmalardan kelgan foydadan davr xarajatlari (qo'lda
@@ -356,6 +407,8 @@ interface PnlResponse {
   comparePeriod: Period | null;
   currency: string;
   lines: PnlLine[];
+  /** Pul oqimi: tushum → hisobga tushadi → sof foyda (qarang: FLOW). `lines` bilan bir manbadan */
+  waterfall: WaterfallStep[];
   totals: {
     revenue: number;
     cogs: number;
@@ -369,6 +422,157 @@ interface PnlResponse {
   };
 }
 
+/**
+ * Pul oqimi (sharshara) qadami — Moliya sahifasidagi "Tushum → Hisobga
+ * tushadi → Sof foyda" grafigi uchun.
+ *
+ * P&L jadvali (`lines`) buxgalteriya tartibida o'qiladi (yalpi foyda,
+ * tovarlar bo'yicha foyda...). Sotuvchining savoli esa boshqa: "1 so'm
+ * tushumdan Uzum qanchasini ushlaydi, hisobimga qancha tushadi va undan
+ * keyin qo'limda nima qoladi?". Sharshara AYNAN o'sha raqamlarni
+ * (collectFinance) pul haqiqatda oqadigan tartibda beradi — yangi hisob yo'q.
+ */
+interface WaterfallStep {
+  id: string;
+  /** 'start' — tushum, 'minus' — ayriladigan modda, 'subtotal' — hisobga tushadigan pul, 'end' — sof foyda */
+  kind: 'start' | 'minus' | 'subtotal' | 'end';
+  label: string;
+  /** start/subtotal/end — shu nuqtadagi summa; minus — ayrilgan summa (manfiy bo'lsa — qaytib tushgan pul) */
+  amount: number;
+  /** Oldingi teng davr; u saqlangan tarixdan tashqarida bo'lsa null (comparePeriod) */
+  previous: number | null;
+  deltaPct: number | null;
+  /** tushumga nisbatan ulush, % */
+  share: number;
+}
+
+interface FlowInput {
+  snap: FinanceSnapshot;
+  /** Uzum'dan kelgan reklama to'lovlari (uzumAdSpend) */
+  uzumAds: number;
+}
+
+type FlowDef =
+  | { id: string; kind: 'minus'; label: string; amount: (x: FlowInput) => number }
+  | { id: string; kind: 'start' | 'subtotal' | 'end'; label: string };
+
+/**
+ * Sharshara tartibi — pul qanday oqsa, shunday.
+ *
+ * "Hisobga tushadi" = tushum − Uzum komissiyasi − mijozga yetkazish. Bu GET /
+ * dagi `payout` ("To‘lovga") bilan BIR XIL son: importer.ts har pozitsiyada
+ * `payout = tushum − komissiya − logistika` tenglamasini saqlaydi (Uzum
+ * raqamlari zid kelsa, komissiyani qoldiq qilib qayta hisoblaydi), ikkalasi
+ * ham bir xil pozitsiyalardan (bekor/qaytarilganlarsiz) yig'iladi. Farq
+ * faqat bitta holatda chiqishi mumkin: Uzum bergan raqamlar shunchalik zid
+ * bo'lsaki, qoldiq mantiqsiz (manfiy yoki tushumdan katta) chiqib, importer
+ * Uzum komissiyasini o'zgarishsiz qoldirgan pozitsiyada. U holda ham
+ * sharshara P&L arifmetikasida qoladi — yakuni aynan davr foydasi bo'lsin.
+ *
+ * "Qo‘shimcha xarajat" (`itemOther`) ATAYLAB oraliq natijadan KEYIN turadi.
+ * P&L'da u "sotuvdagi boshqa ushlanmalar" yonida, lekin bu Uzum ushlanmasi
+ * emas: Tannarx sahifasida har dona uchun kiritilgan sotuvchining o'z
+ * xarajati (qadoq, bojxona — Sku.extraCost × dona, importer.ts). Uzum uni
+ * to'lovdan ayirmaydi; oldin qo'yilsa, "Hisobga tushadi" Uzum haqiqatda
+ * o'tkazadigan puldan shuncha kam chiqib, yolg'on bo'lardi.
+ *
+ * Reklama manbaga qarab ikkiga bo'linadi: Uzum hisobdan yechgani va sotuvchi
+ * o'zi kiritgani (Telegram, Instagram, bloger...). Qo'lda kiritilgan
+ * komissiya va soliq ham — P&L'dagi kabi — alohida qadam: ular to'lovdan
+ * emas, davr xarajati sifatida ayriladi.
+ */
+const FLOW: FlowDef[] = [
+  { id: 'revenue', kind: 'start', label: 'Tushum' },
+  { id: 'commission', kind: 'minus', label: 'Uzum komissiyasi', amount: (x) => x.snap.item.commission },
+  { id: 'delivery', kind: 'minus', label: 'Mijozga yetkazish', amount: (x) => x.snap.item.delivery },
+  { id: 'payout', kind: 'subtotal', label: 'Hisobga tushadi' },
+  { id: 'cogs', kind: 'minus', label: 'Tannarx', amount: (x) => x.snap.cogs },
+  { id: 'itemOther', kind: 'minus', label: 'Qo‘shimcha xarajat (har dona uchun)', amount: (x) => x.snap.item.other },
+  { id: 'tax', kind: 'minus', label: 'Soliq', amount: (x) => x.snap.item.tax },
+  { id: 'manualTax', kind: 'minus', label: 'Soliq (qo‘lda kiritilgan)', amount: (x) => x.snap.periodCosts.manualTax },
+  { id: 'marketingUzum', kind: 'minus', label: 'Reklama (Uzum)', amount: (x) => x.uzumAds },
+  {
+    id: 'marketingManual',
+    kind: 'minus',
+    label: 'Reklama (qo‘lda kiritilgan)',
+    amount: (x) => x.snap.periodCosts.marketing - x.uzumAds,
+  },
+  { id: 'storage', kind: 'minus', label: 'Saqlash', amount: (x) => x.snap.periodCosts.storage },
+  { id: 'logistics', kind: 'minus', label: 'Omborga logistika', amount: (x) => x.snap.periodCosts.logistics },
+  { id: 'salary', kind: 'minus', label: 'Ish haqi', amount: (x) => x.snap.periodCosts.salary },
+  {
+    id: 'manualCommission',
+    kind: 'minus',
+    label: 'Komissiya (qo‘lda kiritilgan)',
+    amount: (x) => x.snap.periodCosts.manualCommission,
+  },
+  { id: 'other', kind: 'minus', label: 'Boshqa xarajatlar', amount: (x) => x.snap.periodCosts.other },
+  { id: 'operatingProfit', kind: 'end', label: 'Sof foyda' },
+];
+
+/**
+ * Bir davr uchun har qadam summasi, butun so'mda.
+ *
+ * Har modda P&L qatoridek yaxlitlanadi (round), tushum va sof foyda esa
+ * AYNAN P&L'dagi son (`revenue`, `operatingProfit` qatorlari — totals.netProfit,
+ * Boshqaruv panelidagi sof foyda). Oraliq natija va yakun ayirmalardan
+ * yig'iladi, shuning uchun grafik har doim "tushum − hammasi = sof foyda"
+ * ga yopiladi.
+ *
+ * Kasr summalarda (soliq = tushum × stavka, tiyinli qo'lda kiritilgan
+ * xarajat) alohida yaxlitlangan moddalar yig'indisi bir-ikki so'mga adashishi
+ * mumkin — masalan, ikkita "x,5" ikkalasi ham yuqoriga yaxlitlanganda.
+ * Kumulyativ yaxlitlash (services/pnl.ts getPeriodCostsByDay kabi) bu yerga
+ * ATAYLAB olinmadi: u ham yopiladi, lekin 12,25% stavkali sinovda "Soliq"
+ * jadvaldagidan 1 so'm kam, "Boshqa" 1 so'm ko'p chiqdi (2026-10-24) — bitta
+ * sahifada bir modda ikki xil son bo'lardi. Shuning uchun farq faqat yopilmay
+ * qolganda va faqat "Hisobga tushadi"dan KEYINGI qadamlarda tuzatiladi (kasr
+ * manbalari o'sha yerda; oldingisiga tegilsa, oraliq natija o'z qoldig'iga
+ * teng bo'lmay qolardi): yaxlitlashda eng ko'p "yo'qotgan" qadamga ±1 so'm,
+ * qolgan hamma son jadval bilan bir xil.
+ */
+function flowAmounts(x: FlowInput): Map<string, number> {
+  const out = new Map<string, number>();
+  const raw = new Map<string, number>();
+  for (const def of FLOW) {
+    if (def.kind !== 'minus') continue;
+    const v = def.amount(x);
+    raw.set(def.id, v);
+    out.set(def.id, round(v));
+  }
+
+  const start = round(x.snap.revenue);
+  const end = round(x.snap.operatingProfit);
+  let drift = start - [...out.values()].reduce((s, v) => s + v, 0) - end;
+  if (drift !== 0) {
+    const step = Math.sign(drift);
+    // drift > 0 — yana ayirish kerak: pastga eng ko'p yaxlitlangani +1; drift < 0 — aksincha
+    const lost = (id: string) => step * ((raw.get(id) ?? 0) - (out.get(id) ?? 0));
+    const candidates = FLOW.slice(FLOW.findIndex((d) => d.kind === 'subtotal') + 1)
+      // Nol modda tuzatishdan "1 so'm" bo'lib paydo bo'lmasin
+      .filter((d) => d.kind === 'minus' && raw.get(d.id) !== 0)
+      .map((d) => d.id)
+      .sort((a, b) => lost(b) - lost(a));
+    for (const id of candidates) {
+      if (drift === 0) break;
+      out.set(id, (out.get(id) ?? 0) + step);
+      drift -= step;
+    }
+    // Kutilmagan katta farq yoki nomzod yo'q — qolgani birinchi xarajat qadamiga
+    if (drift !== 0) {
+      const fallback = candidates[0] ?? 'cogs';
+      out.set(fallback, (out.get(fallback) ?? 0) + drift);
+    }
+  }
+
+  let left = start;
+  for (const def of FLOW) {
+    if (def.kind === 'minus') left -= out.get(def.id) ?? 0;
+    else out.set(def.id, left);
+  }
+  return out;
+}
+
 router.get(
   '/pnl',
   requireFeature('unit_economics'),
@@ -376,11 +580,10 @@ router.get(
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const taxRate = company.taxRate;
 
-    const [cur, prev, comparable] = await Promise.all([
-      collectFinance(company.id, storeIds, range.period, taxRate, range.storeId),
-      collectFinance(company.id, storeIds, range.previous, taxRate, range.storeId),
+    const [cur, prev, comparable, curAds, prevAds] = await Promise.all([
+      collectFinance(company.id, storeIds, range.period, range.storeId),
+      collectFinance(company.id, storeIds, range.previous, range.storeId),
       /*
        * Boshqaruv paneli va grafikdagi uzuq chiziq bilan bitta qoida: oldingi
        * davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi, birinchi
@@ -388,6 +591,9 @@ router.get(
        * qisman oyna bilan solishtirilib, "+302%" kabi yolg'on o'sish chiqardi.
        */
       comparablePeriod(storeIds, range.previous, plan),
+      // Sharshara reklamani manbaga qarab ikkiga bo'ladi (FLOW)
+      uzumAdSpend(company.id, range.period, range.storeId),
+      uzumAdSpend(company.id, range.previous, range.storeId),
     ]);
 
     const line = (
@@ -441,12 +647,35 @@ router.get(
       line('operatingProfit', 'Davr foydasi', 'total', cur.operatingProfit, prev.operatingProfit),
     ];
 
+    /*
+     * Pul oqimi — o'sha ikki kesimdan (cur/prev), FLOW tartibida. Nolga teng
+     * ayirma qadami tashlab yuboriladi (grafikda bo'sh ustun bo'lib turardi);
+     * tushum, hisobga tushadigan pul va sof foyda esa har doim bor. Oldingi
+     * davr — `lines` dagi kabi faqat taqqoslab bo'lsa.
+     */
+    const curFlow = flowAmounts({ snap: cur, uzumAds: curAds });
+    const prevFlow = flowAmounts({ snap: prev, uzumAds: prevAds });
+    const waterfall: WaterfallStep[] = FLOW.map((def) => {
+      const amount = curFlow.get(def.id) ?? 0;
+      const previous = prevFlow.get(def.id) ?? 0;
+      return {
+        id: def.id,
+        kind: def.kind,
+        label: def.label,
+        amount,
+        previous: comparable ? previous : null,
+        deltaPct: comparable ? deltaPct(amount, previous) : null,
+        share: pct(amount, cur.revenue),
+      };
+    }).filter((step) => step.kind !== 'minus' || step.amount !== 0);
+
     const payload: PnlResponse = {
       period: range.period,
       previous: range.previous,
       comparePeriod: comparable,
       currency: company.currency,
       lines,
+      waterfall,
       totals: {
         revenue: round(cur.revenue),
         cogs: round(cur.cogs),

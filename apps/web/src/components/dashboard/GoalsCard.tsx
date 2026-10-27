@@ -18,6 +18,7 @@ import { Button, Card, CardBody, CardHeader, IconButton, Skeleton } from '@/comp
 import { useFormat, useT } from '@/i18n';
 import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import { GOALS_NS } from './goals/i18n';
 import { GoalsEditModal, useSubmitGoals } from './goals/GoalsEditModal';
 import { MarginGoalRow, PacedGoalRow } from './goals/GoalRows';
@@ -27,8 +28,14 @@ import { useGoals } from './goals/useGoals';
 export function GoalsCard({ className }: { className?: string }) {
   const t = useT(GOALS_NS);
   const f = useFormat();
+  /*
+   * Pulsiz ko'rinish shablonida (Marketolog) sof foyda va marja maqsadi null
+   * keladi: o'sha qatorlar chizilmaydi, maqsadni esa (u foyda maqsadini ham
+   * o'z ichiga oladi) server qabul qilmaydi — tahrirlash tugmasi yo'q.
+   */
+  const money = useSeesMoney();
   // Batches/Payout'dagi kabi: kuzatuvchi faqat o'qiydi (server ham PUT'ni 403 qiladi)
-  const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
+  const canEdit = useSession((st) => st.me?.company?.role !== 'viewer') && money;
   const { data, isLoading, isError, refetch, storeFiltered } = useGoals();
   const { submit, pending } = useSubmitGoals();
   const [editing, setEditing] = useState(false);
@@ -50,7 +57,7 @@ export function GoalsCard({ className }: { className?: string }) {
   }
 
   const monthLabel = `${t(`month.${Number(data.month.slice(5, 7))}`)} ${data.month.slice(0, 4)}`;
-  const rows = pacedRows(data);
+  const rows = pacedRows(data).filter((r) => money || r.key !== 'netProfit');
   const margin = marginRow(data);
   const { values, isSuggestion } = effectiveTargets(data);
   const marker = paceMarker(data);
@@ -116,7 +123,7 @@ export function GoalsCard({ className }: { className?: string }) {
           />
         ))}
 
-        <MarginGoalRow row={margin} isSuggestion={isSuggestion} />
+        {money ? <MarginGoalRow row={margin} isSuggestion={isSuggestion} /> : null}
 
         {isSuggestion ? (
           <div className="well mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5">

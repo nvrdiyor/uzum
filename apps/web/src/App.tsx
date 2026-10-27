@@ -18,6 +18,8 @@ import Login from '@/pages/Login';
 import AuthCallback from '@/pages/AuthCallback';
 import NotFound from '@/pages/NotFound';
 import AdminLogin from '@/pages/AdminLogin';
+// Jamoaga taklif havolasi — kirmagan va kompaniyasiz foydalanuvchi ham ochadi (Protected'dan tashqarida)
+import Invite from '@/pages/Invite';
 
 // Ichki sahifalar — kodni bo'lib yuklash
 const Onboarding = lazyPage(() => import('@/pages/Onboarding'), '/onboarding');
@@ -46,6 +48,10 @@ const Shipments = lazyPage(() => import('@/pages/Shipments'), '/shipments');
 const Losses = lazyPage(() => import('@/pages/Losses'), '/losses');
 const Returns = lazyPage(() => import('@/pages/Returns'), '/returns');
 const Storage = lazyPage(() => import('@/pages/Storage'), '/storage');
+const Vgh = lazyPage(() => import('@/pages/Vgh'), '/vgh');
+const Categories = lazyPage(() => import('@/pages/Categories'), '/categories');
+const Radar = lazyPage(() => import('@/pages/Radar'), '/radar');
+const PriceMap = lazyPage(() => import('@/pages/PriceMap'), '/price-map');
 const Finance = lazyPage(() => import('@/pages/Finance'), '/finance');
 const UnitEconomics = lazyPage(() => import('@/pages/UnitEconomics'), '/unit-economics');
 const ProductProfit = lazyPage(() => import('@/pages/ProductProfit'), '/product-profit');
@@ -56,6 +62,7 @@ const Reviews = lazyPage(() => import('@/pages/Reviews'), '/reviews');
 const Referral = lazyPage(() => import('@/pages/Referral'), '/referral');
 const Pricing = lazyPage(() => import('@/pages/Pricing'), '/pricing');
 const Settings = lazyPage(() => import('@/pages/Settings'), '/settings');
+const Team = lazyPage(() => import('@/pages/Team'), '/team');
 const Admin = lazyPage(() => import('@/pages/Admin'), '/admin');
 const AdminCompany = lazyPage(() => import('@/pages/AdminCompany'));
 
@@ -162,6 +169,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/admin-login" element={<AdminLogin />} />
+          <Route path="/invite/:token" element={<Invite />} />
 
           <Route element={<Protected />}>
             <Route path="/onboarding" element={<Onboarding />} />
@@ -191,6 +199,10 @@ export default function App() {
               <Route path="/losses" element={<Losses />} />
               <Route path="/returns" element={<Returns />} />
               <Route path="/storage" element={<Storage />} />
+              <Route path="/vgh" element={<Vgh />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/radar" element={<Radar />} />
+              <Route path="/price-map" element={<PriceMap />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/unit-economics" element={<UnitEconomics />} />
               <Route path="/product-profit" element={<ProductProfit />} />
@@ -201,6 +213,7 @@ export default function App() {
               <Route path="/referral" element={<Referral />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/team" element={<Team />} />
               <Route path="/settings/billing" element={<LegacyBillingRedirect />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/companies/:id" element={<AdminCompany />} />

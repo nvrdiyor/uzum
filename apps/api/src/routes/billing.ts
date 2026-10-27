@@ -40,6 +40,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, ctx, requireAuth, requireCompany, requireRole } from '../lib/auth.js';
 import { env } from '../env.js';
 import { notifyCompanyOwners } from '../services/notify.js';
+import { scheduleHistoryBackfill } from '../services/sync.js';
 import { notifyAdmins } from './notifications.js';
 import { accrueReferralBonus, getBonusStats, releaseInvoiceBonus, spendBonus } from './referral.js';
 
@@ -59,8 +60,8 @@ const FEATURE_LABELS: Record<FeatureId, string> = {
   losses_report: 'Yo‘qotishlar hisoboti',
   returns_report: 'Qaytarishlar hisoboti',
   paid_storage: 'Pullik saqlash',
-  // Sahifasi hali yo'q — tarifda "tez kunda" deb ko'rsatiladi (sayt: COMING_SOON_FEATURES)
-  vgh_report: 'Vazn-gabarit (VGH) hisoboti — tez kunda',
+  // Sahifasi bor: /vgh "Hajm va VGH" (2026-10-24) — "tez kunda" belgisi olib tashlandi
+  vgh_report: 'Hajm va VGH hisoboti',
   warehouse: 'Ombor boshqaruvi',
   shipments: 'Yetkazmalar',
   planner: 'Yetkazib berish rejalashtiruvchisi',
@@ -275,6 +276,18 @@ export async function activatePlan(
     where: { companyId },
     data: { syncIntervalM: target.limits.syncIntervalMinutes, nextSyncAt: now },
   });
+
+  /*
+   * Tarif tarixi chuqurlashgan bo'lsa (sinov 60 kun → standart/VIP 365 kun),
+   * yetishmagan oylar fonda yuklanadi — ilgari keyingi sinxronlar faqat
+   * inkremental bo'lgani uchun eski tarix hech qachon kelmasdi. Xato to'lovni
+   * yiqitmaydi: Sozlamalardagi "Tarixni yuklash" tugmasi bor (2026-10-24).
+   */
+  try {
+    await scheduleHistoryBackfill(companyId, { reason: 'plan', planId: target.id });
+  } catch (err) {
+    console.warn('[billing] tarix yuklashni navbatga qo‘yib bo‘lmadi:', err instanceof Error ? err.message : err);
+  }
 
   await prisma.auditLog.create({
     data: {

@@ -7,6 +7,7 @@ import { registerNamespace, useT } from '@/i18n';
 import { useSession } from '@/store/session';
 import { EASE } from '@/components/landing/primitives';
 import { AuthShell, PulseLogo } from '@/components/auth/primitives';
+import { pendingInvitePath } from '@/components/team/pendingInvite';
 
 /** Sahifaga xos kalitlar (asosiy 'auth' lug'ati components/auth/primitives.tsx da) */
 registerNamespace('auth', {
@@ -52,7 +53,8 @@ export default function AuthCallback() {
           setError(t('cb.errInvalid'));
           return;
         }
-        navigate(safePath(query.get('next') ?? hash.get('next')), { replace: true });
+        // Taklif havolasidan kirishga o'tilgan bo'lsa (shu tabda) — taklifga qaytamiz
+        navigate(safePath(query.get('next') ?? hash.get('next') ?? pendingInvitePath()), { replace: true });
       } catch {
         setError(t('cb.errInvalid'));
       }

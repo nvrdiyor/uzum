@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowRight,
   Bookmark,
   BookmarkPlus,
   Boxes,
@@ -17,11 +18,26 @@ import {
   Truck,
 } from '@/components/icons';
 import {
+  LOGISTICS_FEE,
+  TARIFF_EFFECTIVE_FROM,
+  billableLiters,
   calcUnitEconomics,
+  storageFeePerDay,
   type ProductsResponse,
   type UnitCalcInput,
   type UnitCalcResult,
 } from '@savdoiq/shared';
+import { LitrovkaTab } from '@/components/calculator/LitrovkaTab';
+import { LITR_EXAMPLE, MAX_TURNOVER, computeLitrovka, litrVolume, type LitrInput } from '@/components/calculator/litrovka';
+import { SourceHint, SourceSlot } from '@/components/calculator/SourceBadge';
+import { literDigits } from '@/components/calculator/tariff';
+import {
+  AUTO_FIELDS,
+  buildUnitAuto,
+  type AutoField,
+  type UnitAuto,
+  type UnitDefaultsFull,
+} from '@/components/calculator/unitSources';
 import {
   Amount,
   Badge,
@@ -79,7 +95,7 @@ registerNamespace('calculator', {
     'fld.commission': 'Komissiya',
     'fld.commissionHint': 'Uzum ushlab qoladigan foiz — kategoriyaga qarab odatda 8–20%',
     'fld.logistics': 'Logistika',
-    'fld.logisticsHint': 'Bitta donani yetkazish narxi',
+    'fld.logisticsHint': 'Sotilgan 1 dona uchun Uzum logistika yig‘imi (tovar qaytsa, qaytariladi)',
     'fld.storagePerDay': 'Saqlash (kuniga)',
     'fld.storagePerDayHint': 'Omborda 1 dona uchun kunlik saqlash haqi',
     'fld.storageDays': 'Saqlash kunlari',
@@ -92,8 +108,9 @@ registerNamespace('calculator', {
     'fld.taxHint': 'Aylanmadan olinadigan soliq stavkasi',
     'fld.buyout': 'Sotib olish ulushi',
     'fld.buyoutHint': 'Yetkazilgan buyurtmalarning necha foizi qaytarilmaydi',
-    'fld.returnLogistics': 'Qaytarish logistikasi',
-    'fld.returnLogisticsHint': 'Qaytgan bitta dona uchun qo‘shimcha xarajat',
+    'fld.returnLogistics': 'Qaytgan donaga xarajat',
+    'fld.returnLogisticsHint':
+      'Uzum qaytgan tovarning logistika yig‘imini qaytaradi. Bu yerga faqat o‘z xarajatingizni yozing (qayta qadoqlash, brak) — 1 dona uchun',
     'fld.qty': 'Miqdor',
     'fld.qtyHint': 'Partiyadagi dona soni — butun partiya hisobi shundan chiqadi',
     'unit.som': 'so‘m',
@@ -140,16 +157,6 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Nom kiriting',
     'btn.reset': 'Tozalash',
     'reset.done': 'Standart qiymatlar tiklandi',
-    'src.sales': 'Sotuvdan',
-    'src.salesHint': 'Oxirgi 30 kundagi haqiqiy sotuvlaringizdan hisoblandi',
-    'src.catalogue': 'Katalogdan',
-    'src.catalogueHint': 'Uzum katalogidagi shu kategoriya foizi',
-    'src.fees': 'To‘lovdan',
-    'src.feesHint': 'Uzum olgan haqiqiy saqlash to‘lovlaridan hisoblandi',
-    'src.volume': 'Hajmdan',
-    'src.volumeHint': 'Tovar hajmi bo‘yicha taxmin — saqlash to‘lovi hali bo‘lmagan',
-    'src.default': 'Taxmin',
-    'src.defaultHint': 'Ma’lumot yetarli emas — umumiy o‘rtacha qiymat',
   },
   ru: {
     title: 'Юнит-калькулятор',
@@ -169,7 +176,7 @@ registerNamespace('calculator', {
     'fld.commission': 'Комиссия',
     'fld.commissionHint': 'Процент маркетплейса — обычно 8–20% по категории',
     'fld.logistics': 'Логистика',
-    'fld.logisticsHint': 'Стоимость доставки одной единицы',
+    'fld.logisticsHint': 'Логистика Uzum за 1 проданную шт. (при возврате возвращается)',
     'fld.storagePerDay': 'Хранение (в день)',
     'fld.storagePerDayHint': 'Плата за хранение 1 шт. в сутки',
     'fld.storageDays': 'Дней хранения',
@@ -182,8 +189,9 @@ registerNamespace('calculator', {
     'fld.taxHint': 'Ставка налога с оборота',
     'fld.buyout': 'Процент выкупа',
     'fld.buyoutHint': 'Какая доля доставленных заказов не возвращается',
-    'fld.returnLogistics': 'Логистика возврата',
-    'fld.returnLogisticsHint': 'Доп. расход за одну возвращённую единицу',
+    'fld.returnLogistics': 'Расход на возврат',
+    'fld.returnLogisticsHint':
+      'Uzum возвращает логистику за возвращённый товар. Укажите только свои расходы (переупаковка, брак) — на 1 шт.',
     'fld.qty': 'Количество',
     'fld.qtyHint': 'Штук в партии — из этого считается итог по партии',
     'unit.som': 'сум',
@@ -230,16 +238,6 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Введите название',
     'btn.reset': 'Сбросить',
     'reset.done': 'Значения по умолчанию восстановлены',
-    'src.sales': 'Из продаж',
-    'src.salesHint': 'Рассчитано по вашим реальным продажам за последние 30 дней',
-    'src.catalogue': 'Из каталога',
-    'src.catalogueHint': 'Процент категории из каталога Uzum',
-    'src.fees': 'Из счетов',
-    'src.feesHint': 'Рассчитано по реальным платежам Uzum за хранение',
-    'src.volume': 'По объёму',
-    'src.volumeHint': 'Оценка по объёму товара — платежей за хранение ещё не было',
-    'src.default': 'Оценка',
-    'src.defaultHint': 'Данных недостаточно — среднее значение',
   },
   en: {
     title: 'Unit calculator',
@@ -259,7 +257,7 @@ registerNamespace('calculator', {
     'fld.commission': 'Commission',
     'fld.commissionHint': 'Marketplace fee — usually 8–20% depending on the category',
     'fld.logistics': 'Logistics',
-    'fld.logisticsHint': 'Delivery cost of a single unit',
+    'fld.logisticsHint': 'Uzum logistics fee per sold unit (refunded if the item is returned)',
     'fld.storagePerDay': 'Storage (per day)',
     'fld.storagePerDayHint': 'Daily warehouse fee for one unit',
     'fld.storageDays': 'Days in storage',
@@ -272,8 +270,9 @@ registerNamespace('calculator', {
     'fld.taxHint': 'Turnover tax rate',
     'fld.buyout': 'Buyout rate',
     'fld.buyoutHint': 'Share of delivered orders that is not returned',
-    'fld.returnLogistics': 'Return logistics',
-    'fld.returnLogisticsHint': 'Extra cost for one returned unit',
+    'fld.returnLogistics': 'Cost per return',
+    'fld.returnLogisticsHint':
+      'Uzum refunds the logistics fee on returned items. Enter only your own costs (repacking, defects) — per unit',
     'fld.qty': 'Quantity',
     'fld.qtyHint': 'Units in the batch — the batch totals come from this',
     'unit.som': 'UZS',
@@ -320,27 +319,8 @@ registerNamespace('calculator', {
     'sc.nameRequired': 'Enter a name',
     'btn.reset': 'Reset',
     'reset.done': 'Default values restored',
-    'src.sales': 'From sales',
-    'src.salesHint': 'Calculated from your real sales over the last 30 days',
-    'src.catalogue': 'Catalogue',
-    'src.catalogueHint': 'The category rate from the Uzum catalogue',
-    'src.fees': 'From fees',
-    'src.feesHint': 'Calculated from the storage fees Uzum actually charged',
-    'src.volume': 'By volume',
-    'src.volumeHint': 'Estimated from the item volume — no storage fees yet',
-    'src.default': 'Estimate',
-    'src.defaultHint': 'Not enough data — a general average',
   },
 });
-
-/** Qiymat manbai belgisining rangi: o'z ma'lumotingiz — brend, Uzum'dan — ko'k, taxmin — kulrang */
-const SOURCE_TONE: Record<string, Tone> = {
-  sales: 'brand',
-  fees: 'brand',
-  catalogue: 'info',
-  volume: 'info',
-  default: 'muted',
-};
 
 interface SkuOption {
   id: string;
@@ -350,22 +330,58 @@ interface SkuOption {
 /** "Narx qayerga ketadi" bloki: bitta dona yoki butun partiya bo'yicha */
 type SplitMode = 'unit' | 'batch';
 
+/** Sahifa bo'limlari: unit-iqtisod va Litrovka (`?tab=litr`) */
+type CalcTab = 'unit' | 'litr';
+
+/**
+ * Qo'lda rejimdagi boshlang'ich qiymatlar. Namunadagi saqlash (300 so'm/kun)
+ * Uzum tarifiga o'tkazildi: 30 kunlik aylanma 60 dan kam — saqlash bepul
+ * (tariffs.ts, 2026-10-24). Qolgani components/unit DEFAULT_INPUT.
+ */
+const START_INPUT: UnitCalcInput = {
+  ...DEFAULT_INPUT,
+  storagePerDay: storageFeePerDay({ units: 1, volumeL: 1, turnover: DEFAULT_INPUT.storageDays }),
+};
+
 export default function Calculator() {
   const t = useT('calculator');
+  const ts = useT('calcSource');
+  const tl = useT('litrovka');
   const f = useFormat();
   const qc = useQueryClient();
   const periodQuery = usePeriodQuery();
   const [params, setParams] = useSearchParams();
 
   const skuId = params.get('skuId') ?? '';
+  const tab: CalcTab = params.get('tab') === 'litr' ? 'litr' : 'unit';
+  const setTab = (next: CalcTab) => {
+    const p = new URLSearchParams(params);
+    if (next === 'litr') p.set('tab', 'litr');
+    else p.delete('tab');
+    setParams(p, { replace: true });
+  };
 
   /** Formadagi joriy qiymatlar (har bosishda yangilanadi) */
-  const [draft, setDraft] = useState<UnitCalcInput>(DEFAULT_INPUT);
+  const [draft, setDraft] = useState<UnitCalcInput>(START_INPUT);
   /** Hisob uchun kechiktirilgan qiymatlar (300ms) */
-  const [input, setInput] = useState<UnitCalcInput>(DEFAULT_INPUT);
+  const [input, setInput] = useState<UnitCalcInput>(START_INPUT);
   const [saveOpen, setSaveOpen] = useState(false);
   const [name, setName] = useState('');
   const [splitMode, setSplitMode] = useState<SplitMode>('unit');
+
+  /*
+   * Litrovka holati sahifada turadi: bo'limlar almashganda yo'qolmasin va
+   * qo'lda rejimda unit kalkulyator logistika/saqlashni shu hajmdan olsin.
+   * `litrTouched` — namunaviy misol emas, sotuvchining o'z qiymati.
+   */
+  const [litr, setLitr] = useState<LitrInput>(LITR_EXAMPLE);
+  const [litrTouched, setLitrTouched] = useState(false);
+  /** Qaysi SKU'dan to'ldirilgan — bir SKU uchun bir marta (keyingi tahrirlar ustidan yozilmasin) */
+  const litrPrefilledFor = useRef<string | null>(null);
+  const onLitrChange = (next: LitrInput) => {
+    setLitr(next);
+    setLitrTouched(true);
+  };
 
   useEffect(() => {
     const id = setTimeout(() => setInput(draft), 300);
@@ -443,20 +459,117 @@ export default function Calculator() {
   const buffer = input.price > 0 ? ((input.price - result.breakEvenPrice) / input.price) * 100 : 0;
 
   /*
-   * Qiymat qayerdan olingani. SKU tanlanganda server `source`ni ham qaytaradi
-   * (ilgari u tashlab yuborilardi va sotuvchi "12%" o'zining sotuvidanmi yoki
-   * taxminmi — bilmasdi). Belgi faqat maydon o'zgartirilmagan bo'lsa turadi:
-   * qo'lda yozilgan raqam endi "sotuvdan" emas.
+   * Qiymat qayerdan olingani — maydon ostida belgi ("Uzum tarifi" / "Sizning
+   * ma'lumotingiz" / "Taxmin"), izohda formula (components/calculator/
+   * unitSources.ts). SKU tanlanganda manba serverdan (`source` + `basis`),
+   * qo'lda rejimda — namunaviy qiymat yoki Litrovka bo'limidagi hajm bo'yicha
+   * Uzum tarifi. Belgi faqat maydon avtomatik qiymatga teng tursa ko'rinadi:
+   * qo'lda yozilgan raqam endi hech qaysi manbadan emas. Ilgari belgi faqat
+   * SKU tanlanganda chiqardi, qo'lda rejimdagi 12% va 13 350 taxmin ekani
+   * aytilmasdi (2026-10-24).
    */
-  const sourceBadge = (src: keyof NonNullable<UnitDefaultsResponse['source']>, field: keyof UnitCalcInput) => {
-    const kind = defaults.data?.source?.[src];
-    const loaded = defaults.data?.input?.[field];
-    if (!kind || loaded === undefined || draft[field] !== loaded) return undefined;
-    return (
-      <Badge tone={SOURCE_TONE[kind] ?? 'muted'} className="px-1.5 py-0 text-2xs" title={t(`src.${kind}Hint`)}>
-        {t(`src.${kind}`)}
-      </Badge>
+  const skuDefaults = skuId ? ((defaults.data as UnitDefaultsFull | undefined) ?? null) : null;
+  const skuBasis = skuDefaults?.basis ?? null;
+  /** SKU tanlangan, javobi hali kelmagan — avtomatik qiymatlar "muzlaydi" (forma oraliq qiymatlarga sakramasin) */
+  const autoLoading = Boolean(skuId) && !skuBasis;
+  const manualVolume = litrTouched ? litrVolume(litr) : null;
+  const auto = useMemo<UnitAuto>(
+    () =>
+      buildUnitAuto(
+        {
+          sku: skuBasis ? skuDefaults : null,
+          manualVolume,
+          manualKind: litr.kind,
+          storageDays: draft.storageDays,
+          base: DEFAULT_INPUT,
+        },
+        ts,
+        f,
+      ),
+    // `f` har renderda yangi obyekt — til o'zgarishi `ts` orqali keladi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [skuDefaults, skuBasis, manualVolume, litr.kind, draft.storageDays, ts],
+  );
+
+  /*
+   * Avtomatik qiymat o'zgarsa (saqlash kunlari → aylanma guruhi, Litrovka
+   * hajmi, boshqa SKU), maydon ham yangilanadi — lekin faqat foydalanuvchi uni
+   * o'zgartirmagan bo'lsa (hali eski avtomatik qiymatda turgan bo'lsa).
+   */
+  const prevAuto = useRef<UnitAuto | null>(null);
+  useEffect(() => {
+    if (autoLoading) return;
+    const prev = prevAuto.current;
+    prevAuto.current = auto;
+    if (!prev) return;
+    const changed = AUTO_FIELDS.filter(
+      (k) => auto.values[k] !== undefined && prev.values[k] !== undefined && auto.values[k] !== prev.values[k],
     );
+    if (changed.length === 0) return;
+    setDraft((d) => {
+      let next = d;
+      for (const k of changed) {
+        const value = auto.values[k];
+        if (value !== undefined && d[k] === prev.values[k]) next = { ...next, [k]: value };
+      }
+      return next;
+    });
+  }, [auto, autoLoading]);
+
+  /** Maydon manbai — faqat qiymat avtomatik bo'lsa */
+  const activeSource = (field: AutoField) => {
+    const value = auto.values[field];
+    return value !== undefined && draft[field] === value ? auto.sources[field] : undefined;
+  };
+
+  // ── Litrovka: SKU tanlansa kartochkadagi hajm, FBO qoldiq, aylanma va tarif turi ──
+  useEffect(() => {
+    if (!skuId || !skuBasis || litrPrefilledFor.current === skuId) return;
+    litrPrefilledFor.current = skuId;
+    const b = skuBasis;
+    setLitr((cur) => ({
+      ...cur,
+      ...(b.volumeL > 0 ? { mode: 'l' as const, liters: b.volumeL } : {}),
+      ...(b.fbo > 0 ? { units: b.fbo } : {}),
+      // Aylanma: sotuv yo'q — 361+ guruh; FBO qoldiq yo'q (0) — avvalgisi qoladi
+      ...(b.turnoverDays === null
+        ? { turnover: 365 }
+        : b.turnoverDays > 0
+          ? { turnover: Math.min(MAX_TURNOVER, b.turnoverDays) }
+          : {}),
+      kind: b.tariffKind,
+    }));
+    setLitrTouched(true);
+  }, [skuId, skuBasis]);
+
+  /** Hajm qayerdan — "Uzum xarajatlari" bo'limi ostidagi qator */
+  const fmtL = (v: number) => f.num(v, literDigits(v));
+  const volumeLine: { text: string; warn?: boolean; link: boolean } | null = skuBasis
+    ? skuBasis.volumeL > 0
+      ? {
+          text: tl('unitLine.card', {
+            v: fmtL(skuBasis.volumeL),
+            b: f.num(skuBasis.billableL),
+            kind: tl(skuBasis.tariffKind === 'reduced' ? 'kind.reducedLong' : 'kind.standardLong'),
+          }),
+          link: true,
+        }
+      : { text: tl('unitLine.noDims', { fee: f.money(LOGISTICS_FEE.noDimensions) }), warn: true, link: false }
+    : skuId
+      ? null
+      : manualVolume && manualVolume > 0
+        ? { text: tl('unitLine.litr', { v: fmtL(manualVolume), b: f.num(billableLiters(manualVolume)) }), link: true }
+        : { text: tl('unitLine.none'), link: true };
+
+  /** Litrovka natijasini unit kalkulyatorga o'tkazish: logistika, aylanma va kunlik saqlash */
+  const onUseLitr = () => {
+    const r = computeLitrovka(litr);
+    if (r.logistics === null) return;
+    const days = Math.min(365, Math.max(0, Math.round(litr.turnover)));
+    applyInput({ ...draft, logistics: r.logistics, storageDays: days, storagePerDay: r.perItemDay });
+    setLitrTouched(true);
+    setTab('unit');
+    toast.success(tl('use.done'));
   };
 
   // ── Narx sezgirligi ──
@@ -522,8 +635,19 @@ export default function Calculator() {
 
   const onReset = () => {
     onSelectSku('');
-    applyInput(DEFAULT_INPUT);
+    // Qo'lda rejimdagi avtomatik qiymatlar: Litrovka hajmi kiritilgan bo'lsa — Uzum tarifidan
+    const manual = buildUnitAuto(
+      { sku: null, manualVolume, manualKind: litr.kind, storageDays: DEFAULT_INPUT.storageDays, base: DEFAULT_INPUT },
+      ts,
+      f,
+    );
+    applyInput({ ...START_INPUT, ...manual.values });
     toast.info(t('reset.done'));
+  };
+
+  const onResetLitr = () => {
+    setLitr(LITR_EXAMPLE);
+    setLitrTouched(false);
   };
 
   return (
@@ -531,22 +655,61 @@ export default function Calculator() {
       <PageHeader
         icon={<CalculatorIcon className="h-5 w-5" />}
         title={t('title')}
-        description={t('subtitle')}
+        description={tab === 'litr' ? tl('subtitle') : t('subtitle')}
         badge={<PreviewBadge feature="unit_calculator" />}
+        meta={
+          tab === 'litr' ? (
+            <span className="meta-chip">{tl('src.title', { date: f.date(TARIFF_EFFECTIVE_FROM) })}</span>
+          ) : undefined
+        }
         actions={
-          <>
-            <Button variant="outline" icon={<RotateCcw className="h-4 w-4" />} onClick={onReset}>
-              {t('btn.reset')}
+          tab === 'litr' ? (
+            <Button variant="outline" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetLitr}>
+              {tl('reset')}
             </Button>
-            <Button icon={<BookmarkPlus className="h-4 w-4" />} onClick={() => setSaveOpen(true)}>
-              {t('sc.save')}
-            </Button>
-          </>
+          ) : (
+            <>
+              <Button variant="outline" icon={<RotateCcw className="h-4 w-4" />} onClick={onReset}>
+                {t('btn.reset')}
+              </Button>
+              <Button icon={<BookmarkPlus className="h-4 w-4" />} onClick={() => setSaveOpen(true)}>
+                {t('sc.save')}
+              </Button>
+            </>
+          )
         }
       />
 
       <PlanGate feature="unit_calculator">
         <div className="space-y-5">
+          {/*
+            Bo'limlar: unit-iqtisod va Litrovka (hajm → Uzum logistikasi va
+            saqlashi). Tanlov manzilda (`?tab=litr`) — havola bilan ochish mumkin.
+            SKU tanlovi umumiy: bir bo'limda tanlangan SKU ikkinchisida ham turadi.
+          */}
+          <Segmented<CalcTab>
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: 'unit', label: tl('tab.unit') },
+              { value: 'litr', label: tl('tab.litr') },
+            ]}
+          />
+
+          {tab === 'litr' ? (
+            <LitrovkaTab
+              value={litr}
+              onChange={onLitrChange}
+              skuOptions={skuOptions}
+              skuId={skuId}
+              onSelectSku={onSelectSku}
+              skuListLoading={products.isLoading}
+              basis={skuBasis}
+              basisLoading={Boolean(skuId) && defaults.isFetching}
+              onUseInUnit={onUseLitr}
+            />
+          ) : (
+          <>
           {/*
             Ikki ustun: chapda kiritish, o'ngda natija (yopishib turadi). Telefonda
             ustunlar "erib ketadi" (`contents`) va bloklar `order` bo'yicha tiziladi:
@@ -627,51 +790,84 @@ export default function Calculator() {
                       4 ustun faqat har maydon ≥150 px bo'lganda: md (bir ustunli
                       tartib) va 2xl (2026-10-24).
                     */}
+                    {/*
+                      Manba belgisi yorliq qatorida emas, maydon OSTIDA: yorliqlar katta
+                      harfli va tor ustunda "SIZNING MA'LUMOTINGIZ" yonida kesilib qolardi.
+                    */}
                     <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4">
-                      <NumberField
-                        label={t('fld.commission')}
-                        hint={t('fld.commissionHint')}
-                        hintOnFocus
-                        badge={sourceBadge('commission', 'commissionPct')}
-                        suffix={t('unit.pct')}
-                        value={draft.commissionPct}
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        onChange={(v) => patch('commissionPct', v)}
-                      />
-                      <NumberField
-                        label={t('fld.logistics')}
-                        hint={t('fld.logisticsHint')}
-                        hintOnFocus
-                        badge={sourceBadge('logistics', 'logistics')}
-                        suffix={t('unit.som')}
-                        value={draft.logistics}
-                        step={500}
-                        onChange={(v) => patch('logistics', v)}
-                      />
-                      <NumberField
-                        label={t('fld.storagePerDay')}
-                        hint={t('fld.storagePerDayHint')}
-                        hintOnFocus
-                        badge={sourceBadge('storage', 'storagePerDay')}
-                        suffix={t('unit.som')}
-                        value={draft.storagePerDay}
-                        step={50}
-                        onChange={(v) => patch('storagePerDay', v)}
-                      />
-                      <NumberField
-                        label={t('fld.storageDays')}
-                        hint={t('fld.storageDaysHint')}
-                        hintOnFocus
-                        suffix={t('unit.days')}
-                        value={draft.storageDays}
-                        min={0}
-                        max={365}
-                        step={1}
-                        onChange={(v) => patch('storageDays', v)}
-                      />
+                      <div className="min-w-0">
+                        <NumberField
+                          label={t('fld.commission')}
+                          hint={<SourceHint hint={t('fld.commissionHint')} source={activeSource('commissionPct')} />}
+                          hintOnFocus
+                          suffix={t('unit.pct')}
+                          value={draft.commissionPct}
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          onChange={(v) => patch('commissionPct', v)}
+                        />
+                        <SourceSlot source={activeSource('commissionPct')} />
+                      </div>
+                      <div className="min-w-0">
+                        <NumberField
+                          label={t('fld.logistics')}
+                          hint={<SourceHint hint={t('fld.logisticsHint')} source={activeSource('logistics')} />}
+                          hintOnFocus
+                          suffix={t('unit.som')}
+                          value={draft.logistics}
+                          step={500}
+                          onChange={(v) => patch('logistics', v)}
+                        />
+                        <SourceSlot source={activeSource('logistics')} />
+                      </div>
+                      <div className="min-w-0">
+                        <NumberField
+                          label={t('fld.storagePerDay')}
+                          hint={<SourceHint hint={t('fld.storagePerDayHint')} source={activeSource('storagePerDay')} />}
+                          hintOnFocus
+                          suffix={t('unit.som')}
+                          value={draft.storagePerDay}
+                          step={50}
+                          onChange={(v) => patch('storagePerDay', v)}
+                        />
+                        <SourceSlot source={activeSource('storagePerDay')} />
+                      </div>
+                      <div className="min-w-0">
+                        <NumberField
+                          label={t('fld.storageDays')}
+                          hint={<SourceHint hint={t('fld.storageDaysHint')} source={activeSource('storageDays')} />}
+                          hintOnFocus
+                          suffix={t('unit.days')}
+                          value={draft.storageDays}
+                          min={0}
+                          max={365}
+                          step={1}
+                          onChange={(v) => patch('storageDays', v)}
+                        />
+                        <SourceSlot source={activeSource('storageDays')} />
+                      </div>
                     </div>
+                    {volumeLine ? (
+                      <p
+                        className={cn(
+                          'tnum mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed',
+                          volumeLine.warn ? 'text-warn-ink' : 'text-muted',
+                        )}
+                      >
+                        <span className="min-w-0">{volumeLine.text}</span>
+                        {volumeLine.link ? (
+                          <button
+                            type="button"
+                            onClick={() => setTab('litr')}
+                            className="inline-flex items-center gap-1 font-semibold text-brand-ink hover:underline"
+                          >
+                            {tl('unitLine.open')}
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </p>
+                    ) : null}
                   </FormSection>
 
                   <FormSection icon={<Receipt />} tone="warn" title={t('section.extra')}>
@@ -712,18 +908,20 @@ export default function Calculator() {
 
                   <FormSection icon={<PackageOpen />} tone="info" title={t('section.batch')}>
                     <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3">
-                      <NumberField
-                        label={t('fld.buyout')}
-                        hint={t('fld.buyoutHint')}
-                        hintOnFocus
-                        badge={sourceBadge('buyout', 'buyoutPct')}
-                        suffix={t('unit.pct')}
-                        value={draft.buyoutPct}
-                        min={1}
-                        max={100}
-                        step={1}
-                        onChange={(v) => patch('buyoutPct', v)}
-                      />
+                      <div className="min-w-0">
+                        <NumberField
+                          label={t('fld.buyout')}
+                          hint={<SourceHint hint={t('fld.buyoutHint')} source={activeSource('buyoutPct')} />}
+                          hintOnFocus
+                          suffix={t('unit.pct')}
+                          value={draft.buyoutPct}
+                          min={1}
+                          max={100}
+                          step={1}
+                          onChange={(v) => patch('buyoutPct', v)}
+                        />
+                        <SourceSlot source={activeSource('buyoutPct')} />
+                      </div>
                       <NumberField
                         label={t('fld.returnLogistics')}
                         hint={t('fld.returnLogisticsHint')}
@@ -983,6 +1181,8 @@ export default function Calculator() {
               )}
             </CardBody>
           </Card>
+          </>
+          )}
         </div>
       </PlanGate>
 

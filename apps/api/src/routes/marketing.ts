@@ -17,6 +17,7 @@ import {
   DEFAULTS,
   addDays,
   parseISODate,
+  parseSkuQuery,
   pct,
   round,
   safeDiv,
@@ -34,7 +35,7 @@ import {
 import { ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
-import { getStoreIds } from '../services/common.js';
+import { getStoreIds, skuMatches } from '../services/common.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -243,19 +244,28 @@ router.get(
     const onlyIssues = q.issues === '1' || q.issues === 'true';
     const pageNo = Math.max(1, Number(q.page ?? 1) || 1);
     const pageSize = Math.min(200, Math.max(1, Number(q.pageSize ?? 50) || 50));
-    const search = range.search;
+    /*
+     * Qidiruv xotirada, umumiy qoida bilan (services/common.ts skuMatches): nom,
+     * SKU kodi, shtrix-kod, Uzum SKU / mahsulot ID'si yoki uzum.uz havolasi.
+     * Ilgari bazadagi `contains` edi — PostgreSQL'da (prod) u registrga sezgir:
+     * "naushnik" "Naushnik"ni topmasdi, SQLite'da (dev) esa topardi (2026-10-24).
+     */
+    const query = parseSkuQuery(range.search);
 
-    const skus = await prisma.sku.findMany({
+    const found = await prisma.sku.findMany({
       where: {
         storeId: { in: storeIds },
         // SavdoIQ'da o'chirilgan arxiv tovar
         NOT: { archived: true, product: { hidden: true } },
-        ...(search ? { OR: [{ sku: { contains: search } }, { title: { contains: search } }] } : {}),
       },
       select: {
         id: true,
         sku: true,
         title: true,
+        barcode: true,
+        uzumSkuId: true,
+        productId: true,
+        product: { select: { title: true, uzumProductId: true } },
         imageUrl: true,
         price: true,
         purchasePrice: true,
@@ -268,6 +278,15 @@ router.get(
         stocks: { orderBy: { date: 'desc' }, take: 1, select: { fbo: true, fbs: true, own: true } },
       },
     });
+    const skus = query
+      ? found.filter((s) =>
+          skuMatches(
+            { id: s.id, sku: s.sku, title: s.title, barcode: s.barcode, uzumSkuId: s.uzumSkuId },
+            { id: s.productId, title: s.product.title, uzumProductId: s.product.uzumProductId },
+            query,
+          ),
+        )
+      : found;
 
     const all: SkuHealthRow[] = skus.map((s) => {
       const issues: SkuHealthIssue[] = [];

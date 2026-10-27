@@ -26,12 +26,12 @@ import {
   PlanGate,
   PreviewBadge,
   ProductCell,
-  SearchInput,
   Segmented,
   Skeleton,
   toast,
   type Column,
 } from '@/components/ui';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { FilterBar } from '@/components/filters';
 import { PeriodChip } from '@/components/finance/PeriodChip';
 import { CostCoverage } from '@/components/trust/CostCoverage';
@@ -67,7 +67,6 @@ registerNamespace('unitEconomics', {
     'view.full': 'Barcha ustunlar',
     'view.hint': 'Xarajat moddalari alohida ustunlarda — jadval yon tomonga suriladi',
     'legend.title': 'Narx taqsimoti:',
-    'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
     'col.split': 'Narx taqsimoti',
     'col.soldShort': '{n} dona',
     'col.product': 'Mahsulot',
@@ -132,7 +131,6 @@ registerNamespace('unitEconomics', {
     'view.full': 'Все столбцы',
     'view.hint': 'Статьи расходов в отдельных столбцах — таблица прокручивается вбок',
     'legend.title': 'Структура цены:',
-    'search.placeholder': 'Поиск по названию или SKU',
     'col.split': 'Структура цены',
     'col.soldShort': '{n} шт.',
     'col.product': 'Товар',
@@ -197,7 +195,6 @@ registerNamespace('unitEconomics', {
     'view.full': 'All columns',
     'view.hint': 'Each cost in its own column — the table scrolls sideways',
     'legend.title': 'Price split:',
-    'search.placeholder': 'Search by name or SKU',
     'col.split': 'Price split',
     'col.soldShort': '{n} pcs',
     'col.product': 'Product',
@@ -590,12 +587,8 @@ export default function UnitEconomics() {
                         ]}
                       />
                     </div>
-                    <SearchInput
-                      className="w-full sm:w-64"
-                      value={search}
-                      onChange={setSearch}
-                      placeholder={t('search.placeholder')}
-                    />
+                    {/* Nom, SKU kodi, shtrix-kod, Uzum ID yoki havola — server umumiy qoida bilan qidiradi (shared search.ts) */}
+                    <SkuSearchInput className="w-full sm:w-72" value={search} onChange={setSearch} />
                   </div>
                 }
               />

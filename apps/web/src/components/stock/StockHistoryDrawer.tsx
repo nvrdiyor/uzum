@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Lightbulb, PackagePlus, TrendingDown } from '@/components/icons';
-import { addDays, parseISODate, toBusinessDate, toISODate, type StockRow } from '@savdoiq/shared';
+import { Boxes, Lightbulb, PackagePlus, TrendingDown, Truck } from '@/components/icons';
+import type { StockRow } from '@savdoiq/shared';
 import { Button, Drawer, ErrorState, ProductCell, Skeleton, EmptyState } from '@/components/ui';
 import { LinesChart, CHART_COLORS } from '@/components/charts';
 import { api } from '@/lib/api';
@@ -20,7 +20,10 @@ registerNamespace('stocks', {
     'drawer.recommend': 'Tavsiya',
     'drawer.orderQty': 'Buyurtma qilish tavsiya etiladi',
     'drawer.orderCost': 'Taxminiy tannarx',
-    'drawer.cover': '30 kunlik zaxira + 7 kun yetkazib berish muddati hisobga olingan',
+    'drawer.cover': '{cover} kunlik zaxira + {lead} kun yetkazib berish muddati — kompaniya sozlamasi, Rejalashtiruvchi bilan bir xil hisob',
+    'drawer.buy': 'Sotib olish kerak',
+    'drawer.ship': 'Ombordan FBO’ga jo‘nating: {n} dona',
+    'drawer.shipOnly': 'Sotib olish shart emas — omboringizdagi tovar yetadi',
     'drawer.enough': 'Qoldiq yetarli — hozircha buyurtma shart emas',
     'drawer.dead': 'Sotuv yo‘q — avval chegirma yoki aksiya bilan sotishni ko‘rib chiqing',
     'drawer.stockout': 'Taxminiy tugash sanasi',
@@ -46,7 +49,10 @@ registerNamespace('stocks', {
     'drawer.recommend': 'Рекомендация',
     'drawer.orderQty': 'Рекомендуем заказать',
     'drawer.orderCost': 'Ориентировочная себестоимость',
-    'drawer.cover': 'Учтён запас на 30 дней + 7 дней на поставку',
+    'drawer.cover': 'Запас на {cover} дн. + {lead} дн. на поставку — настройка компании, тот же расчёт, что в Планировщике',
+    'drawer.buy': 'Нужно закупить',
+    'drawer.ship': 'Отгрузить со склада на FBO: {n} шт.',
+    'drawer.shipOnly': 'Закупать не нужно — хватит товара на вашем складе',
     'drawer.enough': 'Остатка достаточно — заказывать пока не нужно',
     'drawer.dead': 'Продаж нет — сначала рассмотрите скидку или акцию',
     'drawer.stockout': 'Ожидаемая дата обнуления',
@@ -72,7 +78,10 @@ registerNamespace('stocks', {
     'drawer.recommend': 'Recommendation',
     'drawer.orderQty': 'Recommended order quantity',
     'drawer.orderCost': 'Estimated cost',
-    'drawer.cover': 'Covers 30 days of demand plus a 7-day lead time',
+    'drawer.cover': 'Covers {cover} days of demand plus a {lead}-day lead time — company setting, same as the Planner',
+    'drawer.buy': 'To buy',
+    'drawer.ship': 'Ship from your warehouse to FBO: {n} pcs',
+    'drawer.shipOnly': 'No purchase needed — your warehouse stock covers it',
     'drawer.enough': 'Stock is sufficient — no order needed right now',
     'drawer.dead': 'No sales — consider a discount or promo first',
     'drawer.stockout': 'Estimated stock-out date',
@@ -90,10 +99,6 @@ registerNamespace('stocks', {
     'field.store': 'Store',
   },
 });
-
-/** Zaxira va yetkazib berish muddati (kun) */
-const COVER_DAYS = 30;
-const LEAD_DAYS = 7;
 
 export function StockHistoryDrawer({
   row,
@@ -125,16 +130,25 @@ export function StockHistoryDrawer({
     [data],
   );
 
+  /*
+   * Tavsiya — serverdagi Rejalashtiruvchi hisobi (StockRow.plan, services/plan.ts):
+   * kompaniyaning yetkazish muddati, tugab turgan kunlarsiz tezlik, yo'ldagi
+   * tovar. Ilgari bu yerda o'zi hisoblanardi — 30 + 7 kun qat'iy, oddiy
+   * o'rtacha, yo'ldagisiz — va son Rejalashtiruvchidagidan farq qilardi
+   * (2026-10-24). Arxivdagi SKU rejada yo'q — tavsiya ham ko'rsatilmaydi.
+   */
   const advice = useMemo(() => {
-    if (!row) return null;
-    const avg = Math.max(0, row.avgDaily ?? 0);
-    const need = Math.max(0, Math.ceil(avg * (COVER_DAYS + LEAD_DAYS) - (row.total ?? 0)));
-    const unitCost = row.total > 0 ? row.costValue / row.total : 0;
-    const stockoutDate =
-      avg > 0 && row.daysLeft !== null && Number.isFinite(row.daysLeft)
-        ? toISODate(addDays(parseISODate(toBusinessDate(new Date())), Math.round(row.daysLeft)))
-        : null;
-    return { avg, need, cost: Math.round(need * unitCost), stockoutDate };
+    const plan = row?.plan;
+    if (!plan) return null;
+    return {
+      avg: plan.avgDaily,
+      need: plan.reorderQty,
+      ship: plan.shipQty,
+      cost: plan.purchaseCost,
+      stockoutDate: plan.avgDaily > 0 ? plan.stockoutDate : null,
+      cover: plan.coverDays,
+      lead: plan.leadDays,
+    };
   }, [row]);
 
   return (
@@ -170,7 +184,7 @@ export function StockHistoryDrawer({
             <div className="hairline" />
             <div className="flex items-center justify-between gap-3 py-2">
               <span className="text-sm text-muted">{t('field.daysLeft')}</span>
-              <DaysLeftCell days={row.daysLeft} />
+              <DaysLeftCell days={row.daysLeft} status={row.status} />
             </div>
           </div>
 
@@ -214,7 +228,7 @@ export function StockHistoryDrawer({
             <div
               className={cn(
                 'card card-accent p-5',
-                advice.avg > 0 && advice.need > 0 ? 'tone-warn' : 'tone-brand',
+                advice.avg > 0 && (advice.need > 0 || advice.ship > 0) ? 'tone-warn' : 'tone-brand',
               )}
             >
               <div className="flex items-start gap-3">
@@ -226,19 +240,34 @@ export function StockHistoryDrawer({
 
                   {advice.avg <= 0 ? (
                     <p className="mt-1.5 text-sm text-muted">{t('drawer.dead')}</p>
-                  ) : advice.need <= 0 ? (
+                  ) : advice.need <= 0 && advice.ship <= 0 ? (
                     <p className="mt-1.5 text-sm text-muted">{t('drawer.enough')}</p>
                   ) : (
                     <>
-                      <p className="tnum mt-2 font-display text-2xl font-extrabold tracking-tight text-ink">
-                        {f.num(advice.need)} <span className="text-base text-ink-soft">{t('drawer.units')}</span>
-                      </p>
-                      <p className="mt-1 text-xs text-muted">{t('drawer.cover')}</p>
+                      {advice.need > 0 ? (
+                        <>
+                          <p className="mt-1.5 text-xs font-medium text-muted">{t('drawer.buy')}</p>
+                          <p className="tnum mt-0.5 font-display text-2xl font-extrabold tracking-tight text-ink">
+                            {f.num(advice.need)} <span className="text-base text-ink-soft">{t('drawer.units')}</span>
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1.5 text-sm text-muted">{t('drawer.shipOnly')}</p>
+                      )}
+                      {advice.ship > 0 ? (
+                        <p className="tnum mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-info-ink">
+                          <Truck className="h-4 w-4 shrink-0" />
+                          {t('drawer.ship', { n: f.num(advice.ship) })}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-xs text-muted">{t('drawer.cover', { cover: advice.cover, lead: advice.lead })}</p>
                       <div className="mt-3 space-y-1">
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="text-muted">{t('drawer.orderCost')}</span>
-                          <span className="tnum font-semibold text-ink">{f.money(advice.cost)}</span>
-                        </div>
+                        {advice.need > 0 ? (
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-muted">{t('drawer.orderCost')}</span>
+                            <span className="tnum font-semibold text-ink">{f.money(advice.cost)}</span>
+                          </div>
+                        ) : null}
                         {advice.stockoutDate ? (
                           <div className="flex items-center justify-between gap-3 text-sm">
                             <span className="text-muted">{t('drawer.stockout')}</span>

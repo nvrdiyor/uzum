@@ -1,13 +1,26 @@
 /**
- * ⚙️ Sozlamalar: til, bildirishnomalar (kunlik hisobot / buyurtmalar / qoldiqlar)
- * va Uzum API kalitini yangilash.
+ * ⚙️ Sozlamalar: til, bildirishnomalar (kunlik hisobot / buyurtmalar / qoldiqlar /
+ * haftalik va oylik hisobot) va Uzum API kalitini yangilash.
  *
  * Tugmalar inline klaviaturada, holat esa bazadagi `User.notify*` maydonlarida saqlanadi.
+ * Haftalik va oylik hisobotni API ishchisi yuboradi (apps/api services/digest.ts) —
+ * u ham shu maydonlarni o'qiydi, saytdagi Sozlamalar tugmachalari bilan bir xil.
  */
-import { refreshState, t, type BotContext } from './context.js';
-import { langKeyboard, settingsKeyboard } from './keyboards.js';
+import { refreshState, t, type BotContext, type BotUser } from './context.js';
+import { langKeyboard, settingsKeyboard, type NotifyFlags } from './keyboards.js';
 import { toggleNotify, type NotifyField } from './data.js';
 import { askApiKeyUpdate } from './start.js';
+
+/** Klaviaturadagi tugmalar holati — foydalanuvchining `notify*` maydonlaridan */
+function flagsOf(user: BotUser): NotifyFlags {
+  return {
+    daily: user.notifyDaily,
+    orders: user.notifyOrders,
+    stock: user.notifyStock,
+    weekly: user.notifyWeekly,
+    monthly: user.notifyMonthly,
+  };
+}
 
 /** Sozlamalar oynasi */
 export async function showSettings(ctx: BotContext): Promise<void> {
@@ -19,11 +32,7 @@ export async function showSettings(ctx: BotContext): Promise<void> {
 
   await ctx.reply(t(ctx, 'set_title'), {
     parse_mode: 'HTML',
-    reply_markup: settingsKeyboard(ctx.sp.lang, {
-      daily: user.notifyDaily,
-      orders: user.notifyOrders,
-      stock: user.notifyStock,
-    }),
+    reply_markup: settingsKeyboard(ctx.sp.lang, flagsOf(user)),
   });
 }
 
@@ -40,6 +49,8 @@ export async function onSettingsAction(ctx: BotContext, action: string): Promise
     daily: 'notifyDaily',
     orders: 'notifyOrders',
     stock: 'notifyStock',
+    weekly: 'notifyWeekly',
+    monthly: 'notifyMonthly',
   };
 
   const field = fields[action];
@@ -51,11 +62,7 @@ export async function onSettingsAction(ctx: BotContext, action: string): Promise
     if (!fresh) return;
     try {
       await ctx.editMessageReplyMarkup({
-        reply_markup: settingsKeyboard(ctx.sp.lang, {
-          daily: fresh.notifyDaily,
-          orders: fresh.notifyOrders,
-          stock: fresh.notifyStock,
-        }),
+        reply_markup: settingsKeyboard(ctx.sp.lang, flagsOf(fresh)),
       });
     } catch {
       // Xabar o'zgarmagan bo'lsa Telegram xato beradi — bu muhim emas

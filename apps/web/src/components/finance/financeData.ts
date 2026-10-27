@@ -8,7 +8,7 @@
 
 import { EXPENSE_CATEGORIES, formatMonthShort, type ExpenseCategory, type Lang } from '@savdoiq/shared';
 import type { Tone } from '@/components/ui';
-import { COST_COLORS } from '@/lib/theme';
+import { CHART_COLORS, COST_COLORS } from '@/lib/theme';
 import { isRecord, normalizeExpenses, normalizeSummary } from './normalize';
 import type { ExpenseList, ExpenseRow, SummaryCell } from './types';
 
@@ -65,6 +65,35 @@ export function categoryColor(id: ExpenseCategory): string {
 }
 
 /**
+ * P&L moddasining rangi — jadval (PnlTable) va pul oqimi (ProfitWaterfall)
+ * bitta xaritadan oladi: bir modda sahifada ikki xil rangda chiqmasin.
+ * Ilgari bu xarita faqat jadval ichida edi. Qizil bu yerda YO'Q — xarajat
+ * zarar emas; qizil faqat manfiy natijada (chizuvchi o'zi tanlaydi).
+ */
+export const PNL_LINE_COLOR: Record<string, string> = {
+  revenue: CHART_COLORS.info,
+  payout: CHART_COLORS.info,
+  cogs: COST_COLORS.cogs,
+  commission: COST_COLORS.commission,
+  manualCommission: COST_COLORS.commission,
+  delivery: COST_COLORS.logistics,
+  logistics: COST_COLORS.logistics,
+  storage: COST_COLORS.storage,
+  marketing: COST_COLORS.marketing,
+  // Pul oqimida reklama manbaga qarab ikkiga bo'linadi — bir oila, bir rang
+  marketingUzum: COST_COLORS.marketing,
+  marketingManual: COST_COLORS.marketing,
+  tax: COST_COLORS.tax,
+  manualTax: COST_COLORS.tax,
+  salary: COST_COLORS.salary,
+  itemOther: COST_COLORS.other,
+  other: COST_COLORS.other,
+};
+
+/** Oraliq natija (yalpi foyda, tovarlar foydasi, hisobga tushadigan pul) — foyda rangining och varianti */
+export const SUBTOTAL_FILL = 'rgb(var(--c-brand) / 0.45)';
+
+/**
  * Kategoriyaning ma'no ohangi (kartochka aksenti, ikonka plitkasi uchun) —
  * rang bilan bir oilada: komissiya Uzum ulushi (binafsha), logistika va
  * saqlash tovar harakati (ko'k), reklama va soliq e'tibor talab qiladi
@@ -117,8 +146,30 @@ export interface PnlLine {
   share: number;
 }
 
+/**
+ * Pul oqimi qadami (GET /finance/pnl → `waterfall`): tushum → Uzum ushlagani
+ * → hisobga tushadigan pul → qolgan xarajatlar → sof foyda. Raqamlar
+ * `lines` bilan bir manbadan; server ularni pul oqadigan tartibda beradi.
+ */
+export type FlowKind = 'start' | 'minus' | 'subtotal' | 'end';
+
+export interface FlowStep {
+  id: string;
+  kind: FlowKind;
+  label: string;
+  /** start/subtotal/end — shu nuqtadagi summa; minus — ayrilgan summa (manfiy — qaytib tushgan pul) */
+  amount: number;
+  /** Oldingi teng davr; taqqoslab bo'lmasa (yoki server bermasa) null */
+  previous: number | null;
+  deltaPct: number | null;
+  /** tushumga nisbatan ulush, % */
+  share: number;
+}
+
 export interface PnlData {
   lines: PnlLine[];
+  /** Bo'sh massiv — server pul oqimini bermadi (eski javob) */
+  waterfall: FlowStep[];
   currency: string | null;
   /**
    * Oldingi davr bilan taqqoslab bo'ladimi. Server `comparePeriod: null` qaytarsa
@@ -213,7 +264,42 @@ export function normalizePnl(raw: unknown): PnlData {
   const currency = isRecord(raw) && typeof raw.currency === 'string' ? raw.currency : null;
   const comparable =
     isRecord(raw) && 'comparePeriod' in raw ? raw.comparePeriod !== null : lines.some((l) => l.previous !== null);
-  return { lines, currency, comparable };
+  const waterfall = isRecord(raw) ? normalizeFlow(raw.waterfall) : [];
+  return { lines, waterfall, currency, comparable };
+}
+
+function toFlowKind(v: unknown, id: string, index: number, count: number): FlowKind {
+  if (v === 'start' || v === 'minus' || v === 'subtotal' || v === 'end') return v;
+  // Turi kelmasa: birinchi — tushum, oxirgisi — natija, "payout" — oraliq natija
+  if (index === 0) return 'start';
+  if (index === count - 1) return 'end';
+  return id === 'payout' ? 'subtotal' : 'minus';
+}
+
+/**
+ * Pul oqimi qadamlari. Server berganini o'zgartirmaydi (qadamlar tartibi va
+ * yopilishi — server ishi), faqat buzuq yozuvni tashlaydi va sonlarni
+ * tekshiradi. `previous` kalitining o'zi bo'lmasa — null: bu yangi maydon,
+ * "oldin: 0 so'm" deb yozish yolg'on bo'lardi.
+ */
+function normalizeFlow(raw: unknown): FlowStep[] {
+  if (!Array.isArray(raw)) return [];
+  const items = raw.filter(isRecord);
+  return items.map((v, index) => {
+    const id = str(v.id, `step-${index}`);
+    const amount = num(v.amount ?? v.value);
+    const prevRaw = typeof v.previous === 'string' && v.previous.trim() !== '' ? Number(v.previous) : v.previous;
+    const previous = typeof prevRaw === 'number' && Number.isFinite(prevRaw) ? prevRaw : null;
+    return {
+      id,
+      kind: toFlowKind(v.kind, id, index, items.length),
+      label: str(v.label, id),
+      amount,
+      previous,
+      deltaPct: deltaOf(amount, previous, v.deltaPct),
+      share: num(v.share),
+    };
+  });
 }
 
 // ─────────────────────────── Xarajatlar ro'yxati ───────────────────────────

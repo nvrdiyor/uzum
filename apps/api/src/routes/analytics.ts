@@ -23,11 +23,13 @@ import {
   toISODate,
   businessDayStart,
   toBusinessDate,
+  type CompareMode,
   type CostCoverageResponse,
   type DashboardResponse,
   type Insight,
   type MetricValue,
   type Period,
+  type PlannerRow,
   type TimeSeriesPoint,
   type TopProductRow,
 } from '@savdoiq/shared';
@@ -36,17 +38,15 @@ import { companyCtx, requireAuth, requireCompany } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
 import {
   daysSince,
-  getAvgDaily,
   getLastSaleDates,
-  getLatestStocks,
   getSkuCatalog,
   getStoreIds,
   getStoreTitles,
   getTaxRate,
-  stockState,
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
+import { compareRows, loadPlanData, type PlanData } from '../services/plan.js';
 import {
   comparablePeriod,
   getAdFeesBySku,
@@ -279,7 +279,8 @@ const num = (v: number, digits = 0): string => formatNumber(v, 'uz', digits);
 interface InsightInput {
   catalog: Map<string, SkuInfo>;
   stocks: Map<string, StockInfo>;
-  avgDaily: Map<string, number>;
+  /** Rejalashtiruvchi hisobi (services/plan.ts) — "tugayotgan qoldiq" xulosasi shundan */
+  plan: PlanData;
   lastSale: Map<string, Date>;
   bySku: Map<string, SkuAgg>;
   revenue: MetricValue;
@@ -291,7 +292,16 @@ interface InsightInput {
   ordersTotal: number;
   avgCheck: number;
   stockValue: { units: number; amount: number; fbo: number; fbs: number };
+  /** Davr tanlagichidagi taqqoslash rejimi (lib/period.ts) — xulosa matni uchun */
+  compare: CompareMode;
 }
+
+/** Xulosa matnida oldingi davrning nomi — rejimga mos */
+const COMPARE_LABEL: Record<CompareMode, string> = {
+  prev: 'oldingi teng davr',
+  prevMonth: 'o‘tgan oyning shu kunlari',
+  prevYear: 'o‘tgan yilning shu kunlari',
+};
 
 const LEVEL_RANK: Record<Insight['level'], number> = { danger: 0, warning: 1, success: 2, info: 3 };
 
@@ -303,28 +313,44 @@ const LEVEL_RANK: Record<Insight['level'], number> = { danger: 0, warning: 1, su
 function buildInsights(inp: InsightInput): Insight[] {
   const out: Insight[] = [];
 
-  // 1) Tugayotgan qoldiqlar
-  const ending: { info: SkuInfo; daysLeft: number; total: number }[] = [];
-  for (const [skuId, st] of inp.stocks) {
-    const info = inp.catalog.get(skuId);
-    if (!info || st.total <= 0) continue;
-    const avg = inp.avgDaily.get(skuId) ?? 0;
-    const state = stockState(st.total, avg, daysSince(inp.lastSale.get(skuId)), daysSince(info.createdAt));
-    if (state.daysLeft !== null && state.daysLeft <= STOCK_THRESHOLDS.low && (state.status === 'critical' || state.status === 'low')) {
-      ending.push({ info, daysLeft: state.daysLeft, total: st.total });
-    }
+  /*
+   * 1) Tugayotgan qoldiqlar — Rejalashtiruvchining o'zi (services/plan.ts):
+   * yetkazish muddati KOMPANIYA sozlamasidan, yo'ldagi tovar va tugab turgan
+   * kunlarsiz tezlik bilan. Ilgari bu yerda qat'iy 7/14 kun va oddiy 30 kunlik
+   * o'rtacha edi: yetkazish 14 kun bo'lgan sotuvchiga 10 kunga yetadigan SKU
+   * "ogohlantirish" bo'lib chiqardi, xulosa ochadigan /planner esa uni
+   * allaqachon "Kritik" derdi (2026-10-24).
+   *   kritik    — bugun buyurtma berilsa ham tovar kelguncha tugaydi (danger);
+   *   tugayapti — buyurtma kuni yetdi yoki bir hafta ichida (warning).
+   * Qoldig'i allaqachon tugaganlari kirmaydi ("N kunga yetadi" ma'nosiz) —
+   * ularni "Bugun nima qilish kerak" yo'qotilayotgan tushum bilan ko'rsatadi.
+   */
+  const ending: { info: SkuInfo; row: PlannerRow }[] = [];
+  for (const row of inp.plan.rows.values()) {
+    if (row.stock <= 0 || row.daysLeft === null || (row.status !== 'critical' && row.status !== 'ending')) continue;
+    const info = inp.plan.catalog.get(row.skuId);
+    if (info) ending.push({ info, row });
   }
-  ending.sort((a, b) => a.daysLeft - b.daysLeft);
+  // Rejalashtiruvchi jadvalidagi tartib: holat → buyurtma kuni → buyurtma summasi
+  ending.sort((a, b) => compareRows(a.row, b.row));
   const worstStock = ending[0];
   if (worstStock) {
+    const { info, row } = worstStock;
+    const lead = num(inp.plan.leadDays);
+    const order = row.orderInDays ?? 0;
+    const when =
+      row.status === 'critical'
+        ? `yetkazish ${lead} kun — bugun buyurtma berilsa ham tovar kelguncha tugaydi`
+        : order <= 0
+          ? `yetkazish ${lead} kun — buyurtmani bugun bering`
+          : `yetkazish ${lead} kun — buyurtmani ${num(order)} kun ichida bering`;
     out.push({
       id: 'stock_ending',
-      level: worstStock.daysLeft <= STOCK_THRESHOLDS.critical ? 'danger' : 'warning',
-      title: `${worstStock.info.sku} qoldig‘i ${num(worstStock.daysLeft)} kunga yetadi`,
-      body:
-        ending.length > 1
-          ? `“${worstStock.info.title}” — ${num(worstStock.total)} dona qoldi. Jami ${num(ending.length)} ta SKU tugash arafasida, yetkazib berishni bugun rejalashtiring.`
-          : `“${worstStock.info.title}” — ${num(worstStock.total)} dona qoldi. Yetkazib berishni bugun rejalashtiring.`,
+      level: row.status === 'critical' ? 'danger' : 'warning',
+      title: `${info.sku} qoldig‘i ${num(row.daysLeft ?? 0)} kunga yetadi`,
+      body: `“${info.title}” — ${num(row.stock)} dona qoldi, ${when}.${
+        ending.length > 1 ? ` Jami ${num(ending.length)} ta SKU tugash arafasida.` : ''
+      }`,
       link: '/planner',
       metric: 'stock',
     });
@@ -416,7 +442,8 @@ function buildInsights(inp: InsightInput): Insight[] {
       id: 'revenue_trend',
       level: up ? 'success' : 'warning',
       title: `Tushum ${num(Math.abs(inp.revenue.deltaPct), 1)}% ga ${up ? 'o‘sdi' : 'kamaydi'}`,
-      body: `Joriy davr: ${money(inp.revenue.value)}, oldingi teng davr: ${money(inp.revenue.previous ?? 0)}.`,
+      // Taqqoslash rejimi davr tanlagichida tanlanadi — matn qaysi davr bilan solishtirilganini aytsin
+      body: `Joriy davr: ${money(inp.revenue.value)}, ${COMPARE_LABEL[inp.compare]}: ${money(inp.revenue.previous ?? 0)}.`,
       link: '/sales',
       metric: 'revenue',
     });
@@ -481,16 +508,16 @@ router.get(
     const prevFrom = businessDayStart(range.previous.from);
     const prevToExclusive = addDays(businessDayStart(range.previous.to), 1);
 
-    const [cur, prev, catalog, stocks, avgDaily, lastSale, series, previous, costs, prevCosts, taxRate, storeTitles] = await Promise.all([
+    const [cur, prev, catalog, planData, lastSale, series, previous, costs, prevCosts, taxRate, storeTitles] = await Promise.all([
       collectTotals(storeIds, range.from, range.toExclusive),
       collectTotals(storeIds, prevFrom, prevToExclusive),
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
-      getAvgDaily(storeIds, 30),
+      // Qoldiqlar va "tugayotgan qoldiq" xulosasi — Rejalashtiruvchi hisobi (kompaniyaning yetkazish muddati)
+      loadPlanData(company.id, storeIds),
       getLastSaleDates(storeIds),
       // Grafik: kunlik seriya, foyda chizig'idan davr xarajatlari ham kunma-kun ayrilgan
       getNetDailySeries(company.id, storeIds, range.period, range.storeId),
-      // Oldingi teng davr — grafikdagi uzuq chiziq, AYNAN shu ta'rifda; tarix yetmasa null
+      // Taqqoslanadigan davr (rejim bo'yicha: oldingi / o'tgan oy / o'tgan yil) — grafikdagi uzuq chiziq, AYNAN shu ta'rifda; tarix yetmasa null
       getPreviousNetSeries(company.id, storeIds, range.previous, plan, range.storeId),
       // Davr xarajatlari — Moliya va Oylik hisobot bilan BIR XIL ta'rif (services/pnl.ts)
       getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
@@ -498,6 +525,8 @@ router.get(
       getTaxRate(company.id),
       getStoreTitles(company.id),
     ]);
+    // Rejaning o'zi `getLatestStocks` ni yuklaydi (do'konlarning BARCHA SKU'lari) — qayta so'ralmaydi
+    const stocks = planData.stocks;
 
     // Bugungi/kechagi to'lovlar — savdo kuni (Toshkent) chegaralari bo'yicha
     const todayStart = businessDayStart(toBusinessDate(new Date()));
@@ -559,7 +588,7 @@ router.get(
     const prevReturns = pct(prev.returnsUnits, prev.handedUnits + prev.returnsUnits);
 
     /*
-     * Oldingi teng davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi
+     * Taqqoslanadigan davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi
      * yoki birinchi sinxrondan oldin) u yerdagi nol "sotuv bo'lmagan" emas,
      * "ma'lumot yo'q" degani. Ilgari KPI'lar baribir shu qisman oynaga
      * solishtirilardi: yangi do'konda "90 kun" tanlansa tushum "+302%" o'sardi.
@@ -658,7 +687,7 @@ router.get(
     const insights = buildInsights({
       catalog,
       stocks,
-      avgDaily,
+      plan: planData,
       lastSale,
       bySku: cur.bySku,
       revenue: revenueMetric,
@@ -669,6 +698,7 @@ router.get(
       ordersTotal: cur.ordersTotal,
       avgCheck: curAvgCheck,
       stockValue,
+      compare: range.compare,
     });
 
     const payload: DashboardResponse = {
@@ -694,7 +724,7 @@ router.get(
       expenses,
       series: series satisfies TimeSeriesPoint[],
       /*
-       * Oldingi teng davr kunma-kun (i-kun ↔ i-kun) — grafikdagi uzuq chiziq.
+       * Taqqoslanadigan davr kunma-kun (i-kun ↔ i-kun) — grafikdagi uzuq chiziq.
        * Yig'indisi KPI'dagi `previous` bilan teng: o'sha oyna, o'sha ta'rif.
        * Joriy seriya bugun bilan tugasa ham bu to'liq uzunlikda qoladi.
        */

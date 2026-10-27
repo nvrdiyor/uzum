@@ -1,336 +1,235 @@
 /**
  * Yetkazib berish rejalashtiruvchisi — /api/v1/planner
  *
- *  GET  / → PlannerResponse: har bir SKU uchun qoldiq necha kunga yetadi,
- *           QACHON buyurtma berish kerak, tanlangan zaxira davri (cover) va
- *           yetkazish muddati (lead) uchun qancha olib kelish kerak.
- *  POST /shipment-draft → tanlangan SKU'lardan yetkazma qoralamasi (Shipment + ShipmentItem).
+ *  GET  /               → PlannerResponse: har bir SKU uchun qoldiq necha kunga yetadi,
+ *                         QACHON buyurtma berish kerak, qancha SOTIB OLISH va qanchasini
+ *                         o'z ombori/FBS dan FBO'ga JO'NATISH kerak
+ *  GET  /preview        → PlannerPreviewResponse: sinov tarifida sotuvchining o'z eng
+ *                         shoshilinch SKU'lari (qolgani saytda xiralashgan) — 'preview' da ham ochiq
+ *  GET  /settings       → PlannerSettingsResponse: kompaniyaning yetkazish muddati va zaxira davri
+ *  PUT  /settings       → saqlash (faqat owner/manager)
+ *  POST /shipment-draft → yetkazma qoralamasi: tanlangan SKU'lar (`skuIds`) yoki bir
+ *                         bosishda (`scope`: 'needed' | 'urgent') — FAQAT jo'natiladigan miqdor bilan
  *
- * HISOB:
- *   tezlik        = oxirgi 30 kundagi sotuv / tovar SOTUVDA BO'LGAN kunlar (`services/demand.ts`)
- *   ta'minot      = qoldiq + Uzum omboriga yo'ldagi tovar
- *   yetadi        = ta'minot / tezlik
- *   buyurtma kuni = tugash sanasi − yetkazish muddati − ehtiyot zaxirasi (3 kun)
- *   tavsiya       = tezlik × (yetkazish + zaxira davri) − ta'minot
- *   yo'qotish     = bugun buyurtma berilsa ham tovar kelguncha qoldiqsiz o'tadigan
- *                   kunlar × tezlik × haqiqiy sotuv narxi
+ * Hisobning o'zi — services/plan.ts: Mahsulotlar, Qoldiqlar, "Bugun nima qilish
+ * kerak" va Excel'dagi sotib olish ro'yxati (GET /export/planner) ham o'shandan,
+ * shuning uchun "buyurtma kerak" soni hamma joyda bir xil.
  *
- * Ilgari "yo'qotilayotgan tushum" zaxira davridagi talabning qoldiqdan ortgan
- * qismi edi — hamma tovar yetarli bo'lsa ham 413 000 so'm ko'rsatardi, chunki
- * 30 kunlik talab har doim qoldiqdan katta. U yo'qotish emas, buyurtma hajmi.
+ * Yetkazish muddati va zaxira davri KOMPANIYA sozlamasidan olinadi; so'rovdagi
+ * ?lead= / ?cover= faqat aniq berilganda ustun turadi (eski mijozlar va testlar uchun).
  */
 import { Router } from 'express';
-import type { Request } from 'express';
+import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { prisma } from '@savdoiq/db';
 import {
   addDays,
+  featureAccess,
+  formatNumber,
   parseISODate,
-  recommendedQty,
   round,
   toISODate,
-  toBusinessDate,
+  type PlannerDraftResponse,
+  type PlannerPreviewResponse,
   type PlannerResponse,
   type PlannerRow,
+  type PlannerSettingsResponse,
   type ShipmentItemRow,
-  type ShipmentRow,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
-import { getLatestStocks, getSkuCatalog, getStoreIds, type SkuInfo, type StockInfo } from '../services/common.js';
-import { DEMAND_WINDOW_DAYS, getDemand, type Demand } from '../services/demand.js';
+import { getStoreIds } from '../services/common.js';
+import { DEMAND_WINDOW_DAYS } from '../services/demand.js';
+import {
+  COVER_MAX,
+  COVER_MIN,
+  DEFAULT_PLANNER_SETTINGS,
+  LEAD_MAX,
+  LEAD_MIN,
+  SAFETY_DAYS,
+  getPlannerSettings,
+  inDraftScope,
+  loadPlanData,
+  parseStatusFilter,
+  planSku,
+  planTable,
+  savePlannerSettings,
+  type PlannerSettingsState,
+} from '../services/plan.js';
+
+/*
+ * Rejaning o'zi services/plan.ts ga ko'chdi (2026-10-24). Bu yerdan ham
+ * eksport qilinadi — eski importlar (`./planner.js`) buzilmasin.
+ */
+export {
+  DEFAULT_COVER,
+  DEFAULT_LEAD,
+  EMPTY_STOCK,
+  NO_DEMAND,
+  buildRow,
+  getInbound,
+  type PlanInput,
+} from '../services/plan.js';
 
 const router = Router();
-router.use(requireAuth, requireCompany, requireFeature('planner'));
+router.use(requireAuth, requireCompany);
 
-/** Zaxira davri chegaralari (kun) — saytdagi slayder bilan bir xil */
-const COVER_MIN = 7;
-const COVER_MAX = 90;
-// Eksport: Boshqaruv panelidagi "Bugun nima qilish kerak" (routes/today.ts) aynan shu qiymatlar bilan hisoblaydi
-export const DEFAULT_COVER = 30;
-/** Yetkazib berish muddati (kun) — buyurtma berilgandan omborga tushgunga qadar */
-export const DEFAULT_LEAD = 7;
-/**
- * Ehtiyot zaxirasi (kun): buyurtma kuni shuncha oldinga suriladi. Sotuv bir
- * tekis emas — bir kunda 3 ta, keyin ikki kun yo'q; yetkazma ham kechikadi.
- */
-const SAFETY_DAYS = 3;
-/** Buyurtma kuni shuncha kun ichida bo'lsa — "buyurtma vaqti" */
-const ORDER_SOON_DAYS = 7;
 /** Javobdagi qatorlar chegarasi — jadval cheksiz o'smasligi uchun */
 const MAX_ROWS = 1000;
+/** Sinov tarifidagi namunada ochiq ko'rinadigan SKU'lar */
+const PREVIEW_ROWS = 3;
 /** Standart quti hajmi (litr) va qutidagi dona — yetkazma qoralamasi uchun */
 const BOX_VOLUME_L = 60;
 const BOX_UNITS = 20;
-
-export const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
-export const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0 };
-
-// ─────────────────────────── Yordamchilar ───────────────────────────
+/** Shipment.note — yetkazma tahririda 500 belgidan oshmasligi kerak (warehouse.ts PATCH sxemasi) */
+const NOTE_MAX = 500;
 
 /**
- * Zaxira davri: 7..90 kun (standart — 30).
- * Saytdagi slayder har qanday butun sonni yuboradi, shuning uchun ro'yxat emas,
- * oraliq tekshiriladi — aks holda 45 kun so'ralganda jimgina 30 kun qaytardi.
+ * 'preview' tarifda ham ochiq marshrutlar (namuna va sozlama). Faqat 'off'
+ * (masalan, muddati tugagan obuna) yopiladi. Asosiy jadval va qoralama esa
+ * `requireFeature('planner')` — to'liq tarif.
  */
-function coverParam(value: string | number | undefined): number {
-  const raw = Math.round(Number(value ?? DEFAULT_COVER));
-  if (!Number.isFinite(raw)) return DEFAULT_COVER;
-  return Math.min(COVER_MAX, Math.max(COVER_MIN, raw));
-}
-
-/** Yetkazish muddati (kun), 0..120 oralig'ida (standart — 7) */
-function leadParam(value: string | number | undefined): number {
-  const raw = Math.round(Number(value ?? DEFAULT_LEAD));
-  if (!Number.isFinite(raw)) return DEFAULT_LEAD;
-  return Math.min(120, Math.max(0, raw));
-}
-
-/**
- * Uzum omboriga yo'ldagi tovar: jo'natilgan, hali qabul qilinmagan dona.
- *
- * Qo'lda yaratilgan yetkazma va Uzum nakladnoyi bitta yukning ikki yozuvi
- * bo'lishi mumkin, shuning uchun ular qo'shilmaydi — kattasi olinadi.
- * Qoralamalar (draft) kirmaydi: ular hali jo'natilmagan.
- */
-export async function getInbound(companyId: string, storeIds: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  if (storeIds.length === 0) return out;
-  const items = await prisma.shipmentItem.findMany({
-    where: { shipment: { companyId, status: 'in_transit' }, sku: { storeId: { in: storeIds } } },
-    select: { skuId: true, qty: true, accepted: true, shipment: { select: { source: true } } },
-  });
-  const bySource = new Map<string, { uzum: number; manual: number }>();
-  for (const it of items) {
-    const left = Math.max(0, it.qty - it.accepted);
-    if (left <= 0) continue;
-    const cur = bySource.get(it.skuId) ?? { uzum: 0, manual: 0 };
-    if (it.shipment.source === 'uzum') cur.uzum += left;
-    else cur.manual += left;
-    bySource.set(it.skuId, cur);
-  }
-  for (const [skuId, v] of bySource) out.set(skuId, Math.max(v.uzum, v.manual));
-  return out;
-}
-
-/**
- * Variant nomi (rang, o'lcham). SKU nomi ba'zan mahsulot nomini takrorlaydi
- * ("Naushnik — Qora"): o'shanda faqat farq qiladigan qismi qoladi.
- */
-function variantOf(skuTitle: string, productTitle: string): string | null {
-  const sku = skuTitle.trim();
-  const product = productTitle.trim();
-  if (!sku || sku === product) return null;
-  if (product && sku.startsWith(product)) {
-    return sku.slice(product.length).replace(/^[\s—–\-·:,|/]+/, '').trim() || null;
-  }
-  return sku;
-}
-
-/** Jadvalda avval eng shoshilinch qatorlar turadi */
-const STATUS_RANK: Record<PlannerRow['status'], number> = {
-  critical: 0,
-  ending: 1,
-  enough: 2,
-  no_action: 3,
+const requirePlannerVisible: RequestHandler = (req, _res, next) => {
+  const plan = req.ctx?.plan ?? 'trial';
+  const access = featureAccess(plan, 'planner');
+  if (access !== 'off') return next();
+  return next(AppError.limit('Bu bo‘lim pullik tarifda mavjud', { feature: 'planner', plan, access }));
 };
-
-export interface PlanInput {
-  info: SkuInfo;
-  stock: StockInfo;
-  inbound: number;
-  demand: Demand;
-  cover: number;
-  lead: number;
-  /** Bugungi kun (UTC yarim tunga tenglashtirilgan) */
-  today: Date;
-}
-
-/** Bitta SKU uchun reja qatori (eksport: routes/today.ts ham "yo'qotiladigan tushum"ni shundan oladi) */
-export function buildRow(inp: PlanInput): PlannerRow {
-  const { info, demand, lead } = inp;
-  const rate = demand.rate;
-  const supply = inp.stock.total + inp.inbound;
-
-  /** Aniq (kasrli) qiymat hisob uchun, butun kun — ko'rsatish uchun; pastga yaxlitlanadi: ehtiyotkor tomon */
-  const daysExact = rate > 0 ? supply / rate : null;
-  const daysLeft = daysExact === null ? null : Math.floor(daysExact);
-
-  const qty = recommendedQty(rate, inp.cover, supply, lead);
-  const unitCost = info.purchasePrice + info.extraCost;
-  // Katalog narxi eskirgan bo'lishi mumkin (aksiya, o'zgartirilgan narx) — haqiqiy sotuv narxi ishonchliroq
-  const price = demand.avgPrice > 0 ? demand.avgPrice : info.price;
-
-  /*
-   * Buyurtma kuni: shu kuni buyurtma berilsa, tovar qoldiq tugashidan
-   * SAFETY_DAYS kun oldin yetib keladi. Manfiy — kechikilgan.
-   */
-  const orderInDays = daysLeft === null ? null : daysLeft - lead - SAFETY_DAYS;
-
-  /*
-   * HOLAT.
-   *  kritik     — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
-   *  tugayapti  — buyurtma kuni yetdi yoki bir hafta ichida;
-   *  yetarli    — hozircha shoshilmasa bo'ladi;
-   *  harakatsiz — sotuv yo'q, prognoz qurib bo'lmaydi.
-   */
-  let status: PlannerRow['status'];
-  if (daysExact === null || orderInDays === null) status = 'no_action';
-  else if (daysExact <= lead) status = 'critical';
-  else if (orderInDays <= ORDER_SOON_DAYS) status = 'ending';
-  else status = 'enough';
-
-  // Bugun buyurtma berilsa ham qoldiqsiz o'tadigan vaqt
-  const gapExact = daysExact === null ? 0 : Math.max(0, lead - daysExact);
-
-  const variant = variantOf(info.title, info.productTitle);
-
-  return {
-    skuId: info.id,
-    sku: info.sku,
-    title: info.productTitle || info.title,
-    variant,
-    imageUrl: info.imageUrl,
-    stock: inp.stock.total,
-    inbound: inp.inbound,
-    avgDaily: round(rate, 2),
-    soldUnits: demand.units,
-    inStockDays: demand.inStockDays,
-    stockoutDays: demand.stockoutDays,
-    trendPct: demand.trendPct,
-    daysLeft,
-    stockoutDate: daysLeft === null ? null : toISODate(addDays(inp.today, daysLeft)),
-    orderBy: orderInDays === null ? null : toISODate(addDays(inp.today, Math.max(0, orderInDays))),
-    orderInDays,
-    recommendedQty: qty,
-    purchaseCost: round(qty * unitCost),
-    status,
-    gapDays: Math.ceil(gapExact),
-    lostRevenue: round(gapExact * rate * price),
-    lostPast: round(demand.stockoutDays * rate * price),
-  };
-}
 
 // ─────────────────────────── GET / — reja ───────────────────────────
 
-type StatusFilter = PlannerRow['status'] | 'all';
-const STATUS_FILTERS: StatusFilter[] = ['all', 'critical', 'ending', 'enough', 'no_action'];
-
-function statusParam(req: Request): StatusFilter | null {
-  const raw = (req.query as Record<string, string | undefined>).status;
-  if (!raw) return null;
-  return (STATUS_FILTERS as string[]).includes(raw) ? (raw as StatusFilter) : null;
-}
-
 router.get(
   '/',
+  requireFeature('planner'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const q = req.query as Record<string, string | undefined>;
-    const cover = coverParam(q.cover);
-    const lead = leadParam(q.lead);
-    const filter = statusParam(req);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [catalog, stocks, demand, inbound] = await Promise.all([
-      getSkuCatalog(storeIds, false),
-      getLatestStocks(storeIds),
-      getDemand(storeIds),
-      getInbound(company.id, storeIds),
-    ]);
-
-    const today = parseISODate(toBusinessDate(new Date()));
-    const search = range.search?.toLowerCase();
-
-    const counts = { all: 0, critical: 0, ending: 0, enough: 0, noAction: 0 };
-    // Jamlanmalar butun katalog bo'yicha — qaysi yorliq ochiq bo'lishidan qat'i nazar bir xil
-    const totals = { needSkus: 0, purchaseCost: 0, lostRevenue: 0, lostPast: 0, orderNow: 0 };
-    const rows: PlannerRow[] = [];
-
-    for (const info of catalog.values()) {
-      const row = buildRow({
-        info,
-        stock: stocks.get(info.id) ?? EMPTY_STOCK,
-        inbound: inbound.get(info.id) ?? 0,
-        demand: demand.get(info.id) ?? NO_DEMAND,
-        cover,
-        lead,
-        today,
-      });
-
-      // Hisoblagichlar butun katalog bo'yicha — filtr faqat ko'rinadigan qatorlarga ta'sir qiladi
-      counts.all += 1;
-      if (row.status === 'critical') counts.critical += 1;
-      else if (row.status === 'ending') counts.ending += 1;
-      else if (row.status === 'enough') counts.enough += 1;
-      else counts.noAction += 1;
-
-      if (row.recommendedQty > 0) {
-        totals.needSkus += 1;
-        totals.purchaseCost += row.purchaseCost;
-      }
-      totals.lostRevenue += row.lostRevenue;
-      totals.lostPast += row.lostPast;
-      if (row.orderInDays !== null && row.orderInDays <= 0) totals.orderNow += 1;
-
-      if (
-        search &&
-        !info.title.toLowerCase().includes(search) &&
-        !info.productTitle.toLowerCase().includes(search) &&
-        !info.sku.toLowerCase().includes(search)
-      )
-        continue;
-      if (filter && filter !== 'all' && row.status !== filter) continue;
-      // Standart ko'rinishda sotuvi yo'q SKU'lar jadvalni to'ldirmaydi (?status=all — barchasi)
-      if (!filter && row.status === 'no_action') continue;
-
-      rows.push(row);
-    }
-
-    // Shoshilinchlik bo'yicha: holat → buyurtma kuni → buyurtma summasi
-    rows.sort((a, b) => {
-      const byStatus = STATUS_RANK[a.status] - STATUS_RANK[b.status];
-      if (byStatus !== 0) return byStatus;
-      const da = a.orderInDays ?? Number.MAX_SAFE_INTEGER;
-      const db = b.orderInDays ?? Number.MAX_SAFE_INTEGER;
-      if (da !== db) return da - db;
-      return b.purchaseCost - a.purchaseCost;
-    });
-
-    const visible = rows.slice(0, MAX_ROWS);
+    const data = await loadPlanData(company.id, storeIds, { cover: q.cover, lead: q.lead });
+    const table = planTable(data, { filter: parseStatusFilter(q.status), search: range.search });
 
     const payload: PlannerResponse = {
-      coverDays: cover,
-      leadDays: lead,
+      coverDays: data.coverDays,
+      leadDays: data.leadDays,
       windowDays: DEMAND_WINDOW_DAYS,
       safetyDays: SAFETY_DAYS,
-      counts,
-      totals: {
-        needSkus: totals.needSkus,
-        purchaseCost: round(totals.purchaseCost),
-        lostRevenue: round(totals.lostRevenue),
-        lostPast: round(totals.lostPast),
-        orderNow: totals.orderNow,
-      },
-      rows: visible,
+      counts: table.counts,
+      totals: table.totals,
+      rows: table.rows.slice(0, MAX_ROWS),
     };
 
     res.json(payload);
   }),
 );
 
+// ─────────────────────────── GET /preview — sinov tarifidagi namuna ───────────────────────────
+
+/**
+ * Ilgari sinov tarifida sahifa o'rnida qulf oynali oq kartochka turardi:
+ * jadval so'rovi 402 qaytarardi va xiralashgan xato kartochkasi ko'rinardi.
+ * Endi sotuvchi O'Z eng shoshilinch SKU'larini haqiqiy raqamlar bilan ko'radi
+ * (qolgan reja saytda xiralashgan) — nima yo'qotayotgani aniq ko'rinadi.
+ */
+router.get(
+  '/preview',
+  requirePlannerVisible,
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+    const data = await loadPlanData(company.id, storeIds);
+    const table = planTable(data);
+
+    // Avval kritik va "buyurtma vaqti"; ular bo'lmasa — miqdor tavsiya etilgan yetarlilar
+    const urgent = table.all.filter((r) => r.status === 'critical' || r.status === 'ending');
+    const pool = urgent.length > 0 ? urgent : table.all.filter((r) => r.recommendedQty > 0 || r.shipQty > 0);
+    const rows = pool.slice(0, PREVIEW_ROWS);
+    const selling = table.all.filter((r) => r.status !== 'no_action').length;
+
+    const payload: PlannerPreviewResponse = {
+      leadDays: data.leadDays,
+      coverDays: data.coverDays,
+      counts: table.counts,
+      totals: table.totals,
+      rows,
+      more: Math.max(0, selling - rows.length),
+    };
+    res.json(payload);
+  }),
+);
+
+// ─────────────────────────── GET/PUT /settings — kompaniya sozlamasi ───────────────────────────
+
+function settingsPayload(s: PlannerSettingsState): PlannerSettingsResponse {
+  return {
+    leadDays: s.leadDays,
+    coverDays: s.coverDays,
+    defaults: DEFAULT_PLANNER_SETTINGS,
+    limits: { leadMin: LEAD_MIN, leadMax: LEAD_MAX, coverMin: COVER_MIN, coverMax: COVER_MAX },
+    saved: s.saved,
+    updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+  };
+}
+
+router.get(
+  '/settings',
+  requirePlannerVisible,
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    res.json(settingsPayload(await getPlannerSettings(company.id)));
+  }),
+);
+
+const settingsSchema = z
+  .object({
+    leadDays: z.number().int().min(LEAD_MIN).max(LEAD_MAX).optional(),
+    coverDays: z.number().int().min(COVER_MIN).max(COVER_MAX).optional(),
+  })
+  // Noma'lum kalit (masalan 'lead') jimgina tashlab yuborilmasin — saqlandi deb o'ylanardi
+  .strict()
+  .refine((v) => v.leadDays !== undefined || v.coverDays !== undefined, {
+    message: 'leadDays yoki coverDays yuboring',
+  });
+
+/**
+ * Saqlash — butun kompaniya uchun: Rejalashtiruvchi, "Bugun nima qilish
+ * kerak", Mahsulotlar va Qoldiqlar darhol yangi muddat bilan hisoblaydi.
+ * Shuning uchun faqat owner/manager (kuzatuvchi faqat ko'radi).
+ */
+router.put(
+  '/settings',
+  requirePlannerVisible,
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const body = settingsSchema.parse(req.body ?? {});
+    res.json(settingsPayload(await savePlannerSettings(company.id, body)));
+  }),
+);
+
 // ─────────────────────────── POST /shipment-draft — yetkazma qoralamasi ───────────────────────────
 
-const shipmentDraftSchema = z.object({
-  skuIds: z.array(z.string().min(1)).min(1).max(500),
-  cover: z.coerce.number().optional(),
-  lead: z.coerce.number().optional(),
-  destination: z.string().trim().max(120).optional(),
-  plannedAt: z.string().optional(),
-  note: z.string().trim().max(500).optional(),
-});
+const shipmentDraftSchema = z
+  .object({
+    /** Qo'lda tanlangan SKU'lar — berilsa `scope` e'tiborga olinmaydi */
+    skuIds: z.array(z.string().min(1)).min(1).max(500).optional(),
+    /** Bir bosishda: 'needed' — jo'natiladigan hamma SKU, 'urgent' — buyurtma kuni yetganlari */
+    scope: z.enum(['needed', 'urgent']).optional(),
+    /** Sahifadagi do'kon filtri (scope bilan) */
+    storeId: z.string().trim().min(1).optional(),
+    cover: z.coerce.number().optional(),
+    lead: z.coerce.number().optional(),
+    destination: z.string().trim().max(120).optional(),
+    plannedAt: z.string().optional(),
+    note: z.string().trim().max(NOTE_MAX).optional(),
+  })
+  .refine((v) => Boolean(v.scope) || (v.skuIds?.length ?? 0) > 0, {
+    message: 'SKU tanlang yoki scope yuboring',
+    path: ['skuIds'],
+  });
 
 /** Qutilar soni: avval hajm bo'yicha, hajm noma'lum bo'lsa — dona bo'yicha */
 function boxCount(qty: number, volumeL: number): number {
@@ -345,41 +244,85 @@ async function nextCode(companyId: string): Promise<string> {
   return `SP-${new Date().getUTCFullYear()}-${String(count + 1).padStart(3, '0')}`;
 }
 
+const num = (v: number): string => formatNumber(v, 'uz');
+
+/**
+ * Qoralamaga FAQAT jo'natiladigan miqdor (o'z ombori + FBS dan FBO'ga) tushadi.
+ *
+ * Ilgari qoralamaga SOTIB OLISH miqdori yozilardi, yetkazma qabul qilinganda
+ * esa warehouse.ts uni o'z omboridan FBO'ga ko'chirilgandek yozadi (own −,
+ * FBO +). Natijada omborda yo'q tovar "jo'natilardi", omborda turgani esa
+ * qoralamada umuman ko'rinmasdi; qoldig'i yetarli SKU 0 dona qator bo'lib
+ * tushardi. Sotib olinadigan qism yetkazma emas — u yetkazib beruvchiga
+ * buyurtma: javobda (`buySkus`, `buyUnits`) va izohda aytiladi, ro'yxati —
+ * GET /export/planner (2026-10-24).
+ */
 router.post(
   '/shipment-draft',
+  requireFeature('planner'),
   requireRole('owner', 'manager'),
   ah(async (req, res) => {
     const { company } = companyCtx(req);
-    const input = shipmentDraftSchema.parse(req.body);
-    const cover = coverParam(input.cover);
-    const lead = leadParam(input.lead);
+    const input = shipmentDraftSchema.parse(req.body ?? {});
 
-    const storeIds = await getStoreIds(company.id);
-    const [catalog, stocks, demand, inbound] = await Promise.all([
-      getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
-      getDemand(storeIds),
-      getInbound(company.id, storeIds),
-    ]);
+    const storeIds = await getStoreIds(company.id, input.storeId);
+    if (input.storeId && storeIds.length === 0) throw AppError.badRequest('Do‘kon topilmadi');
+    const data = await loadPlanData(company.id, storeIds, { cover: input.cover, lead: input.lead });
 
-    const ids = [...new Set(input.skuIds)];
-    const picked = ids.map((id) => catalog.get(id)).filter((s): s is SkuInfo => Boolean(s));
-    if (picked.length === 0) throw AppError.badRequest('Yuborilgan SKU’lar bu kompaniyada topilmadi');
+    /** Ko'rib chiqilgan SKU'lar: qo'lda tanlanganlar yoki scope bo'yicha butun katalog */
+    const manual = Boolean(input.skuIds && input.skuIds.length > 0);
+    let considered: PlannerRow[];
+    if (input.skuIds && manual) {
+      considered = [...new Set(input.skuIds)]
+        .map((id) => planSku(data, id))
+        .filter((r): r is PlannerRow => r !== null);
+      if (considered.length === 0) throw AppError.badRequest('Yuborilgan SKU’lar bu kompaniyada topilmadi');
+    } else {
+      const urgentOnly = input.scope === 'urgent';
+      considered = planTable(data).all.filter(
+        (r) => !urgentOnly || (r.orderInDays !== null && r.orderInDays <= 0),
+      );
+    }
 
-    const today = parseISODate(toBusinessDate(new Date()));
-    const drafts = picked.map((info) => {
-      // Jadvaldagi "Tavsiya" bilan aynan bir xil son
-      const supply = (stocks.get(info.id) ?? EMPTY_STOCK).total + (inbound.get(info.id) ?? 0);
-      const qty = recommendedQty(demand.get(info.id)?.rate ?? 0, cover, supply, lead);
-      return { info, qty, boxes: boxCount(qty, info.volumeL) };
+    // 0 dona qator qoralamaga hech qachon yozilmaydi
+    const ship = considered.filter((r) => inDraftScope(r, 'needed'));
+    const buy = considered.filter((r) => r.recommendedQty > 0);
+    const buyUnits = buy.reduce((s, r) => s + r.recommendedQty, 0);
+    // Qoralamaga kirmaganlar: qo'lda tanlanganlardan jo'natiladigani yo'qlari, scope'da — faqat sotib olinadiganlar
+    const skipped = considered.filter((r) => r.shipQty <= 0 && (manual || r.recommendedQty > 0)).length;
+
+    if (ship.length === 0) {
+      throw AppError.badRequest(
+        buy.length > 0
+          ? 'O‘z omboringiz va FBS’da FBO’ga jo‘natiladigan tovar yo‘q — bu SKU’larni avval sotib olish kerak (ro‘yxat: “Sotib olish ro‘yxati” Excel)'
+          : 'Jo‘natish kerak bo‘lgan SKU yo‘q — qoldiq yetarli',
+        { skipped, buySkus: buy.length, buyUnits },
+      );
+    }
+
+    const drafts = ship.map((row) => {
+      const info = data.catalog.get(row.skuId);
+      return { row, info, qty: row.shipQty, boxes: boxCount(row.shipQty, info?.volumeL ?? 0) };
     });
 
     // Yetkazma bitta do'konga tegishli bo'lsa — o'sha do'kon, aralash bo'lsa — bog'lanmaydi
-    const uniqueStores = [...new Set(picked.map((s) => s.storeId))];
+    const uniqueStores = [...new Set(drafts.map((d) => d.info?.storeId).filter((s): s is string => Boolean(s)))];
     const storeId = uniqueStores.length === 1 ? uniqueStores[0] : null;
 
-    const plannedAt = input.plannedAt ? parseISODate(input.plannedAt) : addDays(today, lead);
+    const plannedAt = input.plannedAt ? parseISODate(input.plannedAt) : addDays(data.today, data.leadDays);
     if (Number.isNaN(plannedAt.getTime())) throw AppError.badRequest('Sana noto‘g‘ri formatda (YYYY-MM-DD)');
+
+    const shipUnits = drafts.reduce((s, d) => s + d.qty, 0);
+    const autoNote = [
+      `Rejalashtiruvchidan: ${data.coverDays} kunlik zaxira, yetkazish ${data.leadDays} kun.`,
+      `O‘z ombori/FBS → FBO: ${num(shipUnits)} dona.`,
+      buyUnits > 0
+        ? `Sotib olish kerak (yetkazmaga kirmagan): ${num(buy.length)} SKU, ${num(buyUnits)} dona — ro‘yxat Rejalashtiruvchida (Excel).`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, NOTE_MAX);
 
     const created = await prisma.shipment.create({
       data: {
@@ -389,22 +332,22 @@ router.post(
         destination: input.destination ?? null,
         status: 'draft',
         plannedAt,
-        note: input.note ?? `Rejalashtiruvchidan: ${cover} kunlik zaxira, yetkazish ${lead} kun`,
+        note: input.note ?? autoNote,
         items: {
-          create: drafts.map((d) => ({ skuId: d.info.id, qty: d.qty, accepted: 0, boxes: d.boxes })),
+          create: drafts.map((d) => ({ skuId: d.row.skuId, qty: d.qty, accepted: 0, boxes: d.boxes })),
         },
       },
       include: { items: true },
     });
 
-    const itemsById = new Map(drafts.map((d) => [d.info.id, d.info]));
+    const bySku = new Map(drafts.map((d) => [d.row.skuId, d]));
     const items: ShipmentItemRow[] = created.items.map((it) => {
-      const info = itemsById.get(it.skuId);
+      const d = bySku.get(it.skuId);
       return {
         id: it.id,
         skuId: it.skuId,
-        sku: info?.sku ?? '—',
-        title: info?.title ?? 'Noma’lum SKU',
+        sku: d?.row.sku ?? '—',
+        title: d?.info?.title ?? d?.row.title ?? 'Noma’lum SKU',
         qty: it.qty,
         accepted: it.accepted,
         boxes: it.boxes,
@@ -412,11 +355,11 @@ router.post(
     });
 
     const costValue = drafts.reduce(
-      (s, d) => s + d.qty * (d.info.purchasePrice + d.info.extraCost),
+      (s, d) => s + d.qty * ((d.info?.purchasePrice ?? 0) + (d.info?.extraCost ?? 0)),
       0,
     );
 
-    const payload: ShipmentRow = {
+    const payload: PlannerDraftResponse = {
       id: created.id,
       code: created.code,
       destination: created.destination,
@@ -429,6 +372,9 @@ router.post(
       costValue: round(costValue),
       note: created.note,
       items,
+      skipped,
+      buySkus: buy.length,
+      buyUnits,
     };
 
     res.status(201).json(payload);

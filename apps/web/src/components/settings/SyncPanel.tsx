@@ -18,7 +18,9 @@ import {
   type Tone,
 } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useSession } from '@/store/session';
 import { useFormat, useLang, useT } from '@/i18n';
+import { HistoryCoverageBlock } from './HistoryCoverage';
 import { asItems, errText, jobDuration, type SyncHistoryRow } from './types';
 
 const JOB_TONE: Record<string, Tone> = {
@@ -40,13 +42,17 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
   const f = useFormat();
   const lang = useLang();
   const qc = useQueryClient();
+  // Tarix yuklash — server ham faqat owner/manager'ga ruxsat beradi (requireRole)
+  const role = useSession((st) => st.me?.company?.role ?? null);
+  const canManage = role === 'owner' || role === 'manager';
 
   const status = useQuery({
     queryKey: ['sync-status'],
     queryFn: () => api.get<SyncStatus>('/sync/status'),
     refetchInterval: (q) => {
       const s = q.state.data as SyncStatus | undefined;
-      return s && (s.status === 'running' || s.status === 'queued') ? 5000 : 60_000;
+      const busy = (x: string | undefined) => x === 'running' || x === 'queued';
+      return s && (busy(s.status) || busy(s.history?.status)) ? 5000 : 60_000;
     },
   });
 
@@ -65,6 +71,19 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
     onError: (err) => toast.error(t('sync.startErr'), errText(err)),
   });
 
+  const backfill = useMutation({
+    mutationFn: (rescan: boolean) => api.post<SyncStatus>('/sync/backfill', { rescan }),
+    onSuccess: (res, rescan) => {
+      const h = res?.history;
+      if (h && (h.status === 'queued' || h.status === 'running')) {
+        toast.success(rescan ? t('cov.rescanStarted') : t('cov.started'), t('cov.startedBody'));
+      } else if (h && h.missingDays === 0 && !rescan) toast.info(t('cov.upToDate'));
+      if (res) qc.setQueryData(['sync-status'], res);
+      void qc.invalidateQueries({ queryKey: ['sync-history'] });
+    },
+    onError: (err) => toast.error(t('cov.startErr'), errText(err)),
+  });
+
   const s = status.data;
   const active = Boolean(s && (s.status === 'running' || s.status === 'queued'));
   const rows = (history.data ?? []).slice(0, 10);
@@ -75,7 +94,7 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
       header: t('sync.col.type'),
       render: (r) => (
         <span className="text-sm font-medium text-ink">
-          {r.type === 'full' ? t('sync.type.full') : r.type === 'incremental' ? t('sync.type.incremental') : (r.type ?? '—')}
+          {r.type === 'full' || r.type === 'incremental' || r.type === 'backfill' ? t(`sync.type.${r.type}`) : (r.type ?? '—')}
         </span>
       ),
     },
@@ -180,6 +199,17 @@ export function SyncPanel({ hasAccounts }: { hasAccounts: boolean }) {
             ) : null}
           </div>
         )}
+
+        {/* ── Tarix chuqurligi (backfill) ── */}
+        {hasAccounts && !status.isError ? (
+          <HistoryCoverageBlock
+            history={s?.history}
+            canManage={canManage}
+            loading={backfill.isPending}
+            onLoad={() => backfill.mutate(false)}
+            onRescan={() => backfill.mutate(true)}
+          />
+        ) : null}
 
         {/* ── Tarix ── */}
         <div>

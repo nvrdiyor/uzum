@@ -5,6 +5,10 @@ export * from './calc.js';
 export * from './format.js';
 export * from './schemas.js';
 export * from './card-seo.js';
+export * from './tariffs.js';
+export * from './search.js';
+export * from './views.js';
+export * from './competitors.js';
 
 export const APP = {
   name: 'SavdoIQ',

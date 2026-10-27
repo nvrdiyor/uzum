@@ -20,17 +20,22 @@ import {
   PackageX,
   Undo2,
   Archive,
+  Box,
   Wallet,
   Scale,
   Receipt,
   Calculator,
   Star,
   Users,
+  UserPlus,
   CreditCard,
   Settings,
   Ship,
   PackagePlus,
   Wand2,
+  LayoutGrid,
+  Gauge,
+  Target,
   type AppIcon,
 } from '@/components/icons';
 import type { FeatureId } from '@savdoiq/shared';
@@ -77,6 +82,24 @@ export const NAV: NavGroup[] = [
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
     ],
   },
+  /*
+   * O'sish — faqat sotuvchining o'z ma'lumotidan (bozor o'qilmaydi, 2026-10-24).
+   * Kategoriyalar — ABC tahlil oilasi (assortiment tuzilmasi), radar — sotuv
+   * tezligi (Sotuv tahlili oilasi); tariflari shunga ko'ra.
+   */
+  {
+    titleKey: 'group.growth',
+    items: [
+      { to: '/categories', labelKey: 'nav.categories', icon: LayoutGrid, feature: 'abc_analysis' },
+      // Spidometr — tezlik: radar sotuv sur'ati o'zgargan SKU'larni ko'rsatadi
+      { to: '/radar', labelKey: 'nav.radar', icon: Gauge, feature: 'sales_analytics' },
+      /*
+       * Raqobatchilar narxi — narxni sotuvchi o'zi kiritadi, Uzum o'qilmaydi
+       * (2026-10-24). Mahsulot sahifasidagi karta bilan bir oila — tarifi ham.
+       */
+      { to: '/price-map', labelKey: 'nav.priceMap', icon: Target, feature: 'products_assortment' },
+    ],
+  },
   {
     titleKey: 'group.marketing',
     items: [
@@ -92,6 +115,8 @@ export const NAV: NavGroup[] = [
       { to: '/losses', labelKey: 'nav.losses', icon: PackageX, feature: 'losses_report' },
       { to: '/returns', labelKey: 'nav.returns', icon: Undo2, feature: 'returns_report' },
       { to: '/storage', labelKey: 'nav.storage', icon: Archive, feature: 'paid_storage' },
+      // Kub — hajm; logistika yig'imi kartochkadagi hajm bo'yicha tekshiriladi
+      { to: '/vgh', labelKey: 'nav.vgh', icon: Box, feature: 'vgh_report' },
     ],
   },
   {
@@ -116,6 +141,8 @@ export const NAV: NavGroup[] = [
       { to: '/reviews', labelKey: 'nav.reviews', icon: Star, feature: 'reviews_autoreply' },
       { to: '/referral', labelKey: 'nav.referral', icon: Users, feature: 'referral' },
       { to: '/pricing', labelKey: 'nav.pricing', icon: CreditCard },
+      // Users — hamkorlik dasturida; jamoa sahifasi a'zo va taklif havolasi haqida (2026-10-24)
+      { to: '/team', labelKey: 'nav.team', icon: UserPlus },
       { to: '/settings', labelKey: 'nav.settings', icon: Settings },
     ],
   },

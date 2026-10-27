@@ -1,17 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  ArrowRight,
-  Boxes,
-  Info,
   Layers,
   MessageSquare,
   Package,
-  PackagePlus,
   Scale,
-  ShieldCheck,
   Star,
   Store,
   TrendingUp,
@@ -19,7 +14,6 @@ import {
   Wand2,
 } from '@/components/icons';
 import {
-  Amount,
   Badge,
   Button,
   Card,
@@ -28,13 +22,10 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
-  HeroCard,
   PageHeader,
   PlanGate,
   PreviewBadge,
-  ProductThumb,
   ProgressBar,
-  ProgressRing,
   Segmented,
   Skeleton,
   SkeletonRows,
@@ -42,10 +33,19 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
-import { ChartCard, DonutChart, LinesChart, TrendChart, CHART_COLORS } from '@/components/charts';
+import { ChartCard, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { DataFreshness } from '@/components/trust/DataFreshness';
-import { buyoutRateOf, buyoutTextClass, buyoutTone, useBuyout } from '@/components/products/Buyout';
+import {
+  CoverCard,
+  DetailHero,
+  NeedCard,
+  QualityCard,
+  SalesComboCard,
+  StockHistoryCard,
+  variantOf,
+} from '@/components/products/DetailBento';
+import { CompetitorPricesCard } from '@/components/competitors/CompetitorPricesCard';
 import { InlineCostInput } from '@/components/products/InlineCostInput';
 import { MissingCostBanner } from '@/components/products/MissingCostBanner';
 import { ProductVisibilityButton } from '@/components/products/VisibilityButton';
@@ -53,25 +53,23 @@ import {
   STATE_STYLE,
   normalizeProductDetail,
   productState,
-  skuTotalCost,
   skusWithoutCost,
-  totalStock,
   type ProductDetailResponse,
   type ProductDetailSku,
 } from '@/components/products/types';
-import { StockStatusBadge, TONE_TEXT, daysTone } from '@/components/stock/common';
+import { StockStatusBadge, TONE_TEXT } from '@/components/stock/common';
 import { api } from '@/lib/api';
 import { COST_COLORS } from '@/lib/theme';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { invalidateCostDependent } from '@/lib/costQueries';
+import { useSeesMoney } from '@/lib/view';
 
 registerNamespace('productDetail', {
   uz: {
     back: 'Mahsulotlarga qaytish',
     cardSeo: 'Kartochka SEO',
-    subtitle: '{sku} SKU · {cat}',
     notFound: 'Mahsulot topilmadi',
     notFoundHint: 'Bu mahsulot o‘chirilgan yoki sizga tegishli emas',
     'state.active': 'Sotuvda',
@@ -82,78 +80,30 @@ registerNamespace('productDetail', {
     'meta.uzumId': 'Uzum ID {id}',
     'meta.skus': '{n} SKU',
     'meta.noCategory': 'Kategoriyasiz',
-    'hero.title': 'Davr natijasi',
-    'hero.sold': '{n} dona sotildi',
-    'hero.avgPrice': 'O‘rtacha sotilgan',
-    'hero.avgPriceWhy':
-      'Tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
-    'kpi.revenue': 'Tushum',
-    'kpi.profit': 'Sof foyda',
-    'kpi.roi': 'ROI',
-    'kpi.roiNoCost': 'Tannarx kiritilmagan',
-    'kpi.margin': 'Marja',
-    'info.price': 'Narx',
-    'info.cost': 'Tannarx',
-    'info.noCost': 'kiritilmagan',
-    'info.sold': 'Sotildi',
-    'info.revenue': 'Tushum',
-    'info.profit': 'Foyda',
-    'info.roi': 'ROI',
-    'info.margin': 'Marja',
-    'info.rating': 'Reyting',
-    'info.returns': 'Qaytarishlar',
-    'info.stock': 'Qoldiq',
-    'info.daysLeft': 'Qoldiq yetadi',
-    'info.days': '{n} kun',
-    'info.noForecast': 'Prognoz yo‘q',
-    'info.units': '{n} dona',
     'info.reviews': '{n} sharh',
-    'cover.title': 'Ombor qamrovi',
-    'cover.subtitle': 'Qoldiq necha kunga yetadi',
-    'cover.share': '{cover} kunlik zaxiraning {pct} qismi',
-    'cover.full': '{cover} kunlik zaxiradan ham ko‘p',
-    'cover.noSales': 'So‘nggi 30 kunda sotuv yo‘q — prognoz qilinmaydi',
-    'cover.inTransit': 'yo‘lda {n}',
-    'cover.reserved': 'band {n}',
-    'need.title': 'Buyurtma kerak',
-    'need.subtitle': '{n} kunlik zaxira uchun yetishmaydi',
-    'need.none': 'Hozircha buyurtma shart emas',
-    'need.noneHint': 'Barcha SKU’lar zaxira davriga yetadi',
-    'need.urgent': 'Eng shoshilinch SKU’lar',
-    'need.planner': 'Rejalashtiruvchida ochish',
-    'quality.title': 'Sifat va qaytarishlar',
-    'quality.subtitle': 'Tanlangan davr bo‘yicha',
-    'quality.unanswered': 'Javobsiz sharhlar',
-    'quality.noRating': 'Hali baholanmagan',
-    'tab.sales': 'Sotuv dinamikasi',
-    'tab.stocks': 'Qoldiqlar',
+    'info.margin': 'Marja',
+    'info.roi': 'ROI',
     'tab.unit': 'Unit-iqtisod',
     'tab.reviews': 'Sharhlar',
-    'sales.title': 'Sotuv dinamikasi',
-    'sales.subtitle': 'Oxirgi 60 kun: tushum va foyda',
-    'sales.revenue': 'Tushum',
-    'sales.profit': 'Foyda',
-    'sales.units': 'Dona: {n}',
-    'stocks.title': 'Qoldiqlar tarixi',
-    'stocks.subtitle': 'FBO, FBS va o‘z ombori bo‘yicha',
-    'stocks.fbo': 'FBO',
-    'stocks.fbs': 'FBS',
-    'stocks.own': 'Ombor',
-    'skus.title': 'SKU’lar',
-    'skus.subtitle': 'Holat, qoldiq va tannarx — tannarxni to‘g‘ridan-to‘g‘ri jadvalda tahrirlash mumkin',
-    'skus.sku': 'SKU',
+    'skus.title': 'Variantlar',
+    'skus.subtitle': 'Qoldiq, necha kunga yetishi va marja — tannarxni to‘g‘ridan-to‘g‘ri jadvalda tahrirlash mumkin',
+    'skus.variant': 'Variant',
     'skus.status': 'Holat · yetadi',
     'skus.price': 'Narx',
     'skus.cost': 'Tannarx',
     'skus.stock': 'Qoldiq',
     'skus.sold': 'Sotildi',
-    'skus.profit': 'Foyda',
+    'skus.margin': 'Marja',
     'skus.own': 'O‘z ombori {n}',
     'skus.transit': 'yo‘lda {n}',
     'skus.days': '{n} kun',
     'skus.perDay': '{n}/kun',
     'skus.noSales': 'Sotuv yo‘q',
-    'skus.margin': 'marja {pct}',
+    'skus.buy': 'buyurtma {n}',
+    'skus.ship': 'FBO’ga {n}',
+    'skus.planHint': 'Tugash: {stockout} · buyurtma kuni: {orderBy}',
+    'skus.profit': 'foyda {v}',
+    'skus.uzumSku': 'Uzum SKU ID {id}',
     'skus.costPlaceholder': 'Tannarx',
     'cost.saved': 'Tannarx yangilandi',
     'cost.savedBody': '{sku} uchun yangi tannarx saqlandi',
@@ -176,7 +126,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Jami xarajat',
     'unit.breakEven': 'Zararsizlik narxi',
     'unit.empty': 'Unit-iqtisod uchun tannarx kerak',
-    'unit.emptyHint': 'SKU jadvalida tannarxni kiriting',
+    'unit.emptyHint': 'Variantlar jadvalida tannarxni kiriting',
     'reviews.title': 'Sharhlar',
     'reviews.subtitle': 'Reyting taqsimoti va oxirgi izohlar',
     'reviews.avg': 'O‘rtacha reyting',
@@ -188,14 +138,11 @@ registerNamespace('productDetail', {
     'reviews.emptyHint': 'Bu mahsulotga hali sharh yozilmagan',
     'reviews.answerLabel': 'Javob',
     'reviews.noAnswer': 'Javob berilmagan',
-    'empty.series': 'Tanlangan davrda sotuv bo‘lmagan',
-    'empty.stocks': 'Qoldiqlar tarixi yo‘q',
     'empty.skus': 'SKU topilmadi',
   },
   ru: {
     back: 'К товарам',
     cardSeo: 'SEO карточки',
-    subtitle: '{sku} SKU · {cat}',
     notFound: 'Товар не найден',
     notFoundHint: 'Товар удалён или не принадлежит вам',
     'state.active': 'В продаже',
@@ -206,78 +153,30 @@ registerNamespace('productDetail', {
     'meta.uzumId': 'Uzum ID {id}',
     'meta.skus': '{n} SKU',
     'meta.noCategory': 'Без категории',
-    'hero.title': 'Итог за период',
-    'hero.sold': 'Продано {n} шт.',
-    'hero.avgPrice': 'Средняя цена продажи',
-    'hero.avgPriceWhy':
-      'Средняя цена, которую покупатели реально заплатили за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
-    'kpi.revenue': 'Выручка',
-    'kpi.profit': 'Чистая прибыль',
-    'kpi.roi': 'ROI',
-    'kpi.roiNoCost': 'Себестоимость не заполнена',
-    'kpi.margin': 'Маржа',
-    'info.price': 'Цена',
-    'info.cost': 'Себестоимость',
-    'info.noCost': 'не указана',
-    'info.sold': 'Продано',
-    'info.revenue': 'Выручка',
-    'info.profit': 'Прибыль',
-    'info.roi': 'ROI',
+    'info.reviews': 'отзывов: {n}',
     'info.margin': 'Маржа',
-    'info.rating': 'Рейтинг',
-    'info.returns': 'Возвраты',
-    'info.stock': 'Остаток',
-    'info.daysLeft': 'Хватит на',
-    'info.days': '{n} дн.',
-    'info.noForecast': 'Нет прогноза',
-    'info.units': '{n} шт.',
-    'info.reviews': '{n} отзывов',
-    'cover.title': 'Покрытие запасом',
-    'cover.subtitle': 'На сколько хватит остатка',
-    'cover.share': '{pct} от запаса на {cover} дн.',
-    'cover.full': 'Больше запаса на {cover} дн.',
-    'cover.noSales': 'За 30 дней продаж нет — прогноза нет',
-    'cover.inTransit': 'в пути {n}',
-    'cover.reserved': 'резерв {n}',
-    'need.title': 'Нужен заказ',
-    'need.subtitle': 'Не хватает на {n} дн. запаса',
-    'need.none': 'Пока заказывать не нужно',
-    'need.noneHint': 'Всех SKU хватает на период запаса',
-    'need.urgent': 'Самые срочные SKU',
-    'need.planner': 'Открыть в планировщике',
-    'quality.title': 'Качество и возвраты',
-    'quality.subtitle': 'За выбранный период',
-    'quality.unanswered': 'Отзывы без ответа',
-    'quality.noRating': 'Оценок пока нет',
-    'tab.sales': 'Динамика продаж',
-    'tab.stocks': 'Остатки',
+    'info.roi': 'ROI',
     'tab.unit': 'Юнит-экономика',
     'tab.reviews': 'Отзывы',
-    'sales.title': 'Динамика продаж',
-    'sales.subtitle': 'Последние 60 дней: выручка и прибыль',
-    'sales.revenue': 'Выручка',
-    'sales.profit': 'Прибыль',
-    'sales.units': 'Штук: {n}',
-    'stocks.title': 'История остатков',
-    'stocks.subtitle': 'По FBO, FBS и своему складу',
-    'stocks.fbo': 'FBO',
-    'stocks.fbs': 'FBS',
-    'stocks.own': 'Склад',
-    'skus.title': 'SKU',
-    'skus.subtitle': 'Статус, остаток и себестоимость — себестоимость можно менять прямо в таблице',
-    'skus.sku': 'SKU',
+    'skus.title': 'Варианты',
+    'skus.subtitle': 'Остаток, на сколько хватит и маржа — себестоимость можно менять прямо в таблице',
+    'skus.variant': 'Вариант',
     'skus.status': 'Статус · хватит',
     'skus.price': 'Цена',
     'skus.cost': 'Себестоимость',
     'skus.stock': 'Остаток',
     'skus.sold': 'Продано',
-    'skus.profit': 'Прибыль',
+    'skus.margin': 'Маржа',
     'skus.own': 'Свой склад {n}',
     'skus.transit': 'в пути {n}',
     'skus.days': '{n} дн.',
     'skus.perDay': '{n}/дн.',
     'skus.noSales': 'Нет продаж',
-    'skus.margin': 'маржа {pct}',
+    'skus.buy': 'заказ {n}',
+    'skus.ship': 'на FBO {n}',
+    'skus.planHint': 'Закончится: {stockout} · заказать до: {orderBy}',
+    'skus.profit': 'прибыль {v}',
+    'skus.uzumSku': 'Uzum SKU ID {id}',
     'skus.costPlaceholder': 'Себест.',
     'cost.saved': 'Себестоимость обновлена',
     'cost.savedBody': 'Новое значение сохранено для {sku}',
@@ -300,7 +199,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Всего расходов',
     'unit.breakEven': 'Цена безубыточности',
     'unit.empty': 'Для юнит-экономики нужна себестоимость',
-    'unit.emptyHint': 'Укажите себестоимость в таблице SKU',
+    'unit.emptyHint': 'Укажите себестоимость в таблице вариантов',
     'reviews.title': 'Отзывы',
     'reviews.subtitle': 'Распределение рейтинга и последние отзывы',
     'reviews.avg': 'Средний рейтинг',
@@ -312,14 +211,11 @@ registerNamespace('productDetail', {
     'reviews.emptyHint': 'На этот товар ещё не оставили отзывов',
     'reviews.answerLabel': 'Ответ',
     'reviews.noAnswer': 'Без ответа',
-    'empty.series': 'За выбранный период продаж не было',
-    'empty.stocks': 'Нет истории остатков',
     'empty.skus': 'SKU не найдены',
   },
   en: {
     back: 'Back to products',
     cardSeo: 'Card SEO',
-    subtitle: '{sku} SKUs · {cat}',
     notFound: 'Product not found',
     notFoundHint: 'It was removed or does not belong to you',
     'state.active': 'On sale',
@@ -328,87 +224,39 @@ registerNamespace('productDetail', {
     'state.archived': 'Archived',
     'state.hidden': 'Deleted',
     'meta.uzumId': 'Uzum ID {id}',
-    'meta.skus': '{n} SKUs',
+    'meta.skus': 'SKUs: {n}',
     'meta.noCategory': 'No category',
-    'hero.title': 'Period result',
-    'hero.sold': '{n} units sold',
-    'hero.avgPrice': 'Average selling price',
-    'hero.avgPriceWhy':
-      'The average price buyers actually paid in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
-    'kpi.revenue': 'Revenue',
-    'kpi.profit': 'Net profit',
-    'kpi.roi': 'ROI',
-    'kpi.roiNoCost': 'Cost price not set',
-    'kpi.margin': 'Margin',
-    'info.price': 'Price',
-    'info.cost': 'Cost price',
-    'info.noCost': 'not set',
-    'info.sold': 'Sold',
-    'info.revenue': 'Revenue',
-    'info.profit': 'Profit',
-    'info.roi': 'ROI',
-    'info.margin': 'Margin',
-    'info.rating': 'Rating',
-    'info.returns': 'Returns',
-    'info.stock': 'Stock',
-    'info.daysLeft': 'Days of cover',
-    'info.days': '{n} days',
-    'info.noForecast': 'No forecast',
-    'info.units': '{n} units',
     'info.reviews': '{n} reviews',
-    'cover.title': 'Stock cover',
-    'cover.subtitle': 'How long the stock lasts',
-    'cover.share': '{pct} of a {cover}-day cover',
-    'cover.full': 'More than a {cover}-day cover',
-    'cover.noSales': 'No sales in the last 30 days — no forecast',
-    'cover.inTransit': '{n} in transit',
-    'cover.reserved': '{n} reserved',
-    'need.title': 'Reorder',
-    'need.subtitle': 'Short for {n} days of cover',
-    'need.none': 'No reorder needed yet',
-    'need.noneHint': 'Every SKU covers the period',
-    'need.urgent': 'Most urgent SKUs',
-    'need.planner': 'Open in Planner',
-    'quality.title': 'Quality and returns',
-    'quality.subtitle': 'For the selected period',
-    'quality.unanswered': 'Unanswered reviews',
-    'quality.noRating': 'Not rated yet',
-    'tab.sales': 'Sales trend',
-    'tab.stocks': 'Stock levels',
+    'info.margin': 'Margin',
+    'info.roi': 'ROI',
     'tab.unit': 'Unit economics',
     'tab.reviews': 'Reviews',
-    'sales.title': 'Sales trend',
-    'sales.subtitle': 'Last 60 days: revenue and profit',
-    'sales.revenue': 'Revenue',
-    'sales.profit': 'Profit',
-    'sales.units': 'Units: {n}',
-    'stocks.title': 'Stock history',
-    'stocks.subtitle': 'FBO, FBS and own warehouse',
-    'stocks.fbo': 'FBO',
-    'stocks.fbs': 'FBS',
-    'stocks.own': 'Own',
-    'skus.title': 'SKUs',
-    'skus.subtitle': 'Status, stock and cost — the cost price can be edited straight in the table',
-    'skus.sku': 'SKU',
+    'skus.title': 'Variants',
+    'skus.subtitle': 'Stock, days of cover and margin — the cost price can be edited straight in the table',
+    'skus.variant': 'Variant',
     'skus.status': 'Status · lasts',
     'skus.price': 'Price',
     'skus.cost': 'Cost',
     'skus.stock': 'Stock',
     'skus.sold': 'Sold',
-    'skus.profit': 'Profit',
+    'skus.margin': 'Margin',
     'skus.own': 'Own warehouse {n}',
     'skus.transit': '{n} in transit',
     'skus.days': '{n} days',
     'skus.perDay': '{n}/day',
     'skus.noSales': 'No sales',
-    'skus.margin': 'margin {pct}',
+    'skus.buy': 'reorder {n}',
+    'skus.ship': 'to FBO {n}',
+    'skus.planHint': 'Runs out: {stockout} · order by: {orderBy}',
+    'skus.profit': 'profit {v}',
+    'skus.uzumSku': 'Uzum SKU ID {id}',
     'skus.costPlaceholder': 'Cost',
     'cost.saved': 'Cost price updated',
     'cost.savedBody': 'New cost saved for {sku}',
     'cost.error': 'Could not save the cost price',
     'cost.bulkSaved': 'Cost applied to every SKU',
     'cost.missingTitle': 'Cost price is missing — profit is calculated incorrectly',
-    'cost.missingHint': '{n} SKUs have no cost price. Fill it in to get accurate ROI and margin.',
+    'cost.missingHint': 'SKUs without a cost price: {n}. Fill it in to get accurate ROI and margin.',
     'cost.quickPlaceholder': 'Cost price, UZS',
     'cost.applyAll': 'Apply to all',
     'unit.title': 'Per-unit economics',
@@ -424,7 +272,7 @@ registerNamespace('productDetail', {
     'unit.costTotal': 'Total cost',
     'unit.breakEven': 'Break-even price',
     'unit.empty': 'Unit economics needs a cost price',
-    'unit.emptyHint': 'Set the cost price in the SKU table',
+    'unit.emptyHint': 'Set the cost price in the variants table',
     'reviews.title': 'Reviews',
     'reviews.subtitle': 'Rating distribution and latest feedback',
     'reviews.avg': 'Average rating',
@@ -436,42 +284,37 @@ registerNamespace('productDetail', {
     'reviews.emptyHint': 'Nobody has reviewed this product yet',
     'reviews.answerLabel': 'Reply',
     'reviews.noAnswer': 'Not answered',
-    'empty.series': 'No sales in the selected period',
-    'empty.stocks': 'No stock history',
     'empty.skus': 'No SKUs found',
   },
 });
 
 /*
- * SKU jadvali endi tabda emas — sahifaning o'zida (Unit-iqtisod va sharhlardan
- * oldin): sotuvchi aynan qaysi variant tugayotganini birinchi ekranda ko'rsin.
- * Ilgari u "SKU'lar" tabi ortida yashirin edi va server qaytargan holat,
- * sur'at, "yetadi" ustunlari umuman chizilmasdi.
+ * "Bento" tartibi (2026-10-24): rasm va pul raqamlari (HeroCard) → ombor
+ * qamrovi, buyurtma kerak, sifat → ikki o'qli sotuv grafigi va qoldiq tarixi
+ * → variantlar jadvali → batafsil (unit-iqtisod, sharhlar). Ilgari sotuv va
+ * qoldiq grafiklari tab ortida edi, "yetadi" va "buyurtma kerak" esa
+ * qotirilgan 30 kunlik zaxira bilan izohlanardi — sozlamada boshqa muddat
+ * turgan kompaniyada ham.
  */
-type Tab = 'sales' | 'stocks' | 'unit' | 'reviews';
-const TABS: Tab[] = ['sales', 'stocks', 'unit', 'reviews'];
+type Tab = 'unit' | 'reviews';
+const TABS: Tab[] = ['unit', 'reviews'];
 
-/**
- * GET /products/:id `cover` yubormaydi — server standarti 30 kun (coverParam).
- * "Buyurtma kerak" miqdori ham aynan shu davr uchun hisoblangan, shuning uchun
- * qamrov halqasi va izohlar ham 30 kunga nisbatan.
- */
-const DETAIL_COVER = 30;
+/** Holat nishoni ohangi (StockStatusBadge bilan bir xil) — "yetadi" yozuvi shu rangda */
+const STATUS_TONE: Record<NonNullable<ProductDetailSku['status']>, Tone> = {
+  critical: 'danger',
+  low: 'warn',
+  ok: 'brand',
+  excess: 'info',
+  dead: 'muted',
+};
 
 /*
- * Kataklar orasi px-5 o'rniga 20 px — yetti ustunli SKU jadvali 1366 px'da
+ * Kataklar orasi px-5 o'rniga 20 px — yetti ustunli jadval 1366 px'da
  * gorizontal aylantirishsiz sig'adi (Sotuv va qoldiq jadvalidagi kabi).
  */
 const PAD = 'pl-2.5 pr-2.5';
 const PAD_FIRST = 'pr-2.5';
 const PAD_LAST = 'pl-2.5';
-
-/** SKU nomidan mahsulot nomini olib tashlaydi: "Paxta choyshab … — Kulrang" → "Kulrang" */
-function variantOf(skuTitle: string, productTitle: string): string {
-  if (!productTitle || !skuTitle.startsWith(productTitle)) return skuTitle;
-  const rest = skuTitle.slice(productTitle.length).replace(/^[\s—–,:·-]+/u, '').trim();
-  return rest || skuTitle;
-}
 
 export default function ProductDetail() {
   const t = useT('productDetail');
@@ -480,12 +323,22 @@ export default function ProductDetail() {
   const periodQuery = usePeriodQuery();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<Tab>('sales');
+  /*
+   * Pulsiz ko'rinish shablonida (omborchi, marketolog) Unit-iqtisod — tannarx va
+   * foydaning o'zi: server qiymatlarni null qiladi, tab bo'sh ko'rinmasin (2026-10-27)
+   */
+  const seesMoney = useSeesMoney();
+  const tabs = seesMoney ? TABS : TABS.filter((x) => x !== 'unit');
+  const [tab, setTab] = useState<Tab>(seesMoney ? 'unit' : 'reviews');
   const [savingSku, setSavingSku] = useState<string | null>(null);
   const [savedSku, setSavedSku] = useState<string | null>(null);
 
   const queryKey = useMemo(() => ['product', id, periodQuery] as const, [id, periodQuery]);
 
+  /*
+   * Zaxira davri YUBORILMAYDI — server kompaniya sozlamasini oladi va har
+   * xulosada (`plan`) qaysi muddatlar ishlatilganini aytadi.
+   */
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey,
     queryFn: () => api.get<unknown>(`/products/${id}`, periodQuery).then(normalizeProductDetail),
@@ -495,8 +348,6 @@ export default function ProductDetail() {
   const product = data?.product;
   const skus = data?.skus ?? [];
   const missing = skusWithoutCost(skus);
-  /** Kamida bitta SKU da tannarx kiritilganmi */
-  const hasCost = skus.some((sku) => (sku.purchasePrice ?? 0) > 0);
 
   /** Bitta SKU tannarxi — optimistik yangilanish bilan */
   const patchCost = useMutation({
@@ -566,19 +417,30 @@ export default function ProductDetail() {
 
   const productTitle = product?.title ?? '';
 
+  /*
+   * Variantlar jadvali: variant (nom, SKU kodi, shtrix-kod) → holat va
+   * "yetadi" (Rejalashtiruvchidan, yetkazish muddati bilan) → qoldiq →
+   * sotildi → narx → tannarx (shu yerda tahrirlanadi) → marja. "Yetadi"
+   * rangi nishon bilan bir xil (holatdan) — ilgari qat'iy 7/14 kunlik
+   * chegaradan olinardi va yetkazish 14 kun bo'lsa nishon qizil, kun yozuvi
+   * sariq chiqardi.
+   */
   const skuColumns: Column<ProductDetailSku>[] = useMemo(
     () => [
       {
         key: 'sku',
-        header: t('skus.sku'),
+        header: t('skus.variant'),
         render: (r) => {
           const variant = variantOf(r.title, productTitle);
           return (
-            <div className="min-w-0 max-w-[15rem] 2xl:max-w-[22rem]">
-              <p className="tnum truncate text-sm font-semibold text-ink">{r.sku}</p>
-              <p className="truncate text-xs text-muted" title={r.title}>
-                {variant}
-                {r.barcode ? <span className="tnum opacity-80"> · {r.barcode}</span> : null}
+            <div
+              className="min-w-0 max-w-[15rem] 2xl:max-w-[22rem]"
+              title={[r.title, r.uzumSkuId ? t('skus.uzumSku', { id: r.uzumSkuId }) : ''].filter(Boolean).join('\n')}
+            >
+              <p className="truncate text-sm font-semibold text-ink">{variant}</p>
+              <p className="tnum truncate text-xs text-muted">
+                {r.sku}
+                {r.barcode ? <span className="opacity-80"> · {r.barcode}</span> : null}
               </p>
             </div>
           );
@@ -592,21 +454,43 @@ export default function ProductDetail() {
         // Holat aynan "necha kunga yetadi"dan kelib chiqadi — bitta ustunda
         key: 'status',
         header: t('skus.status'),
-        render: (r) => (
-          <div className="leading-tight">
-            {r.status ? <StockStatusBadge status={r.status} /> : null}
-            <p className="tnum mt-1 text-2xs">
-              <span className={cn('font-semibold', TONE_TEXT[daysTone(r.daysLeft)])}>
-                {r.daysLeft === null || r.daysLeft === undefined
-                  ? t('skus.noSales')
-                  : t('skus.days', { n: f.num(r.daysLeft) })}
-              </span>
-              {(r.avgDaily ?? 0) > 0 ? (
-                <span className="text-muted"> · {t('skus.perDay', { n: f.num(r.avgDaily ?? 0, 1) })}</span>
+        render: (r) => {
+          const plan = r.plan;
+          const hint =
+            plan && plan.stockoutDate
+              ? t('skus.planHint', {
+                  stockout: f.dateShort(plan.stockoutDate),
+                  orderBy: plan.orderBy ? f.dateShort(plan.orderBy) : '—',
+                })
+              : undefined;
+          return (
+            <div className={cn('leading-tight', hint && 'cursor-help')} title={hint}>
+              {r.status ? <StockStatusBadge status={r.status} /> : null}
+              <p className="tnum mt-1 text-2xs">
+                <span className={cn('font-semibold', TONE_TEXT[r.status ? STATUS_TONE[r.status] : 'muted'])}>
+                  {r.daysLeft === null || r.daysLeft === undefined
+                    ? t('skus.noSales')
+                    : t('skus.days', { n: f.num(r.daysLeft) })}
+                </span>
+                {(r.avgDaily ?? 0) > 0 ? (
+                  <span className="text-muted"> · {t('skus.perDay', { n: f.num(r.avgDaily ?? 0, 1) })}</span>
+                ) : null}
+              </p>
+              {/* Rejalashtiruvchi tavsiyasi — shu variant bo'yicha */}
+              {plan && !r.archived && (plan.reorderQty > 0 || plan.shipQty > 0) ? (
+                <p className="tnum mt-0.5 text-2xs font-medium">
+                  {plan.reorderQty > 0 ? (
+                    <span className="text-warn-ink">{t('skus.buy', { n: f.num(plan.reorderQty) })}</span>
+                  ) : null}
+                  {plan.reorderQty > 0 && plan.shipQty > 0 ? <span className="text-muted"> · </span> : null}
+                  {plan.shipQty > 0 ? (
+                    <span className="text-info-ink">{t('skus.ship', { n: f.num(plan.shipQty) })}</span>
+                  ) : null}
+                </p>
               ) : null}
-            </p>
-          </div>
-        ),
+            </div>
+          );
+        },
         // Shoshilinchlik bo'yicha: birinchi bosishda (kamayish) eng kam kunlisi tepada
         sortValue: (r) => -(r.daysLeft ?? Number.MAX_SAFE_INTEGER),
         sortable: true,
@@ -678,23 +562,25 @@ export default function ProductDetail() {
         headerClassName: PAD,
       },
       {
-        key: 'profit',
-        header: t('skus.profit'),
+        key: 'margin',
+        header: t('skus.margin'),
         align: 'right',
         render: (r) => (
           <div className="leading-tight">
-            <span className={cn('tnum font-semibold', r.profit < 0 ? 'text-danger' : 'text-brand-ink')}>
-              {f.money(r.profit)}
-            </span>
             {r.revenue > 0 && typeof r.margin === 'number' ? (
-              <p className={cn('tnum text-2xs', r.profit < 0 ? 'text-danger' : 'text-muted')}>
-                {t('skus.margin', { pct: f.pct(r.margin) })}
-              </p>
-            ) : null}
+              <span className={cn('tnum font-semibold', r.margin < 0 ? 'text-danger' : 'text-brand-ink')}>
+                {f.pct(r.margin)}
+              </span>
+            ) : (
+              <span className="text-muted">—</span>
+            )}
+            <p className={cn('tnum text-2xs', r.profit < 0 ? 'text-danger' : 'text-muted')}>
+              {t('skus.profit', { v: f.money(r.profit) })}
+            </p>
           </div>
         ),
         sortable: true,
-        sortValue: (r) => r.profit,
+        sortValue: (r) => (r.revenue > 0 ? (r.margin ?? 0) : Number.NEGATIVE_INFINITY),
         className: PAD_LAST,
         headerClassName: PAD_LAST,
       },
@@ -710,12 +596,13 @@ export default function ProductDetail() {
         <BackLink label={t('back')} />
         <PageHeader icon={<Package className="h-5 w-5" />} title={<Skeleton className="h-6 w-64" />} />
         <div className="space-y-5">
-          <Skeleton className="h-44 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-56 w-full rounded-2xl" />
+              <Skeleton key={i} className="h-64 w-full rounded-2xl" />
             ))}
           </div>
+          <Skeleton className="h-80 w-full rounded-2xl" />
           <Card className="p-5">
             <SkeletonRows rows={4} />
           </Card>
@@ -739,7 +626,7 @@ export default function ProductDetail() {
     );
   }
 
-  if (!product) {
+  if (!product || !data) {
     return (
       <>
         <BackLink label={t('back')} />
@@ -760,18 +647,14 @@ export default function ProductDetail() {
   }
 
   const state = productState(product);
-  const cost = avgCost(skus);
-  const showAvg =
-    product.avgSoldPrice > 0 && Math.abs(product.avgSoldPrice - product.minPrice) >= product.minPrice * 0.01;
-  const loss = product.profit < 0;
 
   return (
     <>
       <BackLink label={t('back')} />
 
       <PageHeader
-        // Sarlavha plitkasida mahsulotning o'zi: rasm yoki rangli bosh harflar
-        icon={<ProductThumb name={product.title} imageUrl={product.imageUrl} className="rounded-xl text-base" />}
+        // Rasm hero kartochkada katta — sarlavha plitkasida mahsulot belgisi (ikki marta bir rasm turmasin)
+        icon={<Package className="h-5 w-5" />}
         // Uzum'dagi haqiqiy nomlar 70–150 belgi — ikki qatordan oshmasin, to'liq nomi izohda
         title={
           <span className="line-clamp-2 text-[20px] sm:text-[24px]" title={product.title}>
@@ -793,7 +676,7 @@ export default function ProductDetail() {
             {product.uzumProductId ? (
               <span className="meta-chip tnum">{t('meta.uzumId', { id: product.uzumProductId })}</span>
             ) : null}
-            {data?.store ? (
+            {data.store ? (
               <span className="meta-chip">
                 <Store className="h-3.5 w-3.5" />
                 {data.store.title}
@@ -825,83 +708,34 @@ export default function ProductDetail() {
 
       <PlanGate feature="products_assortment">
         <div className="space-y-5">
-          {/*
-            Sahifadagi yagona HeroCard — mahsulot davr ichida qancha pul
-            keltirgani. Ilgari to'rtta bir xil KPI kartochkasi, ostida esa
-            224 px bo'sh rasm va 11 ta teng kulrang plitka turardi: asosiy
-            savolga javob ko'zga tashlanmasdi.
-          */}
-          <HeroCard tone={loss ? 'danger' : 'brand'} className="p-5 sm:p-6">
-            {/* Davr chegarasi raqamlar yonida — qaysi davr natijasi ekani so'ralmasin */}
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <p className="eyebrow">
-                {t('hero.title')}
-                <span className="tnum ml-2 font-medium normal-case tracking-normal text-ink-soft">
-                  {periodQuery.from === periodQuery.to
-                    ? f.dateShort(periodQuery.from)
-                    : `${f.dateShort(periodQuery.from)} – ${f.dateShort(periodQuery.to)}`}
-                </span>
-              </p>
-              <p className="tnum text-xs text-muted">{t('hero.sold', { n: f.num(product.sold) })}</p>
-            </div>
-            {/* Telefonda pul katakchalari to'liq kenglikda — "43 816 0…" bo'lib kesilmasin */}
-            <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <HeroStat
-                className="col-span-2 sm:col-span-1"
-                label={t('kpi.revenue')}
-                icon={<TrendingUp className="h-3.5 w-3.5" />}
-              >
-                <Amount value={f.money(product.revenue)} />
-              </HeroStat>
-              <HeroStat
-                className="col-span-2 sm:col-span-1"
-                label={t('kpi.profit')}
-                icon={<Scale className="h-3.5 w-3.5" />}
-                valueClass={loss ? 'text-danger' : 'text-brand-ink'}
-              >
-                <Amount value={f.money(product.profit)} />
-              </HeroStat>
-              <HeroStat label={t('kpi.margin')} valueClass={product.margin < 0 ? 'text-danger' : undefined}>
-                {f.pct(product.margin)}
-              </HeroStat>
-              {/* Tannarx kiritilmagan bo'lsa ROI hisoblanmaydi — "0,0%" chalg'itadi; manfiy ROI esa haqiqiy natija */}
-              <HeroStat
-                label={t('kpi.roi')}
-                hint={hasCost ? undefined : t('kpi.roiNoCost')}
-                valueClass={!hasCost ? 'text-muted' : product.roi < 0 ? 'text-danger' : undefined}
-              >
-                {hasCost ? f.pct(product.roi) : '—'}
-              </HeroStat>
-            </div>
-            <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-line/60 pt-3 text-xs">
-              <div className="flex items-baseline gap-1.5">
-                <dt className="text-muted">{t('info.price')}</dt>
-                <dd className="tnum font-semibold text-ink">{f.money(product.minPrice)}</dd>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <dt className="text-muted">{t('info.cost')}</dt>
-                <dd className={cn('tnum font-semibold', cost > 0 ? 'text-ink' : 'text-warn-ink')}>
-                  {cost > 0 ? f.money(cost) : t('info.noCost')}
-                </dd>
-              </div>
-              {showAvg ? (
-                <div className="flex cursor-help items-baseline gap-1.5" title={t('hero.avgPriceWhy')}>
-                  <dt className="text-muted">{t('hero.avgPrice')}</dt>
-                  <dd className="tnum font-semibold text-ink">{f.money(product.avgSoldPrice)}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </HeroCard>
+          <DetailHero product={product} skus={skus} period={periodQuery} />
 
           {/* Tannarx ogohlantirishi — foyda raqamlari aynan unga bog'liq, shuning uchun darhol ostida */}
           <MissingCostBanner skus={missing} saving={bulkCost.isPending} onApply={(v) => bulkCost.mutate(v)} />
 
-          {/* Bento: qoldiq qamrovi, buyurtma va sifat — har biri bitta savolga javob */}
+          {/* Bento: har karta bitta savolga javob — qancha bor, nima qilish kerak, xaridor qanday qabul qilyapti */}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <CoverCard product={product} skus={skus} />
             <NeedCard product={product} skus={skus} />
-            <QualityCard data={data} />
+            <QualityCard data={data} onShowReviews={() => setTab('reviews')} className="md:col-span-2 xl:col-span-1" />
           </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <SalesComboCard data={data} className="xl:col-span-2" />
+            <StockHistoryCard data={data} />
+          </div>
+
+          {/*
+            Narx savoli sotuv grafigidan keyin (u yerda narx chizig'i bor) va
+            variantlar jadvalidan oldin: raqobatchi narxi zararsizlik narxi va
+            marja bilan bir joyda. Narxni sotuvchi o'zi kiritadi (2026-10-24).
+          */}
+          <CompetitorPricesCard
+            productId={product.id}
+            productTitle={product.title}
+            skus={skus}
+            period={{ from: periodQuery.from, to: periodQuery.to }}
+          />
 
           <Card className="overflow-hidden">
             <CardHeader
@@ -922,11 +756,9 @@ export default function ProductDetail() {
             </div>
           </Card>
 
-          <Segmented<Tab> value={tab} onChange={setTab} options={TABS.map((x) => ({ value: x, label: t(`tab.${x}`) }))} />
+          <Segmented<Tab> value={tab} onChange={setTab} options={tabs.map((x) => ({ value: x, label: t(`tab.${x}`) }))} />
 
-          {tab === 'sales' ? <SalesTab data={data} /> : null}
-          {tab === 'stocks' ? <StocksTab data={data} /> : null}
-          {tab === 'unit' ? <UnitTab data={data} /> : null}
+          {tab === 'unit' && seesMoney ? <UnitTab data={data} /> : null}
           {tab === 'reviews' ? <ReviewsTab data={data} /> : null}
         </div>
       </PlanGate>
@@ -935,12 +767,6 @@ export default function ProductDetail() {
 }
 
 // ─────────────────────────── Yordamchi bloklar ───────────────────────────
-
-function avgCost(skus: ProductDetailSku[]): number {
-  const list = skus.filter((s) => skuTotalCost(s) > 0);
-  if (!list.length) return 0;
-  return Math.round(list.reduce((sum, s) => sum + skuTotalCost(s), 0) / list.length);
-}
 
 function BackLink({ label }: { label: string }) {
   return (
@@ -951,303 +777,6 @@ function BackLink({ label }: { label: string }) {
       <ArrowLeft className="h-4 w-4" />
       {label}
     </Link>
-  );
-}
-
-/** HeroCard ichidagi bitta katta ko'rsatkich */
-function HeroStat({
-  label,
-  icon,
-  hint,
-  valueClass,
-  className,
-  children,
-}: {
-  label: string;
-  icon?: ReactNode;
-  hint?: string;
-  valueClass?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={cn('well min-w-0 px-4 py-3', hint && 'cursor-help', className)} title={hint}>
-      <p className="flex items-center gap-1.5 eyebrow">
-        {icon ? <span className="text-muted">{icon}</span> : null}
-        <span className="truncate">{label}</span>
-        {hint ? <Info className="h-3 w-3 shrink-0" /> : null}
-      </p>
-      <p
-        className={cn(
-          'tnum mt-1.5 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.02em] sm:text-[22px]',
-          valueClass ?? 'text-ink',
-        )}
-      >
-        {children}
-      </p>
-    </div>
-  );
-}
-
-/** Kartochka ichidagi "yorliq — qiymat" qatori */
-function InfoRow({ label, value, tone }: { label: ReactNode; value: ReactNode; tone?: Tone }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className={cn('tnum text-sm font-semibold', tone ? TONE_TEXT[tone] : 'text-ink')}>{value}</dd>
-    </div>
-  );
-}
-
-/**
- * Ombor qamrovi: halqa — 30 kunlik zaxiraning qancha qismi bor, yonida jami
- * dona va yo'ldagi/band; ostida FBO, FBS va o'z ombori. Rang "yetadi"
- * chizig'idagi bilan bir xil: kritik — qizil, tugayapti — sariq, ortiqcha — ko'k.
- */
-function CoverCard({ product, skus }: { product: ProductDetailResponse['product']; skus: ProductDetailSku[] }) {
-  const t = useT('productDetail');
-  const tc = useT('common');
-  const f = useFormat();
-  const stock = totalStock(product);
-  const days = product.daysLeft ?? null;
-  const ringPct = days !== null ? Math.min(100, (days / DETAIL_COVER) * 100) : 0;
-  const tone = daysTone(days);
-  const inTransit = skus.reduce((s, x) => s + (x.inTransit ?? 0), 0);
-  const reserved = skus.reduce((s, x) => s + (x.reserved ?? 0), 0);
-
-  return (
-    <Card tone="info">
-      <CardHeader icon={<Boxes />} title={t('cover.title')} subtitle={t('cover.subtitle')} />
-      <CardBody>
-        <div className="flex items-center gap-4">
-          <ProgressRing value={ringPct} size={92} stroke={9} tone={tone}>
-            <span className={cn('tnum font-display text-xl font-bold leading-none', TONE_TEXT[tone])}>
-              {days !== null ? f.num(days) : '—'}
-            </span>
-            <span className="mt-0.5 text-2xs text-muted">{tc('common.days')}</span>
-          </ProgressRing>
-          <div className="min-w-0">
-            <p className="tnum font-display text-2xl font-bold leading-tight text-ink">
-              {f.num(stock)} <span className="text-sm font-semibold text-muted">{tc('common.units').toLowerCase()}</span>
-            </p>
-            <p className="mt-1 text-xs leading-snug text-muted">
-              {days === null
-                ? t('cover.noSales')
-                : days >= DETAIL_COVER
-                  ? t('cover.full', { cover: DETAIL_COVER })
-                  : t('cover.share', { cover: DETAIL_COVER, pct: f.pct(ringPct, 0) })}
-            </p>
-            {inTransit > 0 || reserved > 0 ? (
-              <p className="tnum mt-1.5 text-2xs">
-                {inTransit > 0 ? (
-                  <span className="font-medium text-info-ink">{t('cover.inTransit', { n: f.num(inTransit) })}</span>
-                ) : null}
-                {inTransit > 0 && reserved > 0 ? <span className="text-muted"> · </span> : null}
-                {reserved > 0 ? <span className="text-muted">{t('cover.reserved', { n: f.num(reserved) })}</span> : null}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {(
-            [
-              ['stocks.fbo', product.stockFbo],
-              ['stocks.fbs', product.stockFbs],
-              ['stocks.own', product.stockOwn],
-            ] as const
-          ).map(([key, value]) => (
-            <div key={key} className="well px-3 py-2">
-              <p className="eyebrow">{t(key)}</p>
-              <p className={cn('tnum text-sm font-bold', (value ?? 0) > 0 ? 'text-ink' : 'text-muted')}>
-                {f.num(value ?? 0)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Buyurtma kerak: jami miqdor va eng shoshilinch variantlar. Ilgari bu
- * sahifada buyurtma miqdori umuman ko'rinmasdi, garchi u javobda bo'lsa ham.
- */
-function NeedCard({ product, skus }: { product: ProductDetailResponse['product']; skus: ProductDetailSku[] }) {
-  const t = useT('productDetail');
-  const tc = useT('common');
-  const f = useFormat();
-  const need = product.needOrder ?? 0;
-  // Kritik va tugayotgan, arxivda bo'lmagan variantlar — eng kam kunlisi birinchi
-  const urgent = skus
-    .filter((s) => !s.archived && (s.status === 'critical' || s.status === 'low'))
-    .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
-    .slice(0, 3);
-
-  return (
-    <Card tone={need > 0 ? 'warn' : 'brand'}>
-      <CardHeader icon={<PackagePlus />} title={t('need.title')} subtitle={t('need.subtitle', { n: DETAIL_COVER })} />
-      <CardBody>
-        {need > 0 ? (
-          <p className="tnum font-display text-[28px] font-bold leading-none tracking-[-0.02em] text-ink">
-            {f.num(need)} <span className="text-sm font-semibold text-muted">{tc('common.units').toLowerCase()}</span>
-          </p>
-        ) : (
-          <div>
-            <p className="font-display text-base font-semibold text-brand-ink">{t('need.none')}</p>
-            <p className="mt-0.5 text-xs text-muted">{t('need.noneHint')}</p>
-          </div>
-        )}
-
-        {urgent.length > 0 ? (
-          <div className="mt-4">
-            <p className="eyebrow mb-2">{t('need.urgent')}</p>
-            <ul className="space-y-1.5">
-              {urgent.map((s) => (
-                <li key={s.id} className="well flex items-center justify-between gap-3 px-3 py-2">
-                  <span className="min-w-0">
-                    <span className="tnum block truncate text-xs font-semibold text-ink">{s.sku}</span>
-                    <span className="block truncate text-2xs text-muted" title={s.title}>
-                      {variantOf(s.title, product.title)}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className={cn('tnum text-xs font-semibold', TONE_TEXT[daysTone(s.daysLeft)])}>
-                      {t('skus.days', { n: f.num(s.daysLeft ?? 0) })}
-                    </span>
-                    {s.status ? <StockStatusBadge status={s.status} /> : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <Link
-          to="/planner"
-          className="focusable mt-4 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-brand-ink hover:underline"
-        >
-          {t('need.planner')}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Sifat: xarid foizi (asosiy raqam, rangi 70%/40% chegaralari bo'yicha),
- * qaytarishlar, reyting va javobsiz sharhlar.
- */
-function QualityCard({ data }: { data: ProductDetailResponse | undefined }) {
-  const t = useT('productDetail');
-  const f = useFormat();
-  const buyout = useBuyout();
-  const product = data?.product;
-  if (!product) return null;
-  const rate = buyoutRateOf(product);
-  const tone = buyoutTone(rate);
-  const unanswered = data?.reviews?.totals.unanswered ?? 0;
-
-  return (
-    <Card>
-      <CardHeader
-        icon={<ShieldCheck />}
-        tone={tone ?? 'muted'}
-        title={t('quality.title')}
-        subtitle={t('quality.subtitle')}
-      />
-      <CardBody>
-        <div className="flex cursor-help items-baseline justify-between gap-3" title={buyout.hint(product)}>
-          <span className="inline-flex items-center gap-1 text-sm text-muted">
-            {buyout.label}
-            <Info className="h-3 w-3" />
-          </span>
-          <span className={cn('tnum font-display text-2xl font-bold leading-none', buyoutTextClass(rate))}>
-            {buyout.value(product)}
-          </span>
-        </div>
-        <ProgressBar value={rate ?? 0} tone={tone ?? 'muted'} className="mt-2.5" />
-        <dl className="mt-3 divide-y divide-line/60">
-          <InfoRow
-            label={t('info.returns')}
-            value={t('info.units', { n: f.num(product.returns) })}
-            tone={product.returns > 0 ? 'warn' : undefined}
-          />
-          <InfoRow
-            label={t('info.rating')}
-            value={
-              product.rating > 0 ? (
-                <span className="inline-flex items-center gap-1">
-                  <Star className="h-3.5 w-3.5 text-warn" />
-                  {f.num(product.rating, 1)}
-                  <span className="font-normal text-muted">· {t('info.reviews', { n: f.num(product.reviewsCount) })}</span>
-                </span>
-              ) : (
-                <span className="font-normal text-muted">{t('quality.noRating')}</span>
-              )
-            }
-          />
-          <InfoRow
-            label={t('quality.unanswered')}
-            value={f.num(unanswered)}
-            tone={unanswered > 0 ? 'warn' : undefined}
-          />
-        </dl>
-      </CardBody>
-    </Card>
-  );
-}
-
-function SalesTab({ data }: { data: ProductDetailResponse | undefined }) {
-  const t = useT('productDetail');
-  const f = useFormat();
-  const series = data?.series ?? [];
-  const units = series.reduce((s, p) => s + (Number(p.units) || 0), 0);
-  return (
-    <ChartCard
-      icon={<TrendingUp />}
-      tone="brand"
-      title={t('sales.title')}
-      subtitle={t('sales.subtitle')}
-      // Dona pul o'qida chizilsa nolga yopishib qolardi (o'ng o'q hali yo'q) — jami chip sifatida
-      actions={series.length ? <span className="meta-chip tnum">{t('sales.units', { n: f.num(units) })}</span> : undefined}
-    >
-      {series.length === 0 ? (
-        <EmptyState icon={<TrendingUp className="h-6 w-6" />} title={t('empty.series')} />
-      ) : (
-        <TrendChart
-          data={series as unknown as Record<string, unknown>[]}
-          height={320}
-          series={[
-            { key: 'revenue', name: t('sales.revenue'), money: true, color: CHART_COLORS.info },
-            { key: 'profit', name: t('sales.profit'), money: true, color: CHART_COLORS.brand },
-          ]}
-        />
-      )}
-    </ChartCard>
-  );
-}
-
-function StocksTab({ data }: { data: ProductDetailResponse | undefined }) {
-  const t = useT('productDetail');
-  const stocks = data?.stocks ?? [];
-  return (
-    <ChartCard icon={<Layers />} tone="info" title={t('stocks.title')} subtitle={t('stocks.subtitle')}>
-      {stocks.length === 0 ? (
-        <EmptyState icon={<Layers className="h-6 w-6" />} title={t('empty.stocks')} />
-      ) : (
-        <LinesChart
-          data={stocks as unknown as Record<string, unknown>[]}
-          height={320}
-          series={[
-            { key: 'fbo', name: t('stocks.fbo'), color: CHART_COLORS.info },
-            { key: 'fbs', name: t('stocks.fbs'), color: CHART_COLORS.teal },
-            { key: 'own', name: t('stocks.own'), color: CHART_COLORS.slate },
-          ]}
-        />
-      )}
-    </ChartCard>
   );
 }
 

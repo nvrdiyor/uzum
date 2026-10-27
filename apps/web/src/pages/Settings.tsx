@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Settings as SettingsIcon, Sparkles } from '@/components/icons';
@@ -13,13 +13,14 @@ import { AppearanceSection } from '@/components/settings/AppearanceSection';
 import { SETTINGS_I18N } from '@/components/settings/i18n';
 import { SECTION_IDS, type SectionId } from '@/components/settings/types';
 import { useSession } from '@/store/session';
+import { useCanSeeSettings } from '@/lib/view';
 import { registerNamespace, useT } from '@/i18n';
 
 registerNamespace('settings', SETTINGS_I18N);
 
-function sectionFromHash(hash: string): SectionId {
+function sectionFromHash(hash: string, allowed: readonly SectionId[]): SectionId {
   const id = hash.replace(/^#/, '') as SectionId;
-  return SECTION_IDS.includes(id) ? id : 'profile';
+  return allowed.includes(id) ? id : 'profile';
 }
 
 /**
@@ -31,8 +32,15 @@ export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const me = useSession((s) => s.me);
+  /*
+   * Ko'rinish shablonli a'zo (Omborchi, Marketolog) faqat o'z profili, bildirishnoma
+   * va ko'rinishni ko'radi; Buxgalterga kompaniya ham — Uzum kalitlari va jamoa yo'q
+   * (views.ts). Server ham o'sha bo'limlar API'sini yopadi.
+   */
+  const canSee = useCanSeeSettings();
+  const sections = useMemo(() => SECTION_IDS.filter((id) => canSee(id)), [canSee]);
 
-  const section = sectionFromHash(location.hash);
+  const section = sectionFromHash(location.hash, sections);
 
   const select = useCallback(
     (id: SectionId) => {
@@ -74,6 +82,7 @@ export default function Settings() {
       <div className="grid gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
         <div className="min-w-0">
           <SectionNav
+            ids={sections}
             active={section}
             onSelect={select}
             badges={{

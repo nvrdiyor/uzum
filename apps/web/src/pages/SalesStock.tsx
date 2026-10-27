@@ -13,29 +13,30 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  SearchInput,
   Segmented,
   StatCard,
   StatGrid,
   toast,
   type Column,
 } from '@/components/ui';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { FilterBar } from '@/components/filters';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import {
   NEUTRAL_TONE,
   STATE_COLOR,
+  STATE_TONE,
   STOCK_STATES,
   SkuNameCell,
   StockStatusBadge,
   TONE_TEXT,
-  daysTone,
   type StockState,
 } from '@/components/stock/common';
 import { useDebounced } from '@/components/sales/useDebounced';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { useStores } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 
@@ -55,7 +56,7 @@ registerNamespace('salesStock', {
     'strip.title': 'Qoldiq holati — barcha SKU’lar taqsimoti',
     'strip.share': '{status}: {count} SKU ({pct})',
     'table.title': 'SKU bo‘yicha kesim',
-    'table.hint': 'Summalar so‘mda. Holat va necha kunga yetishi so‘nggi 30 kunlik sotuv sur’atidan',
+    'table.hint': 'Summalar so‘mda. Holat va necha kunga yetishi Rejalashtiruvchidagidek: yo‘ldagi tovar va yetkazish muddati bilan',
     'table.empty': 'Mos SKU topilmadi',
     'table.emptyHint': 'Filtrni o‘zgartiring yoki boshqa davrni tanlang',
     'col.product': 'Mahsulot',
@@ -69,10 +70,9 @@ registerNamespace('salesStock', {
     'own': 'O‘z ombori {n}',
     'margin': 'marja {pct}',
     'perMonth': '{n}/oy',
-    'coverHint': 'So‘nggi 30 kunlik sur’at: kuniga {day}, oyiga {month} dona',
+    'coverHint': 'So‘nggi 30 kunda, tovar sotuvda bo‘lgan kunlar bo‘yicha: kuniga {day}, oyiga {month} dona',
     'days': 'kun',
     'noSales': 'Sotuv yo‘q',
-    'filter.search': 'Nomi yoki SKU bo‘yicha qidirish',
     'export.ok': 'Excel fayl yuklab olindi',
     'export.fail': 'Eksport qilishda xatolik',
   },
@@ -91,7 +91,7 @@ registerNamespace('salesStock', {
     'strip.title': 'Состояние остатков — распределение всех SKU',
     'strip.share': '{status}: {count} SKU ({pct})',
     'table.title': 'Разрез по SKU',
-    'table.hint': 'Суммы в сумах. Статус и на сколько хватит — по темпу продаж за последние 30 дней',
+    'table.hint': 'Суммы в сумах. Статус и на сколько хватит — как в Планировщике: с товаром в пути и сроком поставки',
     'table.empty': 'Подходящих SKU нет',
     'table.emptyHint': 'Измените фильтр или выберите другой период',
     'col.product': 'Товар',
@@ -105,10 +105,9 @@ registerNamespace('salesStock', {
     'own': 'Свой склад {n}',
     'margin': 'маржа {pct}',
     'perMonth': '{n}/мес',
-    'coverHint': 'Темп за последние 30 дней: {day} в день, {month} шт в месяц',
+    'coverHint': 'За последние 30 дней, по дням в наличии: {day} в день, {month} шт в месяц',
     'days': 'дн.',
     'noSales': 'Нет продаж',
-    'filter.search': 'Поиск по названию или SKU',
     'export.ok': 'Excel-файл скачан',
     'export.fail': 'Ошибка при экспорте',
   },
@@ -127,7 +126,7 @@ registerNamespace('salesStock', {
     'strip.title': 'Stock health — split of all SKUs',
     'strip.share': '{status}: {count} SKUs ({pct})',
     'table.title': 'SKU breakdown',
-    'table.hint': 'Amounts in UZS. Status and days of cover use the last 30 days’ sales pace',
+    'table.hint': 'Amounts in UZS. Status and days of cover match the Planner: with stock in transit and your lead time',
     'table.empty': 'No matching SKUs',
     'table.emptyHint': 'Change the filter or pick another period',
     'col.product': 'Product',
@@ -141,10 +140,9 @@ registerNamespace('salesStock', {
     'own': 'Own warehouse {n}',
     'margin': 'margin {pct}',
     'perMonth': '{n}/mo',
-    'coverHint': 'Last 30 days’ pace: {day} a day, {month} pcs a month',
+    'coverHint': 'Last 30 days, counting days in stock: {day} a day, {month} pcs a month',
     'days': 'days',
     'noSales': 'No sales',
-    'filter.search': 'Search by name or SKU',
     'export.ok': 'Excel file downloaded',
     'export.fail': 'Export failed',
   },
@@ -262,6 +260,10 @@ export default function SalesStock() {
   const [searchInput, setSearchInput] = useState('');
   const search = useDebounced(searchInput);
   const [exporting, setExporting] = useState(false);
+  // Excel'da to'lov va foyda bor — pulsiz ko'rinish shablonida (Omborchi) tugma yo'q (server ham 403)
+  const canExport = useCanFetch('/export/sales-stock');
+  // To'lov va sof foyda — pulsiz shablonda null: kartalar va ustunlar chizilmaydi
+  const money = useSeesMoney();
 
   /**
    * Holat filtri SERVERGA yuboriladi. Ilgari u faqat joriy 50 qatorga
@@ -465,7 +467,13 @@ export default function SalesStock() {
                   : undefined
               }
             >
-              <span className={cn('font-semibold', TONE_TEXT[daysTone(row.daysLeft)])}>
+              {/*
+                Kun yozuvi nishon rangida — holat Rejalashtiruvchidan (yetkazish
+                muddati bilan). Qat'iy 7/14 kunlik chegaradan bo'yalsa, yetkazish
+                14 kun bo'lganda 12 kunlik SKU nishoni qizil, kun yozuvi sariq
+                chiqardi — Qoldiqlar sahifasidagi kabi (2026-10-24).
+              */}
+              <span className={cn('font-semibold', TONE_TEXT[STATE_TONE[row.status]])}>
                 {row.daysLeft === null ? t('noSales') : `${f.num(row.daysLeft)} ${t('days')}`}
               </span>
               {row.avgDaily > 0 ? (
@@ -499,24 +507,22 @@ export default function SalesStock() {
         badge={<PreviewBadge feature="stocks_fbo_fbs" />}
         meta={<DataFreshness />}
         actions={
-          <Button
-            variant="outline"
-            icon={<Download className="h-4 w-4" />}
-            loading={exporting}
-            onClick={onExport}
-          >
-            {tc('btn.export')}
-          </Button>
+          canExport ? (
+            <Button
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
+              loading={exporting}
+              onClick={onExport}
+            >
+              {tc('btn.export')}
+            </Button>
+          ) : undefined
         }
       />
 
       <FilterBar>
-        <SearchInput
-          value={searchInput}
-          onChange={setSearchInput}
-          placeholder={t('filter.search')}
-          className="w-full sm:w-72"
-        />
+        {/* Nom, SKU kodi, shtrix-kod, Uzum ID yoki havola — server umumiy qoida bilan qidiradi (shared search.ts) */}
+        <SkuSearchInput value={searchInput} onChange={setSearchInput} className="w-full sm:w-72" />
       </FilterBar>
 
       <PlanGate feature="stocks_fbo_fbs">
@@ -560,20 +566,24 @@ export default function SalesStock() {
                 className={NEUTRAL_TONE}
                 loading={isLoading}
               />
-              <StatCard
-                label={t('kpi.payout')}
-                value={f.money(totals?.payout ?? 0)}
-                icon={<Wallet className="h-5 w-5" />}
-                tone="warn"
-                loading={isLoading}
-              />
-              <StatCard
-                label={t('kpi.profit')}
-                value={f.money(totals?.netProfit ?? 0)}
-                icon={<TrendingUp className="h-5 w-5" />}
-                tone={(totals?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
-                loading={isLoading}
-              />
+              {money ? (
+                <>
+                  <StatCard
+                    label={t('kpi.payout')}
+                    value={f.money(totals?.payout ?? 0)}
+                    icon={<Wallet className="h-5 w-5" />}
+                    tone="warn"
+                    loading={isLoading}
+                  />
+                  <StatCard
+                    label={t('kpi.profit')}
+                    value={f.money(totals?.netProfit ?? 0)}
+                    icon={<TrendingUp className="h-5 w-5" />}
+                    tone={(totals?.netProfit ?? 0) < 0 ? 'danger' : 'brand'}
+                    loading={isLoading}
+                  />
+                </>
+              ) : null}
             </StatGrid>
 
             {/* Jadval to'liq kenglikda: holat tasmasi uning sarlavhasida, filtr vazifasini ham bajaradi */}
@@ -589,7 +599,7 @@ export default function SalesStock() {
               </div>
               <div className="mt-3">
                 <DataTable
-                  columns={columns}
+                  columns={money ? columns : columns.filter((c) => c.key !== 'payout' && c.key !== 'netProfit')}
                   rows={rows}
                   rowKey={(row) => row.skuId}
                   loading={isLoading}

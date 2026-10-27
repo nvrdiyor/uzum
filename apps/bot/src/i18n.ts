@@ -112,6 +112,9 @@ export interface Messages {
   set_notify_daily: string;
   set_notify_orders: string;
   set_notify_stock: string;
+  /** Haftalik va oylik hisobotni API ishchisi yuboradi (apps/api services/digest.ts) */
+  set_notify_weekly: string;
+  set_notify_monthly: string;
   set_api: string;
   set_saved: string;
   set_api_ask: string;
@@ -144,6 +147,24 @@ export interface Messages {
   daily_critical: string;
   daily_critical_row: string;
   daily_nothing: string;
+
+  // ── Qoldiq va pullik saqlash ogohlantirishi (jobs/stock-alert.ts) ──
+  stock_alert_title: string;
+  stock_alert_paid_head: string;
+  stock_alert_paid_row: string;
+  stock_alert_paid_row_nosales: string;
+  stock_alert_excess: string;
+  stock_alert_near_head: string;
+  stock_alert_near_row: string;
+  stock_alert_near_row_novol: string;
+  stock_alert_out_head: string;
+  stock_alert_out_row: string;
+  stock_alert_out_zero: string;
+  stock_alert_more: string;
+  stock_alert_total: string;
+  stock_alert_total_novol: string;
+  btn_storage: string;
+  btn_planner: string;
 
   // ── Admin ───────────────────────────────────────────
   admin_only: string;
@@ -303,6 +324,8 @@ const uz: Messages = {
   set_notify_daily: '📅 Kunlik hisobot: {value}',
   set_notify_orders: '🧾 Buyurtma xabarlari: {value}',
   set_notify_stock: '📦 Qoldiq ogohlantirishi: {value}',
+  set_notify_weekly: '🗓 Haftalik hisobot (dushanba): {value}',
+  set_notify_monthly: '📆 Oylik hisobot (1-sana): {value}',
   set_api: '🔑 API kalitni yangilash',
   set_saved: 'Saqlandi ✅',
   set_api_ask:
@@ -354,6 +377,23 @@ const uz: Messages = {
   daily_critical: '\n⚠️ <b>Kritik qoldiqlar:</b> {count} ta SKU',
   daily_critical_row: '• {title} — {stock} dona',
   daily_nothing: 'Kecha buyurtma bo‘lmadi.',
+
+  stock_alert_title: '📦 <b>Qoldiq va saqlash</b> · {date}',
+  stock_alert_paid_head: '💸 <b>Pullik saqlashga o‘tdi: {count} ta SKU</b>',
+  stock_alert_paid_row: '• {title} — aylanma {turnover} kun · {fee}/kun',
+  stock_alert_paid_row_nosales: '• {title} — 15 kunda sotuv yo‘q · {fee}/kun',
+  stock_alert_excess: '   ↳ {n} dona sotish yoki olib chiqish kerak',
+  stock_alert_near_head: '⏳ <b>Tez orada pullik: {count} ta SKU</b> (aylanma {from}–{to} kun)',
+  stock_alert_near_row: '• {title} — {turnover} kun · pullik bo‘lsa ~{fee}/kun',
+  stock_alert_near_row_novol: '• {title} — {turnover} kun',
+  stock_alert_out_head: '🔻 <b>Tugayapti: {count} ta SKU</b> (yetkazish muddati {lead} kun)',
+  stock_alert_out_row: '• {title} — {stock} dona · ~{days} kunga yetadi',
+  stock_alert_out_zero: '📭 Qoldig‘i tugagan (sotuvi bor edi): {count} ta SKU',
+  stock_alert_more: '… va yana {count} ta',
+  stock_alert_total: '💰 Jami pullik saqlashda: {count} ta SKU · ~{fee}/kun',
+  stock_alert_total_novol: ' ({n} tasining hajmi noma’lum)',
+  btn_storage: '💸 Pullik saqlash',
+  btn_planner: '📦 Rejalashtiruvchi',
 
   admin_only: 'Bu buyruq faqat administratorlar uchun.',
   admin_stats:
@@ -550,6 +590,8 @@ const ru: Messages = {
   set_notify_daily: '📅 Ежедневный отчёт: {value}',
   set_notify_orders: '🧾 Уведомления о заказах: {value}',
   set_notify_stock: '📦 Предупреждения об остатках: {value}',
+  set_notify_weekly: '🗓 Недельный отчёт (пн): {value}',
+  set_notify_monthly: '📆 Месячный отчёт (1-е число): {value}',
   set_api: '🔑 Обновить API-ключ',
   set_saved: 'Сохранено ✅',
   set_api_ask:
@@ -599,6 +641,23 @@ const ru: Messages = {
   daily_critical: '\n⚠️ <b>Критические остатки:</b> {count} SKU',
   daily_critical_row: '• {title} — {stock} шт',
   daily_nothing: 'Вчера заказов не было.',
+
+  stock_alert_title: '📦 <b>Остатки и хранение</b> · {date}',
+  stock_alert_paid_head: '💸 <b>Перешли на платное хранение: {count} SKU</b>',
+  stock_alert_paid_row: '• {title} — оборачиваемость {turnover} дн. · {fee}/день',
+  stock_alert_paid_row_nosales: '• {title} — нет продаж за 15 дн. · {fee}/день',
+  stock_alert_excess: '   ↳ продать или вывезти: {n} шт',
+  stock_alert_near_head: '⏳ <b>Скоро платное: {count} SKU</b> (оборачиваемость {from}–{to} дн.)',
+  stock_alert_near_row: '• {title} — {turnover} дн. · если станет платным, ~{fee}/день',
+  stock_alert_near_row_novol: '• {title} — {turnover} дн.',
+  stock_alert_out_head: '🔻 <b>Заканчиваются: {count} SKU</b> (срок поставки {lead} дн.)',
+  stock_alert_out_row: '• {title} — {stock} шт · хватит на ~{days} дн.',
+  stock_alert_out_zero: '📭 Остаток закончился (были продажи): {count} SKU',
+  stock_alert_more: '… и ещё {count}',
+  stock_alert_total: '💰 Всего на платном хранении: {count} SKU · ~{fee}/день',
+  stock_alert_total_novol: ' (без объёма: {n})',
+  btn_storage: '💸 Платное хранение',
+  btn_planner: '📦 Планировщик',
 
   admin_only: 'Команда доступна только администраторам.',
   admin_stats:

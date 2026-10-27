@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, Fragment, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Inbox, TrendingUp } from '@/components/icons';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -15,6 +15,7 @@ registerNamespace('table', {
     sortNone: 'Odatiy tartib',
     sortAsc: 'O‘sish bo‘yicha',
     sortDesc: 'Kamayish bo‘yicha',
+    expand: 'Ochish',
   },
   ru: {
     more: 'Показать ещё {n}',
@@ -25,6 +26,7 @@ registerNamespace('table', {
     sortNone: 'По умолчанию',
     sortAsc: 'По возрастанию',
     sortDesc: 'По убыванию',
+    expand: 'Развернуть',
   },
   en: {
     more: 'Show {n} more',
@@ -35,6 +37,7 @@ registerNamespace('table', {
     sortNone: 'Default order',
     sortAsc: 'Ascending',
     sortDesc: 'Descending',
+    expand: 'Expand',
   },
 });
 
@@ -128,6 +131,56 @@ export interface DataTableProps<T> {
   density?: 'comfortable' | 'compact';
   className?: string;
   stickyFirstColumn?: boolean;
+  /**
+   * Qator ostida ochiladigan qo'shimcha mazmun (masalan, mahsulotning SKU
+   * variantlari). Ochish tugmasi birinchi ustun katagining boshida turadi —
+   * alohida ustun emas, shuning uchun sarlavha, jami qatori va mahkamlangan
+   * birinchi ustun avvalgidek qoladi. Berilmasa jadval aynan avvalgidek:
+   * tugma ham, qo'shimcha qator ham chiqmaydi (2026-10-24).
+   */
+  renderExpanded?: (row: T) => ReactNode;
+  /** Qaysi qatorni ochish mumkin; berilmasa — hammasini */
+  canExpand?: (row: T) => boolean;
+  /** Ochish tugmasi yozuvi: telefondagi kartada matn, jadvalda izoh (title) */
+  expandLabel?: (row: T, open: boolean) => string;
+}
+
+/** Qatorni ochish tugmasi — jadvalda ham, telefondagi kartada ham */
+function ExpandToggle({
+  open,
+  label,
+  onToggle,
+  withText,
+}: {
+  open: boolean;
+  label: string;
+  onToggle: () => void;
+  /** Kartada matn bilan; jadvalda faqat belgi (yozuvi izohda) */
+  withText?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={withText ? undefined : label}
+      title={withText ? undefined : label}
+      // Qator yoki karta bosilganda ochiladigan yon panel shu tugmadan ochilib ketmasin
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className={cn(
+        // cn — oddiy clsx: bir-biriga zid klasslar (text-muted / text-brand-ink) hech qachon birga berilmaydi
+        'inline-flex shrink-0 items-center justify-center rounded-md transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50',
+        withText ? 'mt-2.5 gap-1 text-xs font-medium text-brand-ink' : 'h-6 w-6 text-muted hover:bg-surface-3 hover:text-ink',
+      )}
+    >
+      {withText ? label : null}
+      <ChevronDown className={cn('transition-transform', withText ? 'h-3.5 w-3.5' : 'h-4 w-4', open && 'rotate-180')} />
+    </button>
+  );
 }
 
 /**
@@ -182,12 +235,26 @@ export function DataTable<T>({
   density = 'comfortable',
   className,
   stickyFirstColumn,
+  renderExpanded,
+  canExpand,
+  expandLabel,
 }: DataTableProps<T>) {
   const t = useT('table');
   const f = useFormat();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [limit, setLimit] = useState(ROWS_STEP);
+  // Ochilgan qatorlar kaliti bo'yicha: saralash yoki filtr o'zgarsa ham ochiq qator ochiqligicha qoladi
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleExpanded = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const expandable = (row: T) => Boolean(renderExpanded) && (canExpand ? canExpand(row) : true);
+  const toggleLabel = (row: T, open: boolean) => expandLabel?.(row, open) ?? (open ? t('less') : t('expand'));
   const { ref: scrollRef, edges } = useEdgeScroll();
   /*
    * Telefonda (md dan tor) jadval o'rniga kartalar: 640 px'lik jadval 375 px
@@ -332,17 +399,32 @@ export function DataTable<T>({
           </div>
         ) : null}
         <ul className="divide-y divide-line/70">
-          {visible.map((row, i) => (
-            <MobileRow
-              key={rowKey(row, i)}
-              row={row}
-              index={i}
-              columns={columns}
-              onRowClick={onRowClick}
-              detailsLabel={(n) => t('details', { n })}
-              lessLabel={t('less')}
-            />
-          ))}
+          {visible.map((row, i) => {
+            const key = rowKey(row, i);
+            const canOpen = expandable(row);
+            const open = canOpen && expanded.has(key);
+            return (
+              <MobileRow
+                key={key}
+                row={row}
+                index={i}
+                columns={columns}
+                onRowClick={onRowClick}
+                detailsLabel={(n) => t('details', { n })}
+                lessLabel={t('less')}
+                expand={
+                  canOpen
+                    ? {
+                        open,
+                        label: toggleLabel(row, open),
+                        onToggle: () => toggleExpanded(key),
+                        content: open ? renderExpanded?.(row) : null,
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
         </ul>
         {footer ? (
           // Jami qatori: md:table-cell bilan yashirilgan kataklar telefonda ko'rinmaydi
@@ -421,39 +503,66 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {visible.map((row, i) => (
-              <tr
-                key={rowKey(row, i)}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={cn(
-                  'group border-b border-line/60 transition-colors last:border-0',
-                  onRowClick && 'cursor-pointer',
-                  'hover:bg-surface-2/70',
-                )}
-              >
-                {columns.map((c, ci) => (
-                  <td
-                    key={c.key}
+            {visible.map((row, i) => {
+              const key = rowKey(row, i);
+              const canOpen = expandable(row);
+              const open = canOpen && expanded.has(key);
+              return (
+                <Fragment key={key}>
+                  <tr
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
                     className={cn(
-                      cellPad,
-                      'align-middle text-ink-soft',
-                      // Raqamlar hech qachon qatorga bo'linmaydi: "142 050 so'm"
-                      // uch qatorga tushib ketsa jadval o'qilmay qoladi
-                      c.align === 'right' && 'tnum whitespace-nowrap text-right',
-                      c.align === 'center' && 'whitespace-nowrap text-center',
-                      hideClass(c),
-                      // group-hover: mahkamlangan ustun ham qator bilan birga yoritiladi
-                      stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface group-hover:bg-surface-2',
-                      // Bosiladigan qator: chap chetda brend chizig'i — "bu qator ochiladi" ishorasi
-                      onRowClick && ci === 0 && 'group-hover:shadow-[inset_2px_0_0_rgb(var(--c-brand))]',
-                      c.className,
+                      'group transition-colors',
+                      // Ochiq qator ostidagi mazmun bilan bitta blok bo'lib ko'rinsin — orada chiziq yo'q
+                      open ? 'bg-surface-2/40' : 'border-b border-line/60 last:border-0',
+                      onRowClick && 'cursor-pointer',
+                      'hover:bg-surface-2/70',
                     )}
                   >
-                    {c.render(row, i)}
-                  </td>
-                ))}
-              </tr>
-            ))}
+                    {columns.map((c, ci) => (
+                      <td
+                        key={c.key}
+                        className={cn(
+                          cellPad,
+                          'align-middle text-ink-soft',
+                          // Raqamlar hech qachon qatorga bo'linmaydi: "142 050 so'm"
+                          // uch qatorga tushib ketsa jadval o'qilmay qoladi
+                          c.align === 'right' && 'tnum whitespace-nowrap text-right',
+                          c.align === 'center' && 'whitespace-nowrap text-center',
+                          hideClass(c),
+                          // group-hover: mahkamlangan ustun ham qator bilan birga yoritiladi
+                          stickyFirstColumn && ci === 0 && 'sticky left-0 z-10 bg-surface group-hover:bg-surface-2',
+                          // Bosiladigan qator: chap chetda brend chizig'i — "bu qator ochiladi" ishorasi
+                          onRowClick && ci === 0 && 'group-hover:shadow-[inset_2px_0_0_rgb(var(--c-brand))]',
+                          c.className,
+                        )}
+                      >
+                        {ci === 0 && renderExpanded ? (
+                          <div className="flex min-w-0 items-center gap-2">
+                            {canOpen ? (
+                              <ExpandToggle open={open} label={toggleLabel(row, open)} onToggle={() => toggleExpanded(key)} />
+                            ) : (
+                              // Ochilmaydigan qatorda ham joy qoladi — nomlar bir chiziqda tursin
+                              <span aria-hidden className="w-6 shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">{c.render(row, i)}</div>
+                          </div>
+                        ) : (
+                          c.render(row, i)
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                  {open ? (
+                    <tr className="border-b border-line/60 bg-surface-2/40 last:border-0">
+                      <td colSpan={columns.length} className="px-5 pb-4 pt-1">
+                        {renderExpanded?.(row)}
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
           {footer ? (
             <tfoot>
@@ -490,6 +599,7 @@ function MobileRow<T>({
   onRowClick,
   detailsLabel,
   lessLabel,
+  expand,
 }: {
   row: T;
   index: number;
@@ -497,6 +607,8 @@ function MobileRow<T>({
   onRowClick?: (row: T) => void;
   detailsLabel: (n: number) => string;
   lessLabel: string;
+  /** `renderExpanded` berilgan jadvalda: ochish tugmasi va ochilgan mazmun */
+  expand?: { open: boolean; label: string; onToggle: () => void; content: ReactNode };
 }) {
   const [open, setOpen] = useState(false);
   const roles = mobileRoles(columns);
@@ -569,6 +681,17 @@ function MobileRow<T>({
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
           </button>
         </>
+      ) : null}
+      {expand ? (
+        <div>
+          <ExpandToggle open={expand.open} label={expand.label} onToggle={expand.onToggle} withText />
+          {expand.open ? (
+            // Ichidagi havola yoki tugma bosilganda karta (yon panel) ochilib ketmasin
+            <div className="mt-2.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              {expand.content}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       {actions.length ? (
         // Tugmalar bosilganda karta (qator) ochilib ketmasin

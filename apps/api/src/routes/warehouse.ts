@@ -12,7 +12,9 @@
  *  GET    /losses/claim-draft → { text } — Uzum qo'llab-quvvatlashiga da'vo matni
  *  GET    /returns            → ReturnsResponse (sabablar taqsimoti bilan)
  *  GET    /storage            → StorageResponse (pullik saqlash)
- *  GET    /vgh                → tovar aylanmasi (aylanma kunlari, band kapital)
+ *  GET    /storage/turnover   → StorageTurnoverResponse (aylanma bo'yicha tarif, 30 kunlik prognoz)
+ *  GET    /turnover           → tovar aylanmasi (aylanma kunlari, band kapital)
+ *  GET    /vgh                → VghResponse (hajm va VGH: Uzum logistika yig'imi kartochka hajmiga mosmi)
  *
  * Barcha pul qiymatlari UZS (butun so'm), sanalar ISO-8601.
  * Ma'lumot bo'lmasa marshrutlar 200 va bo'sh/nol qiymatlar qaytaradi.
@@ -21,11 +23,19 @@ import { Router } from 'express';
 import { prisma } from '@savdoiq/db';
 import { z } from 'zod';
 import {
+  LOGISTICS_FEE,
+  TARIFF_EFFECTIVE_FROM,
+  billableLiters,
+  businessDayStart,
   daysBetween,
   eachDay,
   formatDate,
   formatNumber,
+  litersFromLogistics,
+  logisticsFee,
+  matchesQueryText,
   parseISODate,
+  parseSkuQuery,
   pct,
   round,
   safeDiv,
@@ -43,16 +53,30 @@ import {
   type ReturnsResponse,
   type ShipmentItemRow,
   type ShipmentRow,
+  type SkuQuery,
   type StorageResponse,
   type StorageRow,
+  type VghResponse,
+  type VghRow,
+  type VghStatus,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
-import { aggregateSales, getSkuCatalog, getStoreIds, getStoreTitles } from '../services/common.js';
+import {
+  aggregateSales,
+  getSkuCatalog,
+  getStoreIds,
+  getStoreTitles,
+  skuInfoMatches,
+  skuMatches,
+  withSoldSkus,
+  type SkuInfo,
+} from '../services/common.js';
 import { notifyCompanyOwners } from '../services/notify.js';
 import { loadReturns, returnsRate } from '../services/returns.js';
 import { AUTO_LOSS_SOURCES, getBalanceSummary } from '../services/stock-balance.js';
+import { getStorageTurnover } from '../services/storage-turnover.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -171,6 +195,25 @@ function toShipmentRow(s: ShipmentWithItems, withItems: boolean): ShipmentRow {
   return row;
 }
 
+/**
+ * Yetkazma qidiruvga mos keladimi: o'z kodi, manzili yoki izohi (matnning
+ * qismi) yoki ichidagi birorta tovar — umumiy SKU qoidasi bilan (nom, SKU
+ * kodi, shtrix-kod, Uzum ID, uzum.uz havolasi). Ilgari faqat kod, manzil va
+ * izoh bazadagi `contains` bilan solishtirilardi: PostgreSQL'da registrga
+ * sezgir edi, "shu tovar qaysi yetkazmada ketyapti" degan savolga esa javob
+ * yo'q edi (2026-10-24).
+ */
+function shipmentMatches(s: ShipmentWithItems, catalog: Map<string, SkuInfo>, query: SkuQuery): boolean {
+  if (matchesQueryText(query, s.code, s.destination, s.note)) return true;
+  return s.items.some((it) => {
+    const info = catalog.get(it.skuId);
+    // Katalogda yo'q (yashirilgan mahsulotning arxivdagi) SKU — pozitsiyadagi kod va nom bo'yicha
+    return info
+      ? skuInfoMatches(info, query)
+      : skuMatches({ id: it.skuId, sku: it.sku.sku, title: it.sku.title }, null, query);
+  });
+}
+
 /** Do'kon shu kompaniyaga tegishlimi */
 async function resolveStoreId(companyId: string, storeId?: string | null): Promise<string | null> {
   if (!storeId) return null;
@@ -276,26 +319,23 @@ router.get(
         ? (q.status as ShipmentStatus)
         : undefined;
 
-    const shipments = await prisma.shipment.findMany({
-      where: {
-        companyId: company.id,
-        ...(range.storeId ? { storeId: range.storeId } : {}),
-        ...(status ? { status: { in: statusDbValues(status) } } : {}),
-        ...(range.search
-          ? {
-              OR: [
-                { code: { contains: range.search } },
-                { destination: { contains: range.search } },
-                { note: { contains: range.search } },
-              ],
-            }
-          : {}),
-      },
-      include: SHIPMENT_INCLUDE,
-      orderBy: { createdAt: range.order === 'asc' ? 'asc' : 'desc' },
-    });
+    const query = parseSkuQuery(range.search);
+    const [shipments, catalog] = await Promise.all([
+      prisma.shipment.findMany({
+        where: {
+          companyId: company.id,
+          ...(range.storeId ? { storeId: range.storeId } : {}),
+          ...(status ? { status: { in: statusDbValues(status) } } : {}),
+        },
+        include: SHIPMENT_INCLUDE,
+        orderBy: { createdAt: range.order === 'asc' ? 'asc' : 'desc' },
+      }),
+      // Faqat qidiruvda: tovarning shtrix-kodi va Uzum ID'lari katalogda (pozitsiya ularni saqlamaydi)
+      query ? getStoreIds(company.id).then((ids) => getSkuCatalog(ids, true)) : Promise.resolve(null),
+    ]);
 
-    const rows = shipments.map((s) => toShipmentRow(s, false));
+    const found = query && catalog ? shipments.filter((s) => shipmentMatches(s, catalog, query)) : shipments;
+    const rows = found.map((s) => toShipmentRow(s, false));
     res.json(paginate(rows, range.page, range.pageSize) satisfies Paginated<ShipmentRow>);
   }),
 );
@@ -696,10 +736,20 @@ router.get(
       openLossSummary(storeIds),
     ]);
 
-    const search = range.search?.toLowerCase();
+    /*
+     * Qidiruv — umumiy qoida (services/common.ts skuInfoMatches): nom, SKU
+     * kodi, shtrix-kod, Uzum ID yoki havola. Ilgari `${sku} ${title}`
+     * .toLowerCase() edi (2026-10-24). SKU'si katalogda yo'q yozuv avvalgidek
+     * topilmaydi — uning nomi ham, kodi ham yo'q.
+     */
+    const query = parseSkuQuery(range.search);
     const rows = losses
-      .map((l) => toLossRow(l, catalog))
-      .filter((r) => !search || `${r.sku ?? ''} ${r.title ?? ''}`.toLowerCase().includes(search));
+      .filter((l) => {
+        if (!query) return true;
+        const info = l.skuId ? catalog.get(l.skuId) : undefined;
+        return info ? skuInfoMatches(info, query) : false;
+      })
+      .map((l) => toLossRow(l, catalog));
 
     // Yig'indi ko'rinib turgan (filtrlangan) satrlar bo'yicha hisoblanadi
     const skuIds = new Set<string>();
@@ -985,7 +1035,19 @@ router.get(
      * qisman qaytishlarni ko'rmasdi: bir davr uchun panel 7,6%, sahifa 6,2%
      * ko'rsatardi (2026-10-24).
      */
-    const { summary, lines } = await loadReturns(storeIds, range.from, range.toExclusive);
+    /*
+     * Qidiruv: tovar — umumiy qoida (services/common.ts skuInfoMatches: nom,
+     * SKU kodi, shtrix-kod, Uzum ID, uzum.uz havolasi), hujjat — buyurtma
+     * raqami va sabab matni (shared matchesQueryText). Ilgari to'rttasi bitta
+     * `toLowerCase().includes` qatorida edi: shtrix-kod va kartochkadagi
+     * "ID: 701009" topilmasdi, "Cho'yan" "Cho‘yan"ni topmasdi (2026-10-24).
+     * Katalog (shtrix-kod, ID'lar) faqat qidiruvda yuklanadi.
+     */
+    const query = parseSkuQuery(range.search);
+    const [{ summary, lines }, catalog] = await Promise.all([
+      loadReturns(storeIds, range.from, range.toExclusive),
+      query ? getSkuCatalog(storeIds, true) : Promise.resolve(null),
+    ]);
 
     // Ikkala tur jamlari — sahifadagi almashtirgich sonlari uchun (qidiruvga bog'liq emas)
     const counts: ReturnsResponse['counts'] = {
@@ -993,7 +1055,6 @@ router.get(
       canceled: { qty: summary.canceled.qty, amount: summary.canceled.amount },
     };
 
-    const search = range.search?.toLowerCase();
     const reasonFilter = q.reason && q.reason !== 'all' ? q.reason : undefined;
     const byReason = new Map<string, number>();
     let qty = 0;
@@ -1019,9 +1080,13 @@ router.get(
         // Davr va tartib buyurtma kuni bo'yicha — jadvaldagi sana ham shu, aks holda qatorlar tartibsiz ko'rinardi
         orderedAt: toBusinessDate(l.orderedAt),
       };
-      if (search) {
-        const hay = `${row.sku ?? ''} ${row.title ?? ''} ${row.orderCode ?? ''} ${row.reason ?? ''}`.toLowerCase();
-        if (!hay.includes(search)) continue;
+      if (query) {
+        const info = l.skuId ? catalog?.get(l.skuId) : undefined;
+        // Katalogda yo'q SKU (yoki SKU'siz satr) — satrdagi kod va nom bo'yicha
+        const product = info
+          ? skuInfoMatches(info, query)
+          : skuMatches({ id: l.skuId, sku: l.sku, title: l.title }, null, query);
+        if (!product && !matchesQueryText(query, row.orderCode, row.reason)) continue;
       }
 
       qty += row.qty;
@@ -1065,7 +1130,7 @@ router.get(
      * bilan aynan bir xil raqam. Filtr bo'lsa — mos qatorlar yig'indisi, ulush
      * esa o'sha ta'rif va o'sha davr asosi bilan.
      */
-    const filtered = Boolean(search || reasonFilter);
+    const filtered = Boolean(query || reasonFilter);
     const both = summary.returned.qty + summary.canceled.qty;
     const totals: ReturnsResponse['totals'] = filtered
       ? { qty, amount: round(amount), rate: returnsRate(kind, qty, summary) }
@@ -1200,9 +1265,36 @@ router.get(
   }),
 );
 
-// ─────────────────────────── Tovar aylanmasi (VGH) ───────────────────────────
+/**
+ * GET /storage/turnover — pullik saqlash AYLANMA bo'yicha (Uzum qo'llanmasi,
+ * 01.06.2026): har SKU holati (bepul / tez orada / pullik / yangi / hajm
+ * yo'q), bugungi va 30 kunlik prognoz, Uzum haqiqatda ushlagan summa bilan
+ * yonma-yon. Davr filtri ATAYLAB e'tiborsiz: aylanma doim "bugun" holatida,
+ * tugagan 15 kun bo'yicha (services/storage-turnover.ts). Do'kon va qidiruv
+ * filtri ishlaydi. Yuqoridagi '/storage' javobi o'zgarmaydi.
+ */
+router.get(
+  '/storage/turnover',
+  requireFeature('paid_storage'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+    res.json(await getStorageTurnover(storeIds, { search: range.search }));
+  }),
+);
 
-interface VghRow {
+// ─────────────────────────── Tovar aylanmasi ───────────────────────────
+
+/*
+ * Ilgari bu hisob '/vgh' manzilida turardi, holbuki VGH (vazn-gabarit) bilan
+ * aloqasi yo'q — aylanma kunlari va qoldiqda band kapital. Saytda uni hech
+ * kim chaqirmasdi, tarifda esa "VGH hisoboti" sotilardi. '/vgh' endi
+ * haqiqiy hajm tekshiruviga berildi (pastda), aylanma o'z nomi bilan shu
+ * yerga o'zgarishsiz ko'chdi — tarif kaliti ham avvalgidek (2026-10-24).
+ */
+
+interface TurnoverRow {
   skuId: string;
   sku: string;
   title: string;
@@ -1227,7 +1319,7 @@ interface VghRow {
   status: 'fast' | 'normal' | 'slow' | 'dead';
 }
 
-interface VghStoreRow {
+interface TurnoverStoreRow {
   storeId: string;
   title: string;
   skuCount: number;
@@ -1238,7 +1330,7 @@ interface VghStoreRow {
   revenue: number;
 }
 
-interface VghResponse {
+interface TurnoverResponse {
   period: Period;
   totals: {
     skuCount: number;
@@ -1250,12 +1342,12 @@ interface VghResponse {
     revenue: number;
     profit: number;
   };
-  byStore: VghStoreRow[];
-  rows: Paginated<VghRow>;
+  byStore: TurnoverStoreRow[];
+  rows: Paginated<TurnoverRow>;
 }
 
 /** Aylanma kunlari bo'yicha holat */
-function turnoverStatus(days: number | null): VghRow['status'] {
+function turnoverStatus(days: number | null): TurnoverRow['status'] {
   if (days === null) return 'dead';
   if (days <= 30) return 'fast';
   if (days <= 60) return 'normal';
@@ -1264,7 +1356,7 @@ function turnoverStatus(days: number | null): VghRow['status'] {
 }
 
 router.get(
-  '/vgh',
+  '/turnover',
   requireFeature('vgh_report'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
@@ -1296,9 +1388,10 @@ router.get(
       stockAgg.set(s.skuId, cur);
     }
 
-    const search = range.search?.toLowerCase();
-    const rows: VghRow[] = [];
-    const stores = new Map<string, VghStoreRow & { skus: Set<string>; soldTotal: number }>();
+    // Qidiruv — umumiy qoida (skuInfoMatches); ilgari `${sku} ${title}`.toLowerCase() edi (2026-10-24)
+    const query = parseSkuQuery(range.search);
+    const rows: TurnoverRow[] = [];
+    const stores = new Map<string, TurnoverStoreRow & { skus: Set<string>; soldTotal: number }>();
 
     let totalAvgStock = 0;
     let totalUnits = 0;
@@ -1307,7 +1400,7 @@ router.get(
     let totalProfit = 0;
 
     for (const info of catalog.values()) {
-      if (search && !`${info.sku} ${info.title}`.toLowerCase().includes(search)) continue;
+      if (query && !skuInfoMatches(info, query)) continue;
 
       const st = stockAgg.get(info.id);
       const avgStock = st && st.days > 0 ? st.sum / st.days : 0;
@@ -1370,7 +1463,7 @@ router.get(
 
     const sortKey = range.sort ?? 'frozen';
     const dir = range.order === 'asc' ? 1 : -1;
-    const sortValue = (r: VghRow): number => {
+    const sortValue = (r: TurnoverRow): number => {
       switch (sortKey) {
         case 'turnover':
           // Aylanmasiz SKU'lar eng oxirida turishi uchun katta qiymat
@@ -1392,7 +1485,7 @@ router.get(
 
     const totalAvgDaily = totalUnits / periodDays;
 
-    const payload: VghResponse = {
+    const payload: TurnoverResponse = {
       period: range.period,
       totals: {
         skuCount: rows.length,
@@ -1416,9 +1509,256 @@ router.get(
             turnoverDays: daily > 0 ? round(s.avgStock / daily) : null,
             frozenCapital: round(s.frozenCapital),
             revenue: round(s.revenue),
-          } satisfies VghStoreRow;
+          } satisfies TurnoverStoreRow;
         })
         .sort((a, b) => b.frozenCapital - a.frozenCapital),
+      rows: paginate(rows, range.page, range.pageSize),
+    };
+
+    res.json(payload);
+  }),
+);
+
+// ─────────────────────────── Hajm va VGH (logistika yig'imi) ───────────────────────────
+
+/**
+ * Uzum yig'imi shuncha satrdan kam bo'lsa solishtirilmaydi: bitta-ikkita
+ * buyurtmada yig'im tasodifan boshqacha chiqishi mumkin (aksiya, qo'lda
+ * tuzatish), mediana esa kamida uchta satrda ma'noga ega.
+ */
+const VGH_MIN_LINES = 3;
+
+/** Yig'imning tarif to'ridan (5 250, 5 500, …) yarim litr qadamigacha og'ishi — yaxlitlash shovqini */
+const VGH_FEE_TOLERANCE = LOGISTICS_FEE.perExtraLiter / 2;
+
+/**
+ * Bundan past yig'im hajm haqida hech narsa demaydi va namunaga kirmaydi:
+ * 0 — Uzum aksiyada logistikani umuman olmagan (2026-yil oktabrida shunday
+ * bo'ldi, importer.ts `applyActualLogistics`), 0 dan katta, lekin eng kichik
+ * tarifdan past — chegirma. Ular bilan mediana "Uzum kam litr hisoblaydi"
+ * degan yolg'on farq chiqarardi.
+ */
+const VGH_FEE_FLOOR = LOGISTICS_FEE.base - VGH_FEE_TOLERANCE;
+
+const VGH_STATUSES: readonly VghStatus[] = ['ok', 'mismatch', 'no_dimensions', 'insufficient'];
+
+/** Ro'yxat tartibi — pul ketayotgani birinchi: ortiqcha olinayotgan, o'lchamsiz, kam olinayotgan, ma'lumot kam, mos */
+function vghRank(r: VghRow): number {
+  if (r.status === 'mismatch') return r.direction === 'over' ? 0 : 2;
+  if (r.status === 'no_dimensions') return 1;
+  return r.status === 'insufficient' ? 3 : 4;
+}
+
+/** `?sort=` kalitlari; noma'lum kalit — odatiy tartib */
+function vghSortValue(key: string | undefined, r: VghRow): number | null | undefined {
+  switch (key) {
+    case 'extra':
+      return r.extraTotal;
+    case 'units':
+      return r.units;
+    case 'fee':
+      return r.actualFee;
+    case 'volume':
+      return r.volumeL;
+    default:
+      return undefined;
+  }
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+interface VghSample {
+  /** Har satr uchun dona boshiga yig'im */
+  fees: number[];
+  units: number;
+}
+
+function toVghRow(info: SkuInfo, sample: VghSample | undefined): VghRow {
+  const hasDims = info.volumeL > 0;
+  const expectedFee = hasDims
+    ? (logisticsFee(info.volumeL) ?? LOGISTICS_FEE.noDimensions)
+    : LOGISTICS_FEE.noDimensions;
+  const lines = sample?.fees.length ?? 0;
+  const units = sample?.units ?? 0;
+  const actualFee = sample && lines >= VGH_MIN_LINES ? round(median(sample.fees)) : null;
+  // 5 250 dan shovqin qadar past — baribir 1 litr; 50 000 (chegara yoki o'lchamsiz tarif) litr bermaydi
+  const actualL = actualFee === null ? null : litersFromLogistics(Math.max(actualFee, LOGISTICS_FEE.base));
+
+  let status: VghStatus;
+  let direction: VghRow['direction'] = null;
+  let extraPerUnit: number | null = null;
+  if (!hasDims) {
+    /*
+     * Kutilgan yig'im — o'lchamsiz tarifning o'zi, shuning uchun "farq"
+     * ma'nosiz (Uzum 50 000 olsa ham 0 chiqardi): pul ustunlari bo'sh,
+     * muammo holatning o'zida aytiladi.
+     */
+    status = 'no_dimensions';
+  } else if (actualFee === null) {
+    status = 'insufficient';
+  } else if (Math.abs(actualFee - expectedFee) < VGH_FEE_TOLERANCE) {
+    status = 'ok';
+    extraPerUnit = 0;
+  } else {
+    status = 'mismatch';
+    direction = actualFee > expectedFee ? 'over' : 'under';
+    extraPerUnit = round(actualFee - expectedFee);
+  }
+
+  return {
+    skuId: info.id,
+    sku: info.sku,
+    title: info.title,
+    imageUrl: info.imageUrl,
+    storeTitle: info.storeTitle,
+    volumeL: hasDims ? round(info.volumeL, 3) : 0,
+    billableL: billableLiters(info.volumeL),
+    weightGr: round(Math.max(0, info.weightGr)),
+    expectedFee,
+    actualFee,
+    actualL,
+    lines,
+    units,
+    status,
+    direction,
+    extraPerUnit,
+    extraTotal: extraPerUnit === null ? null : round(extraPerUnit * units),
+  };
+}
+
+/**
+ * GET /vgh — hajm va VGH tekshiruvi.
+ *
+ * Uzum logistika yig'imini har bir sotilgan dona uchun tovar hajmidan oladi
+ * (packages/shared tariffs.ts). Kartochkadagi hajmdan kutilgan yig'im Uzum
+ * HAQIQATDA ushlagan yig'im bilan solishtiriladi: farq bo'lsa, Uzum tovarni
+ * boshqa o'lchamda hisoblayapti va sotuvchi har donada ortiqcha (yoki kam)
+ * to'laydi.
+ *
+ * Haqiqiy yig'im — davrdagi topshirilgan satrlarning dona boshiga medianasi.
+ * Kirmaydi: qaytarilgan va bekor qilingan satrlar (qo'llanma bo'yicha ularning
+ * yig'imi qaytariladi), qisman qaytgan satr (yig'im qaysi donaga tegishli —
+ * noaniq), yo'ldagi buyurtma (yig'im topshirilganda olinadi, unda hali nominal
+ * qiymat turadi) va tarif kuchga kirgan kundan oldin topshirilgani — u eski
+ * stavkada olingan.
+ *
+ * Jarima summasi ATAYLAB yo'q: Uzum VGH jarimasini e'lon qilmagan va egasi
+ * uni ko'rsatmaslikni so'ragan (2026-10-24) — faqat logistikadagi farq.
+ */
+router.get(
+  '/vgh',
+  requireFeature('vgh_report'),
+  ah(async (req, res) => {
+    const { company, plan } = companyCtx(req);
+    const range = resolveRange(req, plan);
+    const storeIds = await getStoreIds(company.id, range.storeId);
+    const q = req.query as Record<string, string | undefined>;
+    const statusFilter = VGH_STATUSES.find((s) => s === q.status) ?? null;
+    const tariffStart = businessDayStart(TARIFF_EFFECTIVE_FROM);
+
+    const [catalog, items] = await Promise.all([
+      getSkuCatalog(storeIds),
+      storeIds.length
+        ? prisma.orderItem.findMany({
+            where: {
+              orderedAt: { gte: range.from, lt: range.toExclusive },
+              skuId: { not: null },
+              status: { notIn: ['returned', 'canceled'] },
+              returnedAt: null,
+              returnedQty: 0,
+              qty: { gt: 0 },
+              logistics: { gt: 0 },
+              order: { storeId: { in: storeIds }, status: 'delivered' },
+            },
+            select: {
+              skuId: true,
+              qty: true,
+              logistics: true,
+              orderedAt: true,
+              order: { select: { deliveredAt: true } },
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const samples = new Map<string, VghSample>();
+    for (const it of items) {
+      if (!it.skuId) continue;
+      // Yig'im tovar topshirilganda olinadi: tarifdan oldin topshirilgani eski stavkada
+      if ((it.order.deliveredAt ?? it.orderedAt) < tariffStart) continue;
+      const perUnit = it.logistics / it.qty;
+      if (perUnit < VGH_FEE_FLOOR) continue;
+      const cur = samples.get(it.skuId) ?? { fees: [], units: 0 };
+      cur.fees.push(perUnit);
+      cur.units += it.qty;
+      samples.set(it.skuId, cur);
+    }
+
+    // Davrda sotilib, hozir arxivda turgan SKU ham qatnashadi — ortiqcha to'lov haqiqiy pul
+    await withSoldSkus(catalog, samples.keys(), storeIds);
+
+    /*
+     * Qidiruv — umumiy qoida (services/common.ts skuInfoMatches): nom, SKU
+     * kodi, shtrix-kod, Uzum ID yoki uzum.uz havolasi. Ilgari faqat
+     * `${sku} ${title}`.toLowerCase() edi — sahifadagi maydon esa boshqa
+     * sahifalardagidek "shtrix-kod yoki ID" deydi (2026-10-24). Jamlar
+     * avvalgidek qidiruvdan KEYIN: KPI topilgan SKU'lar bo'yicha.
+     */
+    const query = parseSkuQuery(range.search);
+    const all: VghRow[] = [];
+    for (const info of catalog.values()) {
+      if (query && !skuInfoMatches(info, query)) continue;
+      const sample = samples.get(info.id);
+      /*
+       * O'lchami bor, lekin davrda yig'im olingan sotuvi yo'q — solishtiradigan
+       * narsa yo'q, ro'yxat to'ldirilmaydi. O'lchamsiz SKU esa sotilmagan
+       * bo'lsa ham ko'rinadi: birinchi sotuvdayoq 50 000 so'm olinadi,
+       * o'lchamni oldindan kiritish kerak.
+       */
+      if (info.volumeL > 0 && !sample) continue;
+      all.push(toVghRow(info, sample));
+    }
+
+    // Jamlar holat filtridan oldin — sahifadagi almashtirgich sonlari o'zgarmasin
+    const byStatus: Record<VghStatus, number> = { ok: 0, mismatch: 0, no_dimensions: 0, insufficient: 0 };
+    let over = 0;
+    let extraPaid = 0;
+    let extraUnits = 0;
+    for (const r of all) {
+      byStatus[r.status] += 1;
+      if (r.direction === 'over') {
+        over += 1;
+        extraPaid += r.extraTotal ?? 0;
+        extraUnits += r.units;
+      }
+    }
+
+    const dir = range.order === 'asc' ? 1 : -1;
+    const rows = (statusFilter ? all.filter((r) => r.status === statusFilter) : all).sort((a, b) => {
+      const av = vghSortValue(range.sort, a);
+      const bv = vghSortValue(range.sort, b);
+      if (av !== undefined && bv !== undefined && av !== bv) {
+        // Solishtirib bo'lmaganlar (null) yo'nalishdan qat'i nazar oxirida
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        return (av - bv) * dir;
+      }
+      return (
+        vghRank(a) - vghRank(b) ||
+        Math.abs(b.extraTotal ?? 0) - Math.abs(a.extraTotal ?? 0) ||
+        b.units - a.units ||
+        a.title.localeCompare(b.title)
+      );
+    });
+
+    const payload: VghResponse = {
+      period: range.period,
+      rules: { minLines: VGH_MIN_LINES, effectiveFrom: TARIFF_EFFECTIVE_FROM },
+      totals: { skuCount: all.length, byStatus, over, extraPaid: round(extraPaid), extraUnits },
       rows: paginate(rows, range.page, range.pageSize),
     };
 

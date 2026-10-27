@@ -1,22 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, Check, ChevronDown, Lock, Store } from '@/components/icons';
-import { addDays, getPlan, presetPeriod, toBusinessDate } from '@savdoiq/shared';
+import { ArrowLeftRight, Calendar, CalendarOff, Check, ChevronDown, Lock, Store } from '@/components/icons';
+import { COMPARE_MODES, addDays, comparePeriodFor, getPlan, presetPeriod, toBusinessDate } from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
 import { usePlan, useStores } from '@/store/session';
-import { useFormat, useT } from '@/i18n';
+import { PERIOD_PRESETS } from '@/lib/periodPresets';
+import { registerNamespace, useFormat, useT } from '@/i18n';
+import { formatCompareRange } from '@/components/trust/ComparePeriod';
 import { cn } from '@/lib/utils';
 
-const PRESETS: PresetKey[] = [
-  'today',
-  'yesterday',
-  'last7',
-  'last14',
-  'last30',
-  'last90',
-  'thisMonth',
-  'lastMonth',
-  'thisYear',
-];
+/*
+ * Faqat hafta presetlari shu yerda: qolgan davr nomlari umumiy lug'atda
+ * (i18n/common.ts), `useT('periodPicker')` topilmagan kalitni o'sha yerdan oladi.
+ * Taqqoslash rejimi matnlari — ComparePeriod.tsx ('comparePeriod'), chip bilan bitta.
+ */
+registerNamespace('periodPicker', {
+  uz: { 'period.thisWeek': 'Shu hafta', 'period.lastWeek': 'O‘tgan hafta' },
+  ru: { 'period.thisWeek': 'Эта неделя', 'period.lastWeek': 'Прошлая неделя' },
+  en: { 'period.thisWeek': 'This week', 'period.lastWeek': 'Last week' },
+});
 
 /** Davr necha kunni qamraydi (ikkala chekka ham kiradi) */
 function presetSpan(p: PresetKey): number {
@@ -40,9 +41,10 @@ function useOutsideClose(onClose: () => void) {
 /** Davr tanlash — presetlar + qo'lda sana oralig'i */
 export function PeriodPicker({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
-  const t = useT('common');
+  const t = useT('periodPicker');
+  const tc = useT('comparePeriod');
   const f = useFormat();
-  const { preset, period, setPreset, setCustomPeriod } = useUi();
+  const { preset, period, setPreset, setCustomPeriod, compare, setCompare } = useUi();
   const plan = usePlan();
   const ref = useOutsideClose(() => setOpen(false));
   const [from, setFrom] = useState(period.from);
@@ -69,15 +71,25 @@ export function PeriodPicker({ className }: { className?: string }) {
   }, [period.from, period.to]);
 
   const label = preset === 'custom' ? `${f.date(period.from)} — ${f.date(period.to)}` : t(`period.${preset}`);
+  // Server ham taqqoslashni tarif chegarasida kesilgan davrdan hisoblaydi (lib/period.ts)
+  const effective = period.from < earliest ? { from: earliest, to: period.to } : period;
+  const compareName = tc(`mode.${compare}`);
 
   return (
     <div className={cn('sm:relative', className)} ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
+        title={compare !== 'prev' ? `${tc('mode.title')}: ${compareName}` : undefined}
         className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-2"
       >
         <Calendar className="h-4 w-4 text-muted" />
         <span className="hidden max-w-[190px] truncate sm:inline">{label}</span>
+        {/*
+         * Standartdan boshqa taqqoslash tugmada ko'rinib tursin: rejim saqlanadi
+         * va hamma sahifaga ta'sir qiladi, voronka kabi sahifalarda esa
+         * taqqoslash chipi yo'q (2026-10-24).
+         */}
+        {compare !== 'prev' ? <ArrowLeftRight className="h-3.5 w-3.5 text-brand" aria-label={compareName} /> : null}
         <ChevronDown className={cn('h-3.5 w-3.5 text-muted transition-transform', open && 'rotate-180')} />
       </button>
 
@@ -87,10 +99,16 @@ export function PeriodPicker({ className }: { className?: string }) {
          * ota — `header`) bog'lanadi va ekran kengligini egallaydi. Tugma ekran
          * o'rtasida turgani uchun 300 px li oyna uning o'ng chetiga bog'lansa,
          * chap tomondan ekrandan chiqib ketardi.
+         *
+         * Balandlik ekranga sig'adi va ichida aylanadi: oyna yopishqoq panel
+         * ichida turadi, sahifani aylantirib uning pastiga (qo'lda sana,
+         * "Qo'llash") yetib bo'lmasdi — taqqoslash bo'limi qo'shilgach kichik
+         * telefonda shunday bo'lardi (2026-10-24).
          */
-        <div className="absolute inset-x-3 top-[calc(100%+0.375rem)] z-50 rounded-xl border border-line bg-surface p-3 shadow-pop sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[300px]">
+        <div className="absolute inset-x-3 top-[calc(100%+0.375rem)] z-50 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-xl border border-line bg-surface p-3 shadow-pop sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[300px]">
           <div className="grid grid-cols-2 gap-1.5">
-            {PRESETS.map((p) => {
+            {/* Ro'yxat va tartib buyruq oynasi bilan umumiy (lib/periodPresets.ts) */}
+            {PERIOD_PRESETS.map((p) => {
               const locked = presetSpan(p) > historyDays;
               return (
                 <button
@@ -123,6 +141,50 @@ export function PeriodPicker({ className }: { className?: string }) {
           </div>
 
           <p className="mt-2 text-2xs text-muted">{t('period.limit', { n: historyDays })}</p>
+
+          {/*
+           * Taqqoslash rejimi davr bilan bir joyda: "+12%" ni ikkalasi birga
+           * belgilaydi. Har qator yonida aynan qaysi kunlar — server bilan bir
+           * xil hisob (comparePeriodFor); "O'tgan oy" rejimi yuqoridagi
+           * "O'tgan oy" davridan shu sanalar bilan ajralib turadi. Tarif
+           * tarixidan tashqaridagisi ham tanlanadi, lekin oldindan belgilanadi:
+           * sahifada foiz o'rniga tire chiqadi (2026-10-24).
+           */}
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="mb-2 eyebrow">{tc('mode.title')}</p>
+            <div className="grid gap-1">
+              {COMPARE_MODES.map((m) => {
+                const cmp = comparePeriodFor(effective, m);
+                const outside = cmp.from < earliest;
+                const active = compare === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    title={outside ? tc('mode.outside') : undefined}
+                    onClick={() => {
+                      setCompare(m);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      'flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
+                      active ? 'bg-brand/10 text-brand-ink' : 'text-ink-soft hover:bg-surface-2',
+                    )}
+                  >
+                    <span className="truncate">{tc(`mode.${m}`)}</span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <span className="tnum text-2xs text-muted">{formatCompareRange(cmp, f, m === 'prevYear')}</span>
+                      {outside ? (
+                        <CalendarOff className="h-3 w-3 text-muted" aria-label={tc('mode.outside')} />
+                      ) : active ? (
+                        <Check className="h-3 w-3" />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="mt-3 border-t border-line pt-3">
             <p className="mb-2 eyebrow">{t('period.custom')}</p>

@@ -4,11 +4,24 @@
  * esa shu yerda tavsiflangan (javob konverti shu bo'limga xos).
  */
 
-import { STOCK_THRESHOLDS, type ProductCard, type ProductCardSku, type ReviewRow, type TimeSeriesPoint } from '@savdoiq/shared';
+import {
+  STOCK_THRESHOLDS,
+  type ProductCard,
+  type ProductCardSku,
+  type ProductQualityStats,
+  type ReviewRow,
+  type StockPlanSummary,
+  type TimeSeriesPoint,
+} from '@savdoiq/shared';
+import type { Tone } from '@/components/ui';
 
-/** Zaxira davri (kun) — "qoldiq necha kunga yetadi" hisobi uchun */
-export const COVER_OPTIONS = ['7', '14', '30', '60', '90'] as const;
-export type CoverDays = (typeof COVER_OPTIONS)[number];
+/*
+ * Zaxira davri endi sahifada tanlanmaydi — kompaniya sozlamasi (Rejalashtiruvchi,
+ * GET /planner/settings), javobda `planner`. Ilgari bu yerda 7/14/30/60/90
+ * tanlovi bor edi va sahifa doim cover=30 so'rardi: sozlamada 45 kun turgan
+ * kompaniyada Mahsulotlar va Rejalashtiruvchi ikki xil "buyurtma kerak"
+ * ko'rsatardi (2026-10-24).
+ */
 
 /** Ro'yxat filtri (query: filter=) */
 export const PRODUCT_FILTERS = ['all', 'active', 'need_order', 'out', 'archived', 'hidden'] as const;
@@ -16,7 +29,7 @@ export type ProductFilter = (typeof PRODUCT_FILTERS)[number];
 
 export type ProductView = 'cards' | 'table';
 
-export const PRODUCT_SORTS = ['revenue', 'profit', 'sold', 'daysLeft', 'margin', 'title'] as const;
+export const PRODUCT_SORTS = ['revenue', 'profit', 'sold', 'needOrder', 'daysLeft', 'margin', 'title'] as const;
 export type ProductSort = (typeof PRODUCT_SORTS)[number];
 
 /** Kartochkada ko'rsatiladigan hosilaviy holat */
@@ -37,6 +50,40 @@ export function productState(p: ProductCard): ProductState {
   if (totalStock(p) <= 0) return 'out';
   if ((p.needOrder ?? 0) > 0) return 'need_order';
   return 'active';
+}
+
+/**
+ * Kartochka rasmi ustidagi holat — faqat "hayot bosqichi" (sotuvda, qoldiqsiz,
+ * arxiv, o'chirilgan). "Buyurtma kerak" kartochkada alohida, miqdori bilan
+ * turadi — ikki joyda bir gapni takrorlamasin.
+ */
+export function lifecycleState(p: ProductCard): Exclude<ProductState, 'need_order'> {
+  const s = productState(p);
+  return s === 'need_order' ? 'active' : s;
+}
+
+/**
+ * "Yetadi" rangi — Rejalashtiruvchi holati bo'yicha (kompaniyaning yetkazish
+ * muddati bilan): kritik — qizil, buyurtma vaqti — sariq, yetarli — brend,
+ * 90+ kun — ko'k (ortiqcha), sotuv yo'q — kulrang. Ilgari rang qat'iy 7/14 kun
+ * chegarasidan olinardi: yetkazish 14 kun bo'lgan sotuvchida 12 kunlik tovar
+ * kartochkada sariq, Rejalashtiruvchida esa "Kritik" edi (2026-10-24). Reja
+ * bo'lmasa (arxivdagi tovar) — eski chegaralar.
+ */
+export function planTone(plan: StockPlanSummary | null | undefined, daysLeft?: number | null): Tone {
+  if (!plan) return coverTone(daysLeft);
+  if (plan.status === 'critical') return 'danger';
+  if (plan.status === 'ending') return 'warn';
+  if (plan.status === 'no_action') return 'muted';
+  return plan.daysLeft !== null && plan.daysLeft >= STOCK_THRESHOLDS.excess ? 'info' : 'brand';
+}
+
+/**
+ * "Yetadi" chizig'i shu kunga nisbatan to'ladi: yetkazish muddati + zaxira
+ * davri (Rejalashtiruvchidagi chiziq bilan bir xil). Reja bo'lmasa — 30 kun.
+ */
+export function coverHorizon(plan: StockPlanSummary | null | undefined): number {
+  return plan ? Math.max(1, plan.leadDays + plan.coverDays) : 30;
 }
 
 /** Holat uchun token ranglari (faqat dizayn tokenlari) */
@@ -90,6 +137,8 @@ export interface ProductDetailSku extends ProductCardSku {
    * ko'rsatmasdi. Eski javobda bo'lmasligi mumkin, shuning uchun ixtiyoriy.
    */
   barcode?: string | null;
+  /** Uzum SKU ID — qidiruvda ham shu raqam ishlaydi */
+  uzumSkuId?: string | null;
   archived?: boolean;
   reserved?: number;
   inTransit?: number;
@@ -97,6 +146,8 @@ export interface ProductDetailSku extends ProductCardSku {
   daysLeft?: number | null;
   status?: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
   lastSaleAt?: string | null;
+  /** Rejalashtiruvchi xulosasi (sotib olish, jo'natish, tugash sanasi); arxivdagi SKU'da yo'q */
+  plan?: StockPlanSummary;
 }
 
 export interface ProductStockPoint {
@@ -137,6 +188,8 @@ export interface ProductDetailResponse {
   stocks?: ProductStockPoint[];
   reviews?: ProductReviewsBlock;
   unit?: ProductUnitBreakdown;
+  /** "Sifat" kartasi: qaytarish ulushi, eng ko'p sabab, salbiy sharhlar (eski javobda yo'q) */
+  quality?: ProductQualityStats;
 }
 
 /** Tannarxi kiritilmagan SKU'lar */
@@ -173,24 +226,34 @@ export function normalizeProductDetail(raw: unknown): ProductDetailResponse | un
         rows: ((rev.last ?? rev.rows ?? []) as ReviewRow[]) ?? [],
       };
 
-  const u = (r.unit ?? {}) as Record<string, number>;
-  const ui = (r.unitInput ?? {}) as Record<string, number>;
+  const u = (r.unit ?? {}) as Record<string, number | null>;
+  const ui = (r.unitInput ?? {}) as Record<string, number | null>;
+  /*
+   * Pulsiz ko'rinish shablonida (views.ts) server tannarx, soliq, foyda, marja
+   * va nol foyda narxini ATAYLAB null yuboradi. `?? 0` ularni "0 so'm" / "0%"
+   * qilib ko'rsatardi — yolg'on nol. null saqlanadi: f.money / f.pct uni "—"
+   * qilib chizadi (2026-10-24). Kalit umuman yo'q bo'lsa — avvalgidek 0.
+   */
+  const hidden = (...vals: (number | null | undefined)[]): number => {
+    const v = vals.find((x) => x !== undefined);
+    return (v === null ? null : Number(v ?? 0)) as number;
+  };
   const unit: ProductUnitBreakdown | undefined =
     Object.keys(u).length === 0
       ? undefined
       : {
           // Server `UnitCalcResult` (bir dona uchun) qaytaradi — nomlarni moslaymiz
           price: Number(u.price ?? ui.price ?? 0),
-          purchasePrice: Number(u.cogs ?? ui.purchasePrice ?? 0),
+          purchasePrice: hidden(u.cogs, ui.purchasePrice),
           commission: Number(u.commission ?? 0),
           logistics: Number(u.logisticsTotal ?? ui.logistics ?? 0),
           storage: Number(u.storageTotal ?? 0),
-          otherCost: Number(ui.otherCost ?? 0),
-          tax: Number(u.tax ?? 0),
-          netProfit: Number(u.netProfitPerUnit ?? u.netProfit ?? 0),
-          margin: Number(u.margin ?? 0),
-          roi: Number(u.roi ?? 0),
-          breakEvenPrice: Number(u.breakEvenPrice ?? 0),
+          otherCost: hidden(ui.otherCost),
+          tax: hidden(u.tax),
+          netProfit: hidden(u.netProfitPerUnit, u.netProfit),
+          margin: hidden(u.margin),
+          roi: hidden(u.roi),
+          breakEvenPrice: hidden(u.breakEvenPrice),
         };
 
   const store = r.store as { id?: unknown; title?: unknown } | null | undefined;
@@ -206,5 +269,6 @@ export function normalizeProductDetail(raw: unknown): ProductDetailResponse | un
     stocks: (r.stocks ?? r.stockHistory ?? []) as ProductStockPoint[],
     reviews,
     unit,
+    quality: (r.quality ?? undefined) as ProductQualityStats | undefined,
   };
 }

@@ -194,6 +194,9 @@ export const settingsSchema = z.object({
   notifyDaily: z.boolean().optional(),
   notifyOrders: z.boolean().optional(),
   notifyStock: z.boolean().optional(),
+  /** Haftalik (dushanba 09:00) va oylik (1-sana 09:00) Telegram hisoboti — apps/api services/digest.ts */
+  notifyWeekly: z.boolean().optional(),
+  notifyMonthly: z.boolean().optional(),
   timezone: z.string().optional(),
 });
 

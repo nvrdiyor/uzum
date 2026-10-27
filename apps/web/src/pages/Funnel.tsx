@@ -4,15 +4,12 @@ import {
   BarChart3,
   CalendarRange,
   Filter,
-  History,
   Info,
   PackageCheck,
   Percent,
   ShoppingBag,
   Tags,
   Truck,
-  Undo2,
-  XCircle,
 } from '@/components/icons';
 import type { FunnelResponse, FunnelStepId } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
@@ -20,11 +17,16 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { usePeriodQuery } from '@/store/ui';
 import { FilterBar } from '@/components/filters';
 import { ChartCard, TrendChart } from '@/components/charts';
+import { LossFunnel } from '@/components/funnel/LossFunnel';
+import { LossReasonsCard } from '@/components/funnel/LossReasonsCard';
+import { LostValueCard } from '@/components/funnel/LostValueCard';
+import { PreliminaryBadge } from '@/components/funnel/PreliminaryBadge';
 import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
+import { ComparePeriodChip } from '@/components/trust/ComparePeriod';
+import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { CHART_COLORS } from '@/lib/theme';
 import {
-  Badge,
   Card,
   CardBody,
   CardHeader,
@@ -39,7 +41,6 @@ import {
   StatCard,
   StatGrid,
   type Column,
-  type Tone,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -57,24 +58,14 @@ registerNamespace('funnel', {
     'kpi.buyoutNone': 'Hali yakunlangan dona yo‘q — hammasi yo‘lda',
     'kpi.avg': 'O‘rtacha narx',
     'kpi.avgHint': 'Sotilgan bitta dona uchun',
-    'step.ordered': 'Buyurtma qilindi',
-    'step.sold': 'Sotildi',
-    'step.inTransit': 'Yo‘lda',
-    'step.canceled': 'Bekor qilindi',
-    'step.returned': 'Qaytarildi',
-    'steps.title': 'Voronka bosqichlari',
-    'steps.subtitle': 'Buyurtma qilingan donalar nima bo‘ldi',
+    'steps.title': 'Yo‘qotish voronkasi',
+    'steps.subtitle': 'Har bosqichda qancha dona va pul tushib qoldi',
     'steps.units': '{v} dona',
-    'steps.conv': 'buyurtma qilingan donadan {v}',
-    'steps.bar': 'Buyurtma qilingan donalar taqsimoti',
-    'steps.unit': 'dona',
-    'steps.transitHint': 'Hali natija yo‘q — xaridor qabul qilmagan',
-    'meta.compare': 'Taqqoslash: {from} — {to}',
-    'meta.compareHint': 'O‘zgarishlar shu oldingi teng davrga nisbatan',
     'transit.note':
       '{n} dona hali yo‘lda — xaridor qabul qilmagan. Ular sotilganga ham, yo‘qotilganga ham kirmaydi va sotib olish foiziga hisoblanmaydi.',
+    // Rejimga bog'liq emas ("o'tgan oy" / "o'tgan yil" ham): qaysi davr ekanini sarlavhadagi chip aytadi
     'transit.compare':
-      '“Sotildi” o‘zgarishi teng sharoitda: oldingi davrdan ham buyurtmadan keyin xuddi shuncha vaqt ichida qabul qilinganlari olinadi.',
+      '“Sotildi” o‘zgarishi teng sharoitda: taqqoslash davridan ham buyurtmadan keyin xuddi shuncha vaqt ichida qabul qilinganlari olinadi.',
     'chart.title': 'Kunlik dinamika',
     'chart.subtitle': 'Dona hisobida: buyurtma va uning holati',
     'chart.ordered': 'Buyurtma',
@@ -86,7 +77,7 @@ registerNamespace('funnel', {
     'table.emptyHint': 'Tanlangan filtr bo‘yicha tovar yo‘q — “Barchasi” ni tanlab ko‘ring',
     'table.title': 'Mahsulotlar kesimi',
     // Birlik sarlavha ostida: "Buyurtma, dona" kabi uzun ustun nomlari jadvalni 1366px dan chiqarardi
-    'table.subtitle': 'Dona hisobida — oldingi davr bilan solishtirib',
+    'table.subtitle': 'Dona hisobida — taqqoslash davri bilan solishtirib',
     'col.product': 'Mahsulot',
     'col.ordered': 'Buyurtma',
     'col.sold': 'Sotildi',
@@ -119,24 +110,13 @@ registerNamespace('funnel', {
     'kpi.buyoutNone': 'Завершённых штук пока нет — всё в пути',
     'kpi.avg': 'Средняя цена',
     'kpi.avgHint': 'За проданную единицу',
-    'step.ordered': 'Заказано',
-    'step.sold': 'Продано',
-    'step.inTransit': 'В пути',
-    'step.canceled': 'Отменено',
-    'step.returned': 'Возвращено',
-    'steps.title': 'Этапы воронки',
-    'steps.subtitle': 'Что стало с заказанными штуками',
+    'steps.title': 'Воронка потерь',
+    'steps.subtitle': 'Сколько штук и денег отпадает на каждом этапе',
     'steps.units': '{v} шт.',
-    'steps.conv': '{v} от заказанных штук',
-    'steps.bar': 'Распределение заказанных штук',
-    'steps.unit': 'шт.',
-    'steps.transitHint': 'Итога ещё нет — покупатель не получил',
-    'meta.compare': 'Сравнение: {from} — {to}',
-    'meta.compareHint': 'Изменения — относительно этого предыдущего равного периода',
     'transit.note':
       '{n} шт. ещё в пути — покупатель их не получил. Они не считаются ни проданными, ни потерянными и не входят в процент выкупа.',
     'transit.compare':
-      'Изменение «Продано» — в равных условиях: из прошлого периода тоже берутся штуки, полученные за то же время после заказа.',
+      'Изменение «Продано» — в равных условиях: из периода сравнения тоже берутся штуки, полученные за то же время после заказа.',
     'chart.title': 'Динамика по дням',
     'chart.subtitle': 'В штуках: заказы и их статус',
     'chart.ordered': 'Заказы',
@@ -147,7 +127,7 @@ registerNamespace('funnel', {
     'table.empty': 'Подходящих товаров нет',
     'table.emptyHint': 'По выбранному фильтру ничего не найдено — попробуйте «Все»',
     'table.title': 'По товарам',
-    'table.subtitle': 'В штуках — в сравнении с прошлым периодом',
+    'table.subtitle': 'В штуках — изменения к периоду сравнения',
     'col.product': 'Товар',
     'col.ordered': 'Заказано',
     'col.sold': 'Продано',
@@ -164,7 +144,8 @@ registerNamespace('funnel', {
       'Uzum Seller API не отдаёт показы, открытия карточки и добавления в корзину — они есть только во внутренней аналитике кабинета. Поэтому воронка начинается с заказа: эта часть полная и точная.',
     'empty.title': 'За этот период заказов не было',
     'empty.hint': 'Выберите другой период или дождитесь первой продажи.',
-    'problem.title': 'У {n} товаров низкий выкуп',
+    // "Товаров: N" — "У 1 товаров" kabi son kelishigi xatosi chiqmasin
+    'problem.title': 'Товаров с низким выкупом: {n}',
     'problem.body': 'Больше половины завершённых штук отменены или возвращены — проверьте цену, описание и упаковку.',
   },
   en: {
@@ -180,24 +161,13 @@ registerNamespace('funnel', {
     'kpi.buyoutNone': 'No completed units yet — all in transit',
     'kpi.avg': 'Average price',
     'kpi.avgHint': 'Per sold unit',
-    'step.ordered': 'Ordered',
-    'step.sold': 'Sold',
-    'step.inTransit': 'In transit',
-    'step.canceled': 'Cancelled',
-    'step.returned': 'Returned',
-    'steps.title': 'Funnel steps',
-    'steps.subtitle': 'What happened to the ordered units',
+    'steps.title': 'Loss funnel',
+    'steps.subtitle': 'How many units and how much money drop off at each stage',
     'steps.units': '{v} units',
-    'steps.conv': '{v} of ordered units',
-    'steps.bar': 'How the ordered units split',
-    'steps.unit': 'units',
-    'steps.transitHint': 'No outcome yet — not received by the buyer',
-    'meta.compare': 'Compared with: {from} — {to}',
-    'meta.compareHint': 'Changes are against this previous period of equal length',
     'transit.note':
       '{n} units are still in transit — the buyer has not received them. They count as neither sold nor lost and are left out of the buyout rate.',
     'transit.compare':
-      'The “Sold” change is like for like: from the previous period we also count only units received within the same time after ordering.',
+      'The “Sold” change is like for like: from the comparison period we also count only units received within the same time after ordering.',
     'chart.title': 'Daily dynamics',
     'chart.subtitle': 'In units: orders and their outcome',
     'chart.ordered': 'Ordered',
@@ -208,7 +178,7 @@ registerNamespace('funnel', {
     'table.empty': 'No matching products',
     'table.emptyHint': 'Nothing matches this filter — try “All”',
     'table.title': 'By product',
-    'table.subtitle': 'In units — compared with the previous period',
+    'table.subtitle': 'In units — changes against the comparison period',
     'col.product': 'Product',
     'col.ordered': 'Ordered',
     'col.sold': 'Sold',
@@ -225,44 +195,24 @@ registerNamespace('funnel', {
       'The Uzum Seller API does not expose impressions, card opens or add-to-cart events — they live only inside the Uzum cabinet. The funnel therefore starts at the order, where the data is complete and exact.',
     'empty.title': 'No orders in this period',
     'empty.hint': 'Pick another period or wait for the first sale.',
-    'problem.title': '{n} products have a low buyout rate',
+    'problem.title': 'Products with a low buyout rate: {n}',
     'problem.body': 'More than half of the completed units were cancelled or returned — check price, description and packaging.',
   },
 });
 
-type StepToken = 'info' | 'brand' | 'slate' | 'warn' | 'danger';
-
-/*
- * `toneClass` TO'LIQ yozilgan: Tailwind faqat manbada butun uchragan klassni
- * CSS'ga chiqaradi, `tone-${tone}` kabi yig'ilgani skanerdan o'tmaydi.
+/**
+ * Sotib olish foizi: sotildi / yakunlangan (sotildi + bekor + qaytdi) — funnel.ts dagi `buyoutOf` bilan bir xil.
+ * Oldingi qiymat yo'q (davr saqlangan tarixdan tashqarida, `comparePeriod` null) — null: tire chiqadi.
  */
-const STEP_META: Record<
-  FunnelStepId,
-  { token: StepToken; icon: typeof ShoppingBag; tone: Tone; toneClass: string }
-> = {
-  ordered: { token: 'info', icon: ShoppingBag, tone: 'info', toneClass: 'tone-info' },
-  sold: { token: 'brand', icon: PackageCheck, tone: 'brand', toneClass: 'tone-brand' },
-  // Yo'ldagi dona — neytral kulrang: na yutuq, na yo'qotish
-  inTransit: { token: 'slate', icon: Truck, tone: 'muted', toneClass: 'tone-muted' },
-  canceled: { token: 'warn', icon: XCircle, tone: 'warn', toneClass: 'tone-warn' },
-  returned: { token: 'danger', icon: Undo2, tone: 'danger', toneClass: 'tone-danger' },
-};
-
-/** Sotib olish foizi: sotildi / yakunlangan (sotildi + bekor + qaytdi) — funnel.ts dagi `buyoutOf` bilan bir xil */
 function buyoutOfSteps(steps: FunnelResponse['steps'], key: 'value' | 'prevValue'): number | null {
-  const pick = (id: FunnelStepId) => steps.find((s) => s.id === id)?.[key] ?? 0;
+  const pick = (id: FunnelStepId) => steps.find((s) => s.id === id)?.[key] ?? null;
   const sold = pick('sold');
-  const done = sold + pick('canceled') + pick('returned');
+  const canceled = pick('canceled');
+  const returned = pick('returned');
+  if (sold === null || canceled === null || returned === null) return null;
+  const done = sold + canceled + returned;
   return done > 0 ? (sold / done) * 100 : null;
 }
-
-/*
- * Token rangi shaffofligi bilan. Ilgari `${CHART_COLORS.x}22` yozilardi —
- * "rgb(var(--c-info))22" yaroqsiz CSS, brauzer uni tashlab yuborardi va
- * bosqich chizig'i hamda belgi foni umuman chizilmasdi (2026-10-24).
- */
-const tokenColor = (token: StepToken, alpha?: number): string =>
-  alpha === undefined ? `rgb(var(--c-${token}))` : `rgb(var(--c-${token}) / ${alpha})`;
 
 /** Muammoli tovar: kamida 2 ta yakunlangan dona va ularning yarmidan kami sotib olingan */
 const isProblem = (r: FunnelResponse['rows'][number]): boolean =>
@@ -292,8 +242,13 @@ export default function Funnel() {
 
   /*
    * Sarlavha ostida davr va TAQQOSLANAYOTGAN davr: sahifadagi har bir
-   * o'zgarish chipi shu oldingi teng davrga nisbatan, lekin ilgari bu hech
-   * qayerda yozilmagan edi.
+   * o'zgarish chipi shu davrga nisbatan, lekin ilgari bu hech qayerda
+   * yozilmagan edi. Chip — Boshqaruv paneli va Moliya bilan bitta komponent:
+   * taqqoslash rejimini ham aytadi, davr saqlangan tarixdan tashqarida bo'lsa
+   * (`comparePeriod` null) esa "taqqoslanmaydi" va sababini. Ilgari voronka
+   * o'z chipida oldingi davr sanalarini doim yozardi — o'zgarishlar qisman
+   * oynaga solishtirilayotganda ham (2026-10-24). Tannarx qamrovi — voronka
+   * endi yo'qotilgan FOYDANI ham ko'rsatadi, u tannarxsiz tovarda oshib chiqadi.
    */
   const header = (
     <PageHeader
@@ -308,13 +263,11 @@ export default function Funnel() {
                 <CalendarRange className="h-3.5 w-3.5" />
                 {f.date(data.period.from)} — {f.date(data.period.to)}
               </span>
-              <span className="meta-chip tnum" title={t('meta.compareHint')}>
-                <History className="h-3.5 w-3.5" />
-                {t('meta.compare', { from: f.date(data.previous.from), to: f.date(data.previous.to) })}
-              </span>
+              {data.comparePeriod || data.totals.ordered > 0 ? <ComparePeriodChip period={data.comparePeriod} /> : null}
             </>
           ) : null}
           <DataFreshness />
+          <CostCoverage />
         </>
       }
     />
@@ -352,19 +305,20 @@ export default function Funnel() {
   }
 
   const { totals, steps } = data;
-  const orderedStep = steps.find((s) => s.id === 'ordered');
   const soldStep = steps.find((s) => s.id === 'sold');
-  const outcomes = steps.filter((s) => s.id !== 'ordered');
   const buyout = totals.buyoutRate;
   /*
    * Sotib olish foizi — foiz ko'rsatkich, o'zgarishi foiz punktida (joriy −
    * oldingi). Oldingi qiymat bosqichlarning `prevValue` laridan (teng yoshda),
-   * yakunlangan dona bo'lmasa — o'zgarish yo'q, taxmin qilinmaydi.
+   * yakunlangan dona bo'lmasa yoki oldingi davr taqqoslanmasa — o'zgarish
+   * yo'q, taxmin qilinmaydi.
    */
   const prevBuyout = buyoutOfSteps(steps, 'prevValue');
   const buyoutDelta = buyout !== null && prevBuyout !== null ? buyout - prevBuyout : null;
   // O'rtacha narx oldingi davrda: o'sha teng yoshdagi sotilgan summa / dona
-  const prevAvg = soldStep && soldStep.prevValue > 0 ? soldStep.prevAmount / soldStep.prevValue : null;
+  const prevSold = soldStep?.prevValue ?? null;
+  const prevSoldAmount = soldStep?.prevAmount ?? null;
+  const prevAvg = prevSold !== null && prevSoldAmount !== null && prevSold > 0 ? prevSoldAmount / prevSold : null;
   const avgDelta = prevAvg && totals.avgPrice > 0 ? ((totals.avgPrice - prevAvg) / prevAvg) * 100 : null;
 
   const columns: Column<FunnelResponse['rows'][number]>[] = [
@@ -519,19 +473,32 @@ export default function Funnel() {
               value={t('steps.units', { v: f.num(totals.sold) })}
               hint={t('kpi.soldHint', { v: f.compact(totals.soldAmount) })}
               delta={soldStep?.deltaPct}
-              previous={soldStep ? f.num(soldStep.prevValue) : undefined}
+              previous={prevSold !== null ? f.num(prevSold) : undefined}
               icon={<PackageCheck className="h-5 w-5" />}
               tone="brand"
             />
+            {/*
+              Yakunlangani 95% dan kam bo'lsa foiz DASTLABKI (server totals.preliminary):
+              u faqat eski buyurtmalardan chiqadi va yo'ldagilar yetib borgach
+              o'zgaradi — izoh o'rnida belgi, yo'ldagilar soni uning izohida.
+            */}
             <StatCard
               label={t('kpi.buyout')}
               value={buyout === null ? '—' : f.pct(buyout)}
               hint={
-                buyout === null
-                  ? t('kpi.buyoutNone')
-                  : totals.inTransit > 0
-                    ? t('kpi.buyoutHintTransit', { n: f.num(totals.inTransit) })
-                    : t('kpi.buyoutHint')
+                buyout === null ? (
+                  t('kpi.buyoutNone')
+                ) : totals.preliminary && totals.completedPct !== null ? (
+                  <PreliminaryBadge
+                    completedPct={totals.completedPct}
+                    inTransit={totals.inTransit}
+                    className="px-2 py-0.5 text-2xs"
+                  />
+                ) : totals.inTransit > 0 ? (
+                  t('kpi.buyoutHintTransit', { n: f.num(totals.inTransit) })
+                ) : (
+                  t('kpi.buyoutHint')
+                )
               }
               delta={buyoutDelta}
               deltaUnit="pp"
@@ -555,117 +522,36 @@ export default function Funnel() {
           </StatGrid>
 
           {/*
-            ── Voronka ──
-            Buyurtma qilingan har bir dona to'rt natijaning biriga tushadi
-            (sotildi + yo'lda + bekor + qaytdi = buyurtma). Ilgari besh
-            bosqich ustma-ust ro'yxat edi va bo'linish ko'rinmasdi; endi bitta
-            100% li lenta va to'rt natija plitkasi — ranglar grafik bilan bir xil.
+            ── Yo'qotish voronkasi ──
+            Ilgari bitta 100% li lenta va to'rt natija plitkasi edi: har bir
+            dona nima bo'lgani ko'rinardi, lekin qaysi bosqichda va qancha PUL
+            tushib qolgani — yo'q. Endi to'rt bosqich (buyurtma → jo'natildi →
+            qabul qildi → sotildi), orasida bekor qilingan, yo'ldagi va qaytgan
+            qism dona va so'mda (components/funnel/LossFunnel.tsx). O'zgarish
+            chiplari avvalgidek: buyurtma, sotildi, bekor va qaytish.
           */}
           <Card>
             <CardHeader
               icon={<Filter className="h-4 w-4" />}
               title={t('steps.title')}
               subtitle={t('steps.subtitle')}
+              actions={
+                totals.preliminary && totals.completedPct !== null ? (
+                  <PreliminaryBadge completedPct={totals.completedPct} inTransit={totals.inTransit} />
+                ) : null
+              }
             />
             <CardBody className="space-y-4">
-              {orderedStep ? (
-                <div className="well flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      className={cn(
-                        'icon-tile h-9 w-9 rounded-[10px] [&_svg]:h-[18px] [&_svg]:w-[18px]',
-                        STEP_META.ordered.toneClass,
-                      )}
-                    >
-                      <ShoppingBag />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="eyebrow">{t('step.ordered')}</p>
-                      <p className="tnum mt-0.5 font-display text-xl font-bold leading-tight text-ink">
-                        {t('steps.units', { v: f.num(orderedStep.value) })}
-                        <span className="ml-2 text-sm font-semibold text-muted">
-                          {f.money(orderedStep.amount, data.currency)}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                  <Delta value={orderedStep.deltaPct} />
-                </div>
-              ) : null}
-
-              <div
-                role="img"
-                aria-label={`${t('steps.bar')}: ${outcomes
-                  .map((s) => `${t(`step.${s.id}`)} ${s.conversion !== null ? f.pct(s.conversion) : '—'}`)
-                  .join(', ')}`}
-                className="flex h-3 w-full gap-[3px]"
-              >
-                {outcomes
-                  .filter((s) => s.value > 0)
-                  .map((s, i) => (
-                    <div
-                      key={s.id}
-                      title={`${t(`step.${s.id}`)} — ${t('steps.units', { v: f.num(s.value) })}`}
-                      className="h-full min-w-[4px] origin-left animate-grow-x rounded-full"
-                      style={{
-                        flex: `${s.value} 1 0%`,
-                        background: tokenColor(STEP_META[s.id].token),
-                        animationDelay: `${80 + i * 80}ms`,
-                      }}
-                    />
-                  ))}
-              </div>
-
-              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                {outcomes.map((step) => {
-                  const meta = STEP_META[step.id];
-                  const StepIcon = meta.icon;
-                  return (
-                    <div key={step.id} className="well flex min-w-0 flex-col px-4 py-3.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span
-                            className={cn(
-                              'icon-tile h-7 w-7 rounded-lg [&_svg]:h-3.5 [&_svg]:w-3.5',
-                              meta.toneClass,
-                            )}
-                          >
-                            <StepIcon />
-                          </span>
-                          <span className="truncate text-sm font-semibold text-ink">{t(`step.${step.id}`)}</span>
-                        </span>
-                        {step.conversion !== null ? (
-                          <Badge tone={meta.tone} title={t('steps.conv', { v: f.pct(step.conversion) })}>
-                            {f.pct(step.conversion)}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <p className="tnum mt-3 font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
-                        {f.num(step.value)}
-                        <span className="ml-1.5 text-xs font-semibold text-muted">{t('steps.unit')}</span>
-                      </p>
-                      <p className="tnum mt-1.5 text-xs text-muted">
-                        {step.amount > 0 ? f.money(step.amount, data.currency) : '—'}
-                      </p>
-                      <div className="mt-auto pt-3">
-                        {/* Yo'ldagi dona na yutuq, na yo'qotish — uning o'zgarishini yashil/qizil bilan baholab bo'lmaydi */}
-                        {step.id === 'inTransit' ? (
-                          <span className="text-2xs leading-snug text-muted">{t('steps.transitHint')}</span>
-                        ) : (
-                          <Delta value={step.deltaPct} invert={step.id === 'canceled' || step.id === 'returned'} />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <LossFunnel data={data} />
 
               {totals.inTransit > 0 ? (
                 <div className="flex gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
                   <Truck className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                  {/* Oldingi davr teng yoshda olinadi (funnel.ts collect) — aks holda "Sotildi" o'zgarishi sun'iy tushardi */}
+                  {/* Oldingi davr teng yoshda olinadi (funnel.ts collect) — aks holda "Sotildi" o'zgarishi sun'iy tushardi.
+                      Taqqoslanmasa (comparePeriod null) bu izoh ortiqcha: o'zgarishning o'zi yo'q */}
                   <p className="text-xs leading-relaxed text-muted">
-                    {t('transit.note', { n: f.num(totals.inTransit) })} {t('transit.compare')}
+                    {t('transit.note', { n: f.num(totals.inTransit) })}
+                    {data.comparePeriod ? ` ${t('transit.compare')}` : null}
                   </p>
                 </div>
               ) : null}
@@ -681,6 +567,16 @@ export default function Funnel() {
               ) : null}
             </CardBody>
           </Card>
+
+          {/*
+            ── Yo'qotilgan qiymat va sabablar ──
+            Faqat keng ekranda yonma-yon (xl): 1366px da ham ikki plitkali
+            kartochka ~400px oladi; torroqda ustma-ust — "34,8 mln so‘m" kesilmasin.
+          */}
+          <div className="grid gap-5 xl:grid-cols-5">
+            <LostValueCard data={data} className="xl:col-span-2" />
+            <LossReasonsCard data={data} className="xl:col-span-3" />
+          </div>
 
           {/* ── Kunlik dinamika ── */}
           <ChartCard title={t('chart.title')} subtitle={t('chart.subtitle')} icon={<BarChart3 />}>

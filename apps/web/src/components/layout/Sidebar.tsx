@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { ChevronLeft, Lock, Rocket, ShieldCheck } from '@/components/icons';
-import { NAV } from '@/lib/nav';
+import { useNavGroups } from '@/lib/view';
 import { useT } from '@/i18n';
 import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
@@ -43,11 +44,13 @@ function PlanCard() {
   );
 }
 
-export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarContent({ onNavigate, top }: { onNavigate?: () => void; top?: ReactNode }) {
   const t = useT('common');
   const rail = useUi((s) => s.rail);
   const toggleRail = useUi((s) => s.toggleRail);
   const features = useSession((s) => s.me?.features);
+  // Ko'rinish shablonida yopiq sahifalar menyuda ham ko'rinmaydi (lib/view.ts)
+  const groups = useNavGroups();
 
   return (
     <div className="flex h-full flex-col">
@@ -73,8 +76,10 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </button>
       </div>
 
+      {top}
+
       <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-4 pt-1">
-        {NAV.map((group) => (
+        {groups.map((group) => (
           <div key={group.titleKey} className="mb-4">
             {!rail ? (
               <p className="eyebrow mb-1.5 px-2.5 text-muted/80">{t(group.titleKey)}</p>

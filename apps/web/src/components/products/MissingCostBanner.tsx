@@ -3,6 +3,7 @@ import { AlertTriangle } from '@/components/icons';
 import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import type { ProductDetailSku } from './types';
 
 /**
@@ -20,8 +21,13 @@ export function MissingCostBanner({
 }) {
   const t = useT('productDetail');
   const [raw, setRaw] = useState('');
+  /*
+   * Pulsiz ko'rinish shablonida tannarx null keladi — har bir SKU "tannarxsiz"
+   * ko'rinardi, kiritish esa (server 403) baribir yopiq. Ogohlantirish yo'q.
+   */
+  const money = useSeesMoney();
 
-  if (!skus.length) return null;
+  if (!skus.length || !money) return null;
 
   const value = Math.max(0, Math.round(Number(raw.replace(/\D/g, '')) || 0));
 

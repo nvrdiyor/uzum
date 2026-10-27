@@ -5,6 +5,7 @@ import {
   Building2,
   Container,
   Download,
+  ExternalLink,
   Lock,
   Store,
   Table2,
@@ -12,7 +13,16 @@ import {
   Warehouse as WarehouseIcon,
   Wallet,
 } from '@/components/icons';
-import { DEFAULTS, type StocksResponse } from '@savdoiq/shared';
+import {
+  FREE_TURNOVER_DAYS,
+  TARIFF_EFFECTIVE_FROM,
+  matchesSkuQuery,
+  storageFeePerDay,
+  storageRatePerLiterDay,
+  turnoverDays,
+  type StocksResponse,
+} from '@savdoiq/shared';
+import { MANUAL_STORAGE_URL, TIER_COUNT, paidRates, tierIndex, tierLabel, tierRate } from '@/components/calculator/tariff';
 import {
   Amount,
   Button,
@@ -25,7 +35,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  SearchInput,
   SkeletonRows,
   StatCard,
   StatGrid,
@@ -35,9 +44,11 @@ import {
 import { ZeroAware } from '@/components/ui/ZeroAware';
 import { DonutChart, seriesColor } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { SkuSearchInput, useSkuQuery } from '@/components/products/SkuSearchInput';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
-import { downloadBlob } from '@/lib/utils';
+import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { useStores } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -64,13 +75,25 @@ registerNamespace('warehouse', {
     'scheme.fbs': 'FBS — o‘z yetkazish',
     'scheme.own': 'O‘z ombori',
     'scheme.share': 'Umumiy qoldiqdagi ulush',
-    'capacity.title': 'Ombor sig‘imi va saqlash xarajati',
-    'capacity.hint': 'Mahsulot hajmi asosidagi baho',
+    'capacity.title': 'Hajm va Uzum omborida saqlash',
+    'capacity.hint': 'Shu qoldiq Uzum omborida (FBO) tursa — Uzum aylanma bo‘yicha qancha olardi',
     'capacity.volume': 'Jami hajm',
     'capacity.volumeUnit': 'litr',
-    'capacity.perDay': 'Kunlik saqlash xarajati',
-    'capacity.perMonth': 'Oylik saqlash xarajati',
-    'capacity.rate': '1 litr / kun narxi',
+    'capacity.perDay': 'Uzum omborida — kuniga',
+    'capacity.perMonth': 'Oyiga (30 kun)',
+    'capacity.rate': 'Tarif',
+    'capacity.free': 'Bepul',
+    'capacity.freeWord': 'bepul',
+    'capacity.rateFree': 'aylanma {tier} kun — bepul',
+    'capacity.ratePaid': 'aylanma {tier} kun: {rate} so‘m/l/kun',
+    'capacity.turnover': 'O‘rtacha aylanma: {n} kun',
+    'capacity.noSales': 'Sotuv yo‘q — eng qimmat guruh',
+    'capacity.split': 'Pullik: {paid} SKU · bepul (aylanma ≤ {free} kun): {freeSkus} SKU',
+    'capacity.noVolumeSkus': 'Hajmi yo‘q {n} SKU hisobga kirmadi',
+    'capacity.tiers':
+      'Uzum tarifi, {date} dan: aylanma = qoldiq ÷ kunlik sotuv. {list} so‘m/l/kun; imtiyozli toifalarda (kiyim, poyabzal, aksessuar…) {reduced}. Hisob oddiy tarifda — imtiyozli toifada kamroq chiqadi.',
+    'capacity.own': 'O‘z omboringizda Uzum saqlash to‘lovi olmaydi — bu baho tovarni FBO’ga yuborsangiz nima bo‘lishini ko‘rsatadi.',
+    'capacity.manual': 'Uzum qo‘llanmasi: pullik saqlash tariflari',
     'capacity.noVolume': 'Hajm ma’lumoti yo‘q',
     'capacity.noVolumeHint': 'Mahsulot kartochkasida hajm (litr) to‘ldirilsa, saqlash xarajati hisoblanadi',
     'capacity.avgPerUnit': 'O‘rtacha hajm (1 dona)',
@@ -84,7 +107,6 @@ registerNamespace('warehouse', {
     'col.available': 'Mavjud',
     'col.value': 'Qiymat',
     'col.volume': 'Hajm, l',
-    'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
     'empty.title': 'O‘z omboringizda qoldiq yo‘q',
     'empty.hint': 'Yetkazma qabul qilinganidan so‘ng qoldiqlar shu yerda ko‘rinadi',
     'export.done': 'Excel fayl tayyor',
@@ -109,13 +131,25 @@ registerNamespace('warehouse', {
     'scheme.fbs': 'FBS — своя доставка',
     'scheme.own': 'Свой склад',
     'scheme.share': 'Доля в общем остатке',
-    'capacity.title': 'Вместимость склада и стоимость хранения',
-    'capacity.hint': 'Оценка по объёму товара',
+    'capacity.title': 'Объём и хранение на складе Uzum',
+    'capacity.hint': 'Если бы этот остаток лежал на складе Uzum (FBO) — сколько взял бы Uzum по оборачиваемости',
     'capacity.volume': 'Общий объём',
-    'capacity.volumeUnit': 'литров',
-    'capacity.perDay': 'Стоимость хранения в день',
-    'capacity.perMonth': 'Стоимость хранения в месяц',
-    'capacity.rate': 'Цена за 1 литр / день',
+    'capacity.volumeUnit': 'л',
+    'capacity.perDay': 'На складе Uzum — в день',
+    'capacity.perMonth': 'В месяц (30 дн.)',
+    'capacity.rate': 'Тариф',
+    'capacity.free': 'Бесплатно',
+    'capacity.freeWord': 'бесплатно',
+    'capacity.rateFree': 'оборачиваемость {tier} дн. — бесплатно',
+    'capacity.ratePaid': 'оборачиваемость {tier} дн.: {rate} сум/л/день',
+    'capacity.turnover': 'Средняя оборачиваемость: {n} дн.',
+    'capacity.noSales': 'Нет продаж — самая дорогая группа',
+    'capacity.split': 'Платно: SKU — {paid} · бесплатно (оборачиваемость ≤ {free} дн.): SKU — {freeSkus}',
+    'capacity.noVolumeSkus': 'Без объёма, не учтены: SKU — {n}',
+    'capacity.tiers':
+      'Тариф Uzum с {date}: оборачиваемость = остаток ÷ продажи в день. {list} сум/л/день; в льготных категориях (одежда, обувь, аксессуары…) {reduced}. Расчёт по обычному тарифу — в льготной категории выйдет меньше.',
+    'capacity.own': 'За ваш собственный склад Uzum не берёт плату — оценка показывает, сколько стоило бы хранение этого товара на FBO.',
+    'capacity.manual': 'Справка Uzum: тарифы платного хранения (на узбекском)',
     'capacity.noVolume': 'Нет данных об объёме',
     'capacity.noVolumeHint': 'Заполните объём (литры) в карточке товара — и мы посчитаем хранение',
     'capacity.avgPerUnit': 'Средний объём (1 шт)',
@@ -129,7 +163,6 @@ registerNamespace('warehouse', {
     'col.available': 'Доступно',
     'col.value': 'Стоимость',
     'col.volume': 'Объём, л',
-    'search.placeholder': 'Поиск по названию или SKU',
     'empty.title': 'На своём складе пусто',
     'empty.hint': 'Остатки появятся здесь после приёмки поставки',
     'export.done': 'Файл Excel готов',
@@ -154,13 +187,25 @@ registerNamespace('warehouse', {
     'scheme.fbs': 'FBS — your delivery',
     'scheme.own': 'Own warehouse',
     'scheme.share': 'Share of total stock',
-    'capacity.title': 'Capacity and storage cost',
-    'capacity.hint': 'Estimated from product volume',
+    'capacity.title': 'Volume and Uzum storage',
+    'capacity.hint': 'If this stock sat in Uzum’s warehouse (FBO) — what Uzum would charge by turnover',
     'capacity.volume': 'Total volume',
     'capacity.volumeUnit': 'litres',
-    'capacity.perDay': 'Storage cost per day',
-    'capacity.perMonth': 'Storage cost per month',
-    'capacity.rate': 'Rate per litre / day',
+    'capacity.perDay': 'At Uzum — per day',
+    'capacity.perMonth': 'Per month (30 days)',
+    'capacity.rate': 'Rate',
+    'capacity.free': 'Free',
+    'capacity.freeWord': 'free',
+    'capacity.rateFree': 'turnover {tier} days — free',
+    'capacity.ratePaid': 'turnover {tier} days: {rate} UZS/l/day',
+    'capacity.turnover': 'Average turnover: {n} days',
+    'capacity.noSales': 'No sales — the most expensive group',
+    'capacity.split': 'Paid: {paid} SKUs · free (turnover ≤ {free} days): {freeSkus} SKUs',
+    'capacity.noVolumeSkus': '{n} SKUs without volume are not counted',
+    'capacity.tiers':
+      'Uzum tariff from {date}: turnover = stock ÷ daily sales. {list} UZS/l/day; reduced categories (clothing, shoes, accessories…) {reduced}. Calculated at the standard rate — reduced categories pay less.',
+    'capacity.own': 'Uzum charges nothing for your own warehouse — this shows what keeping the stock in FBO would cost.',
+    'capacity.manual': 'Uzum manual: paid storage tariffs (in Uzbek)',
     'capacity.noVolume': 'No volume data',
     'capacity.noVolumeHint': 'Fill in the volume (litres) on the product card to estimate storage',
     'capacity.avgPerUnit': 'Average volume (1 unit)',
@@ -174,7 +219,6 @@ registerNamespace('warehouse', {
     'col.available': 'Available',
     'col.value': 'Value',
     'col.volume': 'Volume, l',
-    'search.placeholder': 'Search by name or SKU',
     'empty.title': 'Your warehouse is empty',
     'empty.hint': 'Stock shows up here once a shipment is accepted',
     'export.done': 'Excel file is ready',
@@ -184,6 +228,11 @@ registerNamespace('warehouse', {
 
 const PAGE_SIZE = 20;
 const EMPTY_SCHEME: SchemeTotal = { units: 0, amount: 0 };
+/** Server bir so'rovda shundan ko'p qatorni bermaydi (lib/period.ts) */
+const SERVER_MAX_ROWS = 500;
+
+/** Server qatorida o'rtacha kunlik sotuv ham keladi (routes/stocks.ts WarehouseStockRow) */
+type Row = WarehouseRow & { avgDaily?: number };
 
 export default function Warehouse() {
   const t = useT('warehouse');
@@ -197,14 +246,22 @@ export default function Warehouse() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  // Pulsiz ko'rinish shablonida (Omborchi) tannarx qiymati null — qiymat kartasi, ustuni va Excel yo'q
+  const money = useSeesMoney();
+  const canExport = useCanFetch('/export/warehouse');
 
+  /*
+   * Hamma qator bir so'rovda (sahifalash saytda). Ilgari `pageSize`
+   * yuborilmasdi va server standart 50 qatorni berardi: 50 dan ortiq SKU'da
+   * jadval va saqlash bahosi to'liq emas edi (2026-10-24).
+   */
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['warehouse', q],
-    queryFn: () => api.get<WarehouseResponse>('/stocks/warehouse', q),
+    queryFn: () => api.get<WarehouseResponse>('/stocks/warehouse', { ...q, page: 1, pageSize: SERVER_MAX_ROWS }),
   });
 
   const totals = data?.totals;
-  const rows = useMemo(() => rowsOf<WarehouseRow>(data?.rows), [data]);
+  const rows = useMemo(() => rowsOf<Row>(data?.rows), [data]);
 
   /** Sxemalar bo'yicha taqsimot javobda bo'lmasa — /stocks dan hisoblaymiz */
   const needSchemeFallback = Boolean(data) && !totals?.fbo && !totals?.fbs;
@@ -226,7 +283,7 @@ export default function Warehouse() {
     const stockRows = schemesQuery.data?.rows.items ?? [];
     const acc = { fbo: { ...EMPTY_SCHEME }, fbs: { ...EMPTY_SCHEME }, own: { ...EMPTY_SCHEME } };
     stockRows.forEach((r) => {
-      const unitCost = r.total > 0 ? r.costValue / r.total : 0;
+      const unitCost = r.total > 0 ? (r.costValue ?? 0) / r.total : 0;
       acc.fbo.units += r.fbo;
       acc.fbo.amount += r.fbo * unitCost;
       acc.fbs.units += r.fbs;
@@ -253,8 +310,49 @@ export default function Warehouse() {
     return { units, costValue, reserved, inTransit, volumeL };
   }, [totals, rows]);
 
-  const storagePerDay = kpi.volumeL * DEFAULTS.storagePerLiterPerDay;
-  const storagePerMonth = totals?.storagePerMonth ?? Math.round(storagePerDay * 30);
+  /*
+   * Saqlash bahosi — Uzum tarifi (shared tariffs.ts, 01.06.2026 dan). O'z
+   * omboridagi tovarga Uzum to'lov olmaydi: bu — shu qoldiq FBO'da tursa
+   * qancha bo'lishi. Aylanma har SKU uchun: qoldiq ÷ o'rtacha kunlik sotuv
+   * (server 30 kunlik o'rtachani beradi), 60 kungacha bepul, keyin hajm ×
+   * stavka. Toifa javobda yo'q — oddiy tarif olinadi, sahifa buni aytadi.
+   * Ilgari jami hajm × 120 so'm edi: o'lchanmagan, ~10 baravar katta stavka
+   * va bepul davrsiz (2026-10-24).
+   */
+  const storage = useMemo(() => {
+    let perDay = 0;
+    let paid = 0;
+    let free = 0;
+    let noVolume = 0;
+    let units = 0;
+    let daily = 0;
+    for (const r of rows) {
+      const own = r.own ?? 0;
+      if (own <= 0) continue;
+      const avg = r.avgDaily ?? 0;
+      units += own;
+      daily += avg;
+      const turnover = turnoverDays(own, avg);
+      if (storageRatePerLiterDay(turnover) === 0) {
+        free += 1;
+        continue;
+      }
+      // Server dona × hajmni beradi — bir donaning hajmi shundan
+      const perUnitL = (r.volumeL ?? 0) / own;
+      if (!(perUnitL > 0)) {
+        noVolume += 1;
+        continue;
+      }
+      paid += 1;
+      perDay += storageFeePerDay({ units: own, volumeL: perUnitL, turnover });
+    }
+    return { perDay, perMonth: perDay * 30, paid, free, noVolume, turnover: turnoverDays(units, daily) };
+  }, [rows]);
+  const overallTier = tierIndex(storage.turnover);
+  const tierList = Array.from({ length: TIER_COUNT }, (_, i) => {
+    const rate = tierRate(i, 'standard');
+    return `${tierLabel(i)} — ${rate > 0 ? f.num(rate) : t('capacity.freeWord')}`;
+  }).join(' · ');
 
   const byStore = useMemo(() => {
     if (totals?.byStore?.length) {
@@ -274,11 +372,25 @@ export default function Warehouse() {
       .map(([name, value], i) => ({ name, value, color: seriesColor(i) }));
   }, [totals, rows, tc]);
 
+  /*
+   * Qidiruv shu yerda (yuklangan qatorlar ichida), lekin serverdagi BILAN BIR
+   * XIL qoida (shared search.ts): nom, SKU kodi, shtrix-kod, Uzum SKU /
+   * mahsulot ID'si yoki uzum.uz havolasi — qator kalitlari serverdan keladi.
+   * Ilgari faqat nom va SKU kodi `toLowerCase().includes` bilan edi
+   * (2026-10-24). KPI, sxemalar va saqlash bahosi avvalgidek butun ombor
+   * bo'yicha — qidiruv faqat jadvalni (va uning jami qatorini) toraytiradi.
+   */
+  const query = useSkuQuery(search);
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) => r.title.toLowerCase().includes(s) || r.sku.toLowerCase().includes(s));
-  }, [rows, search]);
+    if (!query) return rows;
+    return rows.filter((r) =>
+      matchesSkuQuery(
+        query,
+        { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
+        { id: r.productId, uzumProductId: r.uzumProductId },
+      ),
+    );
+  }, [rows, query]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages);
@@ -382,9 +494,11 @@ export default function Warehouse() {
         badge={<PreviewBadge feature="warehouse" />}
         meta={<DataFreshness />}
         actions={
-          <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExport}>
-            {tc('btn.export')}
-          </Button>
+          canExport ? (
+            <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExport}>
+              {tc('btn.export')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -406,14 +520,16 @@ export default function Warehouse() {
               tone="info"
               loading={isLoading}
             />
-            <StatCard
-              label={t('kpi.value')}
-              value={isLoading ? '—' : f.money(kpi.costValue)}
-              hint={t('kpi.valueHint')}
-              icon={<Wallet className="h-5 w-5" />}
-              className={NEUTRAL_TONE}
-              loading={isLoading}
-            />
+            {money ? (
+              <StatCard
+                label={t('kpi.value')}
+                value={isLoading ? '—' : f.money(kpi.costValue)}
+                hint={t('kpi.valueHint')}
+                icon={<Wallet className="h-5 w-5" />}
+                className={NEUTRAL_TONE}
+                loading={isLoading}
+              />
+            ) : null}
             <StatCard
               label={t('kpi.reserved')}
               value={isLoading ? '—' : f.num(kpi.reserved)}
@@ -458,7 +574,7 @@ export default function Warehouse() {
                     title={t('scheme.fbo')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.fbo.units)}
-                    amount={Math.round(schemes.fbo.amount)}
+                    amount={money ? Math.round(schemes.fbo.amount) : null}
                     share={share(schemes.fbo.units)}
                     tone="info"
                   />
@@ -467,7 +583,7 @@ export default function Warehouse() {
                     title={t('scheme.fbs')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.fbs.units)}
-                    amount={Math.round(schemes.fbs.amount)}
+                    amount={money ? Math.round(schemes.fbs.amount) : null}
                     share={share(schemes.fbs.units)}
                     tone="info"
                   />
@@ -476,14 +592,16 @@ export default function Warehouse() {
                     title={t('scheme.own')}
                     hint={t('scheme.share')}
                     units={Math.round(schemes.own.units)}
-                    amount={Math.round(schemes.own.amount)}
+                    amount={money ? Math.round(schemes.own.amount) : null}
                     share={share(schemes.own.units)}
                     tone="info"
                   />
                 </div>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className={cn('grid gap-4', money && 'xl:grid-cols-2')}>
+                {/* Do'konlar kesimi tannarx qiymati bo'yicha — pulsiz shablonda yo'q */}
+                {money ? (
                 <Card>
                   <CardHeader icon={<Store />} tone="muted" title={t('stores.title')} subtitle={t('stores.hint')} />
                   <CardBody>
@@ -507,6 +625,7 @@ export default function Warehouse() {
                     )}
                   </CardBody>
                 </Card>
+                ) : null}
 
                 {/* Saqlash xarajati — xarajat xaritasidagi pushti rangda (COST_COLORS.storage) */}
                 <Card accent className={STORAGE_TONE}>
@@ -548,21 +667,57 @@ export default function Warehouse() {
                           <div className="well p-3.5">
                             <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.perDay')}</p>
                             <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
-                              <Amount value={f.money(Math.round(storagePerDay))} />
+                              {storage.perDay > 0 ? <Amount value={f.money(storage.perDay)} /> : t('capacity.free')}
                             </p>
                           </div>
                           <div className="well p-3.5">
                             <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.perMonth')}</p>
                             <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
-                              <Amount value={f.money(storagePerMonth)} />
+                              {storage.perMonth > 0 ? <Amount value={f.money(storage.perMonth)} /> : t('capacity.free')}
                             </p>
                           </div>
+                          {/*
+                            Ilgari bu plitkada "1 litr / kun — 120 so'm" turardi. Endi
+                            stavka aylanmaga bog'liq: umumiy aylanma qaysi guruhga
+                            tushgani va shu guruh stavkasi.
+                          */}
                           <div className="well p-3.5">
                             <p className="line-clamp-2 min-h-[2rem] eyebrow">{t('capacity.rate')}</p>
-                            <p className="tnum mt-1 truncate font-display text-lg font-bold tracking-[-0.01em] text-ink">
-                              <Amount value={f.money(DEFAULTS.storagePerLiterPerDay)} />
+                            <p className="tnum mt-1 text-sm font-semibold leading-snug text-ink">
+                              {overallTier === 0
+                                ? t('capacity.rateFree', { tier: tierLabel(0) })
+                                : t('capacity.ratePaid', { tier: tierLabel(overallTier), rate: f.num(tierRate(overallTier, 'standard')) })}
+                            </p>
+                            <p className="tnum mt-1 text-2xs text-muted">
+                              {Number.isFinite(storage.turnover)
+                                ? t('capacity.turnover', { n: f.num(storage.turnover) })
+                                : t('capacity.noSales')}
                             </p>
                           </div>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs leading-relaxed text-muted">
+                          <p className="tnum text-ink-soft">
+                            {t('capacity.split', { paid: storage.paid, free: FREE_TURNOVER_DAYS, freeSkus: storage.free })}
+                            {storage.noVolume > 0 ? ` · ${t('capacity.noVolumeSkus', { n: storage.noVolume })}` : ''}
+                          </p>
+                          <p className="tnum">
+                            {t('capacity.tiers', {
+                              date: f.date(TARIFF_EFFECTIVE_FROM),
+                              list: tierList,
+                              reduced: paidRates('reduced'),
+                            })}
+                          </p>
+                          <p>{t('capacity.own')}</p>
+                          <a
+                            className="inline-flex items-center gap-1.5 font-semibold text-brand-ink hover:underline"
+                            href={MANUAL_STORAGE_URL}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {t('capacity.manual')}
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
                         </div>
                       </div>
                     )}
@@ -577,20 +732,19 @@ export default function Warehouse() {
                   title={t('table.title')}
                   subtitle={t('table.hint')}
                   actions={
-                    <SearchInput
+                    <SkuSearchInput
                       value={search}
                       onChange={(v) => {
                         setSearch(v);
                         setPage(1);
                       }}
-                      placeholder={t('search.placeholder')}
                       className="w-full sm:w-72"
                     />
                   }
                 />
                 <div className="mt-3">
                   <DataTable<WarehouseRow>
-                    columns={columns}
+                    columns={money ? columns : columns.filter((c) => c.key !== 'value')}
                     rows={pageRows}
                     rowKey={(r) => r.skuId}
                     loading={isLoading}
@@ -626,9 +780,11 @@ export default function Warehouse() {
                         <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right md:table-cell">
                           {f.num(filtered.reduce((s, r) => s + (r.volumeL ?? 0), 0), 1)}
                         </td>
-                        <td className="tnum px-3 py-3 text-right md:whitespace-nowrap md:px-5">
-                          {f.money(filtered.reduce((s, r) => s + (r.costValue ?? 0), 0))}
-                        </td>
+                        {money ? (
+                          <td className="tnum px-3 py-3 text-right md:whitespace-nowrap md:px-5">
+                            {f.money(filtered.reduce((s, r) => s + (r.costValue ?? 0), 0))}
+                          </td>
+                        ) : null}
                       </>
                     }
                   />

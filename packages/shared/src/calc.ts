@@ -34,9 +34,18 @@ export function calcUnitEconomics(input: UnitCalcInput): UnitCalcResult {
   const revenue = input.price * soldUnits;
 
   const commission = (revenue * (input.commissionPct || 0)) / 100;
-  // Logistika sotilgan tovarlar uchun + qaytganlar uchun qaytish logistikasi
+  /*
+   * Logistika yig'imi faqat SOTILGAN donadan: Uzum qo'llanmasiga ko'ra xaridor
+   * qaytargan tovarning logistika yig'imi qaytariladi, omborga qaytarish va
+   * qayta sotuvga chiqarish esa tarif ichida (seller.uzum.uz/manual/uz/3.tariffs,
+   * 01.06.2026 dan). Ilgari yig'im yuborilgan HAR donadan olinardi va qaytgan
+   * tovar uchun to'lanmaydigan pul foydadan ayrilardi (2026-10-24).
+   *
+   * `returnLogistics` — Uzum to'lovi emas, sotuvchining qaytgan bitta donaga
+   * o'z xarajati (qayta qadoqlash, brak); odatda 0.
+   */
   const returnedUnits = qty - soldUnits;
-  const logisticsTotal = input.logistics * qty + input.returnLogistics * returnedUnits;
+  const logisticsTotal = input.logistics * soldUnits + input.returnLogistics * returnedUnits;
   const storageTotal = input.storagePerDay * Math.max(0, input.storageDays) * qty;
   const cogs = input.purchasePrice * qty;
   const packaging = (input.packaging || 0) * qty;
@@ -62,7 +71,7 @@ export function calcUnitEconomics(input: UnitCalcInput): UnitCalcResult {
     input.purchasePrice +
     (input.packaging || 0) +
     (input.otherCost || 0) +
-    input.logistics +
+    input.logistics * buyout +
     input.returnLogistics * (1 - buyout) +
     input.storagePerDay * Math.max(0, input.storageDays);
   const breakEvenPrice = variablePerUnitPct >= 1 ? 0 : round(fixedPerUnit / (1 - variablePerUnitPct) / buyout);
@@ -221,7 +230,7 @@ export function maxPddPrice(maxCost: number, cargoCost: number, rate: number): n
  * usuli): har bir ulush butun son, yig'indisi esa aynan `amount`.
  * Og'irligi 0 bo'lgan qatorga ulush tushmaydi.
  */
-function splitByWeight(amount: number, weights: readonly number[]): number[] {
+export function splitByWeight(amount: number, weights: readonly number[]): number[] {
   const sum = weights.reduce((a, w) => a + w, 0);
   if (!(amount > 0) || !(sum > 0)) return weights.map(() => 0);
   const exact = weights.map((w) => (amount * w) / sum);

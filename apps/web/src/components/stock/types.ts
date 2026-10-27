@@ -4,7 +4,7 @@
  * (StockRow, StocksResponse, ShipmentRow — umumiy paketdan olinadi).
  */
 
-import type { Paginated } from '@savdoiq/shared';
+import type { Paginated, SkuSearchKeys } from '@savdoiq/shared';
 
 /** GET /stocks/history?skuId= — 60 kunlik qoldiq tarixi */
 export type StockHistoryPoint = {
@@ -14,8 +14,11 @@ export type StockHistoryPoint = {
   own: number;
 };
 
-/** GET /stocks/warehouse — "o'z ombori" kesimidagi bitta SKU */
-export interface WarehouseRow {
+/**
+ * GET /stocks/warehouse — "o'z ombori" kesimidagi bitta SKU. Qidiruv kalitlari
+ * (SkuSearchKeys) bilan: jadval shtrix-kod va Uzum ID bo'yicha ham qidiriladi.
+ */
+export interface WarehouseRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;

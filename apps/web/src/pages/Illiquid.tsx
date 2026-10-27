@@ -18,8 +18,11 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { FilterBar } from '@/components/filters';
 import { BarsChart, ChartCard, DonutChart, CHART_COLORS } from '@/components/charts';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
+import { useDebounced } from '@/components/sales/useDebounced';
 import {
   Badge,
   Button,
@@ -31,7 +34,6 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  SearchInput,
   Segmented,
   Skeleton,
   StatCard,
@@ -247,15 +249,31 @@ export default function Illiquid() {
 
   const [days, setDays] = useState<DaysFilter>('30');
   const [search, setSearch] = useState('');
+  const debounced = useDebounced(search.trim(), 350);
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  // Excel'da tannarx qiymati bor — pulsiz ko'rinish shablonida (Omborchi) tugma yo'q (server ham 403)
+  const canExport = useCanFetch('/export/illiquid');
+  /*
+   * Pulsiz shablonda muzlagan kapital va qoldiq qiymati null (tannarx bo'yicha):
+   * kartalar va grafiklar SKU soni bo'yicha chiziladi, pul ustunlari yo'q.
+   * Saqlash to'lovi ochiq — omborchi aynan shu bilan ishlaydi.
+   */
+  const money = useSeesMoney();
 
+  /*
+   * Qidiruv SERVERDA — umumiy qoida (shared search.ts): nom, SKU kodi,
+   * shtrix-kod, Uzum SKU / mahsulot ID'si, uzum.uz havolasi. Ilgari jadval
+   * faqat JORIY SAHIFANI (25 qator) nom va SKU kodi bo'yicha qidirardi:
+   * ikkinchi sahifadagi tovar umuman topilmasdi (2026-10-24).
+   */
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['illiquid', q, days, page],
+    queryKey: ['illiquid', q, days, page, debounced],
     queryFn: () =>
       api.get<IlliquidResponse>('/products/illiquid', {
         ...q,
         days: Number(days),
+        search: debounced || undefined,
         page,
         pageSize: PAGE_SIZE,
       }),
@@ -265,18 +283,14 @@ export default function Illiquid() {
     setPage(1);
   }, [days, search]);
 
-  const allRows = useMemo<IlliquidRow[]>(() => data?.rows.items ?? [], [data]);
-
-  /** Server filtrni qo'llamagan bo'lsa ham natija bir xil bo'lishi uchun */
-  const rows = useMemo(() => {
-    const min = Number(days);
-    const needle = search.trim().toLowerCase();
-    return allRows.filter((r) => {
-      if (r.daysWithoutSale < min) return false;
-      if (needle && !`${r.title} ${r.sku}`.toLowerCase().includes(needle)) return false;
-      return true;
-    });
-  }, [allRows, days, search]);
+  /*
+   * Ro'yxat — serverning o'zi: nolikvid = tanlangan kundan ko'p sotilmagan YOKI
+   * qoldig'i 90 kundan ortiqqa yetadigan (sotilib tursa ham). Ilgari sahifa
+   * qatorlarni yana "sotilmagan kunlar" bo'yicha filtrlardi: ortiqcha qoldiqli,
+   * lekin sotilayotgan SKU jadvaldan tushib, xulosada "13 SKU" turgan holda
+   * jadval bo'sh chiqardi (2026-10-27).
+   */
+  const rows = useMemo<IlliquidRow[]>(() => data?.rows.items ?? [], [data]);
 
   /**
    * Muzlagan kapital va dona serverdan (butun ro'yxat), saqlash va sotuv
@@ -320,13 +334,16 @@ export default function Illiquid() {
   const recoData = useMemo(() => {
     const keys: IlliquidRow['recommendation'][] = ['discount', 'promo', 'withdraw', 'watch'];
     return keys
-      .map((k) => ({
-        name: t(`reco.${k}`),
-        value: rows.filter((r) => r.recommendation === k).reduce((s, r) => s + r.frozenCapital, 0),
-        color: RECO_COLOR[k],
-      }))
+      .map((k) => {
+        const list = rows.filter((r) => r.recommendation === k);
+        return {
+          name: t(`reco.${k}`),
+          value: money ? list.reduce((s, r) => s + (r.frozenCapital ?? 0), 0) : list.length,
+          color: RECO_COLOR[k],
+        };
+      })
       .filter((d) => d.value > 0);
-  }, [rows, t]);
+  }, [rows, t, money]);
 
   const pages = data?.rows.pages ?? 1;
 
@@ -368,9 +385,11 @@ export default function Illiquid() {
       render: (r) => (
         <div className="leading-tight">
           <span className="font-semibold text-ink">{f.num(r.stock)}</span>
-          <p className="tnum text-2xs text-muted" title={t('col.stockValue')}>
-            {f.money(r.stockValue)}
-          </p>
+          {money ? (
+            <p className="tnum text-2xs text-muted" title={t('col.stockValue')}>
+              {f.money(r.stockValue)}
+            </p>
+          ) : null}
         </div>
       ),
       className: PAD,
@@ -457,9 +476,11 @@ export default function Illiquid() {
         badge={<PreviewBadge feature="illiquid" />}
         meta={<DataFreshness />}
         actions={
-          <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={onExport}>
-            {t('export')}
-          </Button>
+          canExport ? (
+            <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={onExport}>
+              {t('export')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -489,14 +510,16 @@ export default function Illiquid() {
               kartochkada. Ilgari saqlash binafsha — Uzum ulushi rangida edi.
             */}
             <StatGrid>
-              <StatCard
-                label={t('kpi.frozen')}
-                value={isLoading ? '' : f.money(totals.frozen)}
-                hint={t('kpi.frozenHint')}
-                loading={isLoading}
-                icon={<Snowflake className="h-5 w-5" />}
-                tone="warn"
-              />
+              {money ? (
+                <StatCard
+                  label={t('kpi.frozen')}
+                  value={isLoading ? '' : f.money(totals.frozen)}
+                  hint={t('kpi.frozenHint')}
+                  loading={isLoading}
+                  icon={<Snowflake className="h-5 w-5" />}
+                  tone="warn"
+                />
+              ) : null}
               <StatCard
                 label={t('kpi.units')}
                 value={isLoading ? '' : f.num(totals.units)}
@@ -551,8 +574,12 @@ export default function Illiquid() {
                     data={buckets}
                     xKey="name"
                     height={260}
-                    // Muzlagan kapital — KPI bilan bir rangda (sariq: xavf, hali zarar emas)
-                    series={[{ key: 'frozen', name: t('kpi.frozen'), money: true, color: CHART_COLORS.warn }]}
+                    // Muzlagan kapital — KPI bilan bir rangda (sariq: xavf, hali zarar emas); pulsiz shablonda — SKU soni
+                    series={
+                      money
+                        ? [{ key: 'frozen', name: t('kpi.frozen'), money: true, color: CHART_COLORS.warn }]
+                        : [{ key: 'skus', name: t('kpi.skus'), color: CHART_COLORS.warn }]
+                    }
                   />
                 ) : (
                   <EmptyState title={t('empty.title')} hint={t('empty.hint')} />
@@ -568,9 +595,9 @@ export default function Illiquid() {
                     height={260}
                     center={
                       <>
-                        <span className="eyebrow">{t('kpi.frozen')}</span>
+                        <span className="eyebrow">{money ? t('kpi.frozen') : t('kpi.skus')}</span>
                         <span className="tnum font-display text-lg font-extrabold text-ink">
-                          {f.compact(totals.frozen)}
+                          {money ? f.compact(totals.frozen) : f.num(rows.length)}
                         </span>
                       </>
                     }
@@ -587,18 +614,11 @@ export default function Illiquid() {
                 tone="warn"
                 title={t('table.title')}
                 subtitle={t('table.found', { n: rows.length })}
-                actions={
-                  <SearchInput
-                    value={search}
-                    onChange={setSearch}
-                    placeholder={t('common.search')}
-                    className="w-full sm:w-64"
-                  />
-                }
+                actions={<SkuSearchInput value={search} onChange={setSearch} className="w-full sm:w-72" />}
               />
               <div className="mt-4">
                 <DataTable<IlliquidRow>
-                  columns={columns}
+                  columns={money ? columns : columns.filter((c) => c.key !== 'frozen')}
                   rows={rows}
                   rowKey={(r) => r.skuId}
                   loading={isLoading}
@@ -606,8 +626,8 @@ export default function Illiquid() {
                   empty={
                     <EmptyState
                       icon={<Snowflake className="h-6 w-6" />}
-                      title={allRows.length ? t('empty.filtered') : t('empty.title')}
-                      hint={allRows.length ? undefined : t('empty.hint')}
+                      title={debounced ? t('empty.filtered') : t('empty.title')}
+                      hint={debounced ? undefined : t('empty.hint')}
                     />
                   }
                   footer={
@@ -615,15 +635,19 @@ export default function Illiquid() {
                       <td className="py-3 pl-3 pr-2.5 text-sm md:pl-5">{t('common.total')}</td>
                       <td className="tnum px-2.5 py-3 text-right text-sm">
                         {f.num(totals.units)}
-                        <p className="text-2xs font-normal text-muted md:whitespace-nowrap">{f.money(totals.stockValue)}</p>
+                        {money ? (
+                          <p className="text-2xs font-normal text-muted md:whitespace-nowrap">{f.money(totals.stockValue)}</p>
+                        ) : null}
                       </td>
                       <td className="px-2.5 py-3" />
                       <td className="tnum hidden whitespace-nowrap px-2.5 py-3 text-right text-sm md:table-cell">
                         {f.money(totals.storagePerMonth)}
                       </td>
-                      <td className="tnum px-2.5 py-3 text-right text-sm text-warn-ink md:whitespace-nowrap">
-                        {f.money(totals.frozen)}
-                      </td>
+                      {money ? (
+                        <td className="tnum px-2.5 py-3 text-right text-sm text-warn-ink md:whitespace-nowrap">
+                          {f.money(totals.frozen)}
+                        </td>
+                      ) : null}
                       <td className="py-3 pl-2.5 pr-3 md:pr-5" />
                     </>
                   }

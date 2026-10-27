@@ -7,6 +7,7 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { useFeature, useSession } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 
 registerNamespace('costCoverage', {
   uz: {
@@ -70,7 +71,9 @@ export function CostCoverage({ className }: { className?: string }) {
   const q = usePeriodQuery();
   const access = useFeature('cost_price');
   const hasCompany = useSession((s) => Boolean(s.me?.company));
-  const enabled = hasCompany && access === 'full';
+  // Pulsiz ko'rinish shablonida (Marketolog) foyda yo'q — uning ishonchliligi haqidagi chip ham yo'q
+  const seesMoney = useSeesMoney();
+  const enabled = hasCompany && access === 'full' && seesMoney;
 
   const { data, isPlaceholderData } = useQuery({
     queryKey: ['cost-coverage', q],

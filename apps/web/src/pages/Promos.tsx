@@ -23,6 +23,10 @@ import {
   StatGrid,
   type Column,
 } from '@/components/ui';
+import { useSeesMoney } from '@/lib/view';
+
+/** Pulsiz ko'rinish shablonida (Marketolog) server bu ustunlarni null qiladi — chizilmaydi */
+const PROMO_MONEY_COLUMNS = new Set(['profitNow', 'profitPromo', 'marginPromo']);
 
 registerNamespace('promos', {
   uz: {
@@ -130,6 +134,7 @@ export default function Promos() {
   const t = useT('promos');
   const f = useFormat();
   const q = usePeriodQuery();
+  const money = useSeesMoney();
 
   const [openPromo, setOpenPromo] = useState<string | null>(null);
 
@@ -268,14 +273,16 @@ export default function Promos() {
             tone="brand"
             loading={isLoading}
           />
-          <StatCard
-            label={t('kpi.potential')}
-            value={f.money(data?.totals.potentialProfit ?? 0)}
-            hint={t('kpi.potentialHint')}
-            icon={<TrendingUp className="h-5 w-5" />}
-            tone="warn"
-            loading={isLoading}
-          />
+          {money ? (
+            <StatCard
+              label={t('kpi.potential')}
+              value={f.money(data?.totals.potentialProfit ?? 0)}
+              hint={t('kpi.potentialHint')}
+              icon={<TrendingUp className="h-5 w-5" />}
+              tone="warn"
+              loading={isLoading}
+            />
+          ) : null}
         </StatGrid>
 
         {isLoading ? (
@@ -310,7 +317,7 @@ export default function Promos() {
                   subtitle={t('hint')}
                 />
                 <DataTable<PromoSkuRow>
-                  columns={columns}
+                  columns={money ? columns : columns.filter((c) => !PROMO_MONEY_COLUMNS.has(c.key))}
                   rows={active.rows}
                   rowKey={(r) => r.skuId}
                   empty={<EmptyState icon={<Megaphone className="h-6 w-6" />} title={t('table.empty')} />}

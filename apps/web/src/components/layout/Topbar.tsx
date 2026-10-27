@@ -8,6 +8,9 @@ import { PeriodPicker, StoreSwitcher } from '@/components/filters';
 import { Avatar } from '@/components/ui';
 import { NAV, findNavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
+import { useCanSeeSettings } from '@/lib/view';
+import { PaletteTrigger } from '@/components/palette/PaletteTrigger';
+import { CompanySwitcher } from '@/components/team/CompanySwitcher';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
   { id: 'uz', label: "O'zbek", flag: '🇺🇿' },
@@ -40,7 +43,11 @@ function LangMenu() {
         className="flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
       >
         <Globe className="h-4 w-4 text-muted" />
-        <span className="hidden sm:inline">{current.label}</span>
+        {/*
+          Til nomi faqat xl dan: 640–1279 px da yuqori panel to'lib, qator 4–17 px
+          ga toshardi (2026-10-24). Tilni Ctrl+K oynasidan ham almashtirish mumkin.
+        */}
+        <span className="hidden xl:inline">{current.label}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 text-muted transition-transform', open && 'rotate-180')} />
       </button>
       {open ? (
@@ -75,7 +82,9 @@ function ProfileMenu() {
   const navigate = useNavigate();
   const ref = useClose(() => setOpen(false));
 
-  const name = [me?.user.firstName, me?.user.lastName].filter(Boolean).join(' ') || me?.user.username || 'Foydalanuvchi';
+  const name = [me?.user.firstName, me?.user.lastName].filter(Boolean).join(' ') || me?.user.username || t('menu.user');
+  // Uzum kabinetini boshqarish — faqat shablonsiz a'zo va egasiga (views.ts: Sozlamalar bo'limlari)
+  const canSee = useCanSeeSettings();
 
   return (
     <div className="relative" ref={ref}>
@@ -89,7 +98,8 @@ function ProfileMenu() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-pop">
+        // w-72: kompaniya nomi rol nishoni yonida kesilmasin (almashtirgich shu menyuda)
+        <div className="absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-pop">
           <div className="border-b border-line p-4">
             <div className="flex items-center gap-3">
               <Avatar src={me?.user.photoUrl} name={name} size={40} />
@@ -101,6 +111,8 @@ function ProfileMenu() {
               </div>
             </div>
           </div>
+          {/* Kompaniya almashtirgich — yuqori panelda alohida tugma emas: u ba'zi kengliklarda allaqachon to'la */}
+          <CompanySwitcher className="border-b border-line p-1.5" onDone={() => setOpen(false)} />
           <div className="p-1.5">
             <Link
               to="/settings"
@@ -116,13 +128,15 @@ function ProfileMenu() {
             >
               <Zap className="h-4 w-4" /> {t('nav.pricing')}
             </Link>
-            <Link
-              to="/settings#uzum"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-2"
-            >
-              <UserIcon className="h-4 w-4" /> Uzum kabinet
-            </Link>
+            {canSee('uzum') ? (
+              <Link
+                to="/settings#uzum"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-2"
+              >
+                <UserIcon className="h-4 w-4" /> {t('menu.uzum')}
+              </Link>
+            ) : null}
             <button
               onClick={async () => {
                 setOpen(false);
@@ -131,7 +145,7 @@ function ProfileMenu() {
               }}
               className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-danger-ink transition-colors hover:bg-danger/10"
             >
-              <LogOut className="h-4 w-4" /> Chiqish
+              <LogOut className="h-4 w-4" /> {t('menu.logout')}
             </button>
           </div>
         </div>
@@ -161,8 +175,13 @@ export function Topbar() {
           <Menu className="h-5 w-5" />
         </button>
 
-        {/* Sahifa yo'li — katta sarlavha sahifaning o'zida turadi */}
-        <div className="hidden min-w-0 flex-1 items-center gap-1.5 text-sm md:flex">
+        {/*
+          Sahifa yo'li — katta sarlavha sahifaning o'zida turadi.
+          overflow-hidden: tor panelda (768–840 px) yo'l 0 px gacha qisiladi, guruh
+          nomi esa qisqarmaydi — ilgari u o'ngga toshib, qo'shni tugmalar ostidan
+          "M…" bo'lib chiqib turardi (qidiruv belgisi ostida ham).
+        */}
+        <div className="hidden min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-sm md:flex">
           {group ? (
             <>
               <span className="shrink-0 text-muted">{t(group.titleKey)}</span>
@@ -171,6 +190,12 @@ export function Topbar() {
           ) : null}
           <span className="truncate font-semibold text-ink">{item ? t(item.labelKey) : 'SavdoIQ'}</span>
         </div>
+
+        {/*
+          Qidiruv (Ctrl K). Qatordagi bo‘sh joyga qarab o‘zi kichrayadi va sig‘masa
+          yashirinadi — panel hech qachon ekrandan chiqmaydi (PaletteTrigger izohi).
+        */}
+        <PaletteTrigger />
 
         <div className="flex flex-1 items-center justify-end gap-1.5 md:flex-none">
           <StoreSwitcher className="hidden sm:block" />

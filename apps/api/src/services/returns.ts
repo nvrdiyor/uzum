@@ -113,7 +113,8 @@ export function splitLine(it: LineFields): LineSplit {
  */
 const NO_REASON_TEXT = /не\s+указал\s+причин/i;
 
-function realReason(raw: string | null): string | null {
+// Eksport: Sotuv voronkasidagi sabablar ham aynan shu qoida bilan (routes/funnel.ts)
+export function realReason(raw: string | null): string | null {
   const value = raw?.trim();
   return value && !NO_REASON_TEXT.test(value) ? value : null;
 }

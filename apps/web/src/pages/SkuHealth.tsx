@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import { FilterBar } from '@/components/filters';
 import { useDebounced } from '@/components/sales/useDebounced';
 import { NEUTRAL_TONE, SkuNameCell } from '@/components/stock/common';
@@ -21,13 +22,13 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  SearchInput,
   Segmented,
   StatCard,
   StatGrid,
   type Column,
   type Tone,
 } from '@/components/ui';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 
 const PAGE_SIZE = 50;
 
@@ -52,7 +53,6 @@ registerNamespace('skuHealth', {
     'col.stock': 'Qoldiq',
     'filter.all': 'Barchasi',
     'filter.issues': 'Faqat muammolilar',
-    'filter.search': 'SKU yoki nom',
     'issue.blocked': 'Bloklangan',
     'issue.archived': 'Arxivda',
     'issue.high_returns': 'Ko‘p qaytariladi',
@@ -87,7 +87,6 @@ registerNamespace('skuHealth', {
     'col.stock': 'Остаток',
     'filter.all': 'Все',
     'filter.issues': 'Только с проблемами',
-    'filter.search': 'SKU или название',
     'issue.blocked': 'Заблокирован',
     'issue.archived': 'В архиве',
     'issue.high_returns': 'Частые возвраты',
@@ -122,7 +121,6 @@ registerNamespace('skuHealth', {
     'col.stock': 'Stock',
     'filter.all': 'All',
     'filter.issues': 'Issues only',
-    'filter.search': 'SKU or title',
     'issue.blocked': 'Blocked',
     'issue.archived': 'Archived',
     'issue.high_returns': 'Often returned',
@@ -166,6 +164,8 @@ export default function SkuHealth() {
   const [searchInput, setSearchInput] = useState('');
   const search = useDebounced(searchInput);
   const [page, setPage] = useState(1);
+  // Brak va yo'qolganning tannarxdagi qiymati — pulsiz ko'rinish shablonida null, karta va ustun yo'q
+  const money = useSeesMoney();
 
   useEffect(() => {
     setPage(1);
@@ -303,15 +303,17 @@ export default function SkuHealth() {
             className={totals && totals.highReturns > 0 ? undefined : NEUTRAL_TONE}
             loading={isLoading}
           />
-          <StatCard
-            label={t('kpi.loss')}
-            value={f.money(totals?.lossValue ?? 0)}
-            hint={t('kpi.lossHint')}
-            icon={<PackageX className="h-5 w-5" />}
-            tone="danger"
-            className={totals && totals.lossValue > 0 ? undefined : NEUTRAL_TONE}
-            loading={isLoading}
-          />
+          {money ? (
+            <StatCard
+              label={t('kpi.loss')}
+              value={f.money(totals?.lossValue ?? 0)}
+              hint={t('kpi.lossHint')}
+              icon={<PackageX className="h-5 w-5" />}
+              tone="danger"
+              className={totals && totals.lossValue > 0 ? undefined : NEUTRAL_TONE}
+              loading={isLoading}
+            />
+          ) : null}
         </StatGrid>
 
         <FilterBar className="mt-5">
@@ -323,12 +325,8 @@ export default function SkuHealth() {
               { value: 'all', label: t('filter.all') },
             ]}
           />
-          <SearchInput
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder={t('filter.search')}
-            className="w-full sm:w-64"
-          />
+          {/* Nom, SKU kodi, shtrix-kod, Uzum ID yoki havola — server umumiy qoida bilan qidiradi (shared search.ts) */}
+          <SkuSearchInput value={searchInput} onChange={setSearchInput} className="w-full sm:w-72" />
         </FilterBar>
 
         <Card>
@@ -339,7 +337,7 @@ export default function SkuHealth() {
             subtitle={t('hint')}
           />
           <DataTable<SkuHealthRow>
-            columns={columns}
+            columns={money ? columns : columns.filter((c) => c.key !== 'lossValue')}
             rows={rows}
             rowKey={(r) => r.skuId}
             loading={isLoading}

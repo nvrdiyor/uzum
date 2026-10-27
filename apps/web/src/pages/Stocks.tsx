@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Boxes, Download, Gauge, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from '@/components/icons';
-import type { StockRow, StocksResponse } from '@savdoiq/shared';
+import { matchesSkuQuery, type StockRow, type StocksResponse } from '@savdoiq/shared';
 import {
   Button,
   Card,
@@ -13,30 +13,31 @@ import {
   PageHeader,
   PlanGate,
   PreviewBadge,
-  SearchInput,
   Segmented,
   SkeletonRows,
   StatCard,
   toast,
   type Column,
 } from '@/components/ui';
+import { SkuSearchInput, useSkuQuery } from '@/components/products/SkuSearchInput';
 import { ZeroAware } from '@/components/ui/ZeroAware';
 import { BarsChart, CHART_COLORS } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { useStores } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import {
   NEUTRAL_TONE,
   STATE_COLOR,
+  STATE_TONE,
   STOCK_STATES,
   SkuNameCell,
   StockStatusBadge,
   TONE_TEXT,
-  daysTone,
   type StockState,
 } from '@/components/stock/common';
 import { StockHistoryDrawer } from '@/components/stock/StockHistoryDrawer';
@@ -59,7 +60,6 @@ registerNamespace('stocks', {
     'kpi.profitHint': 'Tushum − tannarx − soliq',
     'kpi.noCostUnits': '{n} dona tannarxsiz — foydaga kirmagan',
     'filter.all': 'Barchasi',
-    'search.placeholder': 'Nomi yoki SKU bo‘yicha qidirish',
     'chart.byStatus': 'Holat bo‘yicha taqsimot',
     'chart.byStatusHint': 'Qatorni bosing — jadval shu holat bo‘yicha filtrlanadi',
     'chart.frozen': 'Ortiqcha va harakatsiz qoldiqda',
@@ -112,7 +112,6 @@ registerNamespace('stocks', {
     'kpi.profitHint': 'Выручка − себестоимость − налог',
     'kpi.noCostUnits': '{n} шт. без себестоимости — не учтены в прибыли',
     'filter.all': 'Все',
-    'search.placeholder': 'Поиск по названию или SKU',
     'chart.byStatus': 'Распределение по статусам',
     'chart.byStatusHint': 'Нажмите на строку — таблица отфильтруется по статусу',
     'chart.frozen': 'В избытке и неликвиде',
@@ -165,7 +164,6 @@ registerNamespace('stocks', {
     'kpi.profitHint': 'Payout − cost − tax',
     'kpi.noCostUnits': '{n} units without cost price — not in profit',
     'filter.all': 'All',
-    'search.placeholder': 'Search by name or SKU',
     'chart.byStatus': 'Distribution by status',
     'chart.byStatusHint': 'Click a row — the table filters to that status',
     'chart.frozen': 'Tied up in excess and dead stock',
@@ -236,6 +234,13 @@ export default function Stocks() {
   const [page, setPage] = useState(1);
   const [active, setActive] = useState<StockRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  /*
+   * Pulsiz ko'rinish shablonida (Omborchi) server tannarx qiymati, kutilayotgan
+   * tushum va foydani null qiladi: o'sha kartalar, ustunlar va Excel (fayl
+   * ichidagi pulni yashirib bo'lmaydi) chizilmaydi — "0 so'm" qolmasin.
+   */
+  const money = useSeesMoney();
+  const canExport = useCanFetch('/export/stocks');
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['stocks', q],
@@ -244,11 +249,24 @@ export default function Stocks() {
 
   const allRows = useMemo<StockRow[]>(() => data?.rows?.items ?? [], [data]);
 
+  /*
+   * Qidiruv shu yerda (yuklangan 500 qator ichida), lekin serverdagi BILAN
+   * BIR XIL qoida (shared search.ts): nom, SKU kodi, shtrix-kod, Uzum SKU /
+   * mahsulot ID'si yoki uzum.uz havolasi — qator kalitlari serverdan keladi.
+   * Ilgari faqat nom va SKU kodi edi (2026-10-24). KPI kartochkalari
+   * qidiruvga bog'liq emas (butun ombor), taqsimot va jadval — qidiruv bo'yicha.
+   */
+  const query = useSkuQuery(search);
   const searched = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return allRows;
-    return allRows.filter((r) => r.title.toLowerCase().includes(s) || r.sku.toLowerCase().includes(s));
-  }, [allRows, search]);
+    if (!query) return allRows;
+    return allRows.filter((r) =>
+      matchesSkuQuery(
+        query,
+        { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
+        { id: r.productId, uzumProductId: r.uzumProductId },
+      ),
+    );
+  }, [allRows, query]);
 
   const counts = useMemo(() => {
     const map: Record<StatusFilter, number> = { all: searched.length, critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
@@ -279,7 +297,7 @@ export default function Stocks() {
           status: s,
           skus: list.length,
           units: list.reduce((sum, r) => sum + r.total, 0),
-          value: list.reduce((sum, r) => sum + r.costValue, 0),
+          value: list.reduce((sum, r) => sum + (r.costValue ?? 0), 0),
         };
       }),
     [searched],
@@ -304,8 +322,8 @@ export default function Stocks() {
       filtered.reduce(
         (acc, r) => {
           acc.total += r.total;
-          acc.costValue += r.costValue;
-          acc.payoutValue += r.payoutValue;
+          acc.costValue += r.costValue ?? 0;
+          acc.payoutValue += r.payoutValue ?? 0;
           return acc;
         },
         { total: 0, costValue: 0, payoutValue: 0 },
@@ -434,11 +452,17 @@ export default function Stocks() {
       sortable: true,
       // Kamayish tartibida (birinchi bosish) eng shoshilinchi tepada, "Sotuv yo'q" pastda
       sortValue: (r) => -(r.daysLeft ?? Number.MAX_SAFE_INTEGER),
+      /*
+       * Holat va "yetadi" — Rejalashtiruvchining o'zi (server: yetkazish muddati,
+       * yo'ldagi tovar bilan). Kun yozuvi nishon rangida: ilgari u qat'iy 7/14
+       * kunlik chegaradan bo'yalardi va yetkazish 14 kun bo'lsa nishon qizil
+       * ("Kritik"), kun yozuvi esa sariq chiqardi (2026-10-24).
+       */
       render: (r) => (
         <div className="text-right leading-tight">
           <StockStatusBadge status={r.status} />
           <p className="tnum mt-1 text-2xs" title={t('col.avgDaily')}>
-            <span className={cn('font-semibold', TONE_TEXT[daysTone(r.daysLeft)])}>
+            <span className={cn('font-semibold', TONE_TEXT[STATE_TONE[r.status]])}>
               {r.daysLeft === null ? t('noSales') : t('days', { n: r.daysLeft > 999 ? '999+' : f.num(r.daysLeft) })}
             </span>
             {r.avgDaily > 0 ? <span className="text-muted"> · {t('perDay', { n: f.num(r.avgDaily, 1) })}</span> : null}
@@ -460,9 +484,11 @@ export default function Stocks() {
         badge={<PreviewBadge feature="stocks_fbo_fbs" />}
         meta={<DataFreshness />}
         actions={
-          <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExport}>
-            {tc('btn.export')}
-          </Button>
+          canExport ? (
+            <Button variant="outline" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExport}>
+              {tc('btn.export')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -494,42 +520,48 @@ export default function Stocks() {
               className={NEUTRAL_TONE}
               loading={isLoading}
             />
-            <StatCard
-              label={t('kpi.cost')}
-              value={isLoading ? '—' : f.money(totals?.costValue ?? 0)}
-              hint={t('kpi.costHint')}
-              icon={<Wallet className="h-5 w-5" />}
-              className={NEUTRAL_TONE}
-              loading={isLoading}
-            />
+            {money ? (
+              <StatCard
+                label={t('kpi.cost')}
+                value={isLoading ? '—' : f.money(totals?.costValue ?? 0)}
+                hint={t('kpi.costHint')}
+                icon={<Wallet className="h-5 w-5" />}
+                className={NEUTRAL_TONE}
+                loading={isLoading}
+              />
+            ) : null}
             <StatCard
               label={t('kpi.retail')}
               value={isLoading ? '—' : f.money(totals?.retailValue ?? 0)}
               hint={t('kpi.retailHint')}
               icon={<Tag className="h-5 w-5" />}
-              className={NEUTRAL_TONE}
+              className={cn(NEUTRAL_TONE, !money && 'col-span-2 lg:col-span-1')}
               loading={isLoading}
             />
-            <StatCard
-              label={t('kpi.payout')}
-              value={isLoading ? '—' : f.money(totals?.payoutValue ?? 0)}
-              hint={t('kpi.payoutHint')}
-              icon={<HandCoins className="h-5 w-5" />}
-              tone="warn"
-              loading={isLoading}
-            />
-            <StatCard
-              label={t('kpi.profit')}
-              value={isLoading ? '—' : f.money(totals?.profitValue ?? 0)}
-              hint={
-                (totals?.unitsNoCost ?? 0) > 0
-                  ? t('kpi.noCostUnits', { n: f.num(totals?.unitsNoCost ?? 0) })
-                  : t('kpi.profitHint')
-              }
-              icon={<TrendingUp className="h-5 w-5" />}
-              tone={(totals?.profitValue ?? 0) < 0 ? 'danger' : 'brand'}
-              loading={isLoading}
-            />
+            {money ? (
+              <>
+                <StatCard
+                  label={t('kpi.payout')}
+                  value={isLoading ? '—' : f.money(totals?.payoutValue ?? 0)}
+                  hint={t('kpi.payoutHint')}
+                  icon={<HandCoins className="h-5 w-5" />}
+                  tone="warn"
+                  loading={isLoading}
+                />
+                <StatCard
+                  label={t('kpi.profit')}
+                  value={isLoading ? '—' : f.money(totals?.profitValue ?? 0)}
+                  hint={
+                    (totals?.unitsNoCost ?? 0) > 0
+                      ? t('kpi.noCostUnits', { n: f.num(totals?.unitsNoCost ?? 0) })
+                      : t('kpi.profitHint')
+                  }
+                  icon={<TrendingUp className="h-5 w-5" />}
+                  tone={(totals?.profitValue ?? 0) < 0 ? 'danger' : 'brand'}
+                  loading={isLoading}
+                />
+              </>
+            ) : null}
           </div>
 
           {isError ? (
@@ -542,7 +574,7 @@ export default function Stocks() {
             </Card>
           ) : (
             <>
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className={cn('grid gap-4', money && 'xl:grid-cols-2')}>
                 {/*
                   Halqa o'rniga holatlar ro'yxati: halqa faqat donalar ulushini
                   ko'rsatib, kartochkaning yarmi bo'sh turardi. Endi har holat
@@ -564,6 +596,7 @@ export default function Stocks() {
                       <StatusBreakdown
                         stats={byStatus}
                         value={status}
+                        money={money}
                         onSelect={(next) => {
                           setStatus(next);
                           setPage(1);
@@ -573,6 +606,7 @@ export default function Stocks() {
                   </CardBody>
                 </Card>
 
+                {money ? (
                 <Card>
                   <CardHeader
                     icon={<Wallet />}
@@ -597,6 +631,7 @@ export default function Stocks() {
                     )}
                   </CardBody>
                 </Card>
+                ) : null}
               </div>
 
               <Card>
@@ -604,13 +639,12 @@ export default function Stocks() {
                   title={t('table.title')}
                   subtitle={t('table.hint')}
                   actions={
-                    <SearchInput
+                    <SkuSearchInput
                       value={search}
                       onChange={(v) => {
                         setSearch(v);
                         setPage(1);
                       }}
-                      placeholder={t('search.placeholder')}
                       className="w-full sm:w-72"
                     />
                   }
@@ -643,7 +677,7 @@ export default function Stocks() {
 
                 <div className="mt-3">
                   <DataTable<StockRow>
-                    columns={columns}
+                    columns={money ? columns : columns.filter((c) => c.key !== 'costValue' && c.key !== 'payoutValue')}
                     rows={pageRows}
                     rowKey={(r) => r.skuId}
                     loading={isLoading}
@@ -670,12 +704,16 @@ export default function Stocks() {
                         <td className="tnum px-2.5 py-3 text-right">{f.num(visibleTotals.total)}</td>
                         <td className="hidden px-2.5 py-3 md:table-cell" />
                         <td className="hidden px-2.5 py-3 md:table-cell" />
-                        <td className="tnum hidden px-2.5 py-3 text-right md:table-cell">
-                          {f.money(visibleTotals.costValue)}
-                        </td>
-                        <td className="tnum hidden px-2.5 py-3 text-right md:table-cell">
-                          {f.money(visibleTotals.payoutValue)}
-                        </td>
+                        {money ? (
+                          <>
+                            <td className="tnum hidden px-2.5 py-3 text-right md:table-cell">
+                              {f.money(visibleTotals.costValue)}
+                            </td>
+                            <td className="tnum hidden px-2.5 py-3 text-right md:table-cell">
+                              {f.money(visibleTotals.payoutValue)}
+                            </td>
+                          </>
+                        ) : null}
                         <td className="py-3 pl-2.5 pr-5" />
                       </>
                     }
@@ -709,10 +747,13 @@ function StatusBreakdown({
   stats,
   value,
   onSelect,
+  money = true,
 }: {
   stats: StatusStat[];
   value: StatusFilter;
   onSelect: (next: StatusFilter) => void;
+  /** false — pulsiz ko'rinish shabloni: tannarx qiymati ustuni va "muzlagan pul" yo'q */
+  money?: boolean;
 }) {
   const t = useT('stocks');
   const tc = useT('common');
@@ -750,7 +791,8 @@ function StatusBreakdown({
                 onClick={() => onSelect(active ? 'all' : x.status)}
                 aria-pressed={active}
                 className={cn(
-                  'focusable grid w-full grid-cols-[minmax(0,1fr)_auto_5.5rem_6.5rem] items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                  'focusable grid w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                  money ? 'grid-cols-[minmax(0,1fr)_auto_5.5rem_6.5rem]' : 'grid-cols-[minmax(0,1fr)_auto_5.5rem]',
                   active ? 'bg-surface-2 shadow-[inset_0_0_0_1px_rgb(var(--c-border-strong))]' : 'hover:bg-surface-2/70',
                   x.skus === 0 && 'cursor-default opacity-50 hover:bg-transparent',
                 )}
@@ -763,16 +805,18 @@ function StatusBreakdown({
                 <span className="tnum text-right text-sm font-semibold text-ink">
                   {t('status.units', { n: f.num(x.units) })}
                 </span>
-                <span className="tnum text-right text-xs text-muted" title={f.money(x.value)}>
-                  {f.compact(x.value)}
-                </span>
+                {money ? (
+                  <span className="tnum text-right text-xs text-muted" title={f.money(x.value)}>
+                    {f.compact(x.value)}
+                  </span>
+                ) : null}
               </button>
             </li>
           );
         })}
       </ul>
 
-      {frozen > 0 ? (
+      {money && frozen > 0 ? (
         <div className="well mt-3 flex items-center justify-between gap-3 px-3.5 py-2.5">
           <span className="min-w-0">
             <span className="block truncate text-xs font-medium text-ink-soft">{t('chart.frozen')}</span>

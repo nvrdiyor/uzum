@@ -3,6 +3,7 @@ import type { DashboardResponse } from '@savdoiq/shared';
 import { Amount, Card, CardBody, CardHeader, Delta, ProgressBar, ProgressRing, type Tone } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { clamp, cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import { buyoutTone, marginTone, ppDelta, rateBases, roiTone } from './rates';
 
 const DOT: Record<Tone, string> = {
@@ -180,6 +181,9 @@ export function MarginRoiCard({ data }: { data: DashboardResponse }) {
 export function StockValueCard({ data, className }: { data: DashboardResponse; className?: string }) {
   const t = useT('dashboard');
   const f = useFormat();
+  const tc = useT('common');
+  // Pulsiz ko'rinish shablonida tannarx qiymati null — bosh raqam dona bo'ladi
+  const money = useSeesMoney();
 
   const { units, amount, fbo, fbs } = data.stockValue;
   const total = fbo + fbs;
@@ -192,12 +196,20 @@ export function StockValueCard({ data, className }: { data: DashboardResponse; c
 
   return (
     <Card tone="info" className={cn('flex flex-col', className)}>
-      <CardHeader icon={<Boxes />} title={t('stock.title')} subtitle={t('stock.subtitle')} />
+      <CardHeader icon={<Boxes />} title={money ? t('stock.title') : tc('common.stock')} subtitle={t('stock.subtitle')} />
       <CardBody className="flex flex-1 flex-col">
-        <p className="tnum font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
-          <Amount value={f.money(amount, data.currency)} />
-        </p>
-        <p className="mt-2 text-xs text-muted">{t('stock.units', { n: f.num(units) })}</p>
+        {money ? (
+          <>
+            <p className="tnum font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
+              <Amount value={f.money(amount, data.currency)} />
+            </p>
+            <p className="mt-2 text-xs text-muted">{t('stock.units', { n: f.num(units) })}</p>
+          </>
+        ) : (
+          <p className="tnum font-display text-2xl font-bold leading-none tracking-[-0.02em] text-ink">
+            {f.num(units)} <span className="font-sans text-sm font-medium text-muted">{t('stock.pcs')}</span>
+          </p>
+        )}
 
         {/*
           mt-auto: qo'shni kartochkalar balandroq bo'lsa, bo'sh joy katta raqam
@@ -242,7 +254,7 @@ export function StockValueCard({ data, className }: { data: DashboardResponse; c
             ))}
           </div>
 
-          <p className="mt-4 border-t border-line pt-3 text-xs leading-snug text-muted">{t('stock.hint')}</p>
+          {money ? <p className="mt-4 border-t border-line pt-3 text-xs leading-snug text-muted">{t('stock.hint')}</p> : null}
         </div>
       </CardBody>
     </Card>

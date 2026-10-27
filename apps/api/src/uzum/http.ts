@@ -17,6 +17,7 @@
  */
 import { env } from '../env.js';
 import { UZUM_MAX_PAGES, UZUM_PAGE_LIMITS, type UzumHttpMethod } from './endpoints.js';
+import type { UzumListMeta } from './types.js';
 
 // ─────────────────────────── Tiplar ───────────────────────────
 
@@ -59,6 +60,28 @@ export interface UzumHttpOptions {
   maxRetries?: number;
   /** Sekundiga so'rovlar chegarasi */
   rpsLimit?: number;
+  /** Har bir HTTP urinishdan oldin (RPS navbatidan keyin); xato tashlasa so'rov ketmaydi */
+  onRequest?: () => void;
+}
+
+/**
+ * Ro'yxatga to'liqlik belgisini yopishtiradi (`UzumListMeta`). Xossa sanalmaydi
+ * (enumerable emas) — `JSON.stringify`, spread va `for…of` uni ko'rmaydi.
+ * DIQQAT: `.map()` / `.filter()` yangi massiv qaytaradi — belgi yakuniy massivga qo'yiladi.
+ */
+export function markList<T>(list: T[], meta: UzumListMeta): T[] {
+  if (meta.truncated) Object.defineProperty(list, 'truncated', { value: true, configurable: true, writable: true });
+  if (meta.failed) Object.defineProperty(list, 'failed', { value: meta.failed, configurable: true, writable: true });
+  return list;
+}
+
+/** Ro'yxatning to'liqlik belgisi (yo'q bo'lsa — bo'sh obyekt) */
+export function listMeta(list: readonly unknown[]): UzumListMeta {
+  const m = list as unknown as UzumListMeta;
+  return {
+    ...(m.truncated === true ? { truncated: true } : {}),
+    ...(typeof m.failed === 'string' && m.failed ? { failed: m.failed } : {}),
+  };
 }
 
 export interface UzumRequestOptions {
@@ -450,6 +473,7 @@ export class UzumHttp {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly limiter: RateLimiter;
+  private readonly onRequest: (() => void) | undefined;
 
   constructor(opts: UzumHttpOptions) {
     this.apiKey = opts.apiKey ?? '';
@@ -458,6 +482,7 @@ export class UzumHttp {
     this.maxRetries = Math.max(0, opts.maxRetries ?? env.uzum.maxRetries);
     const rps = Math.max(0.2, opts.rpsLimit ?? env.uzum.rpsLimit);
     this.limiter = new RateLimiter(Math.ceil(1000 / rps));
+    this.onRequest = opts.onRequest;
   }
 
   /** Sozlangan qayta urinishlar soni (chaqiruvchi undan oshib ketmasligi uchun) */
@@ -525,6 +550,11 @@ export class UzumHttp {
    * Barcha sahifalarni yig'adi (page 0 dan).
    * `pick` — bitta sahifaning javobidan elementlar massivini ajratib beradi.
    * To'xtash shartlari: bo'sh sahifa, `size` dan kam element, `maxPages` chegarasi.
+   *
+   * `maxPages` chegarasida oxirgi sahifa ham to'la bo'lsa — davomi bor, lekin
+   * o'qilmadi: natijaga `truncated` belgisi qo'yiladi (`listMeta`). Ilgari bu
+   * holat jim o'tardi va 10 000 qatordan keyingisi hech kimga bildirilmay
+   * tushib qolardi (2026-10-24).
    */
   async fetchAllPages<T>(
     path: string,
@@ -538,6 +568,7 @@ export class UzumHttp {
     const sizeParam = opts.sizeParam ?? 'size';
 
     const out: T[] = [];
+    let truncated = false;
 
     for (let page = 0; page < maxPages; page += 1) {
       const payload = await this.request(path, {
@@ -551,9 +582,10 @@ export class UzumHttp {
       out.push(...chunk);
       // To'liq bo'lmagan sahifa — oxirgi sahifa
       if (chunk.length < size) break;
+      if (page === maxPages - 1) truncated = true;
     }
 
-    return out;
+    return truncated ? markList(out, { truncated: true }) : out;
   }
 
   /**
@@ -578,6 +610,8 @@ export class UzumHttp {
     const url = joinUrl(this.baseUrl, path) + buildQuery(opts.query);
 
     await this.limiter.acquire();
+    // Chaqiruvchi so'rovlarni sanaydi (tarix yuklashning soatlik chegarasi) — xato tashlasa so'rov ketmaydi
+    this.onRequest?.();
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);

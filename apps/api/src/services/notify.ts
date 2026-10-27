@@ -12,6 +12,10 @@ import { env } from '../env.js';
 const TELEGRAM_API = 'https://api.telegram.org';
 /** Bot API so'rovi uchun maksimal kutish vaqti */
 const SEND_TIMEOUT_MS = 10_000;
+/** Fayl yuklash uchun — Telegram faylni qabul qilib, chatga qo'yguncha xabardan uzoqroq */
+const UPLOAD_TIMEOUT_MS = 30_000;
+/** Bot API cheklovi: fayl izohi (caption) ko'pi bilan 1024 belgi */
+const CAPTION_MAX = 1024;
 
 /** Ruxsat etilgan bildirishnoma turlari (Notification.type) */
 const NOTIFY_TYPES = ['info', 'success', 'warning', 'danger'] as const;
@@ -42,13 +46,13 @@ function normalizeType(type?: string): NotifyType {
   return NOTIFY_TYPES.includes((type ?? 'info') as NotifyType) ? ((type ?? 'info') as NotifyType) : 'info';
 }
 
-/** HTML parse_mode uchun maxsus belgilarni himoyalash */
-function escapeHtml(value: string): string {
+/** HTML parse_mode uchun maxsus belgilarni himoyalash (Telegram'ga matn yuboradigan marshrutlar ham ishlatadi) */
+export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Nisbiy havolani sayt manziliga nisbatan to'liq URL'ga aylantiradi */
-function absoluteLink(link?: string | null): string | null {
+/** Nisbiy havolani sayt manziliga nisbatan to'liq URL'ga aylantiradi (haftalik/oylik hisobot tugmasi ham — services/digest.ts) */
+export function absoluteLink(link?: string | null): string | null {
   if (!link) return null;
   if (/^https?:\/\//i.test(link)) return link;
   const base = env.webUrl.replace(/\/+$/, '');
@@ -125,6 +129,81 @@ export async function sendTelegramMessage(
     // eslint-disable-next-line no-console
     console.warn('[notify] telegramga yuborib bo‘lmadi:', err instanceof Error ? err.message : err);
     return false;
+  }
+}
+
+/** Telegram'ga yuboriladigan fayl */
+export interface TelegramDocument {
+  /** Chatda ko'rinadigan fayl nomi */
+  fileName: string;
+  data: Uint8Array;
+  /** MIME turi; berilmasa — application/octet-stream */
+  contentType?: string;
+}
+
+/** Fayl yuborish natijasi — marshrut sotuvchiga aniq sababni aytishi uchun */
+export interface TelegramSendResult {
+  ok: boolean;
+  /** Bot API javobining HTTP holati (403 — bot bloklangan, 400 — chat topilmadi); tarmoq xatosida yo'q */
+  status?: number;
+  /** Telegram bergan sabab ("Forbidden: bot was blocked by the user" va h.k.) */
+  description?: string;
+}
+
+/**
+ * Telegram Bot API `sendDocument` orqali fayl yuboradi (multipart/form-data —
+ * Node'ning o'zidagi FormData va Blob, qo'shimcha kutubxonasiz).
+ *
+ * `sendTelegramMessage` dan farqi — natija `boolean` emas: fayl sotuvchi
+ * o'zi bosgan tugma bilan yuboriladi va u fayl nega kelmaganini (bot
+ * bloklangan, chat topilmadi) bilishi kerak. Token yo'q bo'lsa so'rov
+ * umuman ketmaydi.
+ */
+export async function sendTelegramDocument(
+  chatId: string,
+  doc: TelegramDocument,
+  opts?: { caption?: string; markup?: unknown },
+): Promise<TelegramSendResult> {
+  const token = env.telegram.botToken;
+  if (!token || !chatId) return { ok: false, description: token ? 'chat ko‘rsatilmagan' : 'bot tokeni sozlanmagan' };
+
+  const form = new FormData();
+  form.append('chat_id', chatId);
+  /*
+   * Izoh ATAYLAB kesilmaydi: HTML belgisi o'rtasidan kesilsa Telegram butun
+   * so'rovni "can't parse entities" bilan rad etadi va fayl ham yetib
+   * bormaydi. Chegaradan uzun izoh tashlab yuboriladi — fayl izohsiz kelsin.
+   */
+  if (opts?.caption && opts.caption.length <= CAPTION_MAX) {
+    form.append('caption', opts.caption);
+    form.append('parse_mode', 'HTML');
+  }
+  if (opts?.markup !== undefined) form.append('reply_markup', JSON.stringify(opts.markup));
+  // Nusxa: Buffer umumiy (pool) ArrayBuffer ustida turishi mumkin — Blob faqat faylning o'z baytlarini olsin
+  form.append(
+    'document',
+    new Blob([new Uint8Array(doc.data)], { type: doc.contentType ?? 'application/octet-stream' }),
+    doc.fileName,
+  );
+
+  try {
+    const res = await fetch(`${TELEGRAM_API}/bot${token}/sendDocument`, {
+      method: 'POST',
+      // Content-Type (boundary bilan) ni fetch o'zi qo'yadi — qo'lda yozilsa Telegram faylni o'qiy olmaydi
+      body: form,
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+    if (!res.ok || data.ok !== true) {
+      // eslint-disable-next-line no-console
+      console.warn(`[notify] telegram sendDocument javobi: ${res.status}${data.description ? ` — ${data.description}` : ''}`);
+      return { ok: false, status: res.status, description: data.description };
+    }
+    return { ok: true, status: res.status };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[notify] telegramga fayl yuborib bo‘lmadi:', err instanceof Error ? err.message : err);
+    return { ok: false, description: err instanceof Error ? err.message : undefined };
   }
 }
 

@@ -44,7 +44,11 @@ export function ExpensesCard({
   const f = useFormat();
   const lang = useLang();
 
+  // Pulsiz ko'rinish shablonida soliq, o'z xarajatlari va jami null keladi (views.ts) —
+  // ulush ko'rinib turgan qatorlar yig'indisidan, jami esa "—"
   const total = data.expenses.total;
+  const visibleSum = KEYS.reduce((s, id) => s + Math.max(0, data.expenses[id] ?? 0), 0);
+  const base = total ?? visibleSum;
 
   const rows = KEYS.map((id) => {
     const meta = EXPENSE_CATEGORIES.find((c) => c.id === id);
@@ -54,7 +58,7 @@ export function ExpensesCard({
       label: meta ? pickLocalized(meta.label, lang) : id,
       color: COLOR[id],
       amount,
-      share: total > 0 ? (amount / total) * 100 : 0,
+      share: base > 0 ? (amount / base) * 100 : 0,
     };
   })
     .filter((r) => r.amount > 0)

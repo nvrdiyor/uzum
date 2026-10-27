@@ -27,7 +27,6 @@ import {
   PlanGate,
   PreviewBadge,
   ProductCell,
-  SearchInput,
   Segmented,
   Select,
   Skeleton,
@@ -38,6 +37,7 @@ import {
 } from '@/components/ui';
 import { BarsChart, ChartCard, DonutChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { DELIVERY_TYPES, DeliveryBadge, ORDER_STATUSES, OrderStatusBadge } from '@/components/sales/OrderBadges';
 import { OrderDrawer } from '@/components/sales/OrderDrawer';
@@ -46,7 +46,11 @@ import { registerNamespace, useFormat, useT } from '@/i18n';
 import { ApiError, api } from '@/lib/api';
 import { CHART_COLORS } from '@/lib/theme';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { usePeriodQuery } from '@/store/ui';
+
+/** Pulsiz ko'rinish shablonida ko'rsatilmaydigan buyurtma ustunlari (server ularni null qiladi) */
+const MONEY_COLUMNS = new Set(['purchasePrice', 'payout', 'netProfit', 'margin']);
 
 registerNamespace('sales', {
   uz: {
@@ -97,7 +101,6 @@ registerNamespace('sales', {
     'col.payout': 'To‘lovga',
     'col.netProfit': 'Sof foyda',
     'col.margin': 'Marja',
-    'filter.search': 'Buyurtma ID yoki SKU',
     'filter.allStatuses': 'Barcha holatlar',
     'filter.allTypes': 'Barcha turlar',
     'export.ok': 'Excel fayl yuklab olindi',
@@ -158,7 +161,6 @@ registerNamespace('sales', {
     'col.payout': 'К выплате',
     'col.netProfit': 'Чистая прибыль',
     'col.margin': 'Маржа',
-    'filter.search': 'ID заказа или SKU',
     'filter.allStatuses': 'Все статусы',
     'filter.allTypes': 'Все типы',
     'export.ok': 'Excel-файл скачан',
@@ -219,7 +221,6 @@ registerNamespace('sales', {
     'col.payout': 'Payout',
     'col.netProfit': 'Net profit',
     'col.margin': 'Margin',
-    'filter.search': 'Order ID or SKU',
     'filter.allStatuses': 'All statuses',
     'filter.allTypes': 'All types',
     'export.ok': 'Excel file downloaded',
@@ -266,6 +267,10 @@ export default function Sales() {
   const [metric, setMetric] = useState<'orders' | 'revenue'>('orders');
   const [selected, setSelected] = useState<OrderRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Excel'da tannarx, foyda va to'lov bor — pulsiz ko'rinish shablonida tugma yo'q (server ham 403)
+  const canExport = useCanFetch('/export/sales');
+  // Pulsiz shablonda (Marketolog) server bu maydonlarni null qiladi — karta va ustunlar chizilmaydi
+  const money = useSeesMoney();
 
   /**
    * Telegramdagi "Buyurtmani ko'rish" tugmasi `/sales?order=<raqam>` ga olib
@@ -422,8 +427,8 @@ export default function Sales() {
   }
 
   // ── Jadval ustunlari ───────────────────────────────────────────────────
-  const columns = useMemo<Column<OrderRow>[]>(
-    () => [
+  const columns = useMemo<Column<OrderRow>[]>(() => {
+    const all: Column<OrderRow>[] = [
       {
         key: 'product',
         header: t('col.product'),
@@ -542,9 +547,9 @@ export default function Sales() {
         sortValue: (row) => row.margin,
         sortable: true,
       },
-    ],
-    [t, f],
-  );
+    ];
+    return money ? all : all.filter((c) => !MONEY_COLUMNS.has(c.key));
+  }, [t, f, money]);
 
   return (
     <>
@@ -563,24 +568,25 @@ export default function Sales() {
           </>
         }
         actions={
-          <Button
-            variant="outline"
-            icon={<Download className="h-4 w-4" />}
-            loading={exporting}
-            onClick={onExport}
-          >
-            {tc('btn.export')}
-          </Button>
+          canExport ? (
+            <Button
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
+              loading={exporting}
+              onClick={onExport}
+            >
+              {tc('btn.export')}
+            </Button>
+          ) : undefined
         }
       />
 
       <FilterBar>
-        <SearchInput
-          value={searchInput}
-          onChange={setSearchInput}
-          placeholder={t('filter.search')}
-          className="w-full sm:w-64"
-        />
+        {/*
+          Buyurtma raqami yoki ichidagi tovar — tovar umumiy qoida bilan (nom,
+          SKU kodi, shtrix-kod, Uzum ID, havola); server qidiradi (routes/sales.ts)
+        */}
+        <SkuSearchInput orders value={searchInput} onChange={setSearchInput} className="w-full sm:w-72" />
         <Select
           className="h-10 w-full py-0 sm:w-44"
           value={status}
@@ -645,15 +651,17 @@ export default function Sales() {
                 tone="brand"
                 loading={isLoading}
               />
-              <StatCard
-                label={t('kpi.profit')}
-                value={f.money(kpi.profit)}
-                hint={t('kpi.profitHint')}
-                icon={<Coins className="h-5 w-5" />}
-                tone={kpi.profit < 0 ? 'danger' : 'brand'}
-                loading={isLoading}
-                footer={`${tc('common.margin')}: ${f.pct(kpi.marginPct)}`}
-              />
+              {money ? (
+                <StatCard
+                  label={t('kpi.profit')}
+                  value={f.money(kpi.profit)}
+                  hint={t('kpi.profitHint')}
+                  icon={<Coins className="h-5 w-5" />}
+                  tone={kpi.profit < 0 ? 'danger' : 'brand'}
+                  loading={isLoading}
+                  footer={`${tc('common.margin')}: ${f.pct(kpi.marginPct)}`}
+                />
+              ) : null}
               <StatCard
                 label={t('kpi.avgCheck')}
                 value={f.money(kpi.avgCheck)}

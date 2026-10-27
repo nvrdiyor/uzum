@@ -124,7 +124,21 @@ export function daysTone(days: number | null | undefined): Tone {
  * "Necha kunga yetadi" — raqam + rangli progress.
  * 60 kun to'liq shkala deb olinadi, undan ortig'i 100% ko'rinadi.
  */
-export function DaysLeftCell({ days, width = 128 }: { days: number | null | undefined; width?: number }) {
+export function DaysLeftCell({
+  days,
+  status,
+  width = 128,
+}: {
+  days: number | null | undefined;
+  /**
+   * Server holati (Rejalashtiruvchi: kompaniyaning yetkazish muddati bilan).
+   * Berilsa rang shundan — nishon bilan bir xil. Ilgari rang doim qat'iy
+   * 7/14 kunlik chegaradan olinardi: yetkazish 21 kun bo'lsa 12 kunlik SKU
+   * nishonda "Kritik" (qizil), shu katakda esa sariq edi (2026-10-27).
+   */
+  status?: StockState;
+  width?: number;
+}) {
   const t = useT('common');
   const f = useFormat();
 
@@ -132,7 +146,7 @@ export function DaysLeftCell({ days, width = 128 }: { days: number | null | unde
     return <span className="text-muted">—</span>;
   }
 
-  const tone = daysTone(days);
+  const tone = status ? STATE_TONE[status] : daysTone(days);
   const pct = Math.min(100, Math.max(2, (days / 60) * 100));
 
   return (
@@ -175,7 +189,8 @@ export function SchemeShareCard({
   title: ReactNode;
   hint?: ReactNode;
   units: number;
-  amount: number;
+  /** Tannarx qiymati; null — pulsiz ko'rinish shablonida qator chizilmaydi */
+  amount: number | null;
   share: number;
   tone?: Tone;
 }) {
@@ -191,7 +206,7 @@ export function SchemeShareCard({
           <p className="tnum mt-2 font-display text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">
             {f.num(units)} <span className="text-base font-semibold text-muted">{t('common.units').toLowerCase()}</span>
           </p>
-          <p className="tnum mt-1 text-sm text-ink-soft">{f.money(amount)}</p>
+          {amount !== null ? <p className="tnum mt-1 text-sm text-ink-soft">{f.money(amount)}</p> : null}
         </div>
         {icon ? (
           <div className="icon-tile h-10 w-10 rounded-xl [&_svg]:h-5 [&_svg]:w-5">{icon}</div>

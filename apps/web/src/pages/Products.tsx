@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Boxes,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   Coins,
@@ -12,6 +13,7 @@ import {
   PackageSearch,
   Rows3,
   ShoppingBag,
+  X,
 } from '@/components/icons';
 import type { ProductCard, ProductsResponse } from '@savdoiq/shared';
 import {
@@ -24,7 +26,6 @@ import {
   PlanGate,
   PreviewBadge,
   ProductCell,
-  SearchInput,
   Segmented,
   Select,
   StatCard,
@@ -36,17 +37,18 @@ import { FilterBar } from '@/components/filters';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { NEUTRAL_TONE, STORAGE_TONE, TONE_TEXT } from '@/components/stock/common';
 import { ProductTile, ProductTileSkeleton } from '@/components/products/ProductTile';
+import { ProductTags } from '@/components/products/ProductTags';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { buyoutRateOf, buyoutTextClass, useBuyout } from '@/components/products/Buyout';
+import { usePlannerSettings } from '@/components/planner/usePlannerSettings';
 import {
-  COVER_OPTIONS,
   PRODUCT_FILTERS,
   PRODUCT_SORTS,
   STATE_STYLE,
   avgPurchasePrice,
-  coverTone,
+  planTone,
   productState,
   totalStock,
-  type CoverDays,
   type ProductFilter,
   type ProductSort,
   type ProductView,
@@ -55,6 +57,7 @@ import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch } from '@/lib/view';
 
 registerNamespace('products', {
   uz: {
@@ -70,8 +73,11 @@ registerNamespace('products', {
     'kpi.needOrderHint': '{n} kunlik zaxira uchun yetishmaydi (dona)',
     'kpi.storage': 'Saqlash xarajati',
     'kpi.storageHint': 'Kunlik pullik saqlash',
-    'cover.label': 'Zaxira davri',
-    'cover.option': '{n} kun',
+    'plan.chip': 'Zaxira {cover} kun · yetkazish {lead} kun',
+    'plan.chipHint':
+      '“Buyurtma kerak” va “necha kunga yetadi” Rejalashtiruvchidagi kompaniya sozlamasi bilan hisoblanadi. O‘zgartirish uchun bosing',
+    'category.chip': 'Kategoriya: {name}',
+    'category.clear': 'Kategoriya filtrini olib tashlash',
     'filter.all': 'Barchasi',
     'filter.active': 'Sotuvda',
     'filter.need_order': 'Buyurtma kerak',
@@ -88,40 +94,42 @@ registerNamespace('products', {
     'sort.revenue': 'Tushum bo‘yicha',
     'sort.profit': 'Foyda bo‘yicha',
     'sort.sold': 'Sotuv bo‘yicha',
+    'sort.needOrder': 'Buyurtma miqdori bo‘yicha',
     'sort.daysLeft': 'Qoldiq kunlari bo‘yicha',
     'sort.margin': 'Marja bo‘yicha',
     'sort.title': 'Nomi bo‘yicha',
-    'search.placeholder': 'Nomi, SKU yoki ID bo‘yicha qidirish',
-    'card.skus': '{n} SKU',
+    'card.variants': '{n} ta variant',
     'card.noCategory': 'Kategoriyasiz',
-    'card.avgPrice': 'O‘rtacha sotilgan',
-    'card.listPrice': 'Katalog narxi',
-    'card.promo': 'Aksiya',
-    'card.promoUntil': '{date} gacha',
     'card.priceWhy':
-      'Tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
+      'O‘rtacha sotilgan narx — tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
     'card.cost': 'Tannarx',
-    'card.noCost': 'Tannarx kiritilmagan',
+    'card.noCost': 'Tannarx kiritilmagan — ROI hisoblanmaydi',
     'card.roi': 'ROI',
-    'card.margin': 'Marja',
-    'card.fbo': 'FBO',
-    'card.fbs': 'FBS',
     'card.own': 'Ombor',
-    'card.daysLeft': 'Necha kunga yetadi',
+    'card.sold': 'Sotildi',
+    'card.perDay': 'kuniga ~{n}',
+    'card.perDayHint': 'Kunlik sur’at — so‘nggi 30 kun, tovar tugab turgan kunlarsiz (Rejalashtiruvchi bilan bir xil)',
+    'card.noSalesShort': 'sotuv yo‘q',
+    'card.avgSub': 'o‘rt. {v}',
+    'card.stock': 'Qoldiq',
+    'card.inbound': 'yo‘lda {n}',
     'card.daysValue': '{n} kun',
     'card.noForecast': 'Prognoz yo‘q',
-    'card.stockTotal': 'Jami qoldiq: {n} dona',
+    'card.coverHint': 'Eng tez tugaydigan variant bo‘yicha · taxminan {date} da tugaydi',
     'card.needOrder': 'Buyurtma kerak: {n} dona',
-    'card.noStock': 'Qoldiq tugagan',
-    'card.skusOut': '{n} ta SKU tugagan',
+    'card.needHint': '{cover} kunlik zaxira + {lead} kun yetkazish uchun sotib olish (Rejalashtiruvchi hisobi)',
+    'card.ship': 'FBO’ga jo‘nating: {n} dona',
+    'card.noNeed': 'Buyurtma shart emas',
+    'card.skusOut': '{n} ta variant tugagan',
     'card.reviews': '{n} sharh',
     'card.revenue': 'Tushum',
-    'card.profit': 'Foyda',
+    'card.profit': 'Sof foyda',
     'card.units': '{n} dona',
     'card.marginSub': 'marja {pct}',
     'card.costSub': 'tannarx {v}',
     'card.costSubNone': 'tannarx yo‘q',
     'card.returnsSub': '{n} qaytarish',
+    'card.idHint': 'Shu ID bo‘yicha qidiruvda ham topiladi',
     'card.details': 'Batafsil',
     'col.product': 'Mahsulot',
     'col.skus': 'SKU',
@@ -133,6 +141,7 @@ registerNamespace('products', {
     'col.roi': 'ROI',
     'col.margin': 'Marja',
     'col.profit': 'Foyda',
+    'col.need': 'buyurtma {n}',
     'empty.title': 'Mahsulot topilmadi',
     'empty.hint': 'Filtrlarni o‘zgartiring yoki qidiruvni tozalang',
     'export.done': 'Excel fayl tayyor',
@@ -152,8 +161,11 @@ registerNamespace('products', {
     'kpi.needOrderHint': 'Не хватает на {n} дн. запаса (шт.)',
     'kpi.storage': 'Хранение',
     'kpi.storageHint': 'Платное хранение в день',
-    'cover.label': 'Период запаса',
-    'cover.option': '{n} дн.',
+    'plan.chip': 'Запас {cover} дн. · поставка {lead} дн.',
+    'plan.chipHint':
+      '«Нужен заказ» и «на сколько хватит» считаются по настройке компании в Планировщике. Нажмите, чтобы изменить',
+    'category.chip': 'Категория: {name}',
+    'category.clear': 'Сбросить фильтр по категории',
     'filter.all': 'Все',
     'filter.active': 'В продаже',
     'filter.need_order': 'Нужен заказ',
@@ -170,40 +182,42 @@ registerNamespace('products', {
     'sort.revenue': 'По выручке',
     'sort.profit': 'По прибыли',
     'sort.sold': 'По продажам',
+    'sort.needOrder': 'По объёму заказа',
     'sort.daysLeft': 'По дням остатка',
     'sort.margin': 'По марже',
     'sort.title': 'По названию',
-    'search.placeholder': 'Поиск по названию, SKU или ID',
-    'card.skus': '{n} SKU',
+    'card.variants': 'Вариантов: {n}',
     'card.noCategory': 'Без категории',
-    'card.avgPrice': 'В среднем продано по',
-    'card.listPrice': 'Цена в каталоге',
-    'card.promo': 'Акция',
-    'card.promoUntil': 'до {date}',
     'card.priceWhy':
-      'Средняя цена, которую покупатели реально заплатили за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
+      'Средняя цена продажи — сколько покупатели реально заплатили в среднем за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
     'card.cost': 'Себестоимость',
-    'card.noCost': 'Себестоимость не указана',
+    'card.noCost': 'Себестоимость не указана — ROI не считается',
     'card.roi': 'ROI',
-    'card.margin': 'Маржа',
-    'card.fbo': 'FBO',
-    'card.fbs': 'FBS',
     'card.own': 'Склад',
-    'card.daysLeft': 'На сколько хватит',
+    'card.sold': 'Продано',
+    'card.perDay': '~{n} в день',
+    'card.perDayHint': 'Темп продаж — последние 30 дней без дней, когда товара не было (как в Планировщике)',
+    'card.noSalesShort': 'нет продаж',
+    'card.avgSub': 'в ср. {v}',
+    'card.stock': 'Остаток',
+    'card.inbound': 'в пути {n}',
     'card.daysValue': '{n} дн.',
     'card.noForecast': 'Нет прогноза',
-    'card.stockTotal': 'Всего остаток: {n} шт.',
+    'card.coverHint': 'По самому быстро заканчивающемуся варианту · закончится примерно {date}',
     'card.needOrder': 'Нужен заказ: {n} шт.',
-    'card.noStock': 'Остаток закончился',
-    'card.skusOut': 'Закончились SKU: {n}',
+    'card.needHint': 'Закупка на {cover} дн. запаса + {lead} дн. поставки (расчёт Планировщика)',
+    'card.ship': 'Отгрузить на FBO: {n} шт.',
+    'card.noNeed': 'Заказ пока не нужен',
+    'card.skusOut': 'Закончилось: {n} вар.',
     'card.reviews': 'отзывов: {n}',
     'card.revenue': 'Выручка',
-    'card.profit': 'Прибыль',
+    'card.profit': 'Чистая прибыль',
     'card.units': '{n} шт.',
     'card.marginSub': 'маржа {pct}',
     'card.costSub': 'себест. {v}',
     'card.costSubNone': 'нет себест.',
     'card.returnsSub': 'возвратов: {n}',
+    'card.idHint': 'По этому ID товар находится и в поиске',
     'card.details': 'Подробнее',
     'col.product': 'Товар',
     'col.skus': 'SKU',
@@ -215,11 +229,12 @@ registerNamespace('products', {
     'col.roi': 'ROI',
     'col.margin': 'Маржа',
     'col.profit': 'Прибыль',
+    'col.need': 'заказ {n}',
     'empty.title': 'Товары не найдены',
     'empty.hint': 'Измените фильтры или очистите поиск',
     'export.done': 'Excel-файл готов',
     'export.error': 'Не удалось выгрузить',
-    'found.count': '{n} товаров',
+    'found.count': 'Товаров: {n}',
   },
   en: {
     title: 'Products',
@@ -234,8 +249,10 @@ registerNamespace('products', {
     'kpi.needOrderHint': 'Short for {n} days of cover (units)',
     'kpi.storage': 'Storage cost',
     'kpi.storageHint': 'Paid storage per day',
-    'cover.label': 'Cover period',
-    'cover.option': '{n} days',
+    'plan.chip': 'Cover {cover} d · lead time {lead} d',
+    'plan.chipHint': '“Reorder” and “days of cover” use the company setting from the Planner. Click to change it',
+    'category.chip': 'Category: {name}',
+    'category.clear': 'Clear the category filter',
     'filter.all': 'All',
     'filter.active': 'On sale',
     'filter.need_order': 'Reorder',
@@ -252,40 +269,42 @@ registerNamespace('products', {
     'sort.revenue': 'By revenue',
     'sort.profit': 'By profit',
     'sort.sold': 'By units sold',
+    'sort.needOrder': 'By reorder quantity',
     'sort.daysLeft': 'By days of cover',
     'sort.margin': 'By margin',
     'sort.title': 'By name',
-    'search.placeholder': 'Search by name, SKU or ID',
-    'card.skus': '{n} SKUs',
+    'card.variants': 'Variants: {n}',
     'card.noCategory': 'No category',
-    'card.avgPrice': 'Sold on average at',
-    'card.listPrice': 'Catalogue price',
-    'card.promo': 'Promo',
-    'card.promoUntil': 'until {date}',
     'card.priceWhy':
-      'The average price buyers actually paid in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
+      'Average selling price — what buyers actually paid on average in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
     'card.cost': 'Cost',
-    'card.noCost': 'Cost price not set',
+    'card.noCost': 'Cost price not set — ROI is not calculated',
     'card.roi': 'ROI',
-    'card.margin': 'Margin',
-    'card.fbo': 'FBO',
-    'card.fbs': 'FBS',
     'card.own': 'Own',
-    'card.daysLeft': 'Days of cover',
+    'card.sold': 'Sold',
+    'card.perDay': '~{n}/day',
+    'card.perDayHint': 'Sales pace — last 30 days, excluding days the item was out of stock (same as the Planner)',
+    'card.noSalesShort': 'no sales',
+    'card.avgSub': 'avg {v}',
+    'card.stock': 'Stock',
+    'card.inbound': '{n} in transit',
     'card.daysValue': '{n} days',
     'card.noForecast': 'No forecast',
-    'card.stockTotal': 'Total stock: {n} units',
-    'card.needOrder': 'Reorder: {n} units',
-    'card.noStock': 'Out of stock',
-    'card.skusOut': 'SKUs sold out: {n}',
+    'card.coverHint': 'Based on the fastest-selling variant · runs out around {date}',
+    'card.needOrder': 'Reorder: {n} pcs',
+    'card.needHint': 'Purchase for {cover} days of cover + {lead}-day lead time (Planner calculation)',
+    'card.ship': 'Ship to FBO: {n} pcs',
+    'card.noNeed': 'No reorder needed',
+    'card.skusOut': 'Variants out: {n}',
     'card.reviews': '{n} reviews',
     'card.revenue': 'Revenue',
-    'card.profit': 'Profit',
+    'card.profit': 'Net profit',
     'card.units': '{n} pcs',
     'card.marginSub': 'margin {pct}',
     'card.costSub': 'cost {v}',
     'card.costSubNone': 'no cost price',
     'card.returnsSub': '{n} returned',
+    'card.idHint': 'You can search by this ID too',
     'card.details': 'Details',
     'col.product': 'Product',
     'col.skus': 'SKUs',
@@ -297,11 +316,12 @@ registerNamespace('products', {
     'col.roi': 'ROI',
     'col.margin': 'Margin',
     'col.profit': 'Profit',
+    'col.need': 'reorder {n}',
     'empty.title': 'No products found',
     'empty.hint': 'Change the filters or clear the search',
     'export.done': 'Excel file is ready',
     'export.error': 'Export failed',
-    'found.count': '{n} products',
+    'found.count': 'Products: {n}',
   },
 });
 
@@ -309,7 +329,7 @@ const PAGE_SIZE = 24;
 const VIEW_KEY = 'sp-products-view';
 /**
  * Kartochkalar to'ri: 1366 px'da 4 ta (~250 px), keng ekranda 5 ta. Kartochka
- * ichidagi katta-kichik kataklar shu eng tor kenglikka (~228 px) moslangan.
+ * ichidagi kataklar shu eng tor kenglikka (~228 px) moslangan.
  */
 const TILE_GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5';
 
@@ -332,8 +352,8 @@ export default function Products() {
   const buyout = useBuyout();
   const navigate = useNavigate();
   const periodQuery = usePeriodQuery();
+  const settings = usePlannerSettings();
 
-  const [cover, setCover] = useState<CoverDays>('30');
   const [filter, setFilter] = useState<ProductFilter>('all');
   const [sort, setSort] = useState<ProductSort>('revenue');
   const [view, setView] = useState<ProductView>(readView);
@@ -341,6 +361,20 @@ export default function Products() {
   const [debounced, setDebounced] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  // Excel'da tannarx va foyda ustunlari bor — pulsiz ko'rinish shablonida tugma yo'q (server ham 403)
+  const canExport = useCanFetch('/export/products');
+  /*
+   * Kategoriya manzilda (?category=) — "Kategoriyalarim" sahifasidagi qator
+   * shu yerga olib keladi. Server ANIQ moslik bilan filtrlaydi; chip × bilan
+   * olib tashlanadi va manzil ham tozalanadi (2026-10-24).
+   */
+  const [params, setParams] = useSearchParams();
+  const category = params.get('category')?.trim() ?? '';
+  const clearCategory = () => {
+    const next = new URLSearchParams(params);
+    next.delete('category');
+    setParams(next, { replace: true });
+  };
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -350,6 +384,9 @@ export default function Products() {
     return () => clearTimeout(id);
   }, [search]);
 
+  // Boshqa kategoriya (yoki filtrsiz) — ro'yxat boshidan
+  useEffect(() => setPage(1), [category]);
+
   useEffect(() => {
     try {
       localStorage.setItem(VIEW_KEY, view);
@@ -358,17 +395,24 @@ export default function Products() {
     }
   }, [view]);
 
+  /*
+   * Zaxira davri (cover) YUBORILMAYDI — server kompaniya sozlamasini oladi
+   * (Rejalashtiruvchi). Ilgari sahifada 7/14/30/60/90 tanlovi bor edi va
+   * doim cover=30 so'ralardi: sozlamada 45 kun turgan kompaniyada
+   * Mahsulotlar va Rejalashtiruvchi ikki xil "buyurtma kerak" ko'rsatardi.
+   * Sozlama saqlanganda bu so'rov o'zi qayta yuklanadi (useSavePlannerSettings).
+   */
   const query = useMemo(
     () => ({
       ...periodQuery,
-      cover: Number(cover),
       filter,
       sort,
       search: debounced || undefined,
+      category: category || undefined,
       page,
       pageSize: PAGE_SIZE,
     }),
-    [periodQuery, cover, filter, sort, debounced, page],
+    [periodQuery, filter, sort, debounced, category, page],
   );
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
@@ -378,6 +422,8 @@ export default function Products() {
 
   const rows = data?.items.items ?? [];
   const totals = data?.totals;
+  // Hisob qaysi muddatlar bilan qilingan — server javobidan (u ishlatganini aytadi), bo'lmasa sozlama
+  const planner = data?.planner ?? settings.data ?? null;
 
   const onExport = async () => {
     setExporting(true);
@@ -394,9 +440,9 @@ export default function Products() {
 
   /*
    * Jadval ko'rinishi 1366 px'ga sig'adi: tannarx — narx ostida, "necha kunga
-   * yetadi" — qoldiq ostida, marja — foyda ostida (Sotuv va qoldiq jadvalidagi
-   * kabi). Ilgari 11 ta ustun bor edi va ROI, marja, foyda gorizontal
-   * aylantirish ortida qolardi. Holat endi nom ostida rangli nuqta bilan.
+   * yetadi" va buyurtma — qoldiq ostida, marja — foyda ostida (Sotuv va
+   * qoldiq jadvalidagi kabi). Holat nom ostida rangli nuqta bilan, belgilar
+   * (Tannarxsiz, Kam qoldiq…) — nom yonida.
    */
   const columns: Column<ProductCard>[] = useMemo(
     () => [
@@ -421,6 +467,7 @@ export default function Products() {
                 }
                 imageUrl={r.imageUrl}
               />
+              <ProductTags product={r} max={2} className="mt-1.5 pl-[52px]" />
             </div>
           );
         },
@@ -496,12 +543,15 @@ export default function Products() {
         render: (r) => (
           <div className="leading-tight">
             <span className="tnum">{f.num(totalStock(r))}</span>
-            {/* "Necha kunga yetadi" — kartochkadagi chiziq rangida (STOCK_THRESHOLDS) */}
-            <p className={cn('tnum text-2xs font-semibold', TONE_TEXT[coverTone(r.daysLeft)])}>
+            {/* "Necha kunga yetadi" — kartochkadagi chiziq rangida: Rejalashtiruvchi holati (yetkazish muddati bilan) */}
+            <p className={cn('tnum text-2xs font-semibold', TONE_TEXT[planTone(r.plan, r.daysLeft)])}>
               {r.daysLeft === null || r.daysLeft === undefined
                 ? t('card.noForecast')
                 : t('card.daysValue', { n: f.num(r.daysLeft) })}
             </p>
+            {r.needOrder > 0 && productState(r) !== 'archived' && !r.hidden ? (
+              <p className="tnum text-2xs font-medium text-warn-ink">{t('col.need', { n: f.num(r.needOrder) })}</p>
+            ) : null}
           </div>
         ),
         sortable: true,
@@ -560,14 +610,16 @@ export default function Products() {
         badge={<PreviewBadge feature="products_assortment" />}
         meta={<DataFreshness />}
         actions={
-          <Button
-            variant="outline"
-            icon={<Download className="h-4 w-4" />}
-            loading={exporting}
-            onClick={onExport}
-          >
-            {t('btn.export')}
-          </Button>
+          canExport ? (
+            <Button
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
+              loading={exporting}
+              onClick={onExport}
+            >
+              {t('btn.export')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -623,7 +675,7 @@ export default function Products() {
             <StatCard
               label={t('kpi.needOrder')}
               value={f.num(totals?.needOrder ?? 0)}
-              hint={t('kpi.needOrderHint', { n: cover })}
+              hint={t('kpi.needOrderHint', { n: f.num(planner?.coverDays ?? 30) })}
               icon={<PackageSearch className="h-5 w-5" />}
               tone={(totals?.needOrder ?? 0) > 0 ? 'warn' : 'brand'}
               loading={isLoading}
@@ -651,23 +703,32 @@ export default function Products() {
           <Card className="p-4">
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="hidden eyebrow-lg sm:inline">
-                    {t('cover.label')}
-                  </span>
-                  <Segmented<CoverDays>
-                    size="sm"
-                    value={cover}
-                    onChange={(v) => {
-                      setCover(v);
-                      setPage(1);
-                    }}
-                    options={COVER_OPTIONS.map((c) => ({ value: c, label: t('cover.option', { n: c }) }))}
-                  />
-                </div>
+                {/*
+                  Zaxira davri tanlovi o'rnida — hisob qaysi muddatlar bilan
+                  qilingani. Ular butun kompaniyaniki va Rejalashtiruvchida
+                  o'zgartiriladi: shu yerda boshqa son tanlansa, ikki sahifa
+                  yana ikki xil "buyurtma kerak" ko'rsatardi.
+                */}
+                {planner ? (
+                  <Link to="/planner" title={t('plan.chipHint')} className="meta-chip focusable tnum hover:border-line-strong hover:text-ink">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    {t('plan.chip', { cover: f.num(planner.coverDays), lead: f.num(planner.leadDays) })}
+                  </Link>
+                ) : null}
+                {category ? (
+                  <button
+                    type="button"
+                    onClick={clearCategory}
+                    title={t('category.clear')}
+                    className="chip focusable min-w-0 bg-brand/10 text-brand-ink transition-colors hover:bg-brand/20"
+                  >
+                    <span className="max-w-[18rem] truncate">{t('category.chip', { name: category })}</span>
+                    <X className="h-3 w-3 shrink-0" />
+                  </button>
+                ) : null}
 
                 <div className="ml-auto flex items-center gap-2">
-                  <div className="w-44 sm:w-52">
+                  <div className="w-44 sm:w-56">
                     <Select
                       className="h-10"
                       value={sort}
@@ -711,12 +772,8 @@ export default function Products() {
                     }))}
                   />
                 </div>
-                <SearchInput
-                  className="sm:ml-auto sm:max-w-xs"
-                  value={search}
-                  onChange={setSearch}
-                  placeholder={t('search.placeholder')}
-                />
+                {/* Nom, SKU kodi, shtrix-kod, Uzum ID yoki uzum.uz havolasi — server umumiy qoida bilan qidiradi */}
+                <SkuSearchInput className="sm:ml-auto sm:w-80 sm:max-w-full" value={search} onChange={setSearch} />
               </div>
             </div>
           </Card>
@@ -742,6 +799,7 @@ export default function Products() {
                         setSearch('');
                         setFilter('all');
                         setPage(1);
+                        if (category) clearCategory();
                       }}
                     >
                       {t('btn.all')}
@@ -753,7 +811,7 @@ export default function Products() {
               <div className={cn('space-y-4', isFetching && 'opacity-70 transition-opacity')}>
                 <div className={TILE_GRID}>
                   {rows.map((p) => (
-                    <ProductTile key={p.id} product={p} coverDays={Number(cover)} />
+                    <ProductTile key={p.id} product={p} />
                   ))}
                 </div>
                 <Pager

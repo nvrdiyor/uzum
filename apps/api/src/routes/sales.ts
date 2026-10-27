@@ -18,6 +18,8 @@ import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
   DEFAULTS,
+  isNumberMarked,
+  parseSkuQuery,
   pct,
   round,
   safeDiv,
@@ -27,11 +29,12 @@ import {
   type OrderStatus,
   type Paginated,
   type SalesAnalyticsResponse,
+  type SkuQuery,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature } from '../lib/auth.js';
 import { resolveRange } from '../lib/period.js';
-import { getSkuCatalog, getStoreIds } from '../services/common.js';
+import { getSkuCatalog, getStoreIds, skuMatches } from '../services/common.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -245,6 +248,64 @@ function toOrderRow(order: DbOrder, lookup: SkuLookup): OrderRow {
   };
 }
 
+/**
+ * Qidiruv sharti: buyurtma raqami yoki ichidagi tovar.
+ *
+ * Tovar — umumiy qoida (services/common.ts skuMatches): nom, SKU kodi,
+ * shtrix-kod, Uzum SKU / mahsulot ID'si, uzum.uz havolasi. Mos SKU'lar
+ * xotirada topiladi (do'konlarning BARCHA SKU'lari — arxivdagi va
+ * yashirilgani ham: ularning buyurtmasi ham haqiqiy) va buyurtma ularning
+ * id'si bo'yicha olinadi — sahifalash avvalgidek bazada qoladi. Ilgari faqat
+ * bazadagi `contains` edi: PostgreSQL'da registrga sezgir ("naushnik"
+ * "Naushnik"ni topmasdi), shtrix-kod va kartochkadagi "ID: 701009" esa
+ * umuman topilmasdi (2026-10-24).
+ *
+ * Avvalgidan qolgani: buyurtma raqamining qismi ("№12345", "#12345" —
+ * belgisiz ham; "ID: 701009" esa tovar ID'si, buyurtma raqamida
+ * qidirilmaydi) va pozitsiya nusxasidagi kod/nom — eski nom bilan sotilgan
+ * yoki katalogga bog'lanmagan satr ham topilsin. Ichki id esa endi faqat
+ * TO'LIQ: ilgari `id contains` tufayli bitta harf yozilganda deyarli hamma
+ * buyurtma chiqardi (cuid'da har harf bor).
+ */
+async function searchWhere(storeIds: string[], raw: string, query: SkuQuery): Promise<Prisma.OrderWhereInput> {
+  const skus = storeIds.length
+    ? await prisma.sku.findMany({
+        where: { storeId: { in: storeIds } },
+        select: {
+          id: true,
+          sku: true,
+          title: true,
+          barcode: true,
+          uzumSkuId: true,
+          productId: true,
+          product: { select: { title: true, uzumProductId: true } },
+        },
+      })
+    : [];
+  const skuIds = skus
+    .filter((s) =>
+      skuMatches(
+        { id: s.id, sku: s.sku, title: s.title, barcode: s.barcode, uzumSkuId: s.uzumSkuId },
+        { id: s.productId, title: s.product.title, uzumProductId: s.product.uzumProductId },
+        query,
+      ),
+    )
+    .map((s) => s.id);
+
+  const or: Prisma.OrderWhereInput[] = [];
+  // uzum.uz havolasi tovarni ko'rsatadi — buyurtma raqami va matn sifatida qidirilmaydi
+  if (!query.url) {
+    const needles = new Set([raw, ...(isNumberMarked(query) ? query.ids : [])]);
+    for (const needle of needles) or.push({ uzumOrderId: { contains: needle } });
+    or.push({ id: raw });
+    or.push({ items: { some: { skuCode: { contains: raw } } } });
+    or.push({ items: { some: { title: { contains: raw } } } });
+  }
+  if (skuIds.length > 0) or.push({ items: { some: { skuId: { in: skuIds } } } });
+  // Hech narsa mos emas (masalan, katalogda yo'q havola) — bo'sh natija
+  return or.length > 0 ? { OR: or } : { id: { in: [] } };
+}
+
 /** Saralash ustuni (foyda bazada saqlanmaydi — buyurtma darajasidagi ustunlar bo'yicha) */
 function orderByFor(sort: string | undefined, order: 'asc' | 'desc'): Prisma.OrderOrderByWithRelationInput {
   switch (sort) {
@@ -276,7 +337,7 @@ router.get(
 
     const status = pickStatus(q.status);
     const deliveryType = pickDeliveryType(q.type);
-    const search = range.search;
+    const query = parseSkuQuery(range.search);
 
     // Davrdagi barcha buyurtmalar (filtrsiz) — `totalOrders` uchun
     const whereBase: Prisma.OrderWhereInput = {
@@ -284,21 +345,12 @@ router.get(
       orderedAt: { gte: range.from, lt: range.toExclusive },
     };
 
-    // Qidiruv: buyurtma raqami/ID yoki pozitsiya SKU/nomi bo'yicha
+    // Qidiruv: buyurtma raqami yoki ichidagi tovar (searchWhere) — KPI va kesimlar ham shu to'plamdan
     const where: Prisma.OrderWhereInput = {
       ...whereBase,
       ...(status ? { status } : {}),
       ...(deliveryType ? { deliveryType } : {}),
-      ...(search
-        ? {
-            OR: [
-              { uzumOrderId: { contains: search } },
-              { id: { contains: search } },
-              { items: { some: { skuCode: { contains: search } } } },
-              { items: { some: { title: { contains: search } } } },
-            ],
-          }
-        : {}),
+      ...(query && range.search ? await searchWhere(storeIds, range.search, query) : {}),
     };
 
     const [aggRows, totalOrders, pageRows, catalog] = await Promise.all([

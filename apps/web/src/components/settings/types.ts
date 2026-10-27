@@ -23,6 +23,9 @@ export interface NotificationSettings {
   notifyDaily?: boolean;
   notifyOrders?: boolean;
   notifyStock?: boolean;
+  /** Haftalik (dushanba 09:00) va oylik (1-sana 09:00) Telegram hisoboti */
+  notifyWeekly?: boolean;
+  notifyMonthly?: boolean;
   /** Telegram bot bilan bog'langanmi (botChatId mavjudmi) */
   telegramConnected?: boolean;
   botLink?: string;

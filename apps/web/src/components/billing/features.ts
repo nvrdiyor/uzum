@@ -17,11 +17,20 @@ export const FEATURE_LABELS: Record<FeatureId, L10nText> = {
     ru: 'Дашборд в реальном времени',
     en: 'Real-time dashboard',
   },
-  sales_analytics: { uz: 'Sotuv tahlili', ru: 'Аналитика продаж', en: 'Sales analytics' },
+  /*
+   * Bitta imkoniyat bir nechta sahifani ochadi — nomda yangilari ham aytiladi:
+   * "Mening radarim" `sales_analytics`, "Kategoriyalarim" `abc_analysis` bilan
+   * ochiladi (lib/nav.ts). Ilgari tarif jadvalida ular umuman ko'rinmasdi (2026-10-24).
+   */
+  sales_analytics: {
+    uz: 'Sotuv tahlili va Mening radarim',
+    ru: 'Аналитика продаж и Мой радар',
+    en: 'Sales analytics and My radar',
+  },
   revenue_roi: { uz: 'Tushum va ROI', ru: 'Выручка и ROI', en: 'Revenue and ROI' },
   products_assortment: { uz: 'Mahsulotlar va assortiment', ru: 'Товары и ассортимент', en: 'Products and assortment' },
   stocks_fbo_fbs: { uz: 'FBO/FBS qoldiqlari', ru: 'Остатки FBO/FBS', en: 'FBO/FBS stock levels' },
-  abc_analysis: { uz: 'ABC tahlil', ru: 'ABC-анализ', en: 'ABC analysis' },
+  abc_analysis: { uz: 'ABC tahlil va Kategoriyalarim', ru: 'ABC-анализ и Мои категории', en: 'ABC analysis and My categories' },
   illiquid: { uz: 'Nolikvid tovarlar', ru: 'Неликвиды', en: 'Dead stock' },
   losses_report: { uz: 'Yo‘qotishlar hisoboti', ru: 'Отчёт по потерям', en: 'Losses report' },
   returns_report: { uz: 'Qaytarishlar hisoboti', ru: 'Отчёт по возвратам', en: 'Returns report' },
@@ -64,9 +73,10 @@ export const FEATURE_LABELS: Record<FeatureId, L10nText> = {
  *
  * Ilgari `vgh_report` oddiy imkoniyat qatori bo'lib sotilardi, sotuvchi esa
  * menyuda bunday hisobotni topa olmasdi (2026-10-24). Sahifa chiqqach shu
- * ro'yxatdan olib tashlanadi.
+ * ro'yxatdan olib tashlanadi: "Hajm va VGH" (/vgh) chiqdi — ro'yxat hozircha
+ * bo'sh, keyingi shunday imkoniyat uchun qoldirildi.
  */
-export const COMING_SOON_FEATURES: ReadonlySet<FeatureId> = new Set<FeatureId>(['vgh_report']);
+export const COMING_SOON_FEATURES: ReadonlySet<FeatureId> = new Set<FeatureId>([]);
 
 export interface FeatureGroup {
   id: string;

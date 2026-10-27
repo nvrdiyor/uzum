@@ -17,20 +17,29 @@ import { z } from 'zod';
 import {
   DEFAULTS,
   IMPORT_CALC_FALLBACK,
+  NEW_SKU_FREE_DAYS,
+  TURNOVER_WINDOW_DAYS,
   addDays,
+  billableLiters,
   calcImportPrice,
   calcUnitEconomics,
+  hasExtendedNewSkuFree,
   importCalcSchema,
+  logisticsFee,
   parseISODate,
   pct,
   round,
   safeDiv,
+  storageFeePerDay,
+  storageTariffKind,
   toISODate,
   businessDayStart,
   toBusinessDate,
+  turnoverDays,
   unitCalcSchema,
   type ImportCalcInput,
   type ImportDefaults,
+  type StorageTariffKind,
   type UnitCalcInput,
   type UnitCalcResult,
   type UnitEconomicsResponse,
@@ -44,12 +53,14 @@ import {
   getLatestStocks,
   getSkuCatalog,
   getStoreIds,
+  skuInfoMatches,
   withSoldSkus,
   type SalesAgg,
   type SkuInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
 import { getRate } from '../services/rates.js';
+import { skuAgeOnSale } from '../services/storage-turnover.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -58,6 +69,17 @@ router.use(requireAuth, requireCompany);
 const MAX_SCENARIOS = 50;
 /** Kalkulyator standart qiymatlari uchun statistika oynasi (kun) */
 const DEFAULTS_WINDOW_DAYS = 30;
+/**
+ * Kalkulyatordagi "Saqlash kunlari" maydonining chegarasi (saytdagi maydon
+ * ham 365 gacha). Ilgari 60 edi: aylanmasi 60 kundan oshgan — ya'ni Uzum
+ * tarifida PULLIK — tovarda kunlar 60 da to'xtab, bir donaga saqlash bir
+ * necha baravar kam chiqardi (2026-10-24).
+ */
+const MAX_STORAGE_DAYS = 365;
+/** Sotuv yo'q va aylanma noma'lum bo'lganda "Saqlash kunlari" taxmini */
+const NO_SALES_STORAGE_DAYS = 20;
+/** Aylanma oynasidan oldingi oxirgi FBO qoldig'i shu chuqurlikda qidiriladi (storage-turnover.ts bilan bir xil) */
+const TURNOVER_SEED_DAYS = 30;
 
 // ─────────────────────────── Yordamchilar ───────────────────────────
 
@@ -98,6 +120,76 @@ async function storageBySku(
 /** Foizni xavfsiz oraliqqa keltiradi (calc.ts kirishlari uchun) */
 const clampPct = (value: number, max = 100): number => Math.min(max, Math.max(0, value));
 
+/** "Saqlash kunlari" — butun kun, 1..365 */
+const clampDays = (days: number): number => Math.min(MAX_STORAGE_DAYS, Math.max(1, Math.round(days)));
+
+interface SkuTurnover {
+  /** Aylanma, kun: oynada sotuv yo'q — Infinity (qo'llanmadagi 361+ guruh), FBO qoldiq yo'q — 0 */
+  days: number;
+  /** Oynadagi o'rtacha FBO qoldig'i, dona */
+  avgStock: number;
+  /** Oynadagi o'rtacha kunlik sotuv, dona */
+  avgDaily: number;
+}
+
+/**
+ * Bitta SKU aylanmasi — Uzum qo'llanmasidagi formula (shared tariffs.ts):
+ * oxirgi 15 TUGAGAN savdo kunidagi o'rtacha FBO qoldig'i ÷ o'rtacha kunlik
+ * sotuv. Ta'riflar Saqlash sahifasidagi bilan bir xil
+ * (services/storage-turnover.ts): pullik saqlash faqat Uzum omboridagi (FBO)
+ * tovarga olinadi; bugun hali tugamagan; yozuvsiz kun — oldingi ma'lum qoldiq;
+ * bekor qilingan va qaytarilgan pozitsiyalar sotuvga kirmaydi; o'rtacha
+ * sotuv = oynadagi dona ÷ 15.
+ *
+ * ATAYLAB bitta SKU uchun alohida yengil so'rov: kalkulyator har SKU
+ * tanlanganda chaqiradi, butun katalog aylanmasini yig'ish shart emas.
+ */
+async function skuTurnover(skuId: string, currentFbo: number, now = new Date()): Promise<SkuTurnover> {
+  const todayKey = toBusinessDate(now);
+  // Qoldiq yozuvlari sanasi — kunning UTC yarim tuni (importer `dayStart`)
+  const today = parseISODate(todayKey);
+  const windowFrom = addDays(today, -TURNOVER_WINDOW_DAYS);
+  const fromKey = toISODate(windowFrom);
+
+  const [snaps, items] = await Promise.all([
+    prisma.stockSnapshot.findMany({
+      where: { skuId, date: { gte: addDays(windowFrom, -TURNOVER_SEED_DAYS), lt: today } },
+      select: { date: true, fbo: true },
+      orderBy: { date: 'asc' },
+    }),
+    prisma.orderItem.findMany({
+      where: { skuId, orderedAt: { gte: businessDayStart(fromKey), lt: businessDayStart(todayKey) } },
+      select: { qty: true, status: true, returnedAt: true },
+    }),
+  ]);
+
+  let seed: number | null = null;
+  const byDay = new Map<string, number>();
+  for (const s of snaps) {
+    const key = toISODate(s.date);
+    if (key < fromKey) seed = s.fbo;
+    else byDay.set(key, s.fbo);
+  }
+  const history: number[] = [];
+  let have = seed;
+  for (let i = 0; i < TURNOVER_WINDOW_DAYS; i += 1) {
+    const v = byDay.get(toISODate(addDays(windowFrom, i)));
+    if (v !== undefined) have = v;
+    if (have !== null) history.push(have);
+  }
+
+  let sold = 0;
+  for (const it of items) {
+    if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
+    sold += it.qty;
+  }
+
+  // Oynada birorta ma'lum kun yo'q (do'kon yaqinda ulangan) — hozirgi qoldiq o'rtacha deb olinadi
+  const avgStock = history.length > 0 ? history.reduce((a, b) => a + b, 0) / history.length : currentFbo;
+  const avgDaily = sold / TURNOVER_WINDOW_DAYS;
+  return { days: turnoverDays(avgStock, avgDaily), avgStock, avgDaily };
+}
+
 /**
  * Bitta SKU uchun bir dona tovarning iqtisodi.
  * Sotuv bo'lgan bo'lsa — haqiqiy komissiya/logistika, aks holda kompaniya o'rtachasi.
@@ -116,7 +208,14 @@ function buildRow(
   const price = hasSales && agg ? safeDiv(agg.revenue, units) : info.price;
   const commissionPct =
     hasSales && agg && agg.revenue > 0 ? (agg.commission / agg.revenue) * 100 : fallback.commissionPct;
-  const logistics = hasSales && agg ? safeDiv(agg.logistics, units) : fallback.logistics;
+  /*
+   * Sotuvsiz SKU'da — Uzum tarifi bo'yicha, hajmidan (tariffs.ts). Ilgari
+   * kompaniya o'rtachasi olinardi: 28 litrlik gilam ham, 0,2 litrlik kabel
+   * ham bir xil logistika "to'lardi" (2026-10-24). Hajm noma'lum bo'lsa —
+   * o'sha o'rtacha.
+   */
+  const logistics =
+    hasSales && agg ? safeDiv(agg.logistics, units) : (logisticsFee(info.volumeL) ?? fallback.logistics);
   /**
    * Qo'shimcha xarajat bitta manbadan olinadi: sotuv bo'lsa — buyurtma
    * satrlaridagi qiymat, aks holda katalogdagi qiymat. Ilgari ikkalasi
@@ -225,14 +324,15 @@ router.get(
       logistics: allUnits > 0 ? allLogistics / allUnits : DEFAULTS.logisticsPerUnit,
     };
 
-    const search = range.search?.toLowerCase();
+    // Qidiruv — umumiy qoida (services/common.ts skuInfoMatches): nom, SKU kodi, shtrix-kod, Uzum ID yoki havola
+    const search = range.search;
     const rows: UnitEconomicsRow[] = [];
     let totalRevenue = 0;
     let totalProfit = 0;
     let totalInvestment = 0;
 
     for (const info of catalog.values()) {
-      if (search && !`${info.sku} ${info.title}`.toLowerCase().includes(search)) continue;
+      if (search && !skuInfoMatches(info, search)) continue;
       const built = buildRow(info, sales.get(info.id), storage.get(info.id), fallback, company.taxRate);
       rows.push(built.row);
       totalRevenue += built.revenue;
@@ -298,14 +398,57 @@ interface UnitDefaultsResponse {
   result: UnitCalcResult;
   /** Tanlash uchun SKU ro'yxati (sotuv bo'yicha tartiblangan) */
   skus: UnitSkuOption[];
-  /** Qaysi qiymat qayerdan olingani — UI'da izoh ko'rsatish uchun */
+  /**
+   * Qaysi qiymat qayerdan olingani — kalkulyator maydon yonida belgi
+   * ("Uzum tarifi" / "Sizning ma'lumotingiz" / "Taxmin") va izohda formula
+   * ko'rsatadi:
+   *  - 'sales'     — shu SKU'ning oxirgi 30 kundagi sotuvi;
+   *  - 'company'   — kompaniya bo'yicha o'rtacha (shu SKU sotilmagan);
+   *  - 'catalogue' — Uzum kartochkasidagi qiymat (komissiya foizi, oylik saqlash);
+   *  - 'tariff'    — Uzum qo'llanmasidagi tarif (tariffs.ts): logistika hajmdan,
+   *                  saqlash hajm va aylanmadan;
+   *  - 'fees'      — Uzum haqiqatda ushlagan saqlash to'lovlari;
+   *  - 'none'      — Uzum omborida (FBO) qoldiq yo'q, saqlash olinmaydi;
+   *  - 'turnover' / 'stock' — saqlash kunlari aylanmadan / qoldiq ÷ sotuvdan;
+   *  - 'default'   — ma'lumot yetarli emas, umumiy taxmin.
+   * Ilgari 'sales' kompaniya o'rtachasini ham anglatardi, 'volume' esa 120
+   * so'm/l/kun taxmini edi (2026-10-24).
+   */
   source: {
-    /** 'catalogue' — Uzum katalogidagi foiz ishlatildi */
-    commission: 'sales' | 'catalogue' | 'default';
-    logistics: 'sales' | 'default';
-    storage: 'fees' | 'volume' | 'default';
+    commission: 'sales' | 'company' | 'catalogue' | 'default';
+    logistics: 'sales' | 'tariff' | 'company' | 'default';
+    storage: 'fees' | 'catalogue' | 'tariff' | 'none' | 'default';
+    storageDays: 'turnover' | 'stock' | 'default';
     buyout: 'sales' | 'default';
   };
+  /** Izohdagi formulalar uchun raqamlar */
+  basis: UnitDefaultsBasis;
+}
+
+interface UnitDefaultsBasis {
+  /** Kartochkadagi hajm, litr (0 — o'lcham yo'q) */
+  volumeL: number;
+  /** Uzum hisoblaydigan litr (yuqoriga yaxlitlangan); hajm noma'lum — 0 */
+  billableL: number;
+  category: string | null;
+  /** Saqlash tarifi turi — toifa nomidan (taxminiy moslik) */
+  tariffKind: StorageTariffKind;
+  /** Uzum tarifi bo'yicha bir dona logistikasi; hajm noma'lum — null */
+  logisticsTariff: number | null;
+  /** Shu SKU'ning oxirgi 30 kundagi sotuvi, dona */
+  units30: number;
+  /** Qoldiq hozir: Uzum omborida (FBO) va jami */
+  fbo: number;
+  stock: number;
+  /** Aylanma (oxirgi 15 kun, FBO): null — sotuv yo'q (361+ guruh); FBO qoldiq yo'q — 0 */
+  turnoverDays: number | null;
+  avgStock15: number;
+  avgDaily15: number;
+  /** Uzum kartochkasidagi bir dona uchun oylik saqlash (0 — bermagan) */
+  storagePerItemMonth: number;
+  /** Yangi SKU bepul davri (30 yoki 60 kun) va undan qolgan kun; yoshi noma'lum yoki o'tib ketgan — 0 */
+  newSkuFreeDays: number;
+  newSkuFreeLeft: number;
 }
 
 router.get(
@@ -372,40 +515,90 @@ router.get(
      */
     const commissionPct =
       commissionFromSku || (info?.commissionPct ?? 0) || commissionFromCompany || DEFAULTS.commissionPct;
-    const commissionSource: 'sales' | 'catalogue' | 'default' = commissionFromSku
+    const commissionSource: UnitDefaultsResponse['source']['commission'] = commissionFromSku
       ? 'sales'
       : info?.commissionPct
         ? 'catalogue'
         : commissionFromCompany
-          ? 'sales'
+          ? 'company'
           : 'default';
 
-    // Logistika (bir dona uchun)
+    /*
+     * Logistika (bir dona uchun): shu SKU sotuvi → Uzum tarifi (hajmdan) →
+     * kompaniya o'rtachasi → o'lchangan mediana. Haqiqiy sotuv tarifdan
+     * oldin turadi: Uzum tovarni boshqa o'lchamda hisoblasa (VGH), sotuvchi
+     * aynan shuni to'laydi.
+     */
+    const logisticsTariff = info ? logisticsFee(info.volumeL) : null;
     const logisticsFromSku = agg && units > 0 ? agg.logistics / units : 0;
     const logisticsFromCompany = allUnits > 0 ? allLogistics / allUnits : 0;
-    const logistics = logisticsFromSku || logisticsFromCompany || DEFAULTS.logisticsPerUnit;
-    const logisticsSource: 'sales' | 'default' = logisticsFromSku || logisticsFromCompany ? 'sales' : 'default';
+    const logistics = logisticsFromSku || logisticsTariff || logisticsFromCompany || DEFAULTS.logisticsPerUnit;
+    const logisticsSource: UnitDefaultsResponse['source']['logistics'] = logisticsFromSku
+      ? 'sales'
+      : logisticsTariff
+        ? 'tariff'
+        : logisticsFromCompany
+          ? 'company'
+          : 'default';
 
-    // Saqlash: to'lov tarixi → hajm bo'yicha taxmin → 0
+    /*
+     * Saqlash (bir dona, kuniga): Uzum ushlagan to'lov → Uzum kartochkasidagi
+     * oylik to'lov → Uzum tarifi: hajm × aylanma bo'yicha stavka (tariffs.ts,
+     * 01.06.2026 dan; 60 kungacha bepul). Ilgari oxirgisi hajm × 120 so'm edi —
+     * o'lchanmagan va ~10 baravar katta stavka, bepul davrsiz (2026-10-24).
+     */
     const fee = info ? storage.get(info.id) : undefined;
+    const stockInfo = info ? stocks.get(info.id) : undefined;
+    const fbo = stockInfo?.fbo ?? 0;
+    const stock = stockInfo?.total ?? 0;
+    const tariffKind = storageTariffKind(info?.category);
+    const turnover = info && fbo > 0 ? await skuTurnover(info.id, fbo) : null;
     let storagePerDay = 0;
-    let storageSource: 'fees' | 'volume' | 'default' = 'default';
+    let storageSource: UnitDefaultsResponse['source']['storage'] = 'default';
     if (fee && fee.qtyDays > 0) {
       storagePerDay = fee.amount / fee.qtyDays;
       storageSource = 'fees';
     } else if (info && info.storagePerItem > 0) {
       // Uzumning o'z hisobi — oylik, kunlikka bo'linadi
       storagePerDay = info.storagePerItem / 30;
-      storageSource = 'volume';
-    } else if (info && info.volumeL > 0) {
-      storagePerDay = info.volumeL * DEFAULTS.storagePerLiterPerDay;
-      storageSource = 'volume';
+      storageSource = 'catalogue';
+    } else if (info && !turnover) {
+      // Uzum omborida qoldiq yo'q (FBS yoki tugagan) — saqlash to'lovi olinmaydi
+      storageSource = 'none';
+    } else if (info && turnover && billableLiters(info.volumeL) > 0) {
+      storagePerDay = storageFeePerDay({ units: 1, volumeL: info.volumeL, turnover: turnover.days, kind: tariffKind });
+      storageSource = 'tariff';
     }
 
-    // Saqlash muddati: qoldiq necha kunga yetadi
-    const stock = info ? stocks.get(info.id)?.total ?? 0 : 0;
+    /*
+     * Saqlash muddati — dona omborda necha kun turadi. Tarif bo'yicha
+     * hisoblanganda — aylanmaning o'zi: stavka ham shu kunlardan chiqadi
+     * (kalkulyator maydon o'zgarsa stavkani shu qoida bilan qayta hisoblaydi).
+     * Sotuv yo'q (aylanma cheksiz) — 365. Aks holda qoldiq necha kunga yetadi.
+     */
     const avgDaily = units / DEFAULTS_WINDOW_DAYS;
-    const storageDays = avgDaily > 0 ? Math.min(60, Math.max(1, Math.round(stock / avgDaily))) : 20;
+    let storageDays = avgDaily > 0 ? clampDays(stock / avgDaily) : NO_SALES_STORAGE_DAYS;
+    let storageDaysSource: UnitDefaultsResponse['source']['storageDays'] = avgDaily > 0 ? 'stock' : 'default';
+    if (storageSource === 'tariff' && turnover) {
+      storageDays = Number.isFinite(turnover.days) ? clampDays(turnover.days) : MAX_STORAGE_DAYS;
+      storageDaysSource = 'turnover';
+    }
+
+    /*
+     * Yangi SKU: Uzum sotuvdagi birinchi 30 kunda (ayrim toifalarda 60)
+     * aylanmadan qat'i nazar saqlash olmaydi. Kalkulyator "kunlik to'lov ×
+     * kunlar" oladi, shuning uchun qolgan bepul kunlar kunlik summaga o'rtacha
+     * bo'lib kiradi: jami = pullik kunlar × stavka. Yoshi Saqlash sahifasidagi
+     * qoida bilan aniqlanadi; noma'lum bo'lsa bepul davr qo'llanmaydi.
+     * Ilgari bepul davr kalkulyatorda umuman hisobga olinmasdi (2026-10-24).
+     */
+    const newSkuFreeDays = hasExtendedNewSkuFree(info?.category) ? NEW_SKU_FREE_DAYS.extended : NEW_SKU_FREE_DAYS.default;
+    let newSkuFreeLeft = 0;
+    if (storageSource === 'tariff' && info) {
+      const age = await skuAgeOnSale(info);
+      if (age.ageKnown) newSkuFreeLeft = Math.max(0, newSkuFreeDays - age.daysOnSale);
+      if (newSkuFreeLeft > 0) storagePerDay = (storagePerDay * Math.max(0, storageDays - newSkuFreeLeft)) / storageDays;
+    }
 
     // Sotib olish darajasi (qaytarishlarni hisobga olib)
     const buyoutBase = allUnits + allReturns;
@@ -424,8 +617,9 @@ router.get(
       otherCost: round(info?.extraCost ?? 0),
       taxPct: round(clampPct(company.taxRate, 50), 2),
       buyoutPct: round(buyoutPct, 2),
-      // Qaytarish logistikasi odatda to'g'ri yo'nalishning ~75% i
-      returnLogistics: round(logistics * 0.75),
+      // Uzum qaytgan tovar uchun logistika olmaydi — yig'im qaytariladi (qo'llanma,
+      // 3.tariffs). Ilgari bu yerda to'g'ri logistikaning 75% i taxmin qilinardi.
+      returnLogistics: 0,
       qty: 100,
     };
 
@@ -442,7 +636,24 @@ router.get(
         commission: commissionSource,
         logistics: logisticsSource,
         storage: storageSource,
+        storageDays: storageDaysSource,
         buyout: buyoutSource,
+      },
+      basis: {
+        volumeL: round(info?.volumeL ?? 0, 3),
+        billableL: billableLiters(info?.volumeL),
+        category: info?.category ?? null,
+        tariffKind,
+        logisticsTariff,
+        units30: units,
+        fbo,
+        stock,
+        turnoverDays: turnover ? (Number.isFinite(turnover.days) ? turnover.days : null) : 0,
+        avgStock15: round(turnover?.avgStock ?? 0, 1),
+        avgDaily15: round(turnover?.avgDaily ?? 0, 2),
+        storagePerItemMonth: round(info?.storagePerItem ?? 0),
+        newSkuFreeDays,
+        newSkuFreeLeft,
       },
     };
 

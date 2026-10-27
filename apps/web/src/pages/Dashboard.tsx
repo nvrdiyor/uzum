@@ -51,6 +51,7 @@ import { GoalsCard } from '@/components/dashboard/GoalsCard';
 import { GOALS_QUERY_KEY } from '@/components/dashboard/goals/useGoals';
 import { RETURNS_QUERY_KEY, ReturnsCard } from '@/components/dashboard/ReturnsCard';
 import { cn } from '@/lib/utils';
+import { useCanOpen, useSeesMoney } from '@/lib/view';
 
 registerNamespace('dashboard', {
   uz: {
@@ -423,6 +424,15 @@ export default function Dashboard() {
   const f = useFormat();
   const q = usePeriodQuery();
   const [metric, setMetric] = useState<MetricKey>('revenue');
+  /*
+   * Pulsiz ko'rinish shablonida (Marketolog) server foyda, marja, to'lov va
+   * tannarxni null qilib yuboradi — faqat shulardan iborat kartalar (to'lovlar,
+   * marja va ROI, foyda reytingi, marja xaritasi) umuman chizilmaydi, "—" bilan
+   * to'la kartalar qolmasin (2026-10-24).
+   */
+  const money = useSeesMoney();
+  const canOpen = useCanOpen();
+  const shownMetric: MetricKey = !money && metric === 'profit' ? 'revenue' : metric;
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['dashboard', q],
@@ -464,16 +474,18 @@ export default function Dashboard() {
 
   /** Foyda bo'yicha TOP 8, qolgani bitta «Boshqa» qatoriga (o'rinsiz) */
   const topByProfit = useMemo<ProfitRankRow[]>(() => {
+    if (!money) return [];
     const rows = [...(data?.topProducts ?? [])].filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
     const head = rows.slice(0, 8).map((r, i) => ({ ...productLabel(r), profit: Math.round(r.profit), rank: i + 1 }));
     const tail = rows.slice(8).reduce((sum, r) => sum + r.profit, 0);
     return tail > 0 ? [...head, { name: t('ptop.other'), sub: '', profit: Math.round(tail) }] : head;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.topProducts, t]);
+  }, [data?.topProducts, t, money]);
 
   /** Marja xaritasi: tushum × marja, nuqta kattaligi — dona */
   const marginMap = useMemo(() => {
-    const rows = (data?.topProducts ?? []).filter((r) => r.revenue > 0);
+    // Pulsiz shablonda marja null — `toFixed` yiqilardi, xarita esa ma'nosiz
+    const rows = money ? (data?.topProducts ?? []).filter((r) => r.revenue > 0 && r.margin !== null) : [];
     const points = rows.map((r) => ({
       x: Math.round(r.revenue),
       y: Number(r.margin.toFixed(1)),
@@ -487,7 +499,7 @@ export default function Dashboard() {
     // kichik tovarning katta marjasi qiyoslash chizig'ini surib yubormasin
     const avg = totalRevenue > 0 ? Number(((totalProfit / totalRevenue) * 100).toFixed(1)) : undefined;
     return { points, avg };
-  }, [data?.topProducts]);
+  }, [data?.topProducts, money]);
 
   const chartSeries: SeriesDef[] = useMemo(() => {
     const revenue: SeriesDef = { key: 'revenue', name: t('metric.revenue'), money: true, color: CHART_COLORS.info };
@@ -499,13 +511,13 @@ export default function Dashboard() {
       color: CHART_COLORS.brand,
       negColor: CHART_COLORS.danger,
     };
-    if (metric === 'revenue') return [revenue, profit];
-    if (metric === 'profit') return [profit];
-    if (metric === 'orders') return [{ key: 'orders', name: t('metric.orders'), color: CHART_COLORS.info }];
+    if (shownMetric === 'revenue') return money ? [revenue, profit] : [revenue];
+    if (shownMetric === 'profit') return [profit];
+    if (shownMetric === 'orders') return [{ key: 'orders', name: t('metric.orders'), color: CHART_COLORS.info }];
     // Dona — hajm ko'rsatkichi, buyurtmalar bilan bir rangda. Ilgari sariq (warn) edi,
     // u esa sahifada "kutilayotgan pul / xavf" ma'nosida band
     return [{ key: 'units', name: t('metric.units'), color: CHART_COLORS.info }];
-  }, [metric, t]);
+  }, [shownMetric, money, t]);
 
   /*
    * Oldingi teng davr — tanlangan ko'rsatkich bo'yicha uzuq chiziq. Server
@@ -518,11 +530,11 @@ export default function Dashboard() {
     if (!prev?.length) return null;
     return {
       rows: prev.map((p) => ({ date: p.date, revenue: p.revenue, profit: p.profit, orders: p.orders, units: p.units })),
-      key: metric,
+      key: shownMetric,
       // "Tushum" rejimida grafikda foyda ham bor — chiziq qaysi biri ekani nomida
-      name: metric === 'revenue' ? t('chart.prevRevenue') : t('chart.prev'),
+      name: shownMetric === 'revenue' ? t('chart.prevRevenue') : t('chart.prev'),
     };
-  }, [data?.previousSeries, metric, t]);
+  }, [data?.previousSeries, shownMetric, t]);
 
   const header = (
     <PageHeader
@@ -649,17 +661,21 @@ export default function Dashboard() {
                   {t('nosales.hint', { units: f.num(data.stockValue.units) })}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Link to="/cost-price">
-                    <Button size="sm" variant="soft" icon={<Tag className="h-3.5 w-3.5" />}>
-                      {t('nosales.cost')}
-                    </Button>
-                  </Link>
-                  <Link to="/stocks">
-                    <Button size="sm" variant="outline">
-                      {t('nosales.stocks')}
-                    </Button>
-                  </Link>
-                  <span className="text-xs text-muted">{t('nosales.costHint')}</span>
+                  {canOpen('/cost-price') ? (
+                    <Link to="/cost-price">
+                      <Button size="sm" variant="soft" icon={<Tag className="h-3.5 w-3.5" />}>
+                        {t('nosales.cost')}
+                      </Button>
+                    </Link>
+                  ) : null}
+                  {canOpen('/stocks') ? (
+                    <Link to="/stocks">
+                      <Button size="sm" variant="outline">
+                        {t('nosales.stocks')}
+                      </Button>
+                    </Link>
+                  ) : null}
+                  {money ? <span className="text-xs text-muted">{t('nosales.costHint')}</span> : null}
                 </div>
               </div>
             </div>
@@ -676,6 +692,7 @@ export default function Dashboard() {
           <MoneyFlow
             className="xl:col-span-2"
             data={data}
+            money={money}
             footer={
               (data.expenses.periodOnly ?? 0) > 0 ? (
                 <span title={t('kpi.operatingHint')}>
@@ -736,11 +753,13 @@ export default function Dashboard() {
           4. To'lovlar / marja va ROI / qoldiq qiymati. 1024px da uchta ustun
           ~230px bo'lib qolardi — o'rtada ikki ustun, uchinchisi butun qator.
         */}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
-          <PayoutsCard data={data} />
-          <MarginRoiCard data={data} />
-          <StockValueCard data={data} className="md:col-span-2 xl:col-span-1" />
-        </div>
+        {money ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-5">
+            <PayoutsCard data={data} />
+            <MarginRoiCard data={data} />
+            <StockValueCard data={data} className="md:col-span-2 xl:col-span-1" />
+          </div>
+        ) : null}
 
         {/* 5. Asosiy grafik — oldingi teng davr uzuq chiziq bilan */}
         <ChartCard
@@ -750,14 +769,14 @@ export default function Dashboard() {
           actions={
             <Segmented<MetricKey>
               size="sm"
-              value={metric}
+              value={shownMetric}
               onChange={setMetric}
               options={[
-                { value: 'revenue', label: t('metric.revenue') },
-                { value: 'profit', label: t('metric.profit') },
-                { value: 'orders', label: t('metric.orders') },
-                { value: 'units', label: t('metric.units') },
-              ]}
+                { value: 'revenue' as const, label: t('metric.revenue') },
+                { value: 'profit' as const, label: t('metric.profit') },
+                { value: 'orders' as const, label: t('metric.orders') },
+                { value: 'units' as const, label: t('metric.units') },
+              ].filter((o) => money || o.value !== 'profit')}
             />
           }
         >
@@ -773,7 +792,8 @@ export default function Dashboard() {
           )}
         </ChartCard>
 
-        {/* 6. Qaysi tovar foyda keltiryapti va marja xaritasi */}
+        {/* 6. Qaysi tovar foyda keltiryapti va marja xaritasi (pulsiz shablonda — yo'q) */}
+        {money ? (
         <div className="grid gap-4 xl:grid-cols-2 xl:gap-5">
           <ChartCard icon={<Coins />} title={t('ptop.title')} subtitle={t('ptop.subtitle')}>
             {topByProfit.length > 0 ? (
@@ -794,6 +814,7 @@ export default function Dashboard() {
             )}
           </ChartCard>
         </div>
+        ) : null}
 
         {/*
           7. Xarajatlar (2/3), o'ngda qaytarish va bekor qilish kartasi va (bir
@@ -804,6 +825,8 @@ export default function Dashboard() {
           <ExpensesCard data={data} className="xl:col-span-2" />
           <div className="grid content-start gap-4 xl:gap-5">
             <ReturnsCard />
+            {/* Pulsiz shablonda to'lov/marja qatori yo'q — qoldiq kartasi (donada) shu ustunda */}
+            {!money ? <StockValueCard data={data} /> : null}
             {showStores ? <StoresCard data={data} /> : null}
           </div>
         </div>

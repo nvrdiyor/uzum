@@ -493,25 +493,26 @@ export async function connectApiKey(companyId: string, apiKey: string): Promise<
 
 // ─────────────────────────── Sozlamalar ───────────────────────────
 
-export type NotifyField = 'notifyDaily' | 'notifyOrders' | 'notifyStock';
+/** Haftalik va oylik hisobotni API ishchisi yuboradi (apps/api services/digest.ts) — bot faqat sozlamani o'zgartiradi */
+export type NotifyField = 'notifyDaily' | 'notifyOrders' | 'notifyStock' | 'notifyWeekly' | 'notifyMonthly';
 
 /** Bildirishnoma sozlamasini teskarisiga o'zgartiradi va yangi qiymatni qaytaradi */
 export async function toggleNotify(userId: string, field: NotifyField): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { notifyDaily: true, notifyOrders: true, notifyStock: true },
+    select: { notifyDaily: true, notifyOrders: true, notifyStock: true, notifyWeekly: true, notifyMonthly: true },
   });
   if (!user) return false;
   const next = !user[field];
-  await prisma.user.update({
-    where: { id: userId },
-    data:
-      field === 'notifyDaily'
-        ? { notifyDaily: next }
-        : field === 'notifyOrders'
-          ? { notifyOrders: next }
-          : { notifyStock: next },
-  });
+  // Hisoblangan kalit ({ [field]: next }) Prisma tipini yo'qotadi — har maydon aniq yoziladi
+  const data: Record<NotifyField, { [K in NotifyField]?: boolean }> = {
+    notifyDaily: { notifyDaily: next },
+    notifyOrders: { notifyOrders: next },
+    notifyStock: { notifyStock: next },
+    notifyWeekly: { notifyWeekly: next },
+    notifyMonthly: { notifyMonthly: next },
+  };
+  await prisma.user.update({ where: { id: userId }, data: data[field] });
   return next;
 }
 

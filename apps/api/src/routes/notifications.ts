@@ -211,6 +211,9 @@ router.get(
       notifyDaily: u.notifyDaily,
       notifyOrders: u.notifyOrders,
       notifyStock: u.notifyStock,
+      // Haftalik (dushanba) va oylik (1-sana) hisobot — services/digest.ts
+      notifyWeekly: u.notifyWeekly,
+      notifyMonthly: u.notifyMonthly,
       timezone: u.timezone,
       telegramConnected: Boolean(u.botChatId),
     });
@@ -231,6 +234,8 @@ router.put(
         ...(input.notifyDaily === undefined ? {} : { notifyDaily: input.notifyDaily }),
         ...(input.notifyOrders === undefined ? {} : { notifyOrders: input.notifyOrders }),
         ...(input.notifyStock === undefined ? {} : { notifyStock: input.notifyStock }),
+        ...(input.notifyWeekly === undefined ? {} : { notifyWeekly: input.notifyWeekly }),
+        ...(input.notifyMonthly === undefined ? {} : { notifyMonthly: input.notifyMonthly }),
         ...(input.timezone ? { timezone: input.timezone.slice(0, 60) } : {}),
       },
     });
@@ -240,6 +245,8 @@ router.put(
       notifyDaily: updated.notifyDaily,
       notifyOrders: updated.notifyOrders,
       notifyStock: updated.notifyStock,
+      notifyWeekly: updated.notifyWeekly,
+      notifyMonthly: updated.notifyMonthly,
       timezone: updated.timezone,
       telegramConnected: Boolean(updated.botChatId),
     });

@@ -3,8 +3,10 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
+  CalendarDays,
   CheckCircle2,
   ExternalLink,
+  FileBarChart,
   Info,
   Inbox,
   PackageCheck,
@@ -50,10 +52,18 @@ const LEVEL_STYLE = {
   danger: 'bg-danger/10 text-danger-ink',
 } as const;
 
-type ToggleKey = 'notifyDaily' | 'notifyOrders' | 'notifyStock';
+type ToggleKey = 'notifyDaily' | 'notifyOrders' | 'notifyStock' | 'notifyWeekly' | 'notifyMonthly';
 
+/*
+ * Haftalik va oylik hisobotni API ishchisi yuboradi (apps/api services/digest.ts):
+ * raqamlar Boshqaruv paneli «O‘tgan hafta» va Oylik hisobot «O‘tgan oy» bilan
+ * bir xil. Izohda QACHON va NIMA kelishi aytiladi — sotuvchi o'chirishdan oldin
+ * nimadan voz kechayotganini bilsin.
+ */
 const TOGGLES: { key: ToggleKey; label: string; hint: string; icon: typeof Bell }[] = [
   { key: 'notifyDaily', label: 'notif.daily', hint: 'notif.dailyHint', icon: BellRing },
+  { key: 'notifyWeekly', label: 'notif.weekly', hint: 'notif.weeklyHint', icon: CalendarDays },
+  { key: 'notifyMonthly', label: 'notif.monthly', hint: 'notif.monthlyHint', icon: FileBarChart },
   { key: 'notifyOrders', label: 'notif.orders', hint: 'notif.ordersHint', icon: Send },
   { key: 'notifyStock', label: 'notif.stock', hint: 'notif.stockHint', icon: PackageCheck },
 ];
@@ -127,9 +137,9 @@ export function NotificationsSection() {
             <ErrorState message={errText(settings.error)} onRetry={() => void settings.refetch()} />
           ) : settings.isLoading ? (
             <div className="space-y-3">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
+              {TOGGLES.map((row) => (
+                <Skeleton key={row.key} className="h-14 w-full" />
+              ))}
             </div>
           ) : (
             <div className="space-y-1">

@@ -41,6 +41,8 @@ registerNamespace('moneyFlow', {
     bar: 'Tushum taqsimoti',
     payout: 'To‘lovga',
     payoutHint: 'Uzum hisobingizga o‘tkazadigan summa: tushum − komissiya va yetkazish',
+    units: 'Sotilgan dona',
+    buyout: 'Sotib olish foizi',
   },
   ru: {
     profit: 'Чистая прибыль',
@@ -57,6 +59,8 @@ registerNamespace('moneyFlow', {
     bar: 'Распределение выручки',
     payout: 'К выплате',
     payoutHint: 'Сумма, которую Uzum переведёт на ваш счёт: выручка − комиссия и доставка',
+    units: 'Продано, шт.',
+    buyout: 'Процент выкупа',
   },
   en: {
     profit: 'Net profit',
@@ -73,6 +77,8 @@ registerNamespace('moneyFlow', {
     bar: 'Where revenue went',
     payout: 'Payout',
     payoutHint: 'What Uzum transfers to your account: revenue − commission and delivery',
+    units: 'Units sold',
+    buyout: 'Buyout rate',
   },
 });
 
@@ -89,18 +95,24 @@ export function MoneyFlow({
   data,
   footer,
   className,
+  money = true,
 }: {
   data: DashboardResponse;
   /** Kartochka ostidagi qo'shimcha izoh (masalan, davr xarajatlaridan keyingi foyda) */
   footer?: ReactNode;
   className?: string;
+  /**
+   * false — pulsiz ko'rinish shabloni (Marketolog): server foyda va to'lovni
+   * null qilib yuboradi, bosh raqam — tushum, taqsimot lentasi chizilmaydi.
+   */
+  money?: boolean;
 }) {
   const t = useT('moneyFlow');
   const f = useFormat();
 
   const revenue = Math.max(0, data.revenue.value);
-  const payout = Math.min(revenue, Math.max(0, data.payout.value));
-  const profit = data.netProfit.value;
+  const payout = Math.min(revenue, Math.max(0, data.payout.value ?? 0));
+  const profit = data.netProfit.value ?? 0;
   const loss = profit < 0;
 
   /*
@@ -123,8 +135,48 @@ export function MoneyFlow({
     ] as const
   ).map((s) => ({ ...s, share: base > 0 ? s.amount / base : 0 }));
 
-  const shownProfit = useCountUp(profit);
+  const shownProfit = useCountUp(money ? profit : revenue);
   const keptPct = revenue > 0 ? f.pct((mine / revenue) * 100, 1) : f.pct(0, 1);
+
+  if (!money) {
+    return (
+      <HeroCard tone="brand" className={cn('flex flex-col p-5 sm:p-7', className)} role="region" aria-label={t('revenue')}>
+        <div className="flex items-center gap-2.5">
+          <span className="icon-tile h-8 w-8 rounded-[10px] [&_svg]:h-4 [&_svg]:w-4" aria-hidden>
+            <PiggyBank />
+          </span>
+          <p className="eyebrow-lg">{t('revenue')}</p>
+        </div>
+        <p className="tnum mt-3 font-title text-[32px] font-semibold leading-none tracking-[-0.03em] text-ink sm:text-[44px]">
+          <Amount value={f.money(shownProfit, data.currency)} />
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-muted">
+          <Delta value={data.revenue.deltaPct} />
+        </div>
+        {/*
+          Foyda lentasi o'rnida — pulsiz, lekin sotuv uchun asosiy ko'rsatkichlar.
+          Qaytarish ulushi ATAYLAB yo'q: u "Qaytarish va bekor qilish" kartasida
+          boshqa (yagona) ta'rif bilan turadi — ikki xil foiz chiqmasin.
+        */}
+        <ul className="mt-7 grid grid-cols-2 gap-3 sm:mt-auto sm:pt-8">
+          {(
+            [
+              { key: 'units', label: t('units'), value: f.num(data.unitsSold.value) },
+              { key: 'buyout', label: t('buyout'), value: f.pct(data.buyoutRate.value) },
+            ] as const
+          ).map((s) => (
+            <li key={s.key} className="well min-w-0 p-3">
+              <p className="truncate text-xs text-muted" title={s.label}>
+                {s.label}
+              </p>
+              <p className="tnum mt-1 text-[17px] font-semibold leading-6 text-ink">{s.value}</p>
+            </li>
+          ))}
+        </ul>
+        {footer ? <div className="mt-6 border-t border-line pt-4 text-xs text-muted">{footer}</div> : null}
+      </HeroCard>
+    );
+  }
 
   return (
     <HeroCard

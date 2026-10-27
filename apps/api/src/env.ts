@@ -95,6 +95,17 @@ export const env = {
     inProcessWorker: bool(process.env.SYNC_IN_PROCESS, true),
     pollMs: num(process.env.SYNC_POLL_MS, 3_000),
     concurrency: num(process.env.SYNC_CONCURRENCY, 2),
+    /*
+     * Tarix yuklash (backfill, services/sync.ts) Uzum'ga oddiy sinxrondan ancha
+     * sekin murojaat qiladi: 2026-10-11 da Uzum server manzilimizni to'sib
+     * qo'ygan, shuning uchun fondagi ish hech qachon yuk cho'qqisini yaratmasligi kerak.
+     */
+    /** Tarix yuklash: sekundiga so'rovlar (oddiy sinxron — UZUM_RPS, standart 3) */
+    backfillRps: num(process.env.SYNC_BACKFILL_RPS, 1),
+    /** Tarix yuklash: barcha jarayonlar bo'yicha soatiga ko'pi bilan shuncha so'rov */
+    backfillHourlyCap: num(process.env.SYNC_BACKFILL_HOURLY_CAP, 1_200),
+    /** Tarix yuklash yurmaydigan soatlar (Toshkent vaqti, "boshi-oxiri"); tungi sinxron jadvali bilan bir xil */
+    backfillQuietHours: process.env.SYNC_BACKFILL_QUIET_HOURS ?? '0-9',
   },
 
   billing: {

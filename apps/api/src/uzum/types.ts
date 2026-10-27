@@ -294,9 +294,27 @@ export interface UzumExpense {
 // ─────────────────────────── Klient shartnomasi ───────────────────────────
 
 /**
+ * Qaytgan ro'yxatning to'liqligi — massivning o'ziga sanalmaydigan (enumerable
+ * emas) xossa bo'lib yopishtiriladi (`markList` / `listMeta`, http.ts), JSON'ga
+ * tushmaydi va oddiy chaqiruvchiga ta'sir qilmaydi.
+ *
+ * Nega kerak (2026-10-24): klient xatoni yutib bo'sh ro'yxat qaytaradi,
+ * `fetchAllPages` esa 200 sahifadan keyin jim to'xtaydi. Tarix yuklash "bu
+ * kunlarda sotuv yo'q" bilan "Uzum javob bermadi / javob kesildi"ni ajrata
+ * olmay, bo'shliqni "yuklandi" deb belgilab qo'yardi.
+ */
+export interface UzumListMeta {
+  /** Sahifalar chegarasiga yetdi — javob kesilgan, oynani kichraytirib qayta so'rash kerak */
+  truncated?: boolean;
+  /** So'rov xato bilan tugadi (log matni) — ro'yxat bo'sh yoki chala */
+  failed?: string;
+}
+
+/**
  * Uzum kabineti bilan ishlash uchun yagona interfeys.
  * Barcha `get*` metodlari xatolikda **bo'sh massiv** qaytaradi (throw qilmaydi) —
- * sinxronizatsiya bosqichi qulab tushmasligi uchun.
+ * sinxronizatsiya bosqichi qulab tushmasligi uchun. Ro'yxat chala bo'lsa, unga
+ * `UzumListMeta` belgisi yopishtiriladi.
  */
 export interface UzumClient {
   /**
@@ -347,6 +365,11 @@ export interface UzumClientOptions {
   maxRetries?: number;
   /** Sekundiga so'rovlar chegarasi */
   rpsLimit?: number;
+  /**
+   * Har bir HTTP so'rovdan oldin chaqiriladi (RPS navbatidan keyin). Tarix
+   * yuklash so'rovlarni sanaydi va soatlik chegarada xato tashlab to'xtaydi.
+   */
+  onRequest?: () => void;
   /** Demo ma'lumotda "bugun" nuqtasi (testlarni barqaror qilish uchun) */
   now?: Date;
 }

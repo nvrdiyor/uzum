@@ -15,6 +15,8 @@ import {
   ArrowRight,
   ArrowDownRight,
   CheckCircle2,
+  CircleCheck,
+  Hourglass,
   Info,
   Layers,
   Lightbulb,
@@ -30,6 +32,7 @@ import {
   type DeliveryType,
   type ExpenseCategory,
   type Insight,
+  type MonthlyReportFinality,
   type MonthlyReportResponse,
   type TopProductRow,
 } from '@savdoiq/shared';
@@ -99,7 +102,7 @@ export function PrintStyles() {
 }
 
 /** Chop etilgan varaqning sarlavhasi (ekranda ko'rinmaydi) */
-export function PrintHead({ from, to }: { from: string; to: string }) {
+export function PrintHead({ from, to, finality }: { from: string; to: string; finality?: MonthlyReportFinality }) {
   const t = useT('reports');
   const f = useFormat();
   return (
@@ -107,8 +110,56 @@ export function PrintHead({ from, to }: { from: string; to: string }) {
       <p className="font-display text-xl font-extrabold text-ink">{t('print.head')}</p>
       <p className="tnum mt-1 text-sm text-muted">
         {f.date(from)} — {f.date(to)}
+        {/* PDF ham Excel kabi holatini aytadi — oraliq hisobot buxgalterga yakuniy deb ketmasin */}
+        {finality
+          ? ` · ${
+              finality.status === 'final'
+                ? t('final.final', { v: f.pct(finality.completionPct, 1) })
+                : t('final.preliminary', { v: f.pct(finality.completionPct, 1) })
+            }`
+          : null}
       </p>
     </div>
+  );
+}
+
+// ─────────────────────────── Hisobot holati ───────────────────────────
+
+/**
+ * "Yakuniy / Oraliq" chipi — Excel fayl va Telegram nusxasidagi "Holat"
+ * qatorining o'zi (2026-10-24). Joriy oy yoki ko'p donasi hali yo'lda bo'lgan
+ * oy raqamlari o'zgaradi: sotuvchi uni buxgalterga yakuniy deb yubormasin.
+ * Foiz bir kasr bilan — butunga yaxlitlansa 94,6% "95%" bo'lib, chegaraga
+ * yetgandek ko'rinardi.
+ */
+export function FinalityChip({ finality, className }: { finality: MonthlyReportFinality; className?: string }) {
+  const t = useT('reports');
+  const f = useFormat();
+  const final = finality.status === 'final';
+  const done = f.pct(finality.completionPct, 1);
+  const why = final
+    ? t('final.finalHint')
+    : finality.reason === 'current'
+      ? t('final.currentHint')
+      : t('final.transitHint', { n: f.num(finality.inTransitUnits) });
+  const rule = t('final.rule', {
+    done: f.num(finality.completedUnits),
+    total: f.num(finality.orderedUnits),
+    v: f.pct(finality.thresholdPct, 0),
+  });
+
+  return (
+    <span
+      className={cn('meta-chip tnum', !final && 'border-warn/40 bg-warn/10 text-warn-ink', className)}
+      title={`${why}\n${rule}`}
+    >
+      {final ? (
+        <CircleCheck className="h-3.5 w-3.5 text-brand" />
+      ) : (
+        <Hourglass className="h-3.5 w-3.5 text-warn-ink" />
+      )}
+      {final ? t('final.final', { v: done }) : t('final.preliminary', { v: done })}
+    </span>
   );
 }
 
@@ -265,11 +316,13 @@ function SegmentBar({ segments, label, className }: { segments: Segment[]; label
 
 /**
  * Sahifadagi YAGONA HeroCard: davrning sof foydasi va tushumning har bir
- * so'mi qayerga ketgani. Lentadagi bo'laklar serverdagi tayyor raqamlardan:
- * tannarx = tushum − yalpi foyda (reports.ts dagi ta'rif), xarajatlar —
- * javobdagi kategoriyalar, sof foyda = yalpi foyda − xarajatlar. Yangi hisob
- * yo'q, shuning uchun yig'indi har doim tushumga teng va pastdagi "Davr
- * xarajatlari" kartochkasi bilan bir xil ranglarda.
+ * so'mi qayerga ketgani. Lentadagi bo'laklar serverdagi tayyor raqamlardan
+ * (api services/monthly-report.ts): tannarx, javobdagi xarajat kategoriyalari
+ * va sof foyda — davr xarajatlaridan keyin, Boshqaruv panelidagi bilan bir
+ * xil. Soliq qatori pozitsiyalarda haqiqatda ayrilgan soliq, shuning uchun
+ * yig'indi tushumga teng. Yangi hisob yo'q: Excel fayl ham, Telegram'ga
+ * yuboriladigan nusxa ham aynan shu raqamlar; ranglar pastdagi "Davr
+ * xarajatlari" kartochkasi bilan bir xil.
  */
 export function ResultHero({
   report,
@@ -288,8 +341,9 @@ export function ResultHero({
   const revenue = Math.max(0, report.revenue);
   const profit = report.netProfit;
   const loss = profit < 0;
-  const cogs = Math.max(0, report.revenue - report.grossProfit);
-  const margin = revenue > 0 ? (profit / revenue) * 100 : null;
+  const cogs = Math.max(0, report.cogs);
+  // Serverdagi marja — Excel fayldagi "Sof marja" katagi bilan bitta qiymat
+  const margin = revenue > 0 ? report.margin : null;
   const marginDelta = margin !== null && prevMargin !== null ? margin - prevMargin : null;
   const shownProfit = useCountUp(profit);
 

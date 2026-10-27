@@ -4,17 +4,30 @@ import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowRight,
+  ChevronDown,
+  Download,
   EyeOff,
   HandCoins,
+  Info,
   LayoutGrid,
   RotateCcw,
   Rows3,
+  ShoppingBag,
   Tag,
 } from '@/components/icons';
-import type { ProductProfitMoney, ProductProfitResponse, ProductProfitRow } from '@savdoiq/shared';
+import {
+  matchesProductQuery,
+  pct,
+  round,
+  type ProductProfitFlag,
+  type ProductProfitMoney,
+  type ProductProfitResponse,
+  type ProductProfitRow,
+} from '@savdoiq/shared';
 import {
   Amount,
   Badge,
+  Button,
   Card,
   DataTable,
   Drawer,
@@ -26,28 +39,32 @@ import {
   PreviewBadge,
   ProductCell,
   ProductThumb,
-  SearchInput,
   Segmented,
   Skeleton,
+  toast,
   type Column,
 } from '@/components/ui';
+import { SkuSearchInput, useSkuQuery } from '@/components/products/SkuSearchInput';
 import { FilterBar } from '@/components/filters';
 import { PeriodChip } from '@/components/finance/PeriodChip';
+import { useBuyout } from '@/components/products/Buyout';
+import { ProfitAttention } from '@/components/products/ProfitAttention';
+import { ProfitVariants, hasVariants, marginTone } from '@/components/products/ProfitVariants';
 import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { SplitStrip } from '@/components/unit/CostSplitBar';
 import { useCountUp } from '@/hooks/useCountUp';
 import { api } from '@/lib/api';
 import { COST_COLORS } from '@/lib/theme';
+import { useFeature } from '@/store/session';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT, type TFunc } from '@/i18n';
-import { cn } from '@/lib/utils';
+import { cn, downloadBlob } from '@/lib/utils';
 
 registerNamespace('productProfit', {
   uz: {
     title: 'Mahsulot foydasi',
     subtitle: 'Har bir mahsulot qancha pul qoldirdi — bir donadan va jami',
-    search: 'Mahsulot nomi bo‘yicha qidirish',
     'sort.profit': 'Sof foyda',
     'sort.perUnit': '1 donadan',
     'sort.revenue': 'Tushum',
@@ -115,11 +132,33 @@ registerNamespace('productProfit', {
     'empty.search': 'Qidiruv bo‘yicha mahsulot topilmadi',
     'note.money': 'Summalar so‘mda. Bekor qilingan va qaytarilgan sotuvlar kirmaydi.',
     'note.table': 'Qatorni bosing — tushumdan sof foydagacha to‘liq hisob ochiladi.',
+    'note.expand': 'Nom chapidagi strelka SKU variantlarini ochadi.',
+    'tab.all': 'Hammasi',
+    'tab.loss': 'Zararda',
+    'tab.lowMargin': 'Past marja',
+    'tab.noCost': 'Tannarxsiz',
+    'tab.lowBuyout': 'Past xarid',
+    'tabHint.loss': 'Sof foyda manfiy — tannarx, soliq va reklamadan keyin zarar qoldi.',
+    'tabHint.lowMargin': 'Zarar yo‘q, lekin marja {v} dan past.',
+    'tabHint.noCost': 'Sotilgan variantlardan kamida birining tannarxi kiritilmagan — foyda haqiqiydan katta ko‘rinadi.',
+    'tabHint.lowBuyout':
+      'Xarid foizi do‘kon o‘rtachasidan ({avg}) kamida {gap} p.p. past — kamida {min} ta yakunlangan dona bilan.',
+    'empty.tab': 'Bu bo‘limda mahsulot yo‘q',
+    'empty.tabHint': 'Yaxshi belgi. Boshqa bo‘limni tanlang yoki «Hammasi» ga qayting.',
+    'variants.show': 'Variantlar ({n})',
+    'variants.hide': 'Variantlarni yig‘ish',
+    'total.labelOf': 'Jami · {n} / {all} mahsulot',
+    'total.perUnit': '1 donadan {v}',
+    'card.buyout': 'xarid {v}',
+    'tag.lowBuyout': 'Past xarid {v}',
+    'tag.lowBuyoutTitle': 'Xarid foizi {v} — do‘kon o‘rtachasi {avg}',
+    'export.done': 'Excel fayl tayyor',
+    'export.error': 'Eksport qilib bo‘lmadi',
+    'export.locked': 'Excel eksporti tarifingizda yopiq',
   },
   ru: {
     title: 'Прибыль по товарам',
     subtitle: 'Сколько денег оставил каждый товар — с одной штуки и всего',
-    search: 'Поиск по названию товара',
     'sort.profit': 'Чистая прибыль',
     'sort.perUnit': 'С 1 шт.',
     'sort.revenue': 'Выручка',
@@ -127,7 +166,8 @@ registerNamespace('productProfit', {
     'view.table': 'Таблица',
     'view.cards': 'Карточки',
     'kpi.revenue': 'Выручка',
-    'kpi.revenueHint': '{units} шт., {orders} заказов',
+    // "заказов: N" ko'rinishi — ilgari "1 заказов", "21 заказов" chiqardi (ruscha son kelishigi)
+    'kpi.revenueHint': '{units} шт., заказов: {orders}',
     'kpi.payout': 'К выводу',
     'kpi.payoutHint': 'Что Uzum платит вам после комиссии и доставки',
     'kpi.cogs': 'Себестоимость',
@@ -144,10 +184,10 @@ registerNamespace('productProfit', {
     'hero.store': 'Чистая прибыль магазина',
     'hero.storeHint': 'За вычетом расходов, не привязанных к товару: −{v}',
     'hero.units': 'Продано',
-    'hero.unitsHint': '{orders} заказов · {products} товаров',
+    'hero.unitsHint': 'заказов: {orders} · товаров: {products}',
     'recon.text':
       'Чистая прибыль товаров {products}. За вычетом расходов, не привязанных к товару (логистика на склад, общая реклама, хранение) {other}, прибыль магазина — {store}, как на главной панели.',
-    'card.meta': '{units} шт. · {orders} заказов',
+    'card.meta': '{units} шт. · заказов: {orders}',
     'card.skus': '{n} SKU',
     'card.hidden': 'Скрыт из каталога',
     'card.net': 'Чистая прибыль',
@@ -175,23 +215,46 @@ registerNamespace('productProfit', {
     'tag.returnsTitle': 'Доля возвратов {v} — в среднем по магазину {avg}',
     'col.product': 'Товар',
     'col.units': 'Продано',
-    'col.orders': '{n} заказов',
+    'col.orders': 'заказов: {n}',
     'col.revenue': 'Выручка',
     'col.split': 'Структура выручки',
     'col.profit': 'Чистая прибыль',
     'col.margin': 'Маржа',
     'col.roi': 'ROI',
-    'total.label': 'Итого · {n} товаров',
+    'total.label': 'Итого · товаров: {n}',
     'empty.title': 'За этот период продаж нет',
     'empty.hint': 'Выберите период шире — например «Этот год».',
     'empty.search': 'По запросу товары не найдены',
     'note.money': 'Суммы в сумах. Отменённые и возвращённые продажи не учитываются.',
     'note.table': 'Нажмите на строку — откроется полный расчёт от выручки до чистой прибыли.',
+    'note.expand': 'Стрелка слева от названия раскрывает варианты SKU.',
+    'tab.all': 'Все',
+    'tab.loss': 'В убытке',
+    'tab.lowMargin': 'Низкая маржа',
+    'tab.noCost': 'Без себестоимости',
+    'tab.lowBuyout': 'Низкий выкуп',
+    'tabHint.loss': 'Чистая прибыль отрицательная — убыток после себестоимости, налога и рекламы.',
+    'tabHint.lowMargin': 'Убытка нет, но маржа ниже {v}.',
+    'tabHint.noCost':
+      'Хотя бы у одного проданного варианта не указана себестоимость — прибыль выглядит больше реальной.',
+    'tabHint.lowBuyout':
+      'Выкуп ниже среднего по магазину ({avg}) минимум на {gap} п.п. — если завершённых штук не меньше {min}.',
+    'empty.tab': 'В этой вкладке товаров нет',
+    'empty.tabHint': 'Хороший знак. Выберите другую вкладку или вернитесь во «Все».',
+    'variants.show': 'Варианты ({n})',
+    'variants.hide': 'Свернуть варианты',
+    'total.labelOf': 'Итого · товаров: {n} из {all}',
+    'total.perUnit': 'С 1 шт. {v}',
+    'card.buyout': 'выкуп {v}',
+    'tag.lowBuyout': 'Низкий выкуп {v}',
+    'tag.lowBuyoutTitle': 'Выкуп {v} — в среднем по магазину {avg}',
+    'export.done': 'Excel-файл готов',
+    'export.error': 'Не удалось выгрузить',
+    'export.locked': 'Выгрузка в Excel недоступна на вашем тарифе',
   },
   en: {
     title: 'Profit by product',
     subtitle: 'How much money each product left you — per unit and in total',
-    search: 'Search by product name',
     'sort.profit': 'Net profit',
     'sort.perUnit': 'Per unit',
     'sort.revenue': 'Revenue',
@@ -259,11 +322,42 @@ registerNamespace('productProfit', {
     'empty.search': 'No products match the search',
     'note.money': 'Amounts in UZS. Cancelled and returned sales are excluded.',
     'note.table': 'Click a row to open the full breakdown from revenue to net profit.',
+    'note.expand': 'The arrow left of the name opens the SKU variants.',
+    'tab.all': 'All',
+    'tab.loss': 'Loss-making',
+    'tab.lowMargin': 'Low margin',
+    'tab.noCost': 'No cost price',
+    'tab.lowBuyout': 'Low buyout',
+    'tabHint.loss': 'Net profit is negative — a loss after cost, tax and ads.',
+    'tabHint.lowMargin': 'Not a loss, but the margin is below {v}.',
+    'tabHint.noCost': 'At least one sold variant has no cost price — profit looks higher than it is.',
+    'tabHint.lowBuyout':
+      'Buyout at least {gap} pp below the store average ({avg}) — with at least {min} completed units.',
+    'empty.tab': 'No products in this tab',
+    'empty.tabHint': 'A good sign. Pick another tab or go back to “All”.',
+    'variants.show': 'Variants ({n})',
+    'variants.hide': 'Hide variants',
+    'total.labelOf': 'Total · {n} of {all} products',
+    'total.perUnit': '{v} per unit',
+    'card.buyout': 'buyout {v}',
+    'tag.lowBuyout': 'Low buyout {v}',
+    'tag.lowBuyoutTitle': 'Buyout rate {v} — store average {avg}',
+    'export.done': 'Excel file is ready',
+    'export.error': 'Export failed',
+    'export.locked': 'Excel export is not available on your plan',
   },
 });
 
 type SortKey = 'profit' | 'perUnit' | 'revenue' | 'margin';
 type ViewMode = 'table' | 'cards';
+/**
+ * Muammo bo'limlari (tablar). Qaysi mahsulot qaysi bo'limga tushishini server
+ * belgilaydi (`row.flags`, services/product-profit.ts) — sanoq, kartalar va
+ * Excel'dagi "Muammo" ustuni bitta qoidadan.
+ */
+type TabKey = 'all' | ProductProfitFlag;
+const TABS: TabKey[] = ['all', 'loss', 'lowMargin', 'noCost', 'lowBuyout'];
+const isTab = (v: string | null): v is TabKey => v !== null && (TABS as string[]).includes(v);
 
 const SORTERS: Record<SortKey, (r: ProductProfitRow) => number> = {
   profit: (r) => r.netProfit,
@@ -319,6 +413,22 @@ function splitParts(m: ProductProfitMoney, t: TFunc) {
   ];
 }
 
+/**
+ * Javobni sahifa kutgan ko'rinishga keltiradi. Yangilanish paytida sayt eski
+ * API bilan bir necha soniya gaplashib qolishi mumkin — yangi maydonlar
+ * (flags, variants, attention) bo'lmasa sahifa yiqilmasin, ularsiz chiqsin.
+ * `thresholds` zaxira qiymati faqat shu holat uchun (belgilar bo'lmagani
+ * uchun bo'limlar baribir chiqmaydi); haqiqiy chegaralar — serverda.
+ */
+function normalize(d: ProductProfitResponse): ProductProfitResponse {
+  return {
+    ...d,
+    attention: d.attention ?? [],
+    thresholds: d.thresholds ?? { lowMargin: 10, nearZeroMargin: 5, buyoutGap: 10, buyoutMinCompleted: 5 },
+    rows: d.rows.map((r) => ({ ...r, flags: r.flags ?? [], variants: r.variants ?? [] })),
+  };
+}
+
 export default function ProductProfit() {
   const t = useT('productProfit');
   const periodQuery = usePeriodQuery();
@@ -326,36 +436,90 @@ export default function ProductProfit() {
   const [sort, setSort] = useState<SortKey>('profit');
   const [search, setSearch] = useState('');
   const [active, setActive] = useState<ProductProfitRow | null>(null);
+  const [exporting, setExporting] = useState(false);
+  // Ikkalasi ham shart: eksport routeri `export_excel`, bu fayl esa yana `unit_economics` talab qiladi
+  const exportAccess = useFeature('export_excel');
+  const profitAccess = useFeature('unit_economics');
+  const canExport = exportAccess === 'full' && profitAccess === 'full';
+
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(params);
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+    setParams(next, { replace: true });
+  };
   /*
    * Ko'rinish manzilda (?view=cards) — havola ulashilsa yoki sahifa
    * yangilansa tanlov saqlanadi. Tanlanmaguncha mahsulotlar soniga qarab.
    */
   const urlView = params.get('view');
   const picked: ViewMode | null = urlView === 'table' || urlView === 'cards' ? urlView : null;
-  const setPicked = (v: ViewMode) => {
-    const next = new URLSearchParams(params);
-    next.set('view', v);
-    setParams(next, { replace: true });
-  };
+  const setPicked = (v: ViewMode) => setParam('view', v);
+  /*
+   * Bo'lim ham manzilda (?tab=loss): "Zararda" ro'yxatini havola bilan yuborish
+   * mumkin, sahifa yangilansa tanlov yo'qolmaydi. Noma'lum qiymat — "Hammasi".
+   */
+  const urlTab = params.get('tab');
+  const tab: TabKey = isTab(urlTab) ? urlTab : 'all';
+  const setTab = (v: TabKey) => setParam('tab', v === 'all' ? null : v);
 
   const query = useQuery({
     queryKey: ['product-profit', periodQuery],
-    queryFn: () => api.get<ProductProfitResponse>('/products/profit', periodQuery),
+    queryFn: async () => normalize(await api.get<ProductProfitResponse>('/products/profit', periodQuery)),
     placeholderData: (prev) => prev,
   });
 
   const data = query.data;
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const list = (data?.rows ?? []).filter(
-      (r) => !needle || r.title.toLowerCase().includes(needle) || (r.category ?? '').toLowerCase().includes(needle),
+  /*
+   * Qidiruv: nomi, kategoriyasi, Uzum mahsulot ID'si yoki istalgan variantining
+   * nomi, SKU kodi, shtrix-kodi, Uzum SKU ID'si; uzum.uz havolasi ham —
+   * serverdagi BILAN BIR XIL qoida (shared search.ts), kalitlar qatorda keladi.
+   * Ilgari faqat nom, kategoriya, SKU kodi va variant nomi edi (2026-10-24).
+   * Bo'limlar sanog'i, jamlanma va "E‘tibor talab qiladi" qidiruvga bog'liq emas.
+   */
+  const skuQuery = useSkuQuery(search);
+  const searched = useMemo(() => {
+    const all = data?.rows ?? [];
+    if (!skuQuery) return all;
+    return all.filter((r) =>
+      matchesProductQuery(
+        skuQuery,
+        { id: r.productId, title: r.title, category: r.category, uzumProductId: r.uzumProductId },
+        r.variants.map((v) => ({ id: v.skuId, sku: v.sku, title: v.title, barcode: v.barcode, uzumSkuId: v.uzumSkuId })),
+      ),
     );
+  }, [data, skuQuery]);
+
+  // Bo'limlar sanog'i — qidiruvga mos ro'yxat bo'yicha, bo'lim tanlovidan oldin: tab bosilsa aynan shuncha qator chiqadi
+  const counts = useMemo(() => {
+    const c: Record<TabKey, number> = { all: searched.length, loss: 0, lowMargin: 0, noCost: 0, lowBuyout: 0 };
+    for (const r of searched) for (const flag of r.flags) c[flag] += 1;
+    return c;
+  }, [searched]);
+
+  const rows = useMemo(() => {
+    const flag = tab === 'all' ? null : tab;
+    const list = flag ? searched.filter((r) => r.flags.includes(flag)) : searched;
     const by = SORTERS[sort];
     return [...list].sort((a, b) => by(b) - by(a));
-  }, [data, search, sort]);
+  }, [searched, tab, sort]);
 
   // Qidiruvda qator kamayganda ko'rinish sakramasin — chegara umumiy son bo'yicha
   const view: ViewMode = picked ?? ((data?.rows.length ?? 0) > TABLE_FROM ? 'table' : 'cards');
+
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      // Sahifadagi davr va do'kon filtri bilan; bo'lim va qidiruv faylga ta'sir qilmaydi — unda "Muammo" ustuni bor
+      const blob = await api.blob('/export/product-profit', periodQuery);
+      downloadBlob(blob, `product-profit-${periodQuery.from}_${periodQuery.to}.xlsx`);
+      toast.success(t('export.done'));
+    } catch (err) {
+      toast.error(t('export.error'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Do'kon bo'yicha o'rtacha qaytish ulushi — mahsulotning qaytishlari shunga solishtiriladi
   const avgReturn = useMemo(() => {
@@ -382,10 +546,22 @@ export default function ProductProfit() {
           </>
         }
         badge={<PreviewBadge feature="unit_economics" />}
+        actions={
+          <Button
+            variant="outline"
+            icon={<Download className="h-4 w-4" />}
+            loading={exporting}
+            disabled={!canExport}
+            title={canExport ? undefined : t('export.locked')}
+            onClick={() => void onExport()}
+          >
+            {t('btn.export')}
+          </Button>
+        }
       />
 
       <FilterBar>
-        <SearchInput value={search} onChange={setSearch} placeholder={t('search')} className="w-full sm:w-72" />
+        <SkuSearchInput value={search} onChange={setSearch} className="w-full sm:w-72" />
         <Segmented<SortKey>
           size="sm"
           value={sort}
@@ -433,36 +609,69 @@ export default function ProductProfit() {
           <div className="space-y-5">
             <SummaryHero data={data} loading={query.isLoading} />
 
+            {/* Eng katta pul ta'siri bo'lgan 4 ta holat — server tanlaydi, har biri mahsulot sahifasiga olib boradi */}
+            <ProfitAttention
+              items={data?.attention ?? []}
+              rows={data?.rows ?? []}
+              loading={query.isLoading}
+              onShowTab={setTab}
+              tabLabel={(flag) => t(`tab.${flag}`)}
+            />
+
             {query.isLoading ? (
               <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-[480px] w-full rounded-2xl" />
                 ))}
               </div>
-            ) : rows.length === 0 ? (
-              <Card>
-                <EmptyState
-                  icon={<HandCoins className="h-6 w-6" />}
-                  title={search.trim() ? t('empty.search') : t('empty.title')}
-                  hint={search.trim() ? undefined : t('empty.hint')}
-                />
-              </Card>
-            ) : view === 'table' ? (
-              <>
-                <ProfitTable rows={rows} avgReturn={avgReturn} onOpen={setActive} />
-                <p className="text-2xs text-muted">
-                  {t('note.table')} {t('note.money')}
-                </p>
-              </>
             ) : (
-              <>
-                <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-                  {rows.map((r) => (
-                    <ProfitCard key={r.productId} row={r} avgReturn={avgReturn} />
-                  ))}
-                </div>
-                <p className="text-2xs text-muted">{t('note.money')}</p>
-              </>
+              <div className="space-y-3">
+                {data ? <ProblemTabs tab={tab} counts={counts} onChange={setTab} data={data} /> : null}
+                {rows.length === 0 ? (
+                  <Card>
+                    <EmptyState
+                      icon={<HandCoins className="h-6 w-6" />}
+                      title={search.trim() ? t('empty.search') : tab !== 'all' ? t('empty.tab') : t('empty.title')}
+                      hint={search.trim() ? undefined : tab !== 'all' ? t('empty.tabHint') : t('empty.hint')}
+                      action={
+                        tab !== 'all' ? (
+                          <Button size="sm" variant="outline" onClick={() => setTab('all')}>
+                            {t('tab.all')}
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  </Card>
+                ) : view === 'table' ? (
+                  <>
+                    <ProfitTable
+                      rows={rows}
+                      allCount={searched.length}
+                      avgReturn={avgReturn}
+                      storeBuyout={data?.totals.buyoutRate ?? null}
+                      onOpen={setActive}
+                    />
+                    <p className="text-2xs text-muted">
+                      {t('note.table')} {rows.some(hasVariants) ? `${t('note.expand')} ` : ''}
+                      {t('note.money')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                      {rows.map((r) => (
+                        <ProfitCard
+                          key={r.productId}
+                          row={r}
+                          avgReturn={avgReturn}
+                          storeBuyout={data?.totals.buyoutRate ?? null}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-2xs text-muted">{t('note.money')}</p>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -470,9 +679,78 @@ export default function ProductProfit() {
 
       {/* Jadvaldagi qator bosilganda — o'sha mahsulotning to'liq hisobi (kartochkaning o'zi) */}
       <Drawer open={Boolean(active)} onClose={() => setActive(null)} title={active?.title}>
-        {active ? <ProfitCard row={active} avgReturn={avgReturn} embedded /> : null}
+        {active ? (
+          <ProfitCard row={active} avgReturn={avgReturn} storeBuyout={data?.totals.buyoutRate ?? null} embedded />
+        ) : null}
       </Drawer>
     </>
+  );
+}
+
+/**
+ * Muammo bo'limlari jadval (yoki kartochkalar) ustida. Faqat ma'lumotda bor
+ * bo'limlar va tanlangani ko'rinadi: "Zararda 0", "Tannarxsiz 0" kabi nol
+ * tugmalar shovqin edi, muammo umuman bo'lmasa qator ham chiqmaydi. Tanlangan
+ * bo'lim ostida uning qoidasi — chegaralar serverdan (`thresholds`): qoida
+ * o'zgarsa, izoh ham o'zi o'zgaradi.
+ */
+function ProblemTabs({
+  tab,
+  counts,
+  onChange,
+  data,
+}: {
+  tab: TabKey;
+  counts: Record<TabKey, number>;
+  onChange: (v: TabKey) => void;
+  data: ProductProfitResponse;
+}) {
+  const t = useT('productProfit');
+  const f = useFormat();
+  const visible = TABS.filter((k) => k === 'all' || k === tab || counts[k] > 0);
+  if (visible.length <= 1) return null;
+
+  const th = data.thresholds;
+  const avg = data.totals.buyoutRate;
+  const hint =
+    tab === 'loss'
+      ? t('tabHint.loss')
+      : tab === 'lowMargin'
+        ? t('tabHint.lowMargin', { v: f.pct(th.lowMargin, 0) })
+        : tab === 'noCost'
+          ? t('tabHint.noCost')
+          : tab === 'lowBuyout'
+            ? t('tabHint.lowBuyout', {
+                avg: avg === null ? '—' : f.pct(avg),
+                gap: f.num(th.buyoutGap),
+                min: f.num(th.buyoutMinCompleted),
+              })
+            : null;
+
+  return (
+    <div className="space-y-2">
+      <Segmented<TabKey>
+        value={tab}
+        onChange={onChange}
+        options={visible.map((k) => ({ value: k, label: t(`tab.${k}`), count: counts[k] }))}
+      />
+      {hint ? (
+        <p className="flex items-start gap-1.5 text-xs text-muted">
+          <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">
+            {hint}
+            {tab === 'noCost' ? (
+              <>
+                {' '}
+                <Link to="/cost-price" className="font-semibold text-brand-ink hover:underline">
+                  {t('card.setCost')}
+                </Link>
+              </>
+            ) : null}
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -671,21 +949,34 @@ function returnRate(r: { units: number; returns: number }): number {
  * bo'lsa (va kamida 3 dona). Demo do'konda 16 mahsulotning 15 tasida qaytish
  * bor — hammasi bir xil ogohlantiruvchi rangda tursa, haqiqiy muammoli 3 ta
  * mahsulot ajralmay qolardi. Qolganlari tinch kulrang plastinkada.
+ *
+ * "Tannarxsiz" va "Past xarid" — server belgilari (`row.flags`): sahifadagi
+ * shu nomli bo'limlar bilan bitta qoida. Ilgari "tannarxsiz" faqat butun
+ * mahsulotning tannarxi 0 bo'lsa chiqardi: to'rt rangdan bittasiga tannarx
+ * kiritilmagan bo'lsa ham foyda oshib ko'rinardi, belgi esa yo'q edi.
  */
 function ProblemTags({
   row,
   avgReturn,
+  storeBuyout,
+  showBuyout,
   className,
 }: {
   row: ProductProfitRow;
   /** Do'kon bo'yicha o'rtacha qaytish ulushi (0..1) */
   avgReturn: number;
+  /** Do'kon o'rtacha xarid foizi — "Past xarid" belgisi izohi uchun */
+  storeBuyout?: number | null;
+  /** Kartochkada "Past xarid" ham ko'rinadi; jadvalda u o'z ustunida */
+  showBuyout?: boolean;
   className?: string;
 }) {
   const t = useT('productProfit');
   const f = useFormat();
-  const noCost = row.units > 0 && row.cogs <= 0;
-  if (!noCost && row.returns <= 0 && !row.hidden) return null;
+  const b = useBuyout();
+  const noCost = row.flags.includes('noCost');
+  const lowBuyout = Boolean(showBuyout) && row.flags.includes('lowBuyout');
+  if (!noCost && !lowBuyout && row.returns <= 0 && !row.hidden) return null;
   const rate = returnRate(row);
   const highReturns = row.returns >= 3 && avgReturn > 0 && rate >= avgReturn * 1.5;
   return (
@@ -694,6 +985,19 @@ function ProblemTags({
         <Badge tone="warn" className="px-2 py-0.5" title={t('card.noCost')}>
           <Tag className="h-3 w-3" />
           {t('tag.noCost')}
+        </Badge>
+      ) : null}
+      {lowBuyout ? (
+        <Badge
+          tone="warn"
+          className="px-2 py-0.5"
+          title={t('tag.lowBuyoutTitle', {
+            v: b.value(row),
+            avg: storeBuyout === null || storeBuyout === undefined ? '—' : f.pct(storeBuyout),
+          })}
+        >
+          <ShoppingBag className="h-3 w-3" />
+          <span className="tnum">{t('tag.lowBuyout', { v: b.value(row) })}</span>
         </Badge>
       ) : null}
       {row.returns > 0 ? (
@@ -721,18 +1025,30 @@ function ProblemTags({
  * Jadval ko'rinishi — mahsulotlarni yonma-yon solishtirish uchun. Ustunlar
  * 1366 px'da sig'adi: xarajat moddalari alohida ustun emas, bitta rangli
  * "Tushum taqsimoti" chizig'ida; to'liq hisob qator bosilganda ochiladi.
+ *
+ * Xarid foizi ustuni qo'shilgach (2026-10-24) jadval 1366 px'ga sig'ishi
+ * uchun "Tushum taqsimoti" chizig'i faqat 2xl (1536 px) dan ko'rinadi — u
+ * qator bosilganda ochiladigan hisobda va bosh kartochkada bor. SKU
+ * variantlarini ochish tugmasi alohida ustun emas, nom katagining boshida.
  */
 function ProfitTable({
   rows,
+  allCount,
   avgReturn,
+  storeBuyout,
   onOpen,
 }: {
   rows: ProductProfitRow[];
+  /** Bo'lim tanlanmagandagi (qidiruvdan keyingi) qatorlar soni — jami yozuvida "3 / 16" */
+  allCount: number;
   avgReturn: number;
+  /** Do'kon o'rtacha xarid foizi ("Past xarid" izohi uchun) */
+  storeBuyout: number | null;
   onOpen: (r: ProductProfitRow) => void;
 }) {
   const t = useT('productProfit');
   const f = useFormat();
+  const b = useBuyout();
 
   const columns: Column<ProductProfitRow>[] = useMemo(
     () => [
@@ -778,7 +1094,7 @@ function ProfitTable({
       {
         key: 'split',
         header: t('col.split'),
-        hideOnMobile: true,
+        hideBelow: '2xl',
         render: (r) => <SplitStrip parts={splitParts(r, t)} className="w-24 2xl:w-36" />,
       },
       {
@@ -805,10 +1121,34 @@ function ProfitTable({
         sortable: true,
         sortValue: (r) => r.margin,
         render: (r) => (
-          <Badge tone={r.margin < 0 ? 'danger' : 'brand'} className="px-2 py-0.5">
+          // Past marja (zarar emas) za'faron — "Past marja" bo'limi bilan bir xil qoida (server belgisi)
+          <Badge tone={marginTone(r)} className="px-2 py-0.5">
             <span className="tnum">{f.pct(r.margin)}</span>
           </Badge>
         ),
+      },
+      {
+        key: 'buyout',
+        // Oddiy matn: telefondagi "Saralash" ro'yxati JSX sarlavhani ko'rsata olmaydi; formula katak izohida
+        header: b.short,
+        align: 'right',
+        sortable: true,
+        // Hisoblab bo'lmaganlari (hammasi yo'lda) kamayish tartibida oxirga tushadi — Mahsulotlar sahifasidagidek
+        sortValue: (r) => r.buyoutRate ?? -1,
+        render: (r) =>
+          r.flags.includes('lowBuyout') ? (
+            <Badge
+              tone="warn"
+              className="px-2 py-0.5"
+              title={`${t('tag.lowBuyoutTitle', { v: b.value(r), avg: storeBuyout === null ? '—' : f.pct(storeBuyout) })}\n${b.hint(r)}`}
+            >
+              <span className="tnum">{b.value(r)}</span>
+            </Badge>
+          ) : (
+            <span className={cn('tnum', r.buyoutRate === null ? 'text-muted' : 'text-ink-soft')} title={b.hint(r)}>
+              {b.value(r)}
+            </span>
+          ),
       },
       {
         key: 'roi',
@@ -825,17 +1165,24 @@ function ProfitTable({
         ),
       },
     ],
-    [t, f, avgReturn],
+    [t, f, b, avgReturn, storeBuyout],
   );
 
-  // Jami qatori — ko'rinib turgan (qidiruvdan o'tgan) mahsulotlar bo'yicha
+  /*
+   * Jami qatori — ko'rinib turgan (qidiruv va bo'limdan o'tgan) mahsulotlar
+   * bo'yicha. Foizlar serverdagi bilan bir xil formulada (shared `pct`): hech
+   * narsa tanlanmaganda jami qatori bosh kartochka va javobdagi `totals` ga
+   * so'mgacha va foizgacha teng.
+   */
   const sum = useMemo(() => {
-    const s = { units: 0, orders: 0, revenue: 0, netProfit: 0 };
+    const s = { units: 0, revenue: 0, netProfit: 0, invested: 0, bought: 0, completed: 0 };
     rows.forEach((r) => {
       s.units += r.units;
-      s.orders += r.orders;
       s.revenue += r.revenue;
       s.netProfit += r.netProfit;
+      s.invested += r.cogs + r.otherCost;
+      s.bought += r.buyoutUnits ?? 0;
+      s.completed += r.completedUnits ?? 0;
     });
     return s;
   }, [rows]);
@@ -856,12 +1203,20 @@ function ProfitTable({
         density="compact"
         localSort
         onRowClick={onOpen}
+        renderExpanded={(r) => <ProfitVariants row={r} />}
+        canExpand={hasVariants}
+        expandLabel={(r, open) => (open ? t('variants.hide') : t('variants.show', { n: f.num(r.variants.length) }))}
         footer={
           <>
-            <td className={cell}>{t('total.label', { n: f.num(rows.length) })}</td>
+            <td className={cell}>
+              {rows.length === allCount
+                ? t('total.label', { n: f.num(rows.length) })
+                : t('total.labelOf', { n: f.num(rows.length), all: f.num(allCount) })}
+            </td>
             <td className={cn(cell, wideOnly, 'tnum whitespace-nowrap text-right')}>{f.num(sum.units)}</td>
             <td className={cn(cell, wideOnly, 'tnum whitespace-nowrap text-right')}>{f.money(sum.revenue)}</td>
-            <td className={cn(cell, wideOnly)} />
+            {/* "Tushum taqsimoti" ustuni bilan bir xil yashiriladi — aks holda jami kataklari bir ustunga siljiydi */}
+            <td className={cn(cell, 'hidden 2xl:table-cell')} />
             <td
               className={cn(
                 cell,
@@ -870,11 +1225,22 @@ function ProfitTable({
               )}
             >
               {f.money(sum.netProfit)}
+              {sum.units > 0 ? (
+                <span className="block font-sans text-2xs font-normal text-muted">
+                  {t('total.perUnit', { v: f.money(round(sum.netProfit / sum.units)) })}
+                </span>
+              ) : null}
             </td>
             <td className={cn(cell, wideOnly, 'tnum whitespace-nowrap text-right')}>
-              {sum.revenue > 0 ? f.pct((sum.netProfit / sum.revenue) * 100) : '—'}
+              {sum.revenue > 0 ? f.pct(pct(sum.netProfit, sum.revenue)) : '—'}
             </td>
-            <td className={cn(cell, wideOnly)} />
+            <td className={cn(cell, wideOnly, 'tnum whitespace-nowrap text-right')}>
+              {sum.completed > 0 ? f.pct(pct(sum.bought, sum.completed)) : '—'}
+            </td>
+            <td className={cn(cell, wideOnly, 'tnum whitespace-nowrap text-right')}>
+              {/* Ustundagidek: tannarx umuman kiritilmagan bo'lsa ROI yo'q */}
+              {sum.invested > 0 ? f.pct(pct(sum.netProfit, sum.invested), 0) : '—'}
+            </td>
           </>
         }
       />
@@ -886,18 +1252,26 @@ function ProfitTable({
 export function ProfitCard({
   row,
   avgReturn,
+  storeBuyout = null,
   embedded,
 }: {
   row: ProductProfitRow;
   /** Do'kon o'rtacha qaytish ulushi — qaytishlar belgisining rangi uchun */
   avgReturn: number;
+  /** Do'kon o'rtacha xarid foizi — "Past xarid" belgisi izohi uchun */
+  storeBuyout?: number | null;
   /** Yon panel ichida: kartochka chegarasi va ichki chekinishsiz */
   embedded?: boolean;
 }) {
   const t = useT('productProfit');
   const f = useFormat();
+  const b = useBuyout();
   const loss = row.netProfit < 0;
-  const noCost = row.units > 0 && row.cogs <= 0;
+  // Server belgisi: sotilgan variantlardan birortasining tannarxi yo'q bo'lsa ham foyda oshib ko'rinadi
+  const noCost = row.flags.includes('noCost');
+  // Variantlar: yon panelda doim ochiq, kartochkada — tugma bilan (16 ta kartochka 3 barobar uzayib ketmasin)
+  const multi = hasVariants(row);
+  const [showVariants, setShowVariants] = useState(false);
   // Ichki chekinish: kartochkada o'zi, yon paneldagida panelning o'z chekinishi bor
   const pad = embedded ? 'px-0' : 'px-4 sm:px-5';
 
@@ -927,8 +1301,13 @@ export function ProfitCard({
           </p>
           <p className="tnum mt-0.5 text-xs text-ink-soft">
             {t('card.meta', { units: f.num(row.units), orders: f.num(row.orders) })}
+            {/* Xarid foizi — voronka bilan bir xil ta'rif; formula va asosi izohda */}
+            <span title={b.hint(row)}>
+              {' · '}
+              {t('card.buyout', { v: b.value(row) })}
+            </span>
           </p>
-          <ProblemTags row={row} avgReturn={avgReturn} className="mt-1.5" />
+          <ProblemTags row={row} avgReturn={avgReturn} storeBuyout={storeBuyout} showBuyout className="mt-1.5" />
         </div>
       </div>
 
@@ -941,7 +1320,7 @@ export function ProfitCard({
         <div className="flex items-center justify-between gap-3">
           <p className="eyebrow">{loss ? t('card.loss') : t('card.net')}</p>
           <span className="flex flex-wrap items-center justify-end gap-1">
-            <Badge tone={row.margin < 0 ? 'danger' : 'brand'} className="px-2 py-0.5">
+            <Badge tone={marginTone(row)} className="px-2 py-0.5">
               <span className="tnum">{t('card.margin', { v: f.pct(row.margin) })}</span>
             </Badge>
             <Badge tone="muted" className="px-2 py-0.5">
@@ -1036,6 +1415,12 @@ export function ProfitCard({
         <SplitStrip parts={splitParts(row, t)} />
       </div>
 
+      {multi && (embedded || showVariants) ? (
+        <div className={cn('pb-4', pad)}>
+          <ProfitVariants row={row} layout="list" />
+        </div>
+      ) : null}
+
       {noCost ? (
         <div
           className={cn(
@@ -1052,7 +1437,24 @@ export function ProfitCard({
         </div>
       ) : null}
 
-      <div className={cn('mt-auto flex justify-end border-t border-line py-2.5', pad)}>
+      <div
+        className={cn(
+          'mt-auto flex items-center gap-3 border-t border-line py-2.5',
+          multi && !embedded ? 'justify-between' : 'justify-end',
+          pad,
+        )}
+      >
+        {multi && !embedded ? (
+          <button
+            type="button"
+            aria-expanded={showVariants}
+            onClick={() => setShowVariants((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+          >
+            {showVariants ? t('variants.hide') : t('variants.show', { n: f.num(row.variants.length) })}
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', showVariants && 'rotate-180')} />
+          </button>
+        ) : null}
         <Link
           to={`/products/${row.productId}`}
           className="inline-flex items-center gap-1 text-xs font-semibold text-brand-ink hover:underline"

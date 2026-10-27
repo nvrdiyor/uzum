@@ -25,7 +25,7 @@ function topBlock(lang: BotLang, top: DayReport['top']): string {
 }
 
 /** «📊 Bugungi hisobot» matni */
-export function todayReportText(lang: BotLang, dateKey: string, report: DayReport): string {
+export function todayReportText(lang: BotLang, dateKey: string, report: DayReport, showProfit = true): string {
   const head = tr(lang, 'today_title', { date: displayDate(dateKey) });
 
   if (report.orders === 0 && report.revenue === 0) {
@@ -38,7 +38,8 @@ export function todayReportText(lang: BotLang, dateKey: string, report: DayRepor
     tr(lang, 'today_revenue', { value: formatMoney(report.revenue, lang) }),
     tr(lang, 'today_orders', { value: formatNumber(report.orders, lang) }),
     tr(lang, 'today_units', { value: formatNumber(report.units, lang) }),
-    tr(lang, 'today_profit', { value: formatMoney(report.netProfit, lang) }),
+    // Pulsiz shablondagi a'zoga foyda ko'rsatilmaydi — saytdagi kabi (2026-10-27)
+    ...(showProfit ? [tr(lang, 'today_profit', { value: formatMoney(report.netProfit, lang) })] : []),
     tr(lang, 'today_avg', { value: formatMoney(report.avgCheck, lang) }),
   ];
 
@@ -71,6 +72,7 @@ export function dailyDigestText(
   dateKey: string,
   report: DayReport,
   alert: StockAlert,
+  showProfit = true,
 ): string {
   const head = tr(lang, 'daily_title', { date: displayDate(dateKey) });
 
@@ -81,7 +83,7 @@ export function dailyDigestText(
           tr(lang, 'today_revenue', { value: formatMoney(report.revenue, lang) }),
           tr(lang, 'today_orders', { value: formatNumber(report.orders, lang) }),
           tr(lang, 'today_units', { value: formatNumber(report.units, lang) }),
-          tr(lang, 'today_profit', { value: formatMoney(report.netProfit, lang) }),
+          ...(showProfit ? [tr(lang, 'today_profit', { value: formatMoney(report.netProfit, lang) })] : []),
           tr(lang, 'today_avg', { value: formatMoney(report.avgCheck, lang) }),
         ].join('\n');
 

@@ -4,6 +4,7 @@ import type { Company, Membership, Subscription, User } from '@savdoiq/db';
 import { SESSION_DAYS, featureAccess, getPlan, resolvePlan, type FeatureId, type PlanId } from '@savdoiq/shared';
 import { AppError } from './errors.js';
 import { hashToken, randomToken } from './crypto.js';
+import { enforceView } from './views.js';
 
 export interface RequestContext {
   user: User;
@@ -89,8 +90,12 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
   next();
 };
 
-/** Aktiv kompaniyani aniqlaydi: x-company-id sarlavhasi yoki birinchi a'zolik */
-export const requireCompany: RequestHandler = (req, _res, next) => {
+/**
+ * Aktiv kompaniyani aniqlaydi: x-company-id sarlavhasi yoki birinchi a'zolik.
+ * A'zolikning ko'rinish shabloni (lib/views.ts) ham shu yerda qo'llanadi —
+ * har bir kompaniya marshruti shu yerdan o'tadi.
+ */
+export const requireCompany: RequestHandler = (req, res, next) => {
   void (async () => {
     try {
       const user = req.ctx?.user;
@@ -118,6 +123,8 @@ export const requireCompany: RequestHandler = (req, _res, next) => {
         // `/auth/me` bilan bir xil qoida: muddati tugagan obuna — 'expired', 'trial' emas
         plan: resolvePlan(subscription),
       };
+      const denied = enforceView(req, res, chosen);
+      if (denied) return next(denied);
       next();
     } catch (err) {
       next(err);

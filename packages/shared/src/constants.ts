@@ -1,4 +1,5 @@
 import type { SyncStepId, ExpenseCategory, PayoutMode } from './types.js';
+import { logisticsFee } from './tariffs.js';
 
 /**
  * Sinxronizatsiya bosqichlari.
@@ -151,11 +152,13 @@ export const LOGISTICS_TARIFF = {
   fallback: 13_350,
 } as const;
 
-/** Hajm bo'yicha logistika to'lovi (litr). Hajm noma'lum bo'lsa — zaxira qiymat. */
+/**
+ * Hajm bo'yicha logistika to'lovi (litr). Hajm noma'lum bo'lsa — zaxira qiymat.
+ * Hisob tariffs.ts `logisticsFee` dan (Uzum qo'llanmasi): ilgari bu yerda
+ * 50 000 so'm chegara yo'q edi — 200 litrlik tovar 54 750 so'm chiqardi.
+ */
 export function logisticsForVolume(volumeL: number | null | undefined): number {
-  if (!volumeL || !Number.isFinite(volumeL) || volumeL <= 0) return LOGISTICS_TARIFF.fallback;
-  const extra = Math.max(0, Math.ceil(volumeL) - 1);
-  return LOGISTICS_TARIFF.base + extra * LOGISTICS_TARIFF.perExtraLiter;
+  return logisticsFee(volumeL) ?? LOGISTICS_TARIFF.fallback;
 }
 
 /** Uzum bo'yicha standart taxminlar (real API bo'lmaganda hisob uchun) */
@@ -165,10 +168,15 @@ export const DEFAULTS = {
   /** `logisticsForVolume` ishlatib bo'lmaganda — o'lchangan mediana */
   logisticsPerUnit: LOGISTICS_TARIFF.fallback,
   /**
-   * DIQQAT: bu qiymat O'LCHANMAGAN. Bazadagi barcha saqlash to'lovlari
-   * demo ma'lumot bo'lib chiqdi (aynan shu konstantadan generatsiya
-   * qilingan), ya'ni uni tekshirib bo'lmadi. Uzum kabinetidagi haqiqiy
-   * tarif bilan solishtirilishi kerak.
+   * @deprecated Ishlatmang — tariffs.ts dagi AYLANMA bo'yicha tarif:
+   * `storageFeePerDay`, `storageRatePerLiterDay`, `turnoverDays`.
+   *
+   * Bu qiymat hech qachon o'lchanmagan va haqiqiydan ~10 baravar katta:
+   * Uzum qo'llanmasida (01.06.2026 dan) aylanma 60 kungacha bepul, keyin
+   * 12 / 18 / 24 so'm/l/kun. Unit-iqtisod, eksport, Ombor sahifasi, demo
+   * klient, seed va mahsulotlar/rejalashtiruvchi tariffs.ts ga o'tkazildi
+   * (2026-10-24). Kalit faqat hali tugallanmagan o'tishlar buzilmasligi uchun
+   * qoldi — hech qayerda ishlatilmay qolgach o'chiriladi.
    */
   storagePerLiterPerDay: 120,
   buyoutPct: 92,

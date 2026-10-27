@@ -22,6 +22,8 @@ import {
   describeUzumError,
   isRecord,
   isTemporaryUzumError,
+  listMeta,
+  markList,
   toUzumApiError,
   uzumErrorMessage,
 } from './http.js';
@@ -388,8 +390,17 @@ export class LiveUzumClient implements UzumClient {
       timeoutMs: opts.timeoutMs,
       maxRetries: opts.maxRetries,
       rpsLimit: opts.rpsLimit,
+      onRequest: opts.onRequest,
     });
   }
+
+  /**
+   * Oxirgi `rawExpenses` so'rovi. `getExpenses` va `getStorageFees` bir xil
+   * oynani bir vaqtda so'raydi (sinxronning moliya bosqichi) — ilgari
+   * `/v1/finance/expenses` har oyna uchun IKKI marta o'qilardi (2026-10-24).
+   * Bitta yozuv saqlanadi va ikkala oluvchi olgach o'chiriladi.
+   */
+  private expenseMemo: { key: string; rows: Promise<unknown[]>; uses: number } | null = null;
 
   // ─────────────── Kalitni tekshirish ───────────────
 
@@ -695,6 +706,9 @@ export class LiveUzumClient implements UzumClient {
     const dateTo = Math.ceil(to.getTime() / 1000);
 
     const orders = new Map<string, UzumOrder>();
+    /** Natija to'liqmi — xato yutiladi, lekin chaqiruvchi bilishi kerak (`listMeta`) */
+    let truncated = false;
+    let failed: string | undefined;
 
     // 1) Moliyaviy pozitsiyalar — buyurtma raqami bo'yicha guruhlanadi
     let rows: unknown[] = [];
@@ -705,8 +719,9 @@ export class LiveUzumClient implements UzumClient {
         (payload) => pickList(payload, ['orderItems', 'orders', 'financeOrders']),
         { size: UZUM_PAGE_LIMITS.financeOrders },
       );
+      truncated ||= listMeta(rows).truncated === true;
     } catch (err) {
-      this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err);
+      failed = this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err);
     }
 
     for (const raw of rows) {
@@ -794,6 +809,7 @@ export class LiveUzumClient implements UzumClient {
         (payload) => pickList(payload, ['orders', 'orderList']),
         { size: UZUM_PAGE_LIMITS.orders },
       );
+      truncated ||= listMeta(fbsRows).truncated === true;
 
       for (const raw of fbsRows) {
         const r = asRecord(raw);
@@ -846,12 +862,16 @@ export class LiveUzumClient implements UzumClient {
         });
       }
     } catch (err) {
-      this.warn(`FBS buyurtmalari (shop ${shopId})`, err);
+      // Sxema (FBO/FBS) va hali moliyada ko'rinmagan FBS buyurtmalar shu ro'yxatdan — usiz natija chala
+      failed ??= this.warn(`FBS buyurtmalari (shop ${shopId})`, err);
     }
 
     for (const order of orders.values()) order.status = orderStatusFromItems(order.items, order.status);
 
-    return [...orders.values()].filter((o) => inRange(o.orderedAt, from, to));
+    return markList(
+      [...orders.values()].filter((o) => inRange(o.orderedAt, from, to)),
+      { truncated, failed },
+    );
   }
 
   /**
@@ -877,6 +897,9 @@ export class LiveUzumClient implements UzumClient {
    */
   async getReturns(shopId: string, _from: Date, _to: Date): Promise<UzumReturn[]> {
     let rows: unknown[] = [];
+    /** Asosiy yo'l yiqildi — zaxira yo'l ham yiqilsa, natija chala (`listMeta`) */
+    let mainFailed: string | undefined;
+    let fallbackFailed: string | undefined;
     try {
       rows = await this.http.fetchAllPages(
         uzumPath('returns'),
@@ -885,7 +908,7 @@ export class LiveUzumClient implements UzumClient {
         { size: UZUM_PAGE_LIMITS.returns },
       );
     } catch (err) {
-      this.warn(`qaytarish nakladnoylari (shop ${shopId})`, err);
+      mainFailed = this.warn(`qaytarish nakladnoylari (shop ${shopId})`, err);
     }
 
     // Zaxira yo'l: do'kon ro'yxati tarkibsiz keladi — har birining tarkibi alohida
@@ -899,7 +922,7 @@ export class LiveUzumClient implements UzumClient {
           { size: UZUM_PAGE_LIMITS.returns },
         );
       } catch (err) {
-        this.warn(`qaytarish nakladnoylari — do'kon ro'yxati (shop ${shopId})`, err);
+        fallbackFailed = this.warn(`qaytarish nakladnoylari — do'kon ro'yxati (shop ${shopId})`, err);
       }
       for (const raw of lite.slice(0, RETURN_DETAIL_CAP)) {
         const id = asString(asRecord(raw).id);
@@ -908,10 +931,11 @@ export class LiveUzumClient implements UzumClient {
           const one = asRecord(await this.http.get(uzumPath('shopReturn', { shopId, returnId: id })));
           rows.push(one.payload ?? one);
         } catch (err) {
-          this.warn(`qaytarish nakladnoyi ${id}`, err);
+          fallbackFailed ??= this.warn(`qaytarish nakladnoyi ${id}`, err);
         }
       }
     }
+    const failed = mainFailed && fallbackFailed ? mainFailed : undefined;
 
     const out: UzumReturn[] = [];
     const fallbackIso = new Date().toISOString();
@@ -949,7 +973,7 @@ export class LiveUzumClient implements UzumClient {
       }
     }
 
-    return out;
+    return markList(out, { failed });
   }
 
   // ─────────────── Yo'qotishlar ───────────────
@@ -972,7 +996,7 @@ export class LiveUzumClient implements UzumClient {
    */
   async getStorageFees(shopId: string, from: Date, to: Date): Promise<UzumStorageFee[]> {
     const rows = await this.rawExpenses(shopId, from, to);
-    const out: UzumStorageFee[] = [];
+    const out: UzumStorageFee[] = markList([], listMeta(rows));
     const fallbackIso = new Date().toISOString();
 
     for (const raw of rows) {
@@ -1116,7 +1140,7 @@ export class LiveUzumClient implements UzumClient {
    */
   async getExpenses(shopId: string, from: Date, to: Date): Promise<UzumExpense[]> {
     const rows = await this.rawExpenses(shopId, from, to);
-    const out: UzumExpense[] = [];
+    const out: UzumExpense[] = markList([], listMeta(rows));
     const fallbackIso = new Date().toISOString();
 
     for (const raw of rows) {
@@ -1201,29 +1225,39 @@ export class LiveUzumClient implements UzumClient {
   /**
    * `/v1/finance/expenses` xom satrlari (bir necha metod uchun umumiy).
    * Sana — `/v1/finance/orders` dagi kabi Unix vaqti SEKUNDDA.
+   *
+   * Bir xil oyna (do'kon + sana oralig'i) ketma-ket ikki marta so'ralsa —
+   * `getExpenses` va `getStorageFees` — Uzum'ga bitta so'rov ketadi (`expenseMemo`).
+   * Xato bo'lsa bo'sh ro'yxat `failed` belgisi bilan qaytadi.
    */
-  private async rawExpenses(shopId: string, from: Date, to: Date): Promise<unknown[]> {
-    try {
-      return await this.http.fetchAllPages(
+  private rawExpenses(shopId: string, from: Date, to: Date): Promise<unknown[]> {
+    const dateFrom = Math.floor(from.getTime() / 1000);
+    const dateTo = Math.ceil(to.getTime() / 1000);
+    const key = `${shopId}|${dateFrom}|${dateTo}`;
+    const memo = this.expenseMemo;
+    if (memo && memo.key === key) {
+      memo.uses += 1;
+      // Ikkala oluvchi ham oldi — keyingi so'rov (masalan, qayta urinish) Uzum'dan yangidan o'qiydi
+      if (memo.uses >= 2) this.expenseMemo = null;
+      return memo.rows;
+    }
+    const rows = this.http
+      .fetchAllPages(
         uzumPath('financeExpenses'),
-        {
-          shopIds: shopId,
-          dateFrom: Math.floor(from.getTime() / 1000),
-          dateTo: Math.ceil(to.getTime() / 1000),
-        },
+        { shopIds: shopId, dateFrom, dateTo },
         (payload) => pickList(payload, ['expenses', 'payments', 'paymentInfoList']),
         { size: UZUM_PAGE_LIMITS.financeExpenses },
-      );
-    } catch (err) {
-      this.warn(`xarajatlar (shop ${shopId})`, err);
-      return [];
-    }
+      )
+      .catch((err: unknown) => markList([] as unknown[], { failed: this.warn(`xarajatlar (shop ${shopId})`, err) }));
+    this.expenseMemo = { key, rows, uses: 1 };
+    return rows;
   }
 
-  /** Xatolarni jurnalga yozamiz, lekin oqimni to'xtatmaymiz */
-  private warn(what: string, err: unknown): void {
+  /** Xatolarni jurnalga yozamiz, lekin oqimni to'xtatmaymiz. Qaytaradi: qisqa xato matni (`failed` belgisi uchun) */
+  private warn(what: string, err: unknown): string {
     const e = toUzumApiError(err);
     // eslint-disable-next-line no-console
     console.warn(`[uzum] ${what}: ${e.code} — ${describeUzumError(e)}`);
+    return `${what}: ${e.code}${e.status ? ` (HTTP ${e.status})` : ''}`;
   }
 }

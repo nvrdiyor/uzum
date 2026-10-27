@@ -21,6 +21,7 @@ import { useFormat, useT } from '@/i18n';
 import { ApiError } from '@/lib/api';
 import { useSession } from '@/store/session';
 import { cn } from '@/lib/utils';
+import { useCanOpen } from '@/lib/view';
 import { TODAY_NS } from './today/i18n';
 import { useTaskText } from './today/text';
 import { LEVEL_TONE, TaskRow } from './today/TaskRow';
@@ -39,6 +40,7 @@ export function TodayTasks({ className }: { className?: string }) {
   // Kuzatuvchi faqat ko'radi — server ham PATCH'ni 403 qiladi
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
   const { data, isLoading, isError, refetch } = useToday();
+  const canOpen = useCanOpen();
   const action = useTodayAction();
   const textOf = useTaskText();
   const [expanded, setExpanded] = useState(false);
@@ -80,7 +82,8 @@ export function TodayTasks({ className }: { className?: string }) {
     setLast(null);
   };
 
-  const items = data.items;
+  // Ko'rinish shablonida yopiq bo'limga olib boradigan vazifa ko'rsatilmaydi (Marketologga "tannarx kiriting" emas)
+  const items = data.items.filter((it) => canOpen(it.link));
   const shown = expanded ? items : items.slice(0, VISIBLE);
   const rest = items.length - shown.length;
   // Kartochka chizig'i eng shoshilinch vazifa rangida; hammasi toza bo'lsa — brend

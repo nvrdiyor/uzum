@@ -4,29 +4,37 @@
  *  GET   /                → ProductsResponse (kartochkalar: sotuv, foyda, ROI, marja, qoldiq)
  *  GET   /abc             → AbcResponse (ABC + XYZ tahlil)
  *  GET   /illiquid        → IlliquidResponse (nolikvid / harakatsiz tovarlar)
+ *  GET   /profit          → ProductProfitResponse (mahsulot foydasi; hisob — services/product-profit.ts)
  *  GET   /:id             → bitta mahsulot tafsiloti (SKU'lar, 60 kunlik seriya, sharhlar, unit-iqtisod)
  *  PATCH /sku/:id         → tannarx va o'lchamlarni yangilash (+ CostPrice tarixiga yozuv)
  *  POST  /sku/bulk-cost   → tannarxlarni ommaviy yangilash
  *  (ikkalasi ham SKU'ning o'tgan buyurtma pozitsiyalarini yangi tannarx bilan darhol qayta hisoblaydi)
  *
+ * "Buyurtma kerak", "necha kunga yetadi" va qoldiq holati — Rejalashtiruvchining
+ * o'zi (services/plan.ts, kompaniyaning yetkazish muddati bilan): ro'yxat,
+ * kartochka va Rejalashtiruvchi bir xil son ko'rsatadi (2026-10-24).
+ *
+ * Qidiruv (?search=) — butun ilovadagi umumiy qoida (shared search.ts): nom,
+ * kategoriya, SKU kodi, shtrix-kod, Uzum mahsulot / SKU ID va uzum.uz havolasi.
+ * ?category= — kategoriya bo'yicha ANIQ filtr ("Kategoriyalarim" havolalari).
+ *
  * Barcha pul qiymatlari UZS (butun son), sanalar ISO-8601.
  * Ma'lumot bo'lmasa marshrutlar 200 va bo'sh/nol qiymat qaytaradi (xato emas).
  */
 import { Router } from 'express';
-import type { Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
-  DEFAULTS,
   STOCK_THRESHOLDS,
   abcGroup,
   addDays,
   calcUnitEconomics,
   costPriceBulkSchema,
+  matchesProductQuery,
   parseISODate,
+  parseSkuQuery,
   pct,
-  recommendedQty,
   round,
   safeDiv,
   toISODate,
@@ -38,11 +46,13 @@ import {
   type IlliquidRow,
   type Period,
   type ProductCard,
+  type ProductCardFlag,
   type ProductCardSku,
-  type ProductProfitMoney,
   type ProductProfitResponse,
-  type ProductProfitRow,
+  type ProductQualityStats,
   type ProductsResponse,
+  type SkuQuery,
+  type StockPlanSummary,
   type UnitCalcInput,
   type UnitCalcResult,
 } from '@savdoiq/shared';
@@ -58,13 +68,28 @@ import {
   getSkuCatalog,
   getStoreIds,
   getStoreTitles,
+  skuInfoMatches,
   stockState,
   type SalesAgg,
   type SkuInfo,
   type StockInfo,
 } from '../services/common.js';
-import { aggregateSalesNet, getPeriodCosts, investedIn } from '../services/pnl.js';
+import { aggregateSalesNet, investedIn } from '../services/pnl.js';
 import { recalcSkuOrderItems } from '../services/item-cost.js';
+import { buildProductProfit } from '../services/product-profit.js';
+import {
+  loadPlanData,
+  planProduct,
+  planSku,
+  planSkuSummary,
+  planStockStatus,
+  type PlanData,
+  type StockBadgeStatus,
+} from '../services/plan.js';
+import { realReason, returnsRate, splitLine } from '../services/returns.js';
+import { getStorageTurnover } from '../services/storage-turnover.js';
+// Unit-iqtisod va saqlash taxmini raqobatchilar narxi bilan umumiy (routes/competitors.ts)
+import { productUnitInput, storageEstimateBySku } from '../services/product-unit.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -76,12 +101,11 @@ const DETAIL_DAYS = 60;
 
 // ─────────────────────────── Umumiy yordamchilar ───────────────────────────
 
-/** Zaxira davri (kun): qoldiq necha kunga yetishi kerak. Standart — 30 */
-function coverParam(req: Request, def = 30): number {
-  const raw = Number((req.query as Record<string, string | undefined>).cover ?? def);
-  if (!Number.isFinite(raw)) return def;
-  return Math.min(365, Math.max(1, Math.round(raw)));
-}
+/*
+ * Zaxira davri (?cover=) endi services/plan.ts da o'qiladi: berilmasa —
+ * kompaniya sozlamasi (Rejalashtiruvchidagi slayder), berilsa — 7..90 kun.
+ * Ilgari bu yerda alohida 1..365 kunlik o'qish va standart 30 kun bor edi.
+ */
 
 type SortValue = number | string;
 
@@ -117,6 +141,13 @@ interface BuyoutAgg {
  *   - yo'qotilgan — bekor qilingan yoki qaytgan dona (`returnedQty`, bo'lmasa `qty`);
  *   - yo'lda — qolgani; yakunlanmagan, shuning uchun foizga KIRMAYDI. Aks holda
  *     yangi buyurtmalar "sotib olindi" bo'lib, foiz sun'iy ko'tarilardi.
+ *
+ * Bo'linish — Sotuv voronkasi (routes/funnel.ts) va "Mahsulot foydasi"
+ * (services/product-profit.ts) bilan BITTA qoida: services/returns.ts
+ * `splitLine` va `deliveredAt <= hozir`. Ilgari bu yerda `deliveredAt`
+ * borligi yetarli edi — kelajakdagi sana (demo ma'lumotda bor) ham "sotib
+ * olindi" bo'lardi: oxirgi 7 kunda 15 ta kartochkadan 10 tasining xarid foizi
+ * voronkadagidan farq qilardi (2026-10-24).
  */
 async function getBuyoutBySku(
   storeIds: string[],
@@ -136,26 +167,25 @@ async function getBuyoutBySku(
     select: {
       skuId: true,
       qty: true,
+      returnedQty: true,
+      sellPrice: true,
+      revenue: true,
       status: true,
       returnedAt: true,
-      returnedQty: true,
       order: { select: { deliveredAt: true } },
     },
   });
 
+  const asOf = Date.now();
   for (const it of items) {
     if (!it.skuId) continue;
     const b = out.get(it.skuId) ?? { bought: 0, lost: 0, transit: 0 };
-    const returned = it.status === 'returned' || Boolean(it.returnedAt);
-    if (returned || it.status === 'canceled') {
-      // Uzum bekor/qaytgan satrda `amount = 0` beradi — haqiqiy dona `returnedQty` da
-      b.lost += it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1);
-    } else {
-      // Qisman qaytgan tirik pozitsiya: qaytgan qismi yo'qotilgan, qolgani o'z holatida
-      if (it.returnedQty > 0) b.lost += it.returnedQty;
-      if (it.order.deliveredAt) b.bought += it.qty;
-      else b.transit += it.qty;
-    }
+    // Bekor/qaytgan dona (Uzum bunday satrda amount = 0 beradi, dona `returnedQty` da) va tirik dona
+    const s = splitLine(it);
+    b.lost += s.lost;
+    const deliveredAt = it.order.deliveredAt;
+    if (deliveredAt !== null && deliveredAt.getTime() <= asOf) b.bought += s.live;
+    else b.transit += s.live;
     out.set(it.skuId, b);
   }
   return out;
@@ -199,6 +229,8 @@ interface ProductSkuRecord {
   /** Uzum hisoblagan oylik saqlash to'lovi, bir dona uchun */
   storagePerItem: number;
   barcode: string | null;
+  /** Uzum SKU ID — qidiruv uchun (shared search.ts) */
+  uzumSkuId: string | null;
   archived: boolean;
   createdAt: Date;
 }
@@ -226,11 +258,10 @@ function isArchivedProduct(p: { status: string; skus: ReadonlyArray<{ archived: 
 interface CardContext {
   sales: Map<string, SalesAgg>;
   stocks: Map<string, StockInfo>;
-  avgDaily: Map<string, number>;
   /** Xarid foizi asosi (`getBuyoutBySku`) */
   buyout: Map<string, BuyoutAgg>;
-  /** Zaxira davri (kun) — `needOrder` shu davr uchun hisoblanadi */
-  cover: number;
+  /** Rejalashtiruvchi hisobi — `needOrder` va `daysLeft` shundan (services/plan.ts) */
+  plan: PlanData;
 }
 
 /** Mahsulotlar (SKU'lari bilan) — do'kon filtri bo'yicha */
@@ -268,6 +299,7 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
           // Uzum hisoblagan oylik saqlash to'lovi — taxmindan ustun turadi
           storagePerItem: true,
           barcode: true,
+          uzumSkuId: true,
           archived: true,
           createdAt: true,
         },
@@ -276,6 +308,54 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
     },
     orderBy: { title: 'asc' },
   });
+}
+
+/**
+ * Ro'yxat qidiruvi — umumiy qoida (shared search.ts): mahsulot nomi,
+ * kategoriyasi, Uzum mahsulot ID'si yoki istalgan variantining nomi, SKU
+ * kodi, shtrix-kodi, Uzum SKU ID'si; uzum.uz havolasi ham. Ilgari bu yerda
+ * faqat nom, kategoriya va SKU kodi edi — kartochkadagi "ID: 701009" ni
+ * qidirsa hech narsa topilmasdi, garchi maydonda "ID bo'yicha" deyilgan
+ * bo'lsa ham (2026-10-24).
+ */
+function productMatches(p: ProductRecord, query: SkuQuery): boolean {
+  return matchesProductQuery(
+    query,
+    { id: p.id, title: p.title, category: p.category, uzumProductId: p.uzumProductId },
+    p.skus.map((s) => ({ id: s.id, sku: s.sku, title: s.title, barcode: s.barcode, uzumSkuId: s.uzumSkuId })),
+  );
+}
+
+/**
+ * Kartochka belgilari (sayt faqat chizadi). Qoida bitta joyda — ro'yxat
+ * kartochkasi, jadval va mahsulot sahifasi bir xil belgini ko'rsatsin:
+ *  - noCost   — sotuvdagi yoki davrda sotilgan variantlardan birining tannarxi
+ *               yo'q (arxivdagi, sotilmagan variant foydaga ta'sir qilmaydi);
+ *  - lowStock — Rejalashtiruvchida "Kritik" (yetkazish muddati bilan), qoldiq
+ *               hali bor — tugaganini kartochka holati o'zi aytadi;
+ *  - illiquid — qoldiq bor, 30 kun sotuv yo'q (rejadagi barcha variant
+ *               `no_action`) va tovar katalogda kamida 30 kun: kecha qo'shilgan
+ *               tovar "nolikvid" emas (Nolikvid sahifasi bilan bir xil chegara);
+ *  - excess   — eng tez tugaydigan variant ham 90 kundan ortiqqa yetadi;
+ *  - loss     — davrda sotuv bor, sof foyda manfiy.
+ */
+function cardFlags(
+  p: ProductRecord,
+  c: CardContext,
+  x: { stock: number; revenue: number; profit: number; plan: StockPlanSummary | null },
+): ProductCardFlag[] {
+  const flags: ProductCardFlag[] = [];
+  const relevant = p.skus.filter((s) => !s.archived || (c.sales.get(s.id)?.units ?? 0) > 0);
+  if (relevant.some((s) => s.purchasePrice <= 0)) flags.push('noCost');
+  if (x.plan?.status === 'critical' && x.stock > 0) flags.push('lowStock');
+  const onSale = p.skus.filter((s) => !s.archived);
+  const oldest = onSale.reduce<Date | null>((min, s) => (min === null || s.createdAt < min ? s.createdAt : min), null);
+  if (x.plan?.status === 'no_action' && x.stock > 0 && oldest !== null && daysSince(oldest) >= ILLIQUID_DAYS) {
+    flags.push('illiquid');
+  }
+  if (x.plan && x.plan.daysLeft !== null && x.plan.daysLeft >= STOCK_THRESHOLDS.excess) flags.push('excess');
+  if (x.revenue > 0 && x.profit < 0) flags.push('loss');
+  return flags;
 }
 
 /**
@@ -294,8 +374,6 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   let stockFbo = 0;
   let stockFbs = 0;
   let stockOwn = 0;
-  let avgTotal = 0;
-  let needOrder = 0;
   let bought = 0;
   let lost = 0;
   let transit = 0;
@@ -307,7 +385,6 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
   for (const s of p.skus) {
     const agg = c.sales.get(s.id) ?? EMPTY_AGG;
     const st = c.stocks.get(s.id) ?? EMPTY_STOCK;
-    const avg = c.avgDaily.get(s.id) ?? 0;
     const bo = c.buyout.get(s.id);
 
     sold += agg.units;
@@ -322,9 +399,6 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     stockFbo += st.fbo;
     stockFbs += st.fbs;
     stockOwn += st.own;
-    avgTotal += avg;
-    // Har bir SKU o'z zaxirasiga muhtoj — shuning uchun SKU kesimida qo'shamiz
-    needOrder += recommendedQty(avg, c.cover, st.total, 0);
     /*
      * Ko'rsatiladigan narx — JORIY katalog narxi (import aksiya narxini ham shu
      * maydonga yozadi). Davr bo'yicha o'rtacha sotilgan narx alohida qaytadi:
@@ -365,10 +439,19 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
       }
     : null;
 
-  const stockTotal = stockFbo + stockFbs + stockOwn;
   const completed = bought + lost;
   // Barcha SKU'lari arxivlangan mahsulot ham arxiv hisoblanadi (filtr uchun qulay)
   const archived = p.skus.length > 0 && p.skus.every((s) => s.archived);
+
+  /*
+   * "Buyurtma kerak" va "necha kunga yetadi" — Rejalashtiruvchining o'zi
+   * (services/plan.ts planProduct): miqdor SKU'lar bo'yicha qo'shiladi, kunlar
+   * esa eng tez tugaydigan SOTILADIGAN variantniki. Ilgari jami qoldiq jami
+   * o'rtachaga bo'linardi (yetkazish 0 kun, yo'ldagisiz): "Paxta choyshab 22
+   * kunga yetadi" derdi, kulrang varianti esa 0 da va kritik edi (2026-10-24).
+   */
+  const planned = planProduct(c.plan, p.skus.map((s) => s.id));
+  const flags = cardFlags(p, c, { stock: stockFbo + stockFbs + stockOwn, revenue, profit, plan: planned });
 
   return {
     id: p.id,
@@ -398,8 +481,10 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
     stockFbo,
     stockFbs,
     stockOwn,
-    daysLeft: avgTotal > 0 ? Math.round(stockTotal / avgTotal) : null,
-    needOrder,
+    daysLeft: planned?.daysLeft ?? null,
+    needOrder: planned?.reorderQty ?? 0,
+    ...(planned ? { plan: planned } : {}),
+    flags,
     // Faqat arxivdagi tovar yashirinadi: Uzum'da qayta faollashsa o'zi ko'rinadi
     hidden: p.hidden && isArchivedProduct(p),
     skus,
@@ -409,13 +494,14 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
 /**
  * Kunlik saqlash xarajati.
  * Avval haqiqiy StorageFee yozuvlari (oxirgi 30 kun o'rtachasi), ular bo'lmasa —
- * FBO qoldiq hajmidan taxmin (`DEFAULTS.storagePerLiterPerDay`).
+ * Uzum qo'llanmasidagi AYLANMA tarifi bo'yicha bugungi taxmin (Saqlash
+ * sahifasidagi "bugun" bilan bir xil hisob — services/storage-turnover.ts):
+ * aylanma 60 kungacha bepul, keyin 12 / 18 / 24 so'm/l/kun.
+ *
+ * Ilgari taxmin FBO hajmi × `DEFAULTS.storagePerLiterPerDay` (120 so'm/l/kun)
+ * edi — o'lchanmagan va haqiqiydan ~10 barobar katta, bepul davr ham yo'q edi.
  */
-async function storageCostPerDay(
-  storeIds: string[],
-  stocks: Map<string, StockInfo>,
-  volumeBySku: Map<string, number>,
-): Promise<number> {
+async function storageCostPerDay(storeIds: string[]): Promise<number> {
   if (storeIds.length === 0) return 0;
   const since = addDays(new Date(), -30);
   const agg = await prisma.storageFee.aggregate({
@@ -425,10 +511,15 @@ async function storageCostPerDay(
   const real = (agg._sum.amount ?? 0) / 30;
   if (real > 0) return round(real);
 
-  let volume = 0;
-  for (const [skuId, st] of stocks) volume += st.fbo * (volumeBySku.get(skuId) ?? 0);
-  return round(volume * DEFAULTS.storagePerLiterPerDay);
+  const turnover = await getStorageTurnover(storeIds);
+  return round(turnover.totals.feeToday);
 }
+
+/*
+ * Haqiqiy to'lov yo'q SKU'lar uchun aylanma tarifi bo'yicha taxmin
+ * (`storageEstimateBySku`) — services/product-unit.ts da: mahsulot sahifasi
+ * va raqobatchilar narxidagi nol foyda narxi bitta hisobdan (2026-10-24).
+ */
 
 /** Oxirgi `days` kundagi haqiqiy saqlash to'lovi (SKU kesimida) */
 async function storageFeeBySku(storeIds: string[], days = 30): Promise<Map<string, number>> {
@@ -478,36 +569,39 @@ router.get(
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
-    const cover = coverParam(req);
     const q = req.query as Record<string, string | undefined>;
     const filter: ProductFilter = PRODUCT_FILTERS.includes((q.filter ?? 'all') as ProductFilter)
       ? ((q.filter ?? 'all') as ProductFilter)
       : 'all';
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [products, sales, stocks, avgDaily, buyout] = await Promise.all([
+    const [products, sales, planData, buyout] = await Promise.all([
       loadProducts(storeIds),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
-      getLatestStocks(storeIds),
-      getAvgDaily(storeIds, 30),
+      /*
+       * Yetkazish muddati va zaxira davri — kompaniya sozlamasi. ?cover= faqat
+       * aniq berilsa (eski mijozlar, testlar). Sayt uni endi yubormaydi: ilgari
+       * sahifa doim cover=30 so'rardi va sozlamada 45 kun turgan kompaniyada
+       * Mahsulotlar Rejalashtiruvchidan boshqa "buyurtma kerak" ko'rsatardi (2026-10-24).
+       */
+      loadPlanData(company.id, storeIds, { cover: q.cover }),
       getBuyoutBySku(storeIds, range.from, range.toExclusive),
     ]);
 
-    const volumeBySku = new Map<string, number>();
-    for (const p of products) for (const s of p.skus) volumeBySku.set(s.id, s.volumeL);
-
-    let cards = products.map((p) => buildCard(p, { sales, stocks, avgDaily, buyout, cover }));
-
-    // Qidiruv: nomi, kategoriyasi yoki SKU kodi bo'yicha (registrga bog'liq emas)
-    const search = range.search?.toLowerCase();
-    if (search) {
-      cards = cards.filter(
-        (c) =>
-          c.title.toLowerCase().includes(search) ||
-          (c.category ?? '').toLowerCase().includes(search) ||
-          c.skus.some((s) => s.sku.toLowerCase().includes(search) || s.title.toLowerCase().includes(search)),
-      );
-    }
+    // Qidiruv: nom, kategoriya, SKU kodi, shtrix-kod, Uzum ID yoki havola (productMatches)
+    const query = parseSkuQuery(range.search);
+    /*
+     * Kategoriya — ANIQ moslik (importer nomni allaqachon kesib saqlaydi).
+     * "Kategoriyalarim" sahifasi har qatorni /products?category=<nom> ga
+     * bog'laydi; ilgari bu parametr yo'q edi va havola butun ro'yxatni
+     * ochardi (2026-10-24). Qidiruv bilan bir bosqichda — jamlanma, KPI va
+     * "O'chirilganlar" soni ham shu kategoriya bo'yicha. Bo'sh — filtr yo'q.
+     */
+    const category = typeof q.category === 'string' ? q.category.trim() : '';
+    const found = products.filter(
+      (p) => (!category || p.category === category) && (!query || productMatches(p, query)),
+    );
+    let cards = found.map((p) => buildCard(p, { sales, stocks: planData.stocks, buyout, plan: planData }));
 
     // O'chirilganlar faqat o'z bo'limida — boshqa hamma ro'yxatdan (tannarx ham shundan oladi) chiqadi
     const hiddenCount = cards.filter((c) => c.hidden).length;
@@ -538,9 +632,11 @@ router.get(
         skus: skuCount,
         inStock,
         needOrder,
-        storageCostPerDay: await storageCostPerDay(storeIds, stocks, volumeBySku),
+        storageCostPerDay: await storageCostPerDay(storeIds),
         hidden: hiddenCount,
       },
+      // Sahifa "N kunlik zaxira" ni shundan yozadi — o'zi 30 kun deb olmasin
+      planner: { leadDays: planData.leadDays, coverDays: planData.coverDays },
       items: paginate(cards, range.page, range.pageSize),
     };
 
@@ -614,15 +710,10 @@ router.get(
       salesBuckets(storeIds, range.from, range.toExclusive),
     ]);
 
-    const search = range.search?.toLowerCase();
     const base = [...sales.values()]
       .map((agg) => ({ agg, info: catalog.get(agg.skuId) }))
       .filter((r): r is { agg: SalesAgg & { adFee: number }; info: SkuInfo } => Boolean(r.info))
       .filter((r) => r.agg.units > 0 || r.agg.revenue > 0)
-      .filter(
-        (r) =>
-          !search || r.info.title.toLowerCase().includes(search) || r.info.sku.toLowerCase().includes(search),
-      )
       .sort((a, b) => b.agg.revenue - a.agg.revenue);
 
     const totalRevenue = base.reduce((s, r) => s + r.agg.revenue, 0);
@@ -644,6 +735,11 @@ router.get(
         cumulativeShare: round(Math.min(100, cumulative), 2),
         group,
         xyzGroup: xyzGroup(buckets.get(r.agg.skuId) ?? []),
+        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        productId: r.info.productId,
+        uzumProductId: r.info.uzumProductId,
+        barcode: r.info.barcode,
+        uzumSkuId: r.info.uzumSkuId,
       } satisfies AbcRow;
     });
 
@@ -659,7 +755,18 @@ router.get(
       };
     });
 
-    const payload: AbcResponse = { period: range.period, groups, rows };
+    /*
+     * Qidiruv faqat QAYTARILADIGAN qatorlarni tanlaydi; ulush, guruh va
+     * guruhlar jamlanmasi butun to'plam bo'yicha. Ilgari qidiruv ulush
+     * hisobidan OLDIN qo'llanardi: "naushnik" qidirilsa ABC faqat topilganlar
+     * orasida qayta hisoblanib, C guruhidagi tovar "A" bo'lib chiqardi (2026-10-24).
+     */
+    const query = parseSkuQuery(range.search);
+    const payload: AbcResponse = {
+      period: range.period,
+      groups,
+      rows: query ? rows.filter((_, i) => skuInfoMatches(base[i].info, query)) : rows,
+    };
     res.json(payload);
   }),
 );
@@ -685,44 +792,14 @@ function illiquidAdvice(
 
 // ─────────────────────────── GET /profit — mahsulot foydasi ───────────────────────────
 
-const MONEY_KEYS = [
-  'revenue',
-  'commission',
-  'logistics',
-  'payout',
-  'cogs',
-  'otherCost',
-  'tax',
-  'ads',
-  'netProfit',
-] as const satisfies readonly (keyof ProductProfitMoney)[];
-
-const emptyMoney = (): ProductProfitMoney => ({
-  revenue: 0,
-  commission: 0,
-  logistics: 0,
-  payout: 0,
-  cogs: 0,
-  otherCost: 0,
-  tax: 0,
-  ads: 0,
-  netProfit: 0,
-});
-
-const mapMoney = (m: ProductProfitMoney, f: (v: number) => number): ProductProfitMoney => {
-  const out = emptyMoney();
-  for (const k of MONEY_KEYS) out[k] = f(m[k]);
-  return out;
-};
-
 /**
  * Har bir mahsulot qancha pul qoldirdi: tushum → Uzum to'laydigani → sof foyda,
- * jami va bir dona hisobida.
+ * jami va bir dona hisobida; SKU variantlari, xarid foizi, muammo belgilari va
+ * "E‘tibor talab qiladi" kartalari bilan.
  *
- * Foyda ta'rifi butun saytdagi bilan bir xil (services/pnl.ts): pozitsiya
- * foydasidan shu mahsulotning reklama to'lovi ayriladi. Soliq alohida
- * saqlanmaydi — u ayniyatdan tiklanadi (chiqarishga − tannarx − qo'shimcha −
- * pozitsiya foydasi), shuning uchun kartochkadagi qatorlar so'mgacha yopiladi.
+ * Hisobning o'zi services/product-profit.ts da — Excel eksporti
+ * (GET /export/product-profit) ham o'shani chaqiradi, fayl va sahifa bir xil
+ * raqam ko'rsatsin (2026-10-24).
  */
 router.get(
   '/profit',
@@ -731,141 +808,7 @@ router.get(
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
-
-    const [sales, costs, orderLines] = await Promise.all([
-      aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
-      getPeriodCosts(company.id, storeIds, range.from, range.toExclusive, range.storeId),
-      // Buyurtmalar soni mahsulot bo'yicha ANIQ bo'lsin: bitta buyurtmada ikki rang bo'lsa ikki marta sanalmaydi
-      storeIds.length
-        ? prisma.orderItem.findMany({
-            where: {
-              orderedAt: { gte: range.from, lt: range.toExclusive },
-              order: { storeId: { in: storeIds } },
-              status: { notIn: ['canceled', 'returned'] },
-              returnedAt: null,
-              qty: { gt: 0 },
-              skuId: { not: null },
-            },
-            select: { skuId: true, orderId: true },
-          })
-        : Promise.resolve([] as { skuId: string | null; orderId: string }[]),
-    ]);
-
-    /*
-     * SKU ma'lumoti katalogdan EMAS, sotuvi bor SKU'lardan to'g'ridan-to'g'ri.
-     * Katalog yashirilgan va arxivlangan mahsulotlarni chiqarib tashlaydi —
-     * birinchi versiyada shu sabab sotuvchi yashirgan ikki mahsulotning pullari
-     * sahifadan tushib qoldi va yig'indi paneldagi sof foydadan 403 330 kam
-     * chiqdi. Pul yashirilgan tovardan kelgan bo'lsa ham — u pul.
-     */
-    const skuIds = [...new Set([...sales.keys(), ...orderLines.map((l) => l.skuId).filter((id): id is string => Boolean(id))])];
-    const skuRows = skuIds.length
-      ? await prisma.sku.findMany({
-          where: { id: { in: skuIds } },
-          select: {
-            id: true,
-            imageUrl: true,
-            productId: true,
-            product: { select: { title: true, category: true, imageUrl: true, hidden: true } },
-          },
-        })
-      : [];
-    const skuInfo = new Map(skuRows.map((s) => [s.id, s]));
-    const productIds = [...new Set(skuRows.map((s) => s.productId))];
-    const skuCounts = productIds.length
-      ? await prisma.sku.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: { _all: true } })
-      : [];
-    const skuCount = new Map(skuCounts.map((g) => [g.productId, g._count._all]));
-
-    const ordersOf = new Map<string, Set<string>>();
-    for (const line of orderLines) {
-      const info = line.skuId ? skuInfo.get(line.skuId) : undefined;
-      if (!info) continue;
-      const set = ordersOf.get(info.productId) ?? new Set<string>();
-      set.add(line.orderId);
-      ordersOf.set(info.productId, set);
-    }
-
-    type ProductAgg = {
-      title: string;
-      category: string | null;
-      hidden: boolean;
-      image: string | null;
-      money: ProductProfitMoney;
-      units: number;
-      returns: number;
-    };
-    const byProduct = new Map<string, ProductAgg>();
-    let attributedAds = 0;
-    for (const [skuId, agg] of sales) {
-      const info = skuInfo.get(skuId);
-      if (!info) continue;
-      attributedAds += agg.adFee;
-      // Pozitsiya foydasi (reklamagacha) = to'lov − tannarx − qo'shimcha − soliq
-      const itemProfit = agg.netProfit + agg.adFee;
-      const cur: ProductAgg = byProduct.get(info.productId) ?? {
-        title: info.product.title,
-        category: info.product.category,
-        hidden: info.product.hidden,
-        image: info.product.imageUrl,
-        money: emptyMoney(),
-        units: 0,
-        returns: 0,
-      };
-      cur.money.revenue += agg.revenue;
-      cur.money.commission += agg.commission;
-      cur.money.logistics += agg.logistics;
-      cur.money.payout += agg.payout;
-      cur.money.cogs += agg.cogs;
-      cur.money.otherCost += agg.otherCost;
-      cur.money.tax += agg.payout - agg.cogs - agg.otherCost - itemProfit;
-      cur.money.ads += agg.adFee;
-      cur.money.netProfit += agg.netProfit;
-      cur.units += agg.units;
-      cur.returns += agg.returns;
-      cur.image ??= info.imageUrl;
-      byProduct.set(info.productId, cur);
-    }
-
-    const rows: ProductProfitRow[] = [...byProduct.entries()]
-      .filter(([, p]) => p.units > 0 || p.money.ads > 0)
-      .map(([productId, p]) => ({
-        productId,
-        title: p.title,
-        category: p.category,
-        imageUrl: p.image,
-        hidden: p.hidden,
-        skuCount: skuCount.get(productId) ?? 1,
-        units: p.units,
-        orders: ordersOf.get(productId)?.size ?? 0,
-        returns: p.returns,
-        ...mapMoney(p.money, round),
-        margin: pct(p.money.netProfit, p.money.revenue),
-        roi: pct(p.money.netProfit, investedIn(p.money.cogs, p.money.otherCost)),
-        perUnit: p.units > 0 ? mapMoney(p.money, (v) => round(v / p.units)) : emptyMoney(),
-      }))
-      .sort((a, b) => b.netProfit - a.netProfit);
-
-    const total = emptyMoney();
-    for (const r of rows) for (const k of MONEY_KEYS) total[k] += r[k];
-    const units = rows.reduce((s, r) => s + r.units, 0);
-
-    const payload: ProductProfitResponse = {
-      period: range.period,
-      currency: company.currency,
-      totals: {
-        ...mapMoney(total, round),
-        units,
-        // Do'kon bo'yicha tirik buyurtmalar (bir buyurtmada ikki mahsulot bo'lsa bir marta)
-        orders: new Set(orderLines.map((l) => l.orderId)).size,
-        products: rows.length,
-        margin: pct(total.netProfit, total.revenue),
-        roi: pct(total.netProfit, investedIn(total.cogs, total.otherCost)),
-      },
-      rows,
-      unallocated: round(Math.max(0, costs.total - attributedAds)),
-    };
-
+    const payload: ProductProfitResponse = await buildProductProfit(company, range, storeIds);
     res.json(payload);
   }),
 );
@@ -886,7 +829,8 @@ router.get(
       storageFeeBySku(storeIds, 30),
     ]);
 
-    const search = range.search?.toLowerCase();
+    // Qidiruv — umumiy qoida (services/common.ts skuInfoMatches): nom, SKU kodi, shtrix-kod, Uzum ID, havola
+    const query = parseSkuQuery(range.search);
     /**
      * Saytda "30 / 60 / 90 kun" filtri bor — u serverga `days` bo'lib keladi.
      * Ilgari e'tiborga olinmagani uchun tanlov jadvalni o'zgartirmasdi.
@@ -897,10 +841,18 @@ router.get(
     let totalFrozen = 0;
     let totalUnits = 0;
 
+    // Taxmin faqat haqiqiy to'lov ham, Uzumning o'z hisobi ham yo'q FBO qoldig'i uchun kerak — aylanma tahlili shundagina yuklanadi
+    const needEstimate = [...stocks].some(
+      ([skuId, st]) => st.fbo > 0 && !fees.has(skuId) && (catalog.get(skuId)?.storagePerItem ?? 0) <= 0,
+    );
+    const estimates: Awaited<ReturnType<typeof storageEstimateBySku>> = needEstimate
+      ? await storageEstimateBySku(storeIds)
+      : new Map();
+
     for (const [skuId, st] of stocks) {
       const info = catalog.get(skuId);
       if (!info || st.total <= 0) continue;
-      if (search && !info.title.toLowerCase().includes(search) && !info.sku.toLowerCase().includes(search)) continue;
+      if (query && !skuInfoMatches(info, query)) continue;
 
       const avg = avgDaily.get(skuId) ?? 0;
       const last = lastSale.get(skuId) ?? null;
@@ -919,20 +871,20 @@ router.get(
 
       const unitCost = info.purchasePrice + info.extraCost;
       const frozenCapital = round(st.total * unitCost);
-      // Haqiqiy saqlash to'lovi bo'lsa — o'sha, aks holda hajm bo'yicha taxmin
       /**
        * Saqlash to'lovi tartibi: haqiqiy to'lov → Uzumning o'z hisobi
-       * (`paidStoragePriceItem`) → hajm bo'yicha taxmin.
+       * (`paidStoragePriceItem`) → aylanma tarifi bo'yicha 30 kunlik prognoz
+       * (Saqlash sahifasi bilan bir xil — services/storage-turnover.ts).
        *
-       * Taxmin oxirgi chora: 397×68×75 mm quti uchun u ~7 300 so'm/oy beradi,
-       * Uzumning o'z raqami esa 36 so'm — ya'ni 200 barobar farq, va shu farq
-       * "muzlatilgan kapital" hamda nol foyda narxini butunlay buzardi.
+       * Taxmin oxirgi chora. Ilgari u hajm × 120 so'm/l/kun edi (o'lchanmagan,
+       * bepul davrsiz): 397×68×75 mm quti uchun ~7 300 so'm/oy, Uzumning o'z
+       * raqami esa 36 so'm — 200 barobar farq "muzlatilgan kapital" va nol
+       * foyda narxini butunlay buzardi (2026-10-24).
        */
+      const est = estimates.get(skuId);
       const storageCostPerMonth = round(
         fees.get(skuId) ??
-          (info.storagePerItem > 0
-            ? info.storagePerItem * st.fbo
-            : st.fbo * info.volumeL * DEFAULTS.storagePerLiterPerDay * 30),
+          (info.storagePerItem > 0 ? info.storagePerItem * st.fbo : (est?.fee30d ?? (est?.feeToday ?? 0) * 30)),
       );
 
       totalFrozen += frozenCapital;
@@ -1192,18 +1144,106 @@ router.post(
 
 export interface ProductDetailSku extends ProductCardSku {
   barcode: string | null;
+  /** Uzum SKU ID — sahifada shtrix-kod yonida (qidiruvda ham shu raqam ishlaydi) */
+  uzumSkuId: string | null;
   extraCost: number;
   volumeL: number;
   weightGr: number;
   archived: boolean;
   reserved: number;
   inTransit: number;
+  /** Kunlik sotuv tezligi — Rejalashtiruvchi bilan bir xil (tugab turgan kunlarsiz) */
   avgDaily: number;
+  /** Qoldiq (yo'ldagisi bilan) necha kunga yetadi — Rejalashtiruvchi hisobi */
   daysLeft: number | null;
-  status: 'critical' | 'low' | 'ok' | 'excess' | 'dead';
+  /** critical/low — Rejalashtiruvchidagi "Kritik"/"Buyurtma vaqti"; excess/dead — qoldiq qoidasi (planStockStatus) */
+  status: StockBadgeStatus;
   margin: number;
   roi: number;
   lastSaleAt: string | null;
+  /** Rejalashtiruvchi xulosasi (sotib olish, jo'natish, tugash sanasi); arxivdagi SKU'da yo'q */
+  plan?: StockPlanSummary;
+}
+
+/*
+ * SKU holati (besh qiymatli nishon, "kritik"/"tugayapti" — Rejalashtiruvchidan)
+ * endi services/plan.ts `planStockStatus` da: Qoldiqlar jadvali ham aynan
+ * shu qoidani ishlatadi. Ilgari u faqat shu yerda edi (2026-10-24).
+ */
+
+/** Davrdagi qaytarish va bekor qilish — "Sifat" kartasi uchun (sharhlar alohida qo'shiladi) */
+type ProductReturnsStats = Omit<ProductQualityStats, 'negativeReviews'>;
+
+/**
+ * Shu mahsulot SKU'larining davrdagi qaytarishlari, bekor qilishlari va eng
+ * ko'p qaytarish sababi. Ta'rif "Qaytarishlar" sahifasi va Boshqaruv
+ * panelidagi kartadagi bilan AYNAN bir xil (services/returns.ts): pozitsiya
+ * `splitLine` bilan ajraladi, "xaridor qabul qilgan" — `deliveredAt <= hozir`,
+ * sababsiz qaytarish ("Клиент не указал причину") eng ko'p sabab bo'lib
+ * chiqmaydi (`realReason`), ulush — `returnsRate`. Faqat shu mahsulot
+ * SKU'lari bo'yicha — butun do'kon xulosasidan ajratib olib bo'lmaydi.
+ */
+async function getProductReturns(
+  storeIds: string[],
+  skuIds: string[],
+  from: Date,
+  toExclusive: Date,
+): Promise<ProductReturnsStats> {
+  const items =
+    storeIds.length && skuIds.length
+      ? await prisma.orderItem.findMany({
+          where: {
+            skuId: { in: skuIds },
+            orderedAt: { gte: from, lt: toExclusive },
+            order: { storeId: { in: storeIds } },
+          },
+          select: {
+            qty: true,
+            returnedQty: true,
+            sellPrice: true,
+            revenue: true,
+            status: true,
+            returnedAt: true,
+            returnCause: true,
+            order: { select: { deliveredAt: true } },
+          },
+        })
+      : [];
+
+  const asOf = Date.now();
+  let returned = 0;
+  let canceled = 0;
+  let handed = 0;
+  const reasons = new Map<string, number>();
+  for (const it of items) {
+    const s = splitLine(it);
+    const deliveredAt = it.order.deliveredAt;
+    if (deliveredAt !== null && deliveredAt.getTime() <= asOf) handed += s.live;
+    if (s.kind === 'returned' && s.lost > 0) {
+      returned += s.lost;
+      const reason = realReason(it.returnCause);
+      if (reason) reasons.set(reason, (reasons.get(reason) ?? 0) + s.lost);
+    } else if (s.kind === 'canceled') {
+      canceled += s.lost;
+    }
+  }
+
+  let topReason: ProductReturnsStats['topReason'] = null;
+  for (const [raw, qty] of reasons) {
+    // Teng bo'lsa alifbo bo'yicha — har so'rovda bir xil sabab (services/returns.ts bilan bir xil)
+    if (!topReason || qty > topReason.qty || (qty === topReason.qty && raw < topReason.raw)) {
+      topReason = { raw, qty, share: 0 };
+    }
+  }
+  if (topReason) topReason.share = pct(topReason.qty, returned);
+
+  return {
+    returnedUnits: returned,
+    canceledUnits: canceled,
+    handedUnits: handed,
+    returnRate: returnsRate('returned', returned, { soldUnits: handed, orderedUnits: 0 }),
+    topReason,
+  };
 }
 
 export interface ProductSalesPoint {
@@ -1243,6 +1283,8 @@ export interface ProductDetailResponse {
   /** Oxirgi 60 kunlik qoldiq tarixi */
   stockHistory: ProductStockPoint[];
   reviews: ProductReviewsStats;
+  /** "Sifat" kartasi: davrdagi qaytarish ulushi, eng ko'p sabab va salbiy sharhlar */
+  quality: ProductQualityStats;
   /** Unit-iqtisod: kirish qiymatlari va hisob natijasi (1 dona uchun) */
   unitInput: UnitCalcInput;
   unit: UnitCalcResult;
@@ -1307,7 +1349,7 @@ router.get(
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const range = resolveRange(req, plan);
-    const cover = coverParam(req);
+    const q = req.query as Record<string, string | undefined>;
     const storeIds = await getStoreIds(company.id);
 
     const [product] = await loadProducts(storeIds, { id: req.params.id });
@@ -1317,10 +1359,12 @@ router.get(
     const scopedStores = [product.storeId];
     const seriesFrom = businessDayStart(lastDays(DETAIL_DAYS)[0] ?? toBusinessDate(new Date()));
 
-    const [sales, stocks, avgDaily, lastSale, storeTitles, orderRows, snapshots, reviewRows, taxCompany, buyout] =
+    const [sales, planData, avgDaily, lastSale, storeTitles, orderRows, snapshots, reviewRows, taxCompany, buyout, returnsStats] =
       await Promise.all([
         aggregateSalesNet(company.id, scopedStores, range.from, range.toExclusive),
-        getLatestStocks(scopedStores),
+        // Ro'yxat va Rejalashtiruvchi bilan bir xil hisob (kompaniyaning yetkazish muddati)
+        loadPlanData(company.id, scopedStores, { cover: q.cover }),
+        // Faqat sotuvi yo'q / arxivdagi SKU holati uchun (harakatsiz, tugagan) — skuStockStatus
         getAvgDaily(scopedStores, 30),
         getLastSaleDates(scopedStores),
         getStoreTitles(company.id),
@@ -1353,16 +1397,23 @@ router.get(
         }),
         prisma.company.findUnique({ where: { id: company.id }, select: { taxRate: true } }),
         getBuyoutBySku(scopedStores, range.from, range.toExclusive, skuIds),
+        getProductReturns(scopedStores, skuIds, range.from, range.toExclusive),
       ]);
 
-    const card = buildCard(product, { sales, stocks, avgDaily, buyout, cover });
+    const stocks = planData.stocks;
+    const card = buildCard(product, { sales, stocks, buyout, plan: planData });
 
     // ── SKU tafsilotlari ──
     const skus: ProductDetailSku[] = product.skus.map((s) => {
       const agg = sales.get(s.id) ?? EMPTY_AGG;
       const st = stocks.get(s.id) ?? EMPTY_STOCK;
       const avg = avgDaily.get(s.id) ?? 0;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(s.id)), daysSince(s.createdAt));
+      const row = planSku(planData, s.id);
+      const state = planStockStatus(
+        row,
+        stockState(st.total, avg, daysSince(lastSale.get(s.id)), daysSince(s.createdAt)),
+      );
+      const summary = planSkuSummary(planData, s.id);
       return {
         id: s.id,
         sku: s.sku,
@@ -1377,18 +1428,21 @@ router.get(
         revenue: round(agg.revenue),
         profit: round(agg.netProfit),
         barcode: s.barcode,
+        uzumSkuId: s.uzumSkuId,
         extraCost: round(s.extraCost),
         volumeL: s.volumeL,
         weightGr: s.weightGr,
         archived: s.archived,
         reserved: st.reserved,
         inTransit: st.inTransit,
-        avgDaily: round(avg, 2),
+        // "Yetadi" shu tezlikdan chiqadi — ikkalasi bir manbadan bo'lsin
+        avgDaily: row ? row.avgDaily : round(avg, 2),
         daysLeft: state.daysLeft,
         status: state.status,
         margin: pct(agg.netProfit, agg.revenue),
         roi: pct(agg.netProfit, investedIn(agg.cogs, agg.otherCost)),
         lastSaleAt: agg.lastSaleAt ? agg.lastSaleAt.toISOString() : null,
+        ...(summary ? { plan: summary } : {}),
       } satisfies ProductDetailSku;
     });
 
@@ -1462,67 +1516,17 @@ router.get(
       })),
     };
 
-    // ── Unit-iqtisod (1 dona uchun, davr ma'lumotlari asosida) ──
-    let units = 0;
-    let revenue = 0;
-    let commission = 0;
-    let logistics = 0;
-    let cogs = 0;
-    let returns = 0;
-    for (const s of product.skus) {
-      const agg = sales.get(s.id) ?? EMPTY_AGG;
-      units += agg.units;
-      revenue += agg.revenue;
-      commission += agg.commission;
-      logistics += agg.logistics;
-      cogs += agg.cogs;
-      returns += agg.returns;
-    }
-    const avgVolume = product.skus.length
-      ? product.skus.reduce((s, x) => s + x.volumeL, 0) / product.skus.length
-      : 0;
-    const avgExtra = product.skus.length
-      ? product.skus.reduce((s, x) => s + x.extraCost, 0) / product.skus.length
-      : 0;
-    /** Uzumning o'zi bergan oylik saqlash to'lovi (bo'lmasa 0) */
-    const avgStoragePerItem = product.skus.length
-      ? product.skus.reduce((s, x) => s + x.storagePerItem, 0) / product.skus.length
-      : 0;
-    const price = units > 0 ? safeDiv(revenue, units) : card.minPrice;
-    const purchasePrice =
-      units > 0
-        ? safeDiv(cogs, units)
-        : safeDiv(
-            product.skus.reduce((s, x) => s + x.purchasePrice, 0),
-            product.skus.length,
-          );
-
-    const unitInput: UnitCalcInput = {
-      price: round(price),
-      purchasePrice: round(purchasePrice),
-      commissionPct: revenue > 0 ? pct(commission, revenue) : DEFAULTS.commissionPct,
-      logistics: units > 0 ? round(safeDiv(logistics, units)) : DEFAULTS.logisticsPerUnit,
-      /*
-       * Saqlash: avval Uzumning O'ZI hisoblagan qiymat (oylik → kunlik),
-       * faqat u bo'lmaganda hajm bo'yicha taxmin.
-       *
-       * Ilgari bu yerda to'g'ridan-to'g'ri hajm × DEFAULTS.storagePerLiterPerDay
-       * turardi. O'sha konstanta TEKSHIRILMAGAN (o'z izohida shunday yozilgan),
-       * ya'ni mahsulot kartasidagi marja va ROI unga bevosita bog'liq edi —
-       * oshirilgan saqlash xarajati foydali tovarni zararli ko'rsatib,
-       * sotuvchi uni assortimentdan chiqarib tashlashi mumkin edi.
-       */
-      storagePerDay: round(
-        avgStoragePerItem > 0 ? avgStoragePerItem / 30 : avgVolume * DEFAULTS.storagePerLiterPerDay,
-      ),
-      storageDays: 30,
-      packaging: 0,
-      otherCost: round(avgExtra),
-      taxPct: taxCompany?.taxRate ?? DEFAULTS.taxPct,
-      buyoutPct: units + returns > 0 ? round(pct(units, units + returns)) : DEFAULTS.buyoutPct,
-      returnLogistics: 0,
-      qty: 1,
-    };
+    /*
+     * ── Unit-iqtisod (1 dona uchun, davr ma'lumotlari asosida) ──
+     * Hisob services/product-unit.ts da: raqobatchilar narxi (kartochka va
+     * "Narxlar xaritasi") nol foyda narxini AYNAN shu yerdagidek oladi.
+     * Saqlash taxmini faqat Uzum to'lovni bermaganda, mahsulot do'koni bo'yicha.
+     */
+    const unitInput: UnitCalcInput = await productUnitInput(product.skus, sales, {
+      fallbackPrice: card.minPrice,
+      taxRate: taxCompany?.taxRate,
+      storageEstimates: () => storageEstimateBySku(scopedStores),
+    });
 
     const payload: ProductDetailResponse = {
       period: range.period,
@@ -1533,6 +1537,11 @@ router.get(
       series,
       stockHistory,
       reviews,
+      quality: {
+        ...returnsStats,
+        // Sharhlar Uzum'dan davrsiz keladi — butun tarix bo'yicha (taqsimot ham shunday)
+        negativeReviews: reviewRows.filter((r) => r.rating > 0 && r.rating <= 2).length,
+      },
       unitInput,
       unit: calcUnitEconomics(unitInput),
     };

@@ -24,6 +24,7 @@ import {
   PLAN_ORDER,
   TRIAL_DAYS,
   adminLoginSchema,
+  asMemberView,
   botCodeSchema,
   featureAccess,
   getPlan,
@@ -118,8 +119,9 @@ export function toAuthUser(u: User): AuthUser {
   };
 }
 
-/** Prisma `Company` + rol → API `CompanySummary` */
-export function toCompanySummary(c: Company, role: string): CompanySummary {
+/** Prisma `Company` + rol (+ ko'rinish shabloni) → API `CompanySummary`. Egasida shablon doim null */
+export function toCompanySummary(c: Company, role: string, view?: string | null): CompanySummary {
+  const memberRole = asMemberRole(role);
   return {
     id: c.id,
     name: c.name,
@@ -127,7 +129,8 @@ export function toCompanySummary(c: Company, role: string): CompanySummary {
     currency: c.currency,
     onboarded: c.onboarded,
     onboardStep: asOnboardStep(c.onboardStep),
-    role: asMemberRole(role),
+    role: memberRole,
+    view: memberRole === 'owner' ? null : asMemberView(view),
   };
 }
 
@@ -727,8 +730,8 @@ router.get(
     const chosen =
       (requested ? memberships.find((m) => m.companyId === requested) : undefined) ?? memberships.at(0) ?? null;
 
-    const companies = memberships.map((m) => toCompanySummary(m.company, m.role));
-    const company = chosen ? toCompanySummary(chosen.company, chosen.role) : null;
+    const companies = memberships.map((m) => toCompanySummary(m.company, m.role, m.view));
+    const company = chosen ? toCompanySummary(chosen.company, chosen.role, chosen.view) : null;
 
     // Obuna yo'q bo'lsa — 7 kunlik sinov avtomatik ochiladi
     const subscription = chosen ? await ensureSubscription(chosen.companyId) : null;

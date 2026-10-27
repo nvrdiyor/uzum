@@ -38,6 +38,7 @@ import { FilterBar } from '@/components/filters';
 import { NetProfitHero } from '@/components/finance/NetProfitHero';
 import { PeriodChip } from '@/components/finance/PeriodChip';
 import { PnlTable } from '@/components/finance/PnlTable';
+import { ProfitWaterfall } from '@/components/finance/ProfitWaterfall';
 import { RevenueSplitCard } from '@/components/finance/RevenueSplitCard';
 import { normalizePnl } from '@/components/finance/financeData';
 import { ComparePeriodChip } from '@/components/trust/ComparePeriod';
@@ -125,8 +126,66 @@ registerNamespace('finance', {
     'pnl.netProfit': 'Tovarlar bo‘yicha foyda',
     'pnl.operatingProfit': 'Sof foyda',
     'pnl.delivery': 'Mijozga yetkazish',
-    'pnl.itemOther': 'Sotuvdagi boshqa ushlanmalar',
+    /*
+     * Ilgari "Sotuvdagi boshqa ushlanmalar" edi — lekin bu Uzum ushlanmasi
+     * emas: Tannarx sahifasida har dona uchun kiritilgan sotuvchining o'z
+     * xarajati (Sku.extraCost × dona). Pul oqimi grafigi bilan bir nom (2026-10-24).
+     */
+    'pnl.itemOther': 'Qo‘shimcha xarajat (har dona uchun)',
     'pnl.logistics': 'Omborga logistika',
+
+    'flow.title': 'Pul oqimi',
+    'flow.subtitle': 'Tushumdan sof foydagacha: Uzum qanchasini ushlaydi, hisobingizga qancha tushadi va qo‘lingizda nima qoladi',
+    'flow.empty': 'Pul oqimi uchun ma’lumot yo‘q',
+    'flow.emptyHint': 'Tanlangan davrda sotuv ham, xarajat ham topilmadi',
+    'flow.hover': 'Ustunga olib boring yoki bosing — aniq summa, tushumdagi ulush va oldingi davr',
+    'flow.hoverNoCompare': 'Ustunga olib boring yoki bosing — aniq summa va tushumdagi ulush',
+    'flow.loss': 'Zarar',
+    'flow.group.uzum': 'Uzum sotuvdan ushlaydi',
+    'flow.group.costs': 'Qolgan xarajatlar',
+    'flow.tip.amount': 'Summa',
+    'flow.tip.share': 'Tushumdan',
+    'flow.tip.left': 'Qoldi',
+    'flow.tip.previous': 'Oldingi davr',
+    'flow.revenue': 'Tushum',
+    'flow.commission': 'Uzum komissiyasi',
+    'flow.delivery': 'Mijozga yetkazish',
+    'flow.payout': 'Hisobga tushadi',
+    'flow.cogs': 'Tannarx',
+    'flow.itemOther': 'Qo‘shimcha xarajat (har dona uchun)',
+    'flow.tax': 'Soliq',
+    'flow.manualTax': 'Soliq (qo‘lda kiritilgan)',
+    'flow.marketingUzum': 'Reklama (Uzum)',
+    'flow.marketingManual': 'Reklama (qo‘lda kiritilgan)',
+    'flow.storage': 'Saqlash',
+    'flow.logistics': 'Omborga logistika',
+    'flow.salary': 'Ish haqi',
+    'flow.manualCommission': 'Komissiya (qo‘lda kiritilgan)',
+    'flow.other': 'Boshqa xarajatlar',
+    'flow.operatingProfit': 'Sof foyda',
+    'flow.short.revenue': 'Tushum',
+    'flow.short.commission': 'Komissiya',
+    'flow.short.delivery': 'Yetkazish',
+    'flow.short.payout': 'Hisobga tushadi',
+    'flow.short.cogs': 'Tannarx',
+    'flow.short.itemOther': 'Har donaga qo‘shimcha',
+    'flow.short.tax': 'Soliq',
+    'flow.short.manualTax': 'Soliq · qo‘lda',
+    'flow.short.marketingUzum': 'Reklama · Uzum',
+    'flow.short.marketingManual': 'Reklama · qo‘lda',
+    'flow.short.storage': 'Saqlash',
+    'flow.short.logistics': 'Omborga logistika',
+    'flow.short.salary': 'Ish haqi',
+    'flow.short.manualCommission': 'Komissiya · qo‘lda',
+    'flow.short.other': 'Boshqa',
+    'flow.short.operatingProfit': 'Sof foyda',
+    'flow.hint.payout':
+      'Tushum − komissiya − yetkazish: Uzum shu sotuvlar uchun hisobingizga o‘tkazadigan pul (yo‘ldagi buyurtmalar ham kiradi)',
+    'flow.hint.itemOther':
+      '«Tannarx» sahifasida har dona uchun kiritilgan xarajat: qadoq, bojxona, yo‘l haqi. Uzum uni to‘lovdan ayirmaydi',
+    'flow.hint.marketingUzum': 'Uzum hisobingizdan yechgan reklama: buyurtmalarni ko‘paytirish va boshqa xizmatlar',
+    'flow.hint.marketingManual': '«Qo‘shimcha xarajatlar» bo‘limida o‘zingiz kiritgan reklama: Telegram, Instagram, blogerlar',
+    'flow.hint.operatingProfit': 'Barcha xarajatlardan keyin — Boshqaruv panelidagi sof foyda bilan bir xil',
 
     'bal.title': 'Balans',
     'bal.subtitle': 'Uzum bilan hisob-kitob holati',
@@ -220,8 +279,62 @@ registerNamespace('finance', {
     'pnl.netProfit': 'Прибыль по товарам',
     'pnl.operatingProfit': 'Чистая прибыль',
     'pnl.delivery': 'Доставка покупателю',
-    'pnl.itemOther': 'Прочие удержания в продаже',
+    'pnl.itemOther': 'Доп. расходы на единицу',
     'pnl.logistics': 'Логистика на склад',
+
+    'flow.title': 'Денежный поток',
+    'flow.subtitle': 'От выручки до чистой прибыли: сколько удерживает Uzum, сколько поступает на счёт и что остаётся вам',
+    'flow.empty': 'Нет данных для денежного потока',
+    'flow.emptyHint': 'За выбранный период не найдено ни продаж, ни расходов',
+    'flow.hover': 'Наведите или нажмите на столбец — точная сумма, доля в выручке и прошлый период',
+    'flow.hoverNoCompare': 'Наведите или нажмите на столбец — точная сумма и доля в выручке',
+    'flow.loss': 'Убыток',
+    'flow.group.uzum': 'Uzum удерживает с продажи',
+    'flow.group.costs': 'Остальные расходы',
+    'flow.tip.amount': 'Сумма',
+    'flow.tip.share': 'От выручки',
+    'flow.tip.left': 'Осталось',
+    'flow.tip.previous': 'Прошлый период',
+    'flow.revenue': 'Выручка',
+    'flow.commission': 'Комиссия Uzum',
+    'flow.delivery': 'Доставка покупателю',
+    'flow.payout': 'Поступит на счёт',
+    'flow.cogs': 'Себестоимость',
+    'flow.itemOther': 'Доп. расходы на единицу',
+    'flow.tax': 'Налог',
+    'flow.manualTax': 'Налог (вручную)',
+    'flow.marketingUzum': 'Реклама (Uzum)',
+    'flow.marketingManual': 'Реклама (вручную)',
+    'flow.storage': 'Хранение',
+    'flow.logistics': 'Логистика на склад',
+    'flow.salary': 'Зарплата',
+    'flow.manualCommission': 'Комиссия (вручную)',
+    'flow.other': 'Прочие расходы',
+    'flow.operatingProfit': 'Чистая прибыль',
+    'flow.short.revenue': 'Выручка',
+    'flow.short.commission': 'Комиссия',
+    'flow.short.delivery': 'Доставка',
+    'flow.short.payout': 'На счёт',
+    // Ustun ostida 64 px ga sig'sin; to'liq nomi izohda
+    'flow.short.cogs': 'Себестоим.',
+    'flow.short.itemOther': 'Доп. на единицу',
+    'flow.short.tax': 'Налог',
+    'flow.short.manualTax': 'Налог · вручную',
+    'flow.short.marketingUzum': 'Реклама · Uzum',
+    'flow.short.marketingManual': 'Реклама · вручную',
+    'flow.short.storage': 'Хранение',
+    'flow.short.logistics': 'Логистика на склад',
+    'flow.short.salary': 'Зарплата',
+    'flow.short.manualCommission': 'Комиссия · вручную',
+    'flow.short.other': 'Прочее',
+    'flow.short.operatingProfit': 'Чистая прибыль',
+    'flow.hint.payout':
+      'Выручка − комиссия − доставка: сколько Uzum перечислит на ваш счёт за эти продажи (включая заказы в пути)',
+    'flow.hint.itemOther':
+      'Расходы на единицу со страницы «Себестоимость»: упаковка, таможня, дорога. Uzum не вычитает их из выплаты',
+    'flow.hint.marketingUzum': 'Реклама, которую Uzum списал с вашего счёта: продвижение заказов и другие услуги',
+    'flow.hint.marketingManual': 'Реклама, которую вы внесли сами в «Доп. расходах»: Telegram, Instagram, блогеры',
+    'flow.hint.operatingProfit': 'После всех расходов — та же чистая прибыль, что на Дашборде',
 
     'bal.title': 'Баланс',
     'bal.subtitle': 'Состояние расчётов с Uzum',
@@ -315,8 +428,61 @@ registerNamespace('finance', {
     'pnl.netProfit': 'Profit on goods',
     'pnl.operatingProfit': 'Net profit',
     'pnl.delivery': 'Delivery to customer',
-    'pnl.itemOther': 'Other sale deductions',
+    'pnl.itemOther': 'Extra cost per unit',
     'pnl.logistics': 'Inbound logistics',
+
+    'flow.title': 'Money flow',
+    'flow.subtitle': 'From revenue to net profit: what Uzum keeps, what reaches your account and what stays with you',
+    'flow.empty': 'No data for the money flow',
+    'flow.emptyHint': 'No sales or expenses were found in the selected period',
+    'flow.hover': 'Hover or tap a bar for the exact amount, share of revenue and the previous period',
+    'flow.hoverNoCompare': 'Hover or tap a bar for the exact amount and share of revenue',
+    'flow.loss': 'Loss',
+    'flow.group.uzum': 'Uzum keeps from the sale',
+    'flow.group.costs': 'Remaining costs',
+    'flow.tip.amount': 'Amount',
+    'flow.tip.share': 'Of revenue',
+    'flow.tip.left': 'Left',
+    'flow.tip.previous': 'Previous period',
+    'flow.revenue': 'Revenue',
+    'flow.commission': 'Uzum commission',
+    'flow.delivery': 'Delivery to customer',
+    'flow.payout': 'Reaches your account',
+    'flow.cogs': 'Cost of goods',
+    'flow.itemOther': 'Extra cost per unit',
+    'flow.tax': 'Tax',
+    'flow.manualTax': 'Tax (manual)',
+    'flow.marketingUzum': 'Ads (Uzum)',
+    'flow.marketingManual': 'Ads (entered manually)',
+    'flow.storage': 'Storage',
+    'flow.logistics': 'Inbound logistics',
+    'flow.salary': 'Salary',
+    'flow.manualCommission': 'Commission (manual)',
+    'flow.other': 'Other expenses',
+    'flow.operatingProfit': 'Net profit',
+    'flow.short.revenue': 'Revenue',
+    'flow.short.commission': 'Commission',
+    'flow.short.delivery': 'Delivery',
+    'flow.short.payout': 'To account',
+    'flow.short.cogs': 'Cost of goods',
+    'flow.short.itemOther': 'Extra per unit',
+    'flow.short.tax': 'Tax',
+    'flow.short.manualTax': 'Tax · manual',
+    'flow.short.marketingUzum': 'Ads · Uzum',
+    'flow.short.marketingManual': 'Ads · manual',
+    'flow.short.storage': 'Storage',
+    'flow.short.logistics': 'Inbound logistics',
+    'flow.short.salary': 'Salary',
+    'flow.short.manualCommission': 'Commission · manual',
+    'flow.short.other': 'Other',
+    'flow.short.operatingProfit': 'Net profit',
+    'flow.hint.payout':
+      'Revenue − commission − delivery: what Uzum pays into your account for these sales (orders in transit included)',
+    'flow.hint.itemOther':
+      'Per-unit extra cost from the Cost price page: packaging, customs, freight. Uzum does not deduct it from the payout',
+    'flow.hint.marketingUzum': 'Ads Uzum charged to your account: order boosting and other services',
+    'flow.hint.marketingManual': 'Ads you entered yourself under Extra expenses: Telegram, Instagram, bloggers',
+    'flow.hint.operatingProfit': 'After every cost — the same net profit as on the Dashboard',
 
     'bal.title': 'Balance',
     'bal.subtitle': 'Settlement status with Uzum',
@@ -359,6 +525,7 @@ export default function Finance() {
   const data = finance.data;
   // Barqaror massiv — P&L kelmaguncha har chizishda yangi [] hosil bo'lib, undan keyingi hisoblar qayta ishlamasin
   const pnlLines = useMemo(() => pnl.data?.lines ?? [], [pnl.data]);
+  const flowSteps = useMemo(() => pnl.data?.waterfall ?? [], [pnl.data]);
 
   const lineMap = useMemo(() => new Map(pnlLines.map((l) => [l.id, l])), [pnlLines]);
 
@@ -630,6 +797,20 @@ export default function Finance() {
                 />
               </div>
             </div>
+
+            {/*
+              ── 1b. Pul oqimi ──
+              Bosh raqam (sof foyda) qanday hosil bo'lganini pul oqadigan
+              tartibda: tushum → Uzum ushlagani → hisobga tushadi → qolgan
+              xarajatlar → sof foyda. P&L so'rovining o'zidan (server FLOW).
+            */}
+            <ProfitWaterfall
+              steps={flowSteps}
+              comparable={pnl.data?.comparable ?? false}
+              loading={pnl.isLoading}
+              error={pnl.isError ? (pnl.error instanceof Error ? pnl.error.message : tc('common.error')) : null}
+              onRetry={() => void pnl.refetch()}
+            />
 
             {/*
               ── 2. Kunlik grafik + balans ──

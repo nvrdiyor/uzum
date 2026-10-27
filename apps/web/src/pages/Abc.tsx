@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Download, LayoutGrid, Layers3, PieChart as PieIcon, Table2, TrendingDown, Trophy, X } from '@/components/icons';
-import type { AbcResponse, AbcRow } from '@savdoiq/shared';
+import { matchesSkuQuery, type AbcResponse, type AbcRow } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn, downloadBlob } from '@/lib/utils';
+import { useCanFetch, useSeesMoney } from '@/lib/view';
 import { FilterBar } from '@/components/filters';
 import { ChartCard } from '@/components/charts';
 import {
@@ -20,13 +21,13 @@ import {
   PlanGate,
   PreviewBadge,
   ProgressBar,
-  SearchInput,
   Skeleton,
   StatCard,
   StatGrid,
   toast,
   type Column,
 } from '@/components/ui';
+import { SkuSearchInput, useSkuQuery } from '@/components/products/SkuSearchInput';
 import { NEUTRAL_TONE, SkuNameCell } from '@/components/stock/common';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { AbcGroupCard } from '@/components/analysis/AbcGroupCard';
@@ -206,6 +207,10 @@ export default function Abc() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  // Excel'da foyda ustuni bor — pulsiz ko'rinish shablonida (Marketolog) tugma yo'q (server ham 403)
+  const canExport = useCanFetch('/export/abc');
+  // Foyda ustuni va uning jami — pulsiz shablonda server null yuboradi, ustun chizilmaydi
+  const money = useSeesMoney();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['abc', q],
@@ -277,15 +282,29 @@ export default function Abc() {
   );
 
   // ── Jadval ───────────────────────────────────────────────────────────────
+  /*
+   * Qidiruv shu yerda (guruhlar, matritsa va Pareto butun ro'yxat bo'yicha
+   * qoladi), lekin serverdagi BILAN BIR XIL qoida (shared search.ts): nom,
+   * SKU kodi, shtrix-kod, Uzum SKU / mahsulot ID'si, uzum.uz havolasi —
+   * kalitlar qatorda keladi. Ilgari faqat nom va SKU kodi edi (2026-10-24).
+   */
+  const query = useSkuQuery(search);
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (abcFilter !== 'all' && r.group !== abcFilter) return false;
       if (xyzFilter && r.xyzGroup !== xyzFilter) return false;
-      if (needle && !`${r.title} ${r.sku}`.toLowerCase().includes(needle)) return false;
+      if (
+        query &&
+        !matchesSkuQuery(
+          query,
+          { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
+          { id: r.productId, uzumProductId: r.uzumProductId },
+        )
+      )
+        return false;
       return true;
     });
-  }, [rows, abcFilter, xyzFilter, search]);
+  }, [rows, abcFilter, xyzFilter, query]);
 
   /**
    * Jadval oyog'idagi jami — FILTRLANGAN ro'yxat bo'yicha. Ilgari tushum,
@@ -417,14 +436,16 @@ export default function Abc() {
         badge={<PreviewBadge feature="abc_analysis" />}
         meta={<DataFreshness />}
         actions={
-          <Button
-            variant="outline"
-            icon={<Download className="h-4 w-4" />}
-            loading={exporting}
-            onClick={onExport}
-          >
-            {t('export')}
-          </Button>
+          canExport ? (
+            <Button
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
+              loading={exporting}
+              onClick={onExport}
+            >
+              {t('export')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -591,18 +612,13 @@ export default function Abc() {
                         <X className="h-3 w-3" />
                       </button>
                     ) : null}
-                    <SearchInput
-                      value={search}
-                      onChange={setSearch}
-                      placeholder={t('common.search')}
-                      className="w-full sm:w-64"
-                    />
+                    <SkuSearchInput value={search} onChange={setSearch} className="w-full sm:w-72" />
                   </div>
                 }
               />
               <div className="mt-4">
                 <DataTable<AbcRow>
-                  columns={columns}
+                  columns={money ? columns : columns.filter((c) => c.key !== 'profit')}
                   rows={pageRows}
                   rowKey={(r) => r.skuId}
                   loading={isLoading}
@@ -633,9 +649,11 @@ export default function Abc() {
                       <td className="tnum px-3 py-3 text-right text-sm md:whitespace-nowrap md:px-5">
                         {f.money(filteredTotals.revenue)}
                       </td>
-                      <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right text-sm md:table-cell">
-                        {f.money(filteredTotals.profit)}
-                      </td>
+                      {money ? (
+                        <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right text-sm md:table-cell">
+                          {f.money(filteredTotals.profit)}
+                        </td>
+                      ) : null}
                       <td className="tnum hidden whitespace-nowrap px-5 py-3 text-right text-sm md:table-cell">
                         {f.num(filteredTotals.units)}
                       </td>

@@ -7,7 +7,7 @@
  * ishga tushsa ham xabar ikki marta ketmaydi.
  */
 import type { Bot } from 'grammy';
-import { hasFeature, resolvePlan } from '@savdoiq/shared';
+import { asMemberView, hasFeature, resolvePlan, viewSeesMoney } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { env } from '../lib/env.js';
 import { toBotLang, tr } from '../i18n.js';
@@ -88,7 +88,7 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
       id: true,
       botChatId: true,
       languageCode: true,
-      memberships: { select: { companyId: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+      memberships: { select: { companyId: true, role: true, view: true }, orderBy: { createdAt: 'asc' }, take: 1 },
     },
   });
   if (users.length === 0) return stats;
@@ -157,7 +157,13 @@ export async function runDailyReports(bot: Bot<BotContext>, now = new Date()): P
     }
 
     const lang = toBotLang(user.languageCode);
-    const text = clampMessage(dailyDigestText(lang, range.key, data.report, data.alert));
+    /*
+     * Foyda — faqat pulni ko'radigan a'zoga (saytdagi ko'rinish shabloni, shared
+     * views.ts). Ilgari kunlik xabar omborchiga ham kechagi sof foydani yuborardi.
+     */
+    const member = user.memberships[0];
+    const seesMoney = member?.role === 'owner' || viewSeesMoney(asMemberView(member?.view));
+    const text = clampMessage(dailyDigestText(lang, range.key, data.report, data.alert, seesMoney));
 
     try {
       await bot.api.sendMessage(chatId, text, {

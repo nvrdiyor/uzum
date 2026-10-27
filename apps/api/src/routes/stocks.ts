@@ -15,12 +15,15 @@ import { prisma } from '@savdoiq/db';
 import {
   addDays,
   parseISODate,
+  parseSkuQuery,
   round,
   toISODate,
   toBusinessDate,
   type Paginated,
   type SalesStockResponse,
   type SalesStockRow,
+  type SkuQuery,
+  type SkuSearchKeys,
   type StockRow,
   type StocksResponse,
 } from '@savdoiq/shared';
@@ -32,10 +35,10 @@ import {
   daysSince,
   getAvgDaily,
   getLastSaleDates,
-  getLatestStocks,
   getSkuCatalog,
   getStoreIds,
   isSalesStockVisible,
+  skuInfoMatches,
   withSoldSkus,
   stockState,
   type SalesAgg,
@@ -43,6 +46,7 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
+import { loadPlanData, planSku, planSkuSummary, planStockStatus } from '../services/plan.js';
 import { estimateStockValue, stockLineValue } from '../services/stock-value.js';
 
 const router = Router();
@@ -86,10 +90,14 @@ function applySort<T>(rows: T[], order: 'asc' | 'desc', value: (row: T) => SortV
   });
 }
 
-/** Qidiruv mos keladimi (nom yoki SKU kodi bo'yicha, registrga bog'liq emas) */
-function matches(info: SkuInfo, search: string | undefined): boolean {
-  if (!search) return true;
-  return info.title.toLowerCase().includes(search) || info.sku.toLowerCase().includes(search);
+/**
+ * Qidiruv mos keladimi — umumiy qoida (services/common.ts skuInfoMatches):
+ * nom, SKU kodi, shtrix-kod, Uzum SKU / mahsulot ID'si yoki uzum.uz havolasi.
+ * Ilgari faqat nom va SKU kodi edi (2026-10-24). So'rov bir marta tahlil
+ * qilinadi (parseSkuQuery) — har qatorda qayta emas.
+ */
+function matches(info: SkuInfo, query: SkuQuery | null): boolean {
+  return query === null || skuInfoMatches(info, query);
 }
 
 /** Ruxsat etilgan holat filtri (?status=critical|low|ok|excess|dead) */
@@ -129,12 +137,19 @@ router.get(
     const onlyStatus = statusFilter(q.status);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * Yon paneldagi "Tavsiya" — Rejalashtiruvchining o'zi (services/plan.ts,
+       * kompaniyaning yetkazish muddati). Ilgari sayt uni o'zi hisoblardi:
+       * 30 + 7 kun qat'iy, oddiy o'rtacha bilan, yo'ldagi tovarsiz — son
+       * Rejalashtiruvchidagidan farq qilardi (2026-10-24).
+       */
+      loadPlanData(company.id, storeIds),
       getAvgDaily(storeIds, AVG_WINDOW),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
 
     // Hammasi sotilsa qancha tushadi — komissiya va logistika SKU'ning haqiqiy sotuvidan
     const { lines } = await estimateStockValue(
@@ -144,17 +159,31 @@ router.get(
       company.taxRate,
     );
 
-    const search = range.search?.toLowerCase();
+    const query = parseSkuQuery(range.search);
     const rows: StockRow[] = [];
 
     for (const [skuId, info] of catalog) {
-      if (!matches(info, search)) continue;
+      if (!matches(info, query)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      /*
+       * "Yetadi" va holat — Rejalashtiruvchining o'zi (planStockStatus): yetkazish
+       * muddati, yo'ldagi tovar va tugab turgan kunlarsiz tezlik bilan. Ilgari
+       * jadval 7/14 kunlik qat'iy chegara va oddiy o'rtacha bilan hisoblardi,
+       * shu qatorning yon panelidagi tavsiya esa Rejalashtiruvchidan kelardi:
+       * yetkazish 14 kun bo'lsa 12 kunlik SKU jadvalda "Tugayapti", tavsiyada
+       * esa shoshilinch edi (2026-10-24). Sotuvi yo'q va arxivdagi SKU — eski
+       * qoldiq qoidasi (harakatsiz, tugagan).
+       */
+      const row = planSku(planData, skuId);
+      const state = planStockStatus(
+        row,
+        stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt)),
+      );
       if (onlyStatus && state.status !== onlyStatus) continue;
       const line = lines.get(skuId);
       const value = stockLineValue(info, st.total, line, company.taxRate);
+      const planned = planSkuSummary(planData, skuId);
 
       rows.push({
         skuId,
@@ -162,6 +191,11 @@ router.get(
         title: info.title,
         imageUrl: info.imageUrl,
         storeTitle: info.storeTitle,
+        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        productId: info.productId,
+        uzumProductId: info.uzumProductId,
+        barcode: info.barcode,
+        uzumSkuId: info.uzumSkuId,
         fbo: st.fbo,
         fbs: st.fbs,
         own: st.own,
@@ -176,9 +210,11 @@ router.get(
         payoutPerUnit: round(line?.payoutPerUnit ?? 0),
         payoutSource: line?.source ?? 'estimate',
         profitValue: value.profit === null ? null : round(value.profit),
-        avgDaily: round(avg, 2),
+        // "Yetadi" shu tezlikdan chiqadi — ikkalasi bir manbadan bo'lsin (mahsulot sahifasidagi kabi)
+        avgDaily: row && row.status !== 'no_action' ? row.avgDaily : round(avg, 2),
         daysLeft: state.daysLeft,
         status: state.status,
+        ...(planned ? { plan: planned } : {}),
       });
     }
 
@@ -242,17 +278,25 @@ router.get(
     const onlyStatus = statusFilter(q.status);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [catalog, stocks, sales, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, sales, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      /*
+       * Holat va "yetadi" — Rejalashtiruvchining o'zi (planStockStatus),
+       * Qoldiqlar sahifasi bilan bitta nishon. Ilgari bu sahifa 7/14 kunlik
+       * qat'iy chegara va oddiy 30 kunlik o'rtacha bilan hisoblardi: yetkazish
+       * 14 kun bo'lsa 12 kunlik SKU Qoldiqlarda "Kritik", shu yerda "Tugayapti"
+       * edi (2026-10-24). Qoldiq ham rejadan — u `getLatestStocks` ni o'zi yuklaydi.
+       */
+      loadPlanData(company.id, storeIds),
       aggregateSalesNet(company.id, storeIds, range.from, range.toExclusive, range.storeId),
       getAvgDaily(storeIds, AVG_WINDOW),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
     // Yashirilgan tovar ham davrda sotilgan bo'lsa — jami tushum boshqa sahifalar bilan teng chiqsin
     await withSoldSkus(catalog, sales.keys(), storeIds);
 
-    const search = range.search?.toLowerCase();
+    const query = parseSkuQuery(range.search);
     const rows: SalesStockRow[] = [];
     /*
      * Holatlar soni qidiruvga mos BARCHA SKU bo'yicha, holat filtridan OLDIN
@@ -264,7 +308,7 @@ router.get(
     const statusCounts: Record<StockStatus, number> = { critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
 
     for (const [skuId, info] of catalog) {
-      if (!matches(info, search)) continue;
+      if (!matches(info, query)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       const agg = sales.get(skuId) ?? EMPTY_AGG;
       const avg = avgDaily.get(skuId) ?? 0;
@@ -279,7 +323,14 @@ router.get(
        * umumiy: fayldagi qatorlar sahifadagi bilan bir xil bo'lsin.
        */
       if (!isSalesStockVisible(agg.units, agg.revenue, st.total, avg)) continue;
-      const state = stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      // Sotuvi yo'q va arxivdagi SKU (rejada `no_action` yoki umuman yo'q) — eski qoldiq qoidasi
+      const row = planSku(planData, skuId);
+      const state = planStockStatus(
+        row,
+        stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt)),
+      );
+      // "Yetadi" shu tezlikdan chiqadi — ikkalasi bir manbadan (Qoldiqlar sahifasidagi kabi)
+      const daily = row && row.status !== 'no_action' ? row.avgDaily : round(avg, 2);
       statusCounts[state.status] += 1;
       if (onlyStatus && state.status !== onlyStatus) continue;
 
@@ -296,10 +347,10 @@ router.get(
         revenue: round(agg.revenue),
         payout: round(agg.payout),
         netProfit: round(agg.netProfit),
-        avgDaily: round(avg, 2),
+        avgDaily: daily,
         daysLeft: state.daysLeft,
         // Oyiga potentsial sotuv: joriy sur'at 30 kun davom etsa
-        monthPotential: Math.round(avg * 30),
+        monthPotential: Math.round(daily * 30),
         status: state.status,
       });
     }
@@ -343,7 +394,8 @@ router.get(
 
 // ─────────────────────────── GET /warehouse — o'z ombori kesimi ───────────────────────────
 
-export interface WarehouseStockRow {
+/** Qidiruv kalitlari (SkuSearchKeys) — Ombor sahifasi jadvalni o'zi qidiradi, shtrix-kod va Uzum ID bo'yicha ham */
+export interface WarehouseStockRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;
@@ -364,8 +416,15 @@ export interface WarehouseStockRow {
   volumeL: number;
   /** Umumiy og'irlik, kg */
   weightKg: number;
+  /**
+   * Oddiy 30 kunlik o'rtacha kunlik sotuv — ATAYLAB Rejalashtiruvchi tezligi
+   * emas: sahifa undan Uzum aylanmasini (qoldiq ÷ kunlik sotuv) hisoblaydi,
+   * Uzum formulasida esa "sotuvda bo'lgan kunlar" tuzatishi yo'q.
+   */
   avgDaily: number;
+  /** SKU'ning BARCHA qoldig'i (yo'ldagisi bilan) necha kunga yetadi — Rejalashtiruvchi, faqat o'z ombori emas */
   daysLeft: number | null;
+  /** Qoldiqlar sahifasidagi nishonning o'zi (planStockStatus) */
   status: StockStatus;
 }
 
@@ -417,25 +476,38 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, stocks, avgDaily, lastSale] = await Promise.all([
+    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
       getSkuCatalog(storeIds, true),
-      getLatestStocks(storeIds),
+      // Holat va "yetadi" — Rejalashtiruvchidan (pastda); qoldiq ham rejadan — u getLatestStocks'ni o'zi yuklaydi
+      loadPlanData(company.id, storeIds),
       getAvgDaily(storeIds, AVG_WINDOW),
       getLastSaleDates(storeIds),
     ]);
+    const stocks = planData.stocks;
 
-    const search = range.search?.toLowerCase();
+    const query = parseSkuQuery(range.search);
     const rows: WarehouseStockRow[] = [];
     const byStore = new Map<string, WarehouseStoreTotals>();
 
     for (const [skuId, info] of catalog) {
-      if (!matches(info, search)) continue;
+      if (!matches(info, query)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
       // Bu bo'lim faqat o'z ombori haqida: FBO qoldig'i bu yerda ko'rsatilmaydi
       if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
 
       const avg = avgDaily.get(skuId) ?? 0;
-      const state = stockState(st.own, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt));
+      /*
+       * Holat va "yetadi" — SKU'ning UMUMIY holati, Qoldiqlar sahifasidagi
+       * nishonning o'zi (planStockStatus: barcha qoldiq + yo'ldagi, kompaniyaning
+       * yetkazish muddati bilan). Ilgari faqat o'z ombori qoldig'idan 7/14 kunlik
+       * chegara bilan hisoblanardi: FBO'da 200 dona turgan SKU o'z omboridagi
+       * 3 donasi uchun "Kritik" chiqardi (2026-10-24). Sotuvi yo'q va arxivdagi
+       * SKU — Qoldiqlardagi kabi eski qoldiq qoidasi, butun qoldiq bilan.
+       */
+      const state = planStockStatus(
+        planSku(planData, skuId),
+        stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt)),
+      );
       const volumeL = round(st.own * info.volumeL, 2);
       const costValue = round(st.own * (info.purchasePrice + info.extraCost));
 
@@ -446,6 +518,11 @@ router.get(
         imageUrl: info.imageUrl,
         storeId: info.storeId,
         storeTitle: info.storeTitle,
+        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        productId: info.productId,
+        uzumProductId: info.uzumProductId,
+        barcode: info.barcode,
+        uzumSkuId: info.uzumSkuId,
         own: st.own,
         reserved: st.reserved,
         available: Math.max(0, st.own - st.reserved),

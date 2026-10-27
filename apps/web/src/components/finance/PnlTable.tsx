@@ -4,33 +4,15 @@ import { Card, CardHeader, Delta, EmptyState, SkeletonRows } from '@/components/
 import { useFormat, useT } from '@/i18n';
 import { CHART_COLORS, COST_COLORS } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { categoryColor, isKnownPnlId, type PnlLine } from './financeData';
+import { isKnownPnlId, PNL_LINE_COLOR as LINE_COLOR, SUBTOTAL_FILL, type PnlLine } from './financeData';
 
-/**
+/*
  * Har bir modda rangi — COST_COLORS bilan bir xil (yonidagi "Tushum qayerga
  * ketdi" va Unit-iqtisod chiziqlari bilan). Ilgari har xarajat qatori bir
  * xil qizil nuqta va QIZIL summa bilan chiqardi — butun jadval "zarar"
  * bo'lib o'qilardi. Endi qizil faqat haqiqiy zararda (manfiy natija).
+ * Xarita financeData.ts da — yuqoridagi pul oqimi grafigi ham o'shandan oladi.
  */
-const LINE_COLOR: Record<string, string> = {
-  revenue: CHART_COLORS.info,
-  payout: CHART_COLORS.info,
-  cogs: COST_COLORS.cogs,
-  commission: COST_COLORS.commission,
-  manualCommission: COST_COLORS.commission,
-  delivery: COST_COLORS.logistics,
-  logistics: COST_COLORS.logistics,
-  storage: COST_COLORS.storage,
-  marketing: COST_COLORS.marketing,
-  tax: COST_COLORS.tax,
-  manualTax: COST_COLORS.tax,
-  salary: categoryColor('salary'),
-  itemOther: COST_COLORS.other,
-  other: COST_COLORS.other,
-};
-
-/** Oraliq natija (yalpi foyda, tovarlar foydasi) — foyda rangining och varianti */
-const SUBTOTAL_FILL = 'rgb(var(--c-brand) / 0.45)';
 
 interface Span {
   from: number;

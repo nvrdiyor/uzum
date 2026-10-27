@@ -11,10 +11,29 @@
  *        revenue   = sellPrice * qty
  *        payout    = revenue - commission - logistics
  *        netProfit = payout - cogs - soliq        (cogs = purchasePrice * qty)
+ *  • Logistika va pullik saqlash — Uzum tarifi bo'yicha (packages/shared
+ *    tariffs.ts, qo'llanma 01.06.2026 dan): logistika hajmdan, saqlash hajm va
+ *    aylanmadan. Bir nechta SKU'da ATAYLAB VGH holati bor (pastda, `VGH demo`).
  */
 
 import { createCipheriv, createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+/*
+ * Tarif qoidalari ilova bilan BITTA joydan: ilgari seed 120 so'm/l/kun va
+ * "12 000 + og'irlik" logistikasini o'zi yozardi, ilova esa boshqasini
+ * hisoblardi — VGH tekshiruvida 34 ta demo SKU'ning hammasi "ortiqcha
+ * to'layapti" bo'lib chiqdi (2026-10-24). Faqat seed import qiladi: db
+ * paketining o'zi (index.ts) shared'ga bog'lanmaydi.
+ */
+import {
+  LOGISTICS_FEE,
+  TURNOVER_WINDOW_DAYS,
+  hasExtendedNewSkuFree,
+  logisticsFee,
+  storageFeePerDay,
+  storageTariffKind,
+  turnoverDays,
+} from '@savdoiq/shared';
 import { prisma } from './index.js';
 
 // ─────────────────────────── PRNG (mulberry32) ───────────────────────────
@@ -266,7 +285,12 @@ interface GenSku {
   purchasePrice: number;
   commissionPct: number;
   weightGr: number;
+  /** Kartochkadagi (sotuvchi kiritgan) hajm, litr; 0 — o'lcham kiritilmagan */
   volumeL: number;
+  /** Uzum o'lchagan hajm — logistika va saqlash shundan; VGH holatida kartochkadagidan katta */
+  uzumVolumeL: number;
+  /** Uzum kartochkasida o'lcham bormi: yo'q bo'lsa logistika har donaga 50 000 */
+  hasDims: boolean;
   /** Sotuv ehtimoli og'irligi (ABC tahlili ma'noli chiqishi uchun) */
   popularity: number;
   stockKind: StockKind;
@@ -510,11 +534,14 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       const skuId = `demo_sk_${spec.key}_${String(pi + 1).padStart(2, '0')}_${vi + 1}`;
       const price = roundTo(rFloat(def.minPrice, def.maxPrice), 1000);
       /*
-       * Tannarx — narxning 30–52% i. Ilgari 35–60% edi: saqlash va soliq ikki
+       * Tannarx — narxning 34–56% i. Ilgari 35–60% edi: saqlash va soliq ikki
        * marta ayrilishi to'xtagach demo sof marjasi ~20% chiqdi, vitrina esa
-       * sog'lom do'konni (25–30%) ko'rsatishi kerak (2026-10-24).
+       * sog'lom do'konni (25–30%) ko'rsatishi kerak (2026-10-24). Keyin 30–52%
+       * qilingan edi; logistika va saqlash Uzum tarifiga o'tgach (ikkalasi
+       * ancha arzon) marja ~34% ga chiqdi — oraliq 4 punktga ko'tarildi, PRNG
+       * chaqiruvlari o'sha-o'sha (2026-10-24).
        */
-      const purchasePrice = roundTo(price * rFloat(0.3, 0.52), 100);
+      const purchasePrice = roundTo(price * rFloat(0.34, 0.56), 100);
       const oldPrice = roundTo(price * rFloat(1.06, 1.32), 1000);
       const code = `${spec.key.slice(0, 3).toUpperCase()}-${String(pi + 1).padStart(2, '0')}${String(vi + 1).padStart(2, '0')}`;
 
@@ -583,6 +610,8 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         commissionPct: def.commissionPct,
         weightGr: def.weightGr,
         volumeL: def.volumeL,
+        uzumVolumeL: def.volumeL,
+        hasDims: true,
         popularity,
         stockKind,
         soldByDay: new Array<number>(HISTORY_DAYS).fill(0),
@@ -590,6 +619,33 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       });
     });
   });
+
+  /*
+   * ── VGH demo (2026-10-24) ──
+   * ATAYLAB bir nechta haqiqiy holat — "Hajm va VGH" sahifasi va kalkulyator
+   * bo'sh ko'rinmasin. Tanlov ommaboplik bo'yicha: davrda topshirilgan satr
+   * yetarli bo'lsin (aks holda "ma'lumot kam" chiqadi). PRNG ishlatilmaydi —
+   * keyingi buyurtma va summalar siljimaydi.
+   *  - ommaboplikda 2- va 4-o'rindagi SKU: Uzum tovarni kartochkadagidan 1 va
+   *    2 litr katta o'lchagan — logistika ham, saqlash ham shu hajmdan olinadi;
+   *  - undan keyingi, narxi 200 000 dan yuqori eng ommabop SKU: kartochkada
+   *    o'lcham yo'q — Uzum har donaga 50 000 so'm oladi. Arzon tovar
+   *    tanlanmaydi: 50 000 uni butunlay zararga aylantirib, boshqa sahifalar
+   *    ma'nosini buzardi.
+   */
+  const byPopularity = [...skus].sort((a, b) => b.popularity - a.popularity);
+  const overMeasured: [GenSku | undefined, number][] = [
+    [byPopularity[1], 1],
+    [byPopularity[3], 2],
+  ];
+  for (const [sku, extraL] of overMeasured) if (sku) sku.uzumVolumeL = sku.volumeL + extraL;
+  const noDims = byPopularity.find((s, i) => i > 3 && s.price >= 200_000);
+  if (noDims) {
+    noDims.hasDims = false;
+    noDims.volumeL = 0;
+    const row = skuRows.find((r) => r.id === noDims.id);
+    if (row) row.volumeL = 0;
+  }
 
   // ── Buyurtmalar ──
   const byStore = new Map<string, GenSku[]>();
@@ -647,7 +703,6 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
 
       const dr = rand();
       const deliveryType: 'FBO' | 'FBS' | 'DBS' = dr < 0.7 ? 'FBO' : dr < 0.95 ? 'FBS' : 'DBS';
-      const logisticsBase = deliveryType === 'FBO' ? 12_000 : deliveryType === 'FBS' ? 15_000 : 21_000;
 
       let status: string;
       if (daysAgo === 0) status = chance(0.5) ? 'new' : 'processing';
@@ -683,7 +738,14 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         const sellPrice = roundTo(sku.price * (1 - discountPct / 100), 500);
         const revenue = money(sellPrice * qty);
         const commission = money((revenue * sku.commissionPct) / 100);
-        const logisticsUnit = logisticsBase + Math.min(12_000, Math.round((sku.weightGr / 1000) * 2500));
+        /*
+         * Uzum tarifi (tariffs.ts): har sotilgan donaga Uzum o'lchagan hajmdan,
+         * o'lchamsiz tovarga 50 000 — importer to'ldiradigan maydon (dona × qty).
+         * Ilgari "sxema bazasi (12–21 ming) + og'irlik" edi: hajmga bog'liq emas
+         * va tarifdan 2–3 baravar qimmat (2026-10-24).
+         */
+        const logisticsUnit =
+          logisticsFee(sku.uzumVolumeL, { hasDimensions: sku.hasDims }) ?? LOGISTICS_FEE.noDimensions;
         const logistics = money(logisticsUnit * qty);
         const payout = revenue - commission - logistics;
         const cogs = money(sku.purchasePrice * qty);
@@ -827,28 +889,43 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
 
   /*
    * ── Pullik saqlash (qoldiq snapshot'lari bor oxirgi 60 kun) ──
-   * To'lov faqat Uzum omboridagi (FBO) qoldiqning ~60 kunlik sotuvdan
-   * ortig'iga olinadi — bepul muddatdan oshib uzoq yotgan donalar. Ilgari dona
-   * soni qoldiqdan qat'i nazar tasodifiy olinardi: qoldig'i 0 bo'lgan qozon
-   * oyiga 6 mln saqlash "to'lardi", oddiy SKU'larning 22% i ham to'lardi (2026-10-24).
+   * Uzum qo'llanmasi (tariffs.ts, 01.06.2026 dan): har kuni aylanma =
+   * oldingi 15 kundagi o'rtacha FBO qoldig'i ÷ o'rtacha kunlik sotuv
+   * (qaytarilgan va bekor qilinganlarsiz). 60 kungacha — bepul, yozuv yo'q;
+   * undan oshsa JORIY FBO qoldig'ining hammasi × litr × stavka (12/18/24,
+   * imtiyozli toifalarda 12/14/18), bir dona uchun kunlik chegara bilan.
+   * Snapshot tarixi 60 kun: eng eski kunlarda oyna qisqa — mavjud kunlar
+   * o'rtachasi olinadi (Saqlash sahifasi ham shunday).
    *
-   * Ilgari faqat oxirgi 45 kun yozilardi. Saqlash endi faqat StorageFee'dan
-   * olingani uchun taqqoslash davri (masalan "Oxirgi 30 kun"ning oldingi 30
-   * kuni) saqlashning faqat yarmini olardi: oldingi davr sof foydasi ~10 mln
-   * ga oshib, o'sish +20% o'rniga +7% bo'lib chiqardi (2026-10-24).
+   * Ilgari: qoldiqning ~60 kunlik sotuvdan ortig'i × 120 so'm/l/kun —
+   * o'lchanmagan, ~10 baravar katta stavka; undan oldin dona soni umuman
+   * tasodifiy edi (qoldig'i 0 bo'lgan qozon oyiga 6 mln "to'lardi"). Yozuvlar
+   * butun 60 kun bo'yicha: faqat oxirgi 45 kun yozilganda taqqoslash davri
+   * saqlashning yarmini olib, o'sish +20% o'rniga +7% chiqardi (2026-10-24).
    */
-  const FREE_STORAGE_DAYS = 60;
   for (const sku of skus) {
-    const avgDaily = Math.max(0.15, sku.totalUnits / HISTORY_DAYS);
-    const freeQty = Math.ceil(avgDaily * FREE_STORAGE_DAYS);
     const fboHistory = fboByDay.get(sku.id) ?? [];
+    const kind = storageTariffKind(sku.category);
+    const extendedNewSkuFree = hasExtendedNewSkuFree(sku.category);
     for (let d = HISTORY_DAYS - STOCK_DAYS; d < HISTORY_DAYS; d += 1) {
-      const qty = Math.max(0, (fboHistory[d] ?? 0) - freeQty);
-      if (qty === 0) continue;
+      const qty = fboHistory[d] ?? 0;
+      if (qty <= 0) continue;
+      const known = fboHistory.slice(Math.max(HISTORY_DAYS - STOCK_DAYS, d - TURNOVER_WINDOW_DAYS), d);
+      const avgStock = known.length > 0 ? known.reduce((s, v) => s + v, 0) / known.length : qty;
+      let sold = 0;
+      for (let w = d - TURNOVER_WINDOW_DAYS; w < d; w += 1) sold += sku.soldByDay[w] ?? 0;
+      const amount = storageFeePerDay({
+        units: qty,
+        volumeL: sku.uzumVolumeL,
+        turnover: turnoverDays(avgStock, sold / TURNOVER_WINDOW_DAYS),
+        kind,
+        // SKU katalogga tarixdan bir kun oldin qo'shilgan (createdAt) — yangi SKU bepul davri o'tgan
+        daysOnSale: d + 1,
+        extendedNewSkuFree,
+      });
+      if (amount <= 0) continue;
       const day = dateOfIndex(d);
-      const volume = Math.round(qty * sku.volumeL * 100) / 100;
-      // 120 so'm/l/kun — ilovadagi DEFAULTS.storagePerLiterPerDay bilan bir xil
-      const amount = money(volume * 120);
+      const volume = Math.round(qty * sku.uzumVolumeL * 100) / 100;
       storageFeeRows.push({
         id: `demo_sf_${sku.id}_${d}`,
         storeId: sku.storeId,
@@ -1067,6 +1144,14 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
 
   // ── Unit-iqtisod stsenariysi ──
   const sample = skus[0];
+  /*
+   * Logistika va saqlash — Uzum tarifi bo'yicha (kalkulyator ham shunday
+   * to'ldiradi): 20 kunlik aylanma 60 dan kam — saqlash bepul. Ilgari 12 000
+   * va 120 so'm/kun qo'lda yozilgan edi (2026-10-24).
+   */
+  const sampleLogistics =
+    logisticsFee(sample.uzumVolumeL, { hasDimensions: sample.hasDims }) ?? LOGISTICS_FEE.noDimensions;
+  const sampleStorageDays = 20;
   scenarioRows.push({
     id: `demo_us_${spec.key}`,
     companyId,
@@ -1076,10 +1161,16 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       purchasePrice: sample.purchasePrice,
       qty: 100,
       commissionPct: sample.commissionPct,
-      logistics: 12_000,
-      returnLogistics: 9_000,
-      storagePerDay: 120,
-      storageDays: 20,
+      logistics: sampleLogistics,
+      // Kalkulyatordagi standart qoida: qaytarish logistikasi ~75%
+      returnLogistics: Math.round(sampleLogistics * 0.75),
+      storagePerDay: storageFeePerDay({
+        units: 1,
+        volumeL: sample.uzumVolumeL,
+        turnover: sampleStorageDays,
+        kind: storageTariffKind(sample.category),
+      }),
+      storageDays: sampleStorageDays,
       packaging: 0,
       otherCost: 0,
       taxPct: spec.taxRate,
@@ -1208,6 +1299,91 @@ function buildExtras(results: CompanyResult[]): void {
   void results;
 }
 
+// ─────────────────────────── Raqobatchilar narxi (demo) ───────────────────────────
+
+const competitorRows: Prisma.CompetitorPriceCreateManyInput[] = [];
+
+interface CompetitorSeed {
+  key: string;
+  company: 'demo_co_samarqand' | 'demo_co_lootbox';
+  product: string;
+  /** Bog'langan variant — narx o'sha variantnikiga nisbatan */
+  sku?: string;
+  title: string;
+  /** Narx = bizning eng arzon (yoki bog'langan) variant narxi × koeffitsiyent */
+  factor?: number;
+  /** Narx = eng arzon tannarxingiz — nol foyda narxidan albatta past */
+  atCost?: boolean;
+  /** Oldingi narx (o'zgarish yo'nalishi uchun), o'sha asosga nisbatan */
+  prevFactor?: number;
+  daysAgo: number;
+  url?: string;
+  note?: string;
+}
+
+/** Uzum'dagi qidiruv sahifasi — demo havolasi begona tovarga olib bormasin */
+const uzumSearch = (q: string): string => `https://uzum.uz/uz/search?query=${encodeURIComponent(q)}`;
+
+const COMPETITOR_SEEDS: CompetitorSeed[] = [
+  // SAMARQAND SAVDO. Choyshab: raqobatchilar medianasi ~10% yuqori — biz arzonroq
+  { key: 'samarqand_1', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_01', title: 'Ipak Uy Tekstil', factor: 1.06, daysAgo: 2, url: uzumSearch('paxta choyshab 2 kishilik') },
+  { key: 'samarqand_2', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_01', title: 'Uyqu Market', factor: 1.1, prevFactor: 1.14, daysAgo: 3 },
+  { key: 'samarqand_3', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_01', title: 'Tekstil Olami', factor: 1.15, daysAgo: 5 },
+  // Termos: raqobatchilar ~10% arzon, biri narxini yana tushirgan — biz qimmatroq
+  { key: 'samarqand_4', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_02', title: 'Termos House', factor: 0.88, prevFactor: 0.95, daysAgo: 1, url: uzumSearch('termos 1.2 l') },
+  { key: 'samarqand_5', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_02', title: 'Oshxona Plus', factor: 0.92, daysAgo: 4 },
+  // Choynak: raqobatchi tannarxingizda sotyapti — unga tenglashish zarar
+  { key: 'samarqand_6', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_04', title: 'Arzon Texnika', atCost: true, daysAgo: 2, note: 'Aksiya: 3 kunlik chegirma' },
+  { key: 'samarqand_7', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_04', title: 'Maishiy Market', factor: 1.01, daysAgo: 6, url: uzumSearch('elektr choynak 1.8 l') },
+  // Futbolka: ikkala narx ham 14 kundan oldin tekshirilgan — eskirgan
+  { key: 'samarqand_8', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_05', title: 'Cotton Line', factor: 0.99, daysAgo: 21 },
+  { key: 'samarqand_9', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_05', title: 'Moda Bazar', factor: 1.02, daysAgo: 18 },
+  // Krossovka: 42-o'lcham variantiga bog'langan — o'sha variant narxi bilan solishtiriladi
+  { key: 'samarqand_10', company: 'demo_co_samarqand', product: 'demo_pr_samarqand_10', sku: 'demo_sk_samarqand_10_3', title: 'Sport Zona', factor: 0.98, prevFactor: 0.96, daysAgo: 3 },
+  // LOOTBOX TECH. Quloqchin: raqobatchilar ~5% arzon — biz qimmatroq
+  { key: 'lootbox_1', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_01', title: 'Gadget Store', factor: 0.92, daysAgo: 1, url: uzumSearch('airdots pro 3') },
+  { key: 'lootbox_2', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_01', title: 'TechnoMarket', factor: 0.95, prevFactor: 1.02, daysAgo: 2 },
+  { key: 'lootbox_3', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_01', title: 'Audio Shop', factor: 1.03, daysAgo: 5 },
+  // Powerbank: raqobatchi tannarxingizda — nol foyda narxidan past
+  { key: 'lootbox_4', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_02', title: 'Power Zone', atCost: true, daysAgo: 3, note: 'Eski partiyani tugatyapti shekilli' },
+  { key: 'lootbox_5', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_02', title: 'Mobile Center', factor: 1.05, daysAgo: 4 },
+  // Kolonka: bitta narx, 30 kun oldin tekshirilgan — eskirgan, biz arzonroq
+  { key: 'lootbox_6', company: 'demo_co_lootbox', product: 'demo_pr_lootbox_06', title: 'Sound Market', factor: 1.12, daysAgo: 30, url: uzumSearch('jbl go 3') },
+];
+
+/**
+ * Demo raqobatchi narxlari — "Narxlar xaritasi" va mahsulot sahifasidagi karta
+ * bo'sh turmasin (2026-10-24). PRNG ATAYLAB ishlatilmaydi: narx bizning SKU
+ * narxiga (yoki tannarxiga) nisbatan qat'iy koeffitsiyentdan, sana bugundan
+ * qat'iy kun oldin — qolgan demo raqamlari siljimaydi. Har kompaniyada bittasi
+ * eskirgan (14 kundan ko'p) va bittasi nol foyda narxidan past: nol foyda narxi
+ * tannarxdan doim yuqori (logistika, komissiya), raqobatchi esa tannarxda sotadi.
+ */
+function buildCompetitorPrices(): void {
+  for (const c of COMPETITOR_SEEDS) {
+    const skus = skuRows.filter((s) => s.productId === c.product);
+    if (skus.length === 0) continue;
+    const linked = c.sku ? skus.find((s) => s.id === c.sku) : undefined;
+    const base = linked ? Number(linked.price) : Math.min(...skus.map((s) => Number(s.price)));
+    const minCost = Math.min(...skus.map((s) => Number(s.purchasePrice)));
+    const at = addHours(dayAt(-c.daysAgo), 6);
+    competitorRows.push({
+      id: `demo_cmp_${c.key}`,
+      companyId: c.company,
+      productId: c.product,
+      skuId: linked ? String(linked.id) : null,
+      url: c.url ?? null,
+      title: c.title,
+      price: c.atCost ? Math.floor(minCost / 1000) * 1000 : roundTo(base * (c.factor ?? 1), 1000),
+      prevPrice: c.prevFactor ? roundTo(base * c.prevFactor, 1000) : null,
+      checkedAt: at,
+      note: c.note ?? null,
+      createdById: c.company === 'demo_co_samarqand' ? OWNER2_ID : OWNER1_ID,
+      createdAt: at,
+    });
+  }
+}
+
 // ─────────────────────────── Yozish yordamchisi ───────────────────────────
 
 /** Katta massivlarni bo'laklab yozish (SQLite parametr chegarasi uchun) */
@@ -1256,6 +1432,8 @@ async function main(): Promise<void> {
 
   const results = COMPANY_SPECS.map((spec, i) => buildCompany(spec, i));
   buildExtras(results);
+  // PRNG ishlatmaydi — tartibi boshqa demo raqamlariga ta'sir qilmaydi
+  buildCompetitorPrices();
 
   // Mahsulot reytinglarini sharhlardan hisoblaymiz
   for (const p of productRows) {
@@ -1303,6 +1481,8 @@ async function main(): Promise<void> {
   await prisma.unitScenario.createMany({ data: scenarioRows });
   await prisma.notification.createMany({ data: notificationRows });
   await prisma.auditLog.createMany({ data: auditRows });
+  // Mahsulot va SKU'dan keyin: yozuv ikkalasiga bog'langan
+  await prisma.competitorPrice.createMany({ data: competitorRows });
 
   // ── Hisobot ──
   const totalRevenue = results.reduce((s, r) => s + r.revenue, 0);
@@ -1322,9 +1502,16 @@ async function main(): Promise<void> {
   console.log(`  Qaytarishlar     : ${returnRows.length}`);
   console.log(`  Yo‘qotishlar     : ${lossRows.length}`);
   console.log(`  Saqlash yozuvi   : ${storageFeeRows.length}`);
+  const vghDemo = results.flatMap((r) => r.skus.filter((s) => !s.hasDims || s.uzumVolumeL !== s.volumeL));
+  console.log(
+    `  VGH demo         : ${vghDemo
+      .map((s) => `${s.sku} (${s.hasDims ? `+${Math.round(s.uzumVolumeL - s.volumeL)} l` : 'o‘lchamsiz'})`)
+      .join(', ')}`,
+  );
   console.log(`  Sharhlar         : ${reviewRows.length}  (javobsiz: ${reviewRows.filter((r) => !r.answered).length})`);
   console.log(`  Xarajatlar       : ${expenseRows.length}`);
   console.log(`  Bildirishnomalar : ${notificationRows.length}`);
+  console.log(`  Raqobatchi narxi : ${competitorRows.length}`);
   console.log(`  Tushum (120 kun) : ${fmt(totalRevenue)} so‘m`);
   console.log(`  Sof foyda        : ${fmt(totalProfit)} so‘m`);
   console.log(`  Vaqt             : ${seconds} s`);

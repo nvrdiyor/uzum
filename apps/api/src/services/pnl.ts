@@ -23,6 +23,7 @@ import {
   eachDay,
   getPlan,
   round,
+  splitByWeight,
   toBusinessDate,
   toISODate,
   type Period,
@@ -205,6 +206,11 @@ export async function getNetDailySeries(
  *    (lib/period.ts), sinxron ham undan nariga bormaydi;
  *  • birinchi saqlangan buyurtma — birinchi to'liq sinxron undan oldingisini
  *    olmagan (ko'pi bilan 365 kun) yoki do'kon o'shanda hali sotmagan.
+ *
+ * Qoida taqqoslash rejimiga bog'liq emas (lib/period.ts `?compare=`): faqat
+ * `previous.from` tekshiriladi. "O'tgan yil" ('prevYear') da tarix chuqurligi
+ * (ko'pi bilan 365 kun) deyarli har doim yetmaydi va natija null — sahifada
+ * tire. Bu to'g'ri: bir yil oldingi nol "sotuv bo'lmagan" emas (2026-10-24).
  */
 export async function comparablePeriod(storeIds: string[], previous: Period, plan: PlanId): Promise<Period | null> {
   if (storeIds.length === 0) return null;
@@ -220,9 +226,18 @@ export async function comparablePeriod(storeIds: string[], previous: Period, pla
 }
 
 /**
- * Oldingi teng davr seriyasi — joriy davr bilan kunma-kun tekislangan:
- * `previousPeriod` bir xil uzunlikdagi siljish, shuning uchun i-nuqta joriy
- * davrning i-kuniga to'g'ri keladi. Tarix yetmasa null (comparablePeriod).
+ * Taqqoslash davri seriyasi (`range.previous`, rejimi `?compare=` — lib/period.ts).
+ *
+ * Seriya taqqoslash oynasining O'Z kunlari bilan TO'LIQ qaytadi — joriy davr
+ * uzunligiga kesilmaydi ham, to'ldirilmaydi ham: yig'indisi KPI'dagi
+ * `previous` bilan teng qolishi shart. Grafikda joriy seriya bilan INDEKS
+ * bo'yicha tekislanadi (i-nuqta — taqqoslash davrining i-kuni). Ilgari bu
+ * yerda "bir xil uzunlikdagi siljish" deb yozilgan edi — 'prev' rejimida
+ * shunday, lekin 'prevMonth' / 'prevYear' da davr qisqa yoki uzun bo'lishi
+ * mumkin (fevral ↔ mart, butun oy ↔ butun oy). Web TrendChart (withCompare)
+ * ortiqcha kunlarni joriy qiymatsiz qator qilib qo'shadi, yetmaganida uzuq
+ * chiziq oxirgi kunlarda chizilmaydi (2026-10-24). Tarix yetmasa null
+ * (comparablePeriod).
  */
 export async function getPreviousNetSeries(
   companyId: string,
@@ -307,11 +322,21 @@ export async function getAdFeesBySku(
   for (const [pid, amount] of byProduct) {
     const ids = skusOf.get(pid) ?? [];
     if (ids.length === 0) continue;
-    const revenue = ids.reduce((s, id) => s + Math.max(0, revenueBySku.get(id) ?? 0), 0);
-    for (const id of ids) {
-      const share = revenue > 0 ? Math.max(0, revenueBySku.get(id) ?? 0) / revenue : 1 / ids.length;
-      if (share > 0) out.set(id, (out.get(id) ?? 0) + amount * share);
-    }
+    const weights = ids.map((id) => Math.max(0, revenueBySku.get(id) ?? 0));
+    const sold = weights.some((w) => w > 0);
+    /*
+     * Butun so'mda, eng katta qoldiq usulida (calc.ts `splitByWeight`):
+     * ulushlar yig'indisi to'lovga AYNAN teng. Ilgari kasrli ulushlar SKU
+     * qatorlarida alohida yaxlitlanib, mahsulot jami reklama to'lovidan
+     * 1 so'mga farq qilardi (2026-10-27). Qaytarilgan (manfiy) summa ham
+     * xuddi shunday bo'linadi.
+     */
+    const sign = amount < 0 ? -1 : 1;
+    const shares = splitByWeight(Math.round(Math.abs(amount)), sold ? weights : ids.map(() => 1));
+    ids.forEach((id, i) => {
+      const share = shares[i] ?? 0;
+      if (share > 0) out.set(id, (out.get(id) ?? 0) + sign * share);
+    });
   }
   return out;
 }

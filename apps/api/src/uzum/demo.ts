@@ -9,13 +9,21 @@
  *    (yoki `opts.seed` dan) hosil qilinadi. `Math.random` ISHLATILMAYDI, shuning uchun
  *    bitta kalit har doim AYNAN bir xil ma'lumot beradi.
  *  • **Realistiklik** — haftalik mavsumiylik (dam olish kunlari +25%), o'sish trendi,
- *    "hit" va nolikvid SKU'lar, qaytarishlar, yo'qotishlar, komissiya/logistika,
- *    kunlik qoldiq snapshotlari va hajmga bog'liq saqlash to'lovi.
+ *    "hit" va nolikvid SKU'lar, qaytarishlar, yo'qotishlar, komissiya, kunlik qoldiq
+ *    snapshotlari; logistika va pullik saqlash — Uzum tarifi bo'yicha (shared
+ *    tariffs.ts: logistika hajmdan, saqlash hajm va aylanmadan, 60 kungacha bepul).
  *  • **Sof** — ma'lumot bir marta yig'iladi (lazy) va xotirada saqlanadi; metodlar faqat
  *    kerakli kesimni qaytaradi, shu jumladan `getOrders` — faqat so'ralgan sana oralig'ini
  *    (inkremental sinxronizatsiya uchun).
  */
-import { DEFAULTS } from '@savdoiq/shared';
+import {
+  LOGISTICS_FEE,
+  TURNOVER_WINDOW_DAYS,
+  logisticsFee,
+  storageFeePerDay,
+  storageTariffKind,
+  turnoverDays,
+} from '@savdoiq/shared';
 import type {
   UzumClient,
   UzumClientOptions,
@@ -256,10 +264,12 @@ interface DemoSku {
   purchasePrice: number;
   weightGr: number;
   volumeL: number;
+  /** Mahsulot toifasi — saqlash tarifi turi (oddiy/imtiyozli) shundan */
+  category: string;
   productId: string;
   shopId: string;
   commissionPct: number;
-  /** Bir dona uchun logistika, UZS */
+  /** Bir dona uchun logistika, UZS — Uzum tarifi bo'yicha, hajmdan */
   logisticsPerUnit: number;
   /** Kunlik bazaviy talab (dona) */
   demand: number;
@@ -473,14 +483,24 @@ export class DemoUzumClient implements UzumClient {
           purchasePrice,
           weightGr: tpl.weightGr,
           volumeL: tpl.volumeL,
+          category: tpl.category,
           productId,
           shopId: shop.id,
           commissionPct: tpl.commissionPct,
-          logisticsPerUnit: roundTo(rng.int(8_000, 25_000), 500),
+          /*
+           * Uzum tarifi (tariffs.ts): 5 250 so'm 1 litrgacha + har qo'shimcha
+           * litr 250. Ilgari 8 000–25 000 oralig'ida tasodifiy edi — hajmga
+           * bog'liq emas, va VGH tekshiruvida deyarli hamma SKU "ortiqcha
+           * to'layapti" bo'lib chiqardi (2026-10-24).
+           */
+          logisticsPerUnit: logisticsFee(tpl.volumeL) ?? LOGISTICS_FEE.noDimensions,
           demand,
           kind,
           lastActiveDay,
         };
+        // ATAYLAB: eski tasodifiy logistika o'rnidagi son olinadi, lekin ishlatilmaydi —
+        // tasodif oqimi siljimasin, ya'ni buyurtma, qoldiq va sharhlar avvalgidek chiqsin.
+        rng.next();
 
         skus.push(demoSku);
 
@@ -530,6 +550,8 @@ export class DemoUzumClient implements UzumClient {
     const returnsByShop = new Map<string, UzumReturn[]>();
     /** skuId → (kun indeksi → sotilgan dona) — qoldiqni orqaga qarab tiklash uchun */
     const salesBySku = new Map<string, Map<number, number>>();
+    /** Xuddi shunday, qaytarilganlarsiz — saqlash aylanmasi uchun (ilovadagi sotuv ta'rifi) */
+    const keptBySku = new Map<string, Map<number, number>>();
     /** skuId → yetkazilgan dona (sharh va yo'qotishlar uchun og'irlik) */
     const deliveredBySku = new Map<string, number>();
 
@@ -624,6 +646,11 @@ export class DemoUzumClient implements UzumClient {
             byDay.set(day, (byDay.get(day) ?? 0) + qty);
             salesBySku.set(sku.id, byDay);
           }
+          if (status !== 'canceled' && status !== 'returned') {
+            const kept = keptBySku.get(sku.id) ?? new Map<number, number>();
+            kept.set(day, (kept.get(day) ?? 0) + qty);
+            keptBySku.set(sku.id, kept);
+          }
           if (status === 'delivered') {
             deliveredBySku.set(sku.id, (deliveredBySku.get(sku.id) ?? 0) + qty);
           }
@@ -701,11 +728,14 @@ export class DemoUzumClient implements UzumClient {
       const restockEvery = rng.int(18, 30);
       const restockOffset = rng.int(0, restockEvery - 1);
       const restockQty = Math.max(10, Math.round(sku.demand * restockEvery));
+      /** FBO qoldig'i, `back` bo'yicha (0 — bugun) — saqlash to'lovi ikkinchi o'tishda shundan */
+      const fboByBack: number[] = [];
 
       for (let back = 0; back < STOCK_DAYS; back += 1) {
         const date = this.dayAt(-back);
         const fbo = Math.round(stock * 0.75);
         const fbs = stock - fbo;
+        fboByBack.push(fbo);
 
         push(stocksByShop, sku.shopId, {
           skuId: sku.id,
@@ -716,28 +746,50 @@ export class DemoUzumClient implements UzumClient {
           date: toISODay(date),
         });
 
-        // Saqlash to'lovi hajmga bog'liq: dona × hajm(L) × kunlik tarif
-        if (fbo > 0) {
-          const volumeL = Number((fbo * sku.volumeL).toFixed(2));
-          const amount = Math.round(
-            volumeL * DEFAULTS.storagePerLiterPerDay * rng.float(0.9, 1.1),
-          );
-          if (amount > 0) {
-            push(storageByShop, sku.shopId, {
-              skuId: sku.id,
-              date: toISODay(date),
-              qty: fbo,
-              volumeL,
-              amount,
-            });
-          }
-        }
+        // ATAYLAB: ilgari shu yerda to'lovga ±10% shovqin olinardi. Uzum tarifida
+        // shovqin yo'q, lekin tasodif oqimi siljimasin (keyingi SKU qoldig'i,
+        // sharh va xarajatlar avvalgidek chiqsin) — son olinadi, ishlatilmaydi.
+        if (fbo > 0) rng.next();
 
         // Orqaga qadam: kechagi qoldiq = bugungisi + bugun sotilgani − bugun kelgani
         const dayIndex = HISTORY_DAYS - 1 - back;
         const sold = byDay.get(dayIndex) ?? 0;
         const restock = back % restockEvery === restockOffset ? restockQty : 0;
         stock = Math.max(0, stock + sold - restock);
+      }
+
+      /*
+       * Pullik saqlash — Uzum qo'llanmasi (tariffs.ts, 01.06.2026 dan): aylanma =
+       * oldingi 15 kundagi o'rtacha FBO qoldig'i ÷ o'rtacha kunlik sotuv; 60
+       * kungacha bepul, keyin har kuni JORIY qoldiq × litr × stavka (bir dona
+       * uchun chegara bilan). Ilgari har kuni hajm × 120 so'm olinardi —
+       * o'lchanmagan, ~10 baravar katta stavka va bepul davrsiz: tez sotiladigan
+       * tovar ham "to'lardi" (2026-10-24). Qoldiq tarixi 60 kun: eng eski
+       * kunlarda oyna qisqa — mavjud kunlar o'rtachasi olinadi.
+       */
+      const kept = keptBySku.get(sku.id) ?? new Map<number, number>();
+      const kind = storageTariffKind(sku.category);
+      for (let back = 0; back < STOCK_DAYS; back += 1) {
+        const fbo = fboByBack[back] ?? 0;
+        if (fbo <= 0) continue;
+        const recent = fboByBack.slice(back + 1, back + 1 + TURNOVER_WINDOW_DAYS);
+        const avgStock = recent.length > 0 ? recent.reduce((s, v) => s + v, 0) / recent.length : fbo;
+        let sold = 0;
+        for (let w = 1; w <= TURNOVER_WINDOW_DAYS; w += 1) sold += kept.get(HISTORY_DAYS - 1 - back - w) ?? 0;
+        const amount = storageFeePerDay({
+          units: fbo,
+          volumeL: sku.volumeL,
+          turnover: turnoverDays(avgStock, sold / TURNOVER_WINDOW_DAYS),
+          kind,
+        });
+        if (amount <= 0) continue;
+        push(storageByShop, sku.shopId, {
+          skuId: sku.id,
+          date: toISODay(this.dayAt(-back)),
+          qty: fbo,
+          volumeL: Number((fbo * sku.volumeL).toFixed(2)),
+          amount,
+        });
       }
     }
 

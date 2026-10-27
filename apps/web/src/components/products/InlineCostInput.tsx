@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Check, Loader2 } from '@/components/icons';
 import { cn, groupDigits } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 
 const BASE =
   'w-full rounded-lg border bg-surface-2 px-2.5 py-1.5 pr-7 text-right text-sm tnum text-ink placeholder:text-muted ' +
@@ -33,6 +34,7 @@ export function InlineCostInput({
 }) {
   const [raw, setRaw] = useState(value > 0 ? String(value) : '');
   const [focused, setFocused] = useState(false);
+  const money = useSeesMoney();
 
   useEffect(() => {
     setRaw(value > 0 ? String(value) : '');
@@ -56,6 +58,9 @@ export function InlineCostInput({
   };
 
   const empty = !value || value <= 0;
+
+  // Pulsiz ko'rinish shablonida tannarx null va tahrirlash yopiq (server 403) — maydon o'rniga "—"
+  if (!money) return <span className={cn('tnum inline-block text-sm text-muted', className)}>—</span>;
 
   return (
     <div className={cn('relative inline-block w-28', className)}>

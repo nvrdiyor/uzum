@@ -24,7 +24,7 @@
  *               ATAYLAB olinmaydi: live.ts mapOrderStatus unga PACKING bilan birga
  *               PENDING_DELIVERY va DELIVERING ni ham qo'shadi — ya'ni kuryerga
  *               allaqachon berilgan buyurtmalar "yig'ing" deb chiqib qolardi.
- *  5. stock   — rejalashtiruvchining O'ZI (planner.ts buildRow, yetkazish 7 kun):
+ *  5. stock   — rejalashtiruvchining O'ZI (services/plan.ts buildRow, kompaniyaning yetkazish muddati):
  *               bugun buyurtma berilsa ham tovar kelguncha tugaydigan SKU;
  *               summa = o'sha formuladagi yo'qotiladigan tushum — /planner bilan bir xil raqam.
  *  6. storage — pullik saqlash: oxirgi 7 to'liq kun oldingi 7 kundan ≥ 20% va
@@ -72,7 +72,7 @@ import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { getLatestStocks, getSkuCatalog, getStoreIds } from '../services/common.js';
 import { getDemand } from '../services/demand.js';
-import { DEFAULT_COVER, DEFAULT_LEAD, EMPTY_STOCK, NO_DEMAND, buildRow, getInbound } from './planner.js';
+import { EMPTY_STOCK, NO_DEMAND, buildRow, getInbound, getPlannerSettings } from '../services/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -456,13 +456,16 @@ async function stockEntities(c: RuleCtx): Promise<Entity[]> {
    * sotuvda bo'lgan kunlar bo'yicha (services/demand.ts), yo'ldagi tovar ham
    * hisobga olinadi. getAvgDaily bilan alohida hisoblansa, raqam havola
    * qilingan /planner sahifasidagidan farq qilardi (2026-10-24 tahlili).
-   * Yetkazish muddati saytda brauzerda saqlanadi — server standart 7 kunni oladi.
+   * Yetkazish muddati va zaxira davri — kompaniya sozlamasi (services/plan.ts
+   * getPlannerSettings). Ilgari u faqat brauzerda saqlanardi va bu yerda
+   * doim 7 kun olinardi: sotuvchi 14 kun tanlasa ham ro'yxat 7 kun bilan chiqardi.
    */
-  const [catalog, stocks, demand, inbound] = await Promise.all([
+  const [catalog, stocks, demand, inbound, settings] = await Promise.all([
     getSkuCatalog(c.storeIds, false),
     getLatestStocks(c.storeIds),
     getDemand(c.storeIds),
     getInbound(c.companyId, c.storeIds),
+    getPlannerSettings(c.companyId),
   ]);
   const today = parseISODate(c.today);
   const out: Entity[] = [];
@@ -472,8 +475,8 @@ async function stockEntities(c: RuleCtx): Promise<Entity[]> {
       stock: stocks.get(info.id) ?? EMPTY_STOCK,
       inbound: inbound.get(info.id) ?? 0,
       demand: demand.get(info.id) ?? NO_DEMAND,
-      cover: DEFAULT_COVER,
-      lead: DEFAULT_LEAD,
+      cover: settings.coverDays,
+      lead: settings.leadDays,
       today,
     });
     // "critical" — tovar kelguncha tugaydi; yo'qotish 0 bo'lsa (aynan yetkazish kuni tugaydi) — hali vazifa emas
@@ -482,7 +485,7 @@ async function stockEntities(c: RuleCtx): Promise<Entity[]> {
       key: `stock:${info.id}`,
       amount: row.lostRevenue,
       level: row.stock <= 0 ? 'danger' : 'warn',
-      params: { sku: row.sku, name: info.title, days: row.daysLeft ?? 0, stock: row.stock, lead: DEFAULT_LEAD },
+      params: { sku: row.sku, name: info.title, days: row.daysLeft ?? 0, stock: row.stock, lead: settings.leadDays },
     });
   }
   return out;

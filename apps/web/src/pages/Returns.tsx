@@ -10,6 +10,7 @@ import { usePeriodQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { FilterBar } from '@/components/filters';
 import { CHART_COLORS, ChartCard, DonutChart, TrendChart, seriesColor } from '@/components/charts';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { ProductTitleCell } from '@/components/sales/ProductTitleCell';
 import { returnsTone } from '@/components/dashboard/rates';
 import { DataFreshness } from '@/components/trust/DataFreshness';
@@ -26,7 +27,6 @@ import {
   PlanGate,
   PreviewBadge,
   ProgressBar,
-  SearchInput,
   Segmented,
   StatCard,
   StatGrid,
@@ -73,7 +73,6 @@ registerNamespace('returns', {
     'alert.title': 'Yuqori qaytarish ulushiga ega mahsulotlar',
     'alert.hint': 'Ushbu mahsulotlar barcha qaytarishlarning katta qismini tashkil qiladi — tavsif, o‘lcham jadvali va qadoqni tekshiring',
     'alert.share': 'qaytarishlardan',
-    'search.placeholder': 'Mahsulot yoki buyurtma kodi',
     'empty.title': 'Qaytarishlar yo‘q',
     'empty.hint': 'Tanlangan davrda qaytarish qayd etilmagan',
     'empty.reasons': 'Sabablar bo‘yicha ma’lumot yo‘q',
@@ -148,7 +147,6 @@ registerNamespace('returns', {
     'alert.title': 'Товары с высокой долей возвратов',
     'alert.hint': 'На эти товары приходится основная часть возвратов — проверьте описание, размерную сетку и упаковку',
     'alert.share': 'от возвратов',
-    'search.placeholder': 'Товар или код заказа',
     'empty.title': 'Возвратов нет',
     'empty.hint': 'За выбранный период возвраты не зафиксированы',
     'empty.reasons': 'Нет данных по причинам',
@@ -223,7 +221,6 @@ registerNamespace('returns', {
     'alert.title': 'Products with a high return share',
     'alert.hint': 'These products drive most of your returns — review the description, size chart and packaging',
     'alert.share': 'of all returns',
-    'search.placeholder': 'Product or order code',
     'empty.title': 'No returns',
     'empty.hint': 'Nothing was returned in the selected period',
     'empty.reasons': 'No reason data available',
@@ -490,14 +487,18 @@ export default function Returns() {
             { value: 'all', label: t('kind.all') },
           ]}
         />
-        <SearchInput
-          className="w-full sm:w-64"
+        {/*
+          Tovar — umumiy qoida (nom, SKU kodi, shtrix-kod, Uzum ID, havola),
+          hujjat — buyurtma raqami va sabab; server qidiradi (routes/warehouse.ts)
+        */}
+        <SkuSearchInput
+          orders
+          className="w-full sm:w-72"
           value={search}
           onChange={(v) => {
             setSearch(v);
             setPage(1);
           }}
-          placeholder={t('search.placeholder')}
         />
       </FilterBar>
 

@@ -33,7 +33,6 @@ import {
   PlanGate,
   PreviewBadge,
   ProductCell,
-  SearchInput,
   Segmented,
   Select,
   StatCard,
@@ -43,12 +42,14 @@ import {
   type Tone,
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { NEUTRAL_TONE } from '@/components/stock/common';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
 import { useStores } from '@/store/session';
 import { cn } from '@/lib/utils';
+import { useSeesMoney } from '@/lib/view';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 
 registerNamespace('shipments', {
@@ -113,7 +114,6 @@ registerNamespace('shipments', {
     'form.note': 'Izoh',
     'form.notePh': 'Ixtiyoriy: mashina, quti turi, mas’ul shaxs',
     'form.items': 'Pozitsiyalar',
-    'form.search': 'SKU yoki nomi bo‘yicha qidiring',
     'form.searchHint': 'Qo‘shish uchun ro‘yxatdan tanlang',
     'form.searchShort': 'Kamida 2 ta belgi kiriting',
     'form.searchEmpty': 'Hech narsa topilmadi',
@@ -209,7 +209,6 @@ registerNamespace('shipments', {
     'form.note': 'Комментарий',
     'form.notePh': 'Необязательно: машина, тип коробок, ответственный',
     'form.items': 'Позиции',
-    'form.search': 'Поиск по SKU или названию',
     'form.searchHint': 'Выберите из списка, чтобы добавить',
     'form.searchShort': 'Введите минимум 2 символа',
     'form.searchEmpty': 'Ничего не найдено',
@@ -305,7 +304,6 @@ registerNamespace('shipments', {
     'form.note': 'Note',
     'form.notePh': 'Optional: vehicle, box type, person in charge',
     'form.items': 'Items',
-    'form.search': 'Search by SKU or name',
     'form.searchHint': 'Pick from the list to add it',
     'form.searchShort': 'Type at least 2 characters',
     'form.searchEmpty': 'Nothing found',
@@ -403,6 +401,8 @@ export default function Shipments() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  // Yetkazma qiymati tannarx bo'yicha — pulsiz ko'rinish shablonida (Omborchi) null, karta va ustun yo'q
+  const money = useSeesMoney();
 
   const shipments = useQuery({
     queryKey: ['shipments', q],
@@ -596,14 +596,16 @@ export default function Shipments() {
                 tone="brand"
                 loading={shipments.isLoading}
               />
-              <StatCard
-                label={t('kpi.value')}
-                value={f.money(totals.value)}
-                hint={t('kpi.valueHint')}
-                icon={<Boxes className="h-5 w-5" />}
-                className={NEUTRAL_TONE}
-                loading={shipments.isLoading}
-              />
+              {money ? (
+                <StatCard
+                  label={t('kpi.value')}
+                  value={f.money(totals.value)}
+                  hint={t('kpi.valueHint')}
+                  icon={<Boxes className="h-5 w-5" />}
+                  className={NEUTRAL_TONE}
+                  loading={shipments.isLoading}
+                />
+              ) : null}
             </StatGrid>
 
             <Card className="overflow-hidden">
@@ -629,7 +631,7 @@ export default function Shipments() {
               />
               <div className={cn('mt-3', shipments.isFetching && !shipments.isLoading && 'opacity-70')}>
                 <DataTable<ShipmentRow>
-                  columns={columns}
+                  columns={money ? columns : columns.filter((c) => c.key !== 'costValue')}
                   rows={visibleRows}
                   rowKey={(r) => r.id}
                   loading={shipments.isLoading}
@@ -1051,7 +1053,8 @@ function CreateShipmentModal({
         {/* SKU qidiruv */}
         <div>
           <span className="label">{t('form.items')}</span>
-          <SearchInput value={search} onChange={setSearch} placeholder={t('form.search')} />
+          {/* /products umumiy qoida bilan qidiradi (shared search.ts) — yozuv boshqa ro'yxatlardagi bilan bir xil */}
+          <SkuSearchInput value={search} onChange={setSearch} />
 
           {debounced.length >= 2 ? (
             <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-line bg-surface-2/50 p-1.5">

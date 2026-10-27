@@ -20,7 +20,15 @@ const NUMBER_LOCALES: Record<Lang, string> = { uz: 'ru-RU', ru: 'ru-RU', en: 'en
 /** Uzilmas bo'shliqlarni oddiy bo'shliqqa keltirish (barcha brauzerda bir xil ko'rinsin) */
 const normalizeSpaces = (s: string): string => s.replace(/[   ]/g, ' ');
 
-export function formatNumber(value: number, lang: Lang = 'uz', digits = 0): string {
+/**
+ * `null` — qiymat yo'q yoki ataylab yashirilgan (pulsiz ko'rinish shabloni,
+ * views.ts): "0" emas, "—". Ilgari null `Number.isFinite` dan "0" bo'lib
+ * o'tardi va yashirilgan foyda "0 so'm" bo'lib ko'rinardi (2026-10-24).
+ */
+const MISSING = '—';
+
+export function formatNumber(value: number | null | undefined, lang: Lang = 'uz', digits = 0): string {
+  if (value === null || value === undefined) return MISSING;
   if (!Number.isFinite(value)) return '0';
   return normalizeSpaces(
     new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'ru-RU', {
@@ -31,7 +39,8 @@ export function formatNumber(value: number, lang: Lang = 'uz', digits = 0): stri
 }
 
 /** Koeffitsiyentlar uchun: 0,257 */
-export function formatDecimal(value: number, lang: Lang = 'uz', maxDigits = 3): string {
+export function formatDecimal(value: number | null | undefined, lang: Lang = 'uz', maxDigits = 3): string {
+  if (value === null || value === undefined) return MISSING;
   if (!Number.isFinite(value)) return '0';
   return normalizeSpaces(
     new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'ru-RU', {
@@ -41,13 +50,15 @@ export function formatDecimal(value: number, lang: Lang = 'uz', maxDigits = 3): 
   );
 }
 
-export function formatMoney(value: number, lang: Lang = 'uz', currency = 'UZS'): string {
+export function formatMoney(value: number | null | undefined, lang: Lang = 'uz', currency = 'UZS'): string {
+  if (value === null || value === undefined) return MISSING;
   const suffix = currency === 'UZS' ? (lang === 'ru' ? 'сум' : lang === 'en' ? 'UZS' : 'so‘m') : currency;
   return `${formatNumber(Math.round(value), lang)} ${suffix}`;
 }
 
 /** 1 250 000 → "1,25 mln" */
-export function formatCompact(value: number, lang: Lang = 'uz'): string {
+export function formatCompact(value: number | null | undefined, lang: Lang = 'uz'): string {
+  if (value === null || value === undefined) return MISSING;
   const abs = Math.abs(value);
   const units =
     lang === 'ru'
@@ -77,7 +88,8 @@ export function formatCompact(value: number, lang: Lang = 'uz'): string {
   return formatNumber(value, lang);
 }
 
-export function formatPercent(value: number, lang: Lang = 'uz', digits = 1): string {
+export function formatPercent(value: number | null | undefined, lang: Lang = 'uz', digits = 1): string {
+  if (value === null || value === undefined) return MISSING;
   return `${formatNumber(value, lang, digits)}%`;
 }
 
@@ -207,6 +219,8 @@ export function eachDay(period: Period): string[] {
 export type PresetRange =
   | 'today'
   | 'yesterday'
+  | 'thisWeek'
+  | 'lastWeek'
   | 'last7'
   | 'last14'
   | 'last30'
@@ -224,6 +238,18 @@ export function presetPeriod(preset: PresetRange, now = new Date()): Period {
     case 'yesterday': {
       const y = addDays(today, -1);
       return { from: toISODate(y), to: toISODate(y) };
+    }
+    case 'thisWeek':
+    case 'lastWeek': {
+      /*
+       * Hafta dushanbadan boshlanadi (ISO 8601 — O'zbekistonda ham shunday),
+       * kunlar savdo kuni bo'yicha: Toshkentda dushanba 00:00 dan. "Shu hafta" —
+       * dushanbadan bugungacha (dushanbaning o'zida bitta kun), "O'tgan hafta" —
+       * undan oldingi to'liq dushanba–yakshanba. getUTCDay: 0 — yakshanba.
+       */
+      const monday = addDays(today, -((today.getUTCDay() + 6) % 7));
+      if (preset === 'thisWeek') return { from: toISODate(monday), to: toISODate(today) };
+      return { from: toISODate(addDays(monday, -7)), to: toISODate(addDays(monday, -1)) };
     }
     case 'last7':
       return { from: toISODate(addDays(today, -6)), to: toISODate(today) };
@@ -251,12 +277,78 @@ export function presetPeriod(preset: PresetRange, now = new Date()): Period {
   }
 }
 
-/** Oldingi teng uzunlikdagi davr (taqqoslash uchun) */
+/** Oldingi teng uzunlikdagi davr — standart taqqoslash ('prev', pastda comparePeriodFor) */
 export function previousPeriod(period: Period): Period {
   const len = daysBetween(period.from, period.to) + 1;
   const from = addDays(parseISODate(period.from), -len);
   const to = addDays(parseISODate(period.to), -len);
   return { from: toISODate(from), to: toISODate(to) };
+}
+
+/**
+ * Taqqoslash rejimi — "+12%" lar va grafikdagi uzuq chiziq QAYSI davrga nisbatan:
+ *  • 'prev'      — oldingi teng davr (previousPeriod), standart;
+ *  • 'prevMonth' — o'tgan oyning o'sha sanalari;
+ *  • 'prevYear'  — o'tgan yilning o'sha sanalari.
+ *
+ * Ilgari faqat oldingi teng davr bor edi: "Shu oy" (1–24 okt) o'tgan oyning
+ * OXIRGI kunlari (7–30 sen) bilan solishtirilardi, "o'tgan oyning shu
+ * kunlari" va mavsumiylikni ("o'tgan yilning shu kunlari") esa ko'rib
+ * bo'lmasdi — sotuvchilar aynan shuni so'radi (2026-10-24).
+ */
+export type CompareMode = 'prev' | 'prevMonth' | 'prevYear';
+
+export const COMPARE_MODES: readonly CompareMode[] = ['prev', 'prevMonth', 'prevYear'];
+
+export const isCompareMode = (v: unknown): v is CompareMode =>
+  typeof v === 'string' && (COMPARE_MODES as readonly string[]).includes(v);
+
+/** Sanani `months` oyga suradi; o'sha oyda bunday kun bo'lmasa — oyning oxirgi kuni */
+function shiftMonths(iso: string, months: number): string {
+  const d = parseISODate(iso);
+  // Date.UTC oyni o'zi o'tkazadi: yanvar − 1 → o'tgan yilning dekabri
+  const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1));
+  const y = first.getUTCFullYear();
+  const m = first.getUTCMonth();
+  // Keyingi oyning 0-kuni — shu oyning oxirgi kuni
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return toISODate(new Date(Date.UTC(y, m, Math.min(d.getUTCDate(), lastDay))));
+}
+
+/**
+ * Taqqoslanadigan davr — sof funksiya; server uni `?compare=` bo'yicha
+ * chaqiradi (apps/api lib/period.ts → `range.previous`).
+ *
+ * 'prevMonth' va 'prevYear' qoidasi:
+ *  1. Har chekka alohida 1 (12) oy oldinga suriladi, kun raqami saqlanadi:
+ *     1–24 okt → 1–24 sen; 13–19 okt 2026 → 13–19 okt 2025.
+ *  2. O'sha oyda bunday kun bo'lmasa — oyning oxirgi kuni: 29–31 mart →
+ *     28–28 fevral (kabisa yilida 29–29); 29 fevral − 1 yil → 28 fevral.
+ *  3. Davr BUTUN oy(lar) bo'lsa (1-sanadan oy oxirigacha) — taqqoslash ham
+ *     butun oy(lar): "O'tgan oy" 1–30 sen → 1–31 avg, fevral 2027 → fevral
+ *     2026, kabisa fevrali to'liq. 2-qoidaning o'zi 31-avgustni tashlab
+ *     yuborardi (1–30 sen → 1–30 avg).
+ *
+ * Shuning uchun taqqoslash davri joriydan qisqa yoki uzun bo'lishi MUMKIN
+ * (mart ↔ fevral 3 kungacha, 29–31 mart → bitta kun). Bu ATAYLAB: "o'sha
+ * sanalar" so'ralgan, teng uzunlik emas. KPI'lar har biri o'z oynasining
+ * yig'indisi; grafik seriyalari indeks bo'yicha tekislanadi (ortiqcha kunlar
+ * joriy qiymatsiz qator bo'ladi, yetmagani chiziqsiz qoladi). Bir oydan uzun
+ * davr 'prevMonth' da o'zi bilan qisman ustma-ust tushadi — bu ham "bir oy
+ * oldingi o'sha sanalar". Taqqoslashga yaroqliligini (saqlangan tarix ichidami)
+ * bu funksiya hal qilmaydi — server comparablePeriod tekshiradi.
+ */
+export function comparePeriodFor(period: Period, mode: CompareMode = 'prev'): Period {
+  if (mode !== 'prevMonth' && mode !== 'prevYear') return previousPeriod(period);
+  const months = mode === 'prevYear' ? -12 : -1;
+  const from = shiftMonths(period.from, months);
+  const dayAfter = addDays(parseISODate(period.to), 1);
+  const wholeMonths = parseISODate(period.from).getUTCDate() === 1 && dayAfter.getUTCDate() === 1;
+  // Butun oylar: oxiri — surilgan keyingi oy boshidan bir kun oldin (1-sana hech qachon qisqarmaydi)
+  const to = wholeMonths
+    ? toISODate(addDays(parseISODate(shiftMonths(toISODate(dayAfter), months)), -1))
+    : shiftMonths(period.to, months);
+  return { from, to };
 }
 
 /** { uz, ru, en } shaklidagi obyektdan joriy tilga mos matnni oladi */

@@ -9,7 +9,7 @@
  * Bu fayl faqat yordamchi: bu yerda hech qanday `bot.on(...)` ro'yxatga olinmaydi.
  */
 import type { Context } from 'grammy';
-import { resolvePlan, type PlanId } from '@savdoiq/shared';
+import { asMemberView, resolvePlan, viewSeesMoney, type PlanId } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
 import { env, isAdmin } from '../lib/env.js';
 import { randomReferralCode } from '../crypto.js';
@@ -40,6 +40,9 @@ export interface BotUser {
   notifyDaily: boolean;
   notifyOrders: boolean;
   notifyStock: boolean;
+  /** Haftalik (dushanba) va oylik (1-sana) hisobot — API ishchisi yuboradi (apps/api services/digest.ts) */
+  notifyWeekly: boolean;
+  notifyMonthly: boolean;
   isAdmin: boolean;
 }
 
@@ -50,6 +53,11 @@ export interface BotCompany {
   onboardStep: OnboardStep;
   onboarded: boolean;
   role: string;
+  /**
+   * Foyda va tannarxni ko'radimi — saytdagi ko'rinish shabloni bilan bir qoida
+   * (shared views.ts): egasi doim, omborchi va marketolog — yo'q (2026-10-27)
+   */
+  seesMoney: boolean;
   hasApiKey: boolean;
   /** Amaldagi tarif — sayt va API bilan bir xil qoida (`resolvePlan`) */
   plan: PlanId;
@@ -146,6 +154,8 @@ const USER_SELECT = {
   notifyDaily: true,
   notifyOrders: true,
   notifyStock: true,
+  notifyWeekly: true,
+  notifyMonthly: true,
 } as const;
 
 interface DbUserRow {
@@ -158,6 +168,8 @@ interface DbUserRow {
   notifyDaily: boolean;
   notifyOrders: boolean;
   notifyStock: boolean;
+  notifyWeekly: boolean;
+  notifyMonthly: boolean;
 }
 
 function toBotUser(row: DbUserRow): BotUser {
@@ -171,6 +183,8 @@ function toBotUser(row: DbUserRow): BotUser {
     notifyDaily: row.notifyDaily,
     notifyOrders: row.notifyOrders,
     notifyStock: row.notifyStock,
+    notifyWeekly: row.notifyWeekly,
+    notifyMonthly: row.notifyMonthly,
     isAdmin: isAdmin(row.telegramId),
   };
 }
@@ -204,6 +218,7 @@ export async function loadCompany(userId: string): Promise<BotCompany | null> {
     onboardStep: (membership.company.onboardStep as OnboardStep) ?? 'company',
     onboarded: membership.company.onboarded,
     role: membership.role,
+    seesMoney: membership.role === 'owner' || viewSeesMoney(asMemberView(membership.view)),
     hasApiKey: accounts > 0,
     plan: resolvePlan(membership.company.subscription),
   };

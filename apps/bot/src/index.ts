@@ -5,7 +5,8 @@
  *
  *  • TELEGRAM_BOT_TOKEN bo'lmasa — aniq xabar chiqarib, xatosiz tugaydi (exit 0).
  *  • TELEGRAM_WEBHOOK_URL berilgan bo'lsa webhook rejimi, aks holda long polling.
- *  • Fon jarayonlari: kunlik hisobot (09:00) va kuzatuvchi (har 30 soniya).
+ *  • Fon jarayonlari: kunlik hisobot (09:00), qoldiq va pullik saqlash
+ *    ogohlantirishi (10:00) va kuzatuvchi (har 30 soniya).
  */
 import http from 'node:http';
 import { Bot, GrammyError, HttpError, webhookCallback } from 'grammy';
@@ -13,6 +14,7 @@ import { env } from './lib/env.js';
 import { disconnectDb } from './lib/db.js';
 import { registerHandlers } from './handlers/index.js';
 import { startDailyJob } from './jobs/daily.js';
+import { startStockAlertJob } from './jobs/stock-alert.js';
 import { startWatcherJob } from './jobs/watcher.js';
 import type { BotContext } from './handlers/context.js';
 
@@ -93,7 +95,7 @@ async function main(): Promise<void> {
     // Buyruqlar ro'yxatini o'rnatib bo'lmasa ham bot ishlayveradi
   }
 
-  const timers = [startDailyJob(bot), startWatcherJob(bot)];
+  const timers = [startDailyJob(bot), startStockAlertJob(bot), startWatcherJob(bot)];
   let server: http.Server | null = null;
 
   if (env.telegram.webhookUrl) {

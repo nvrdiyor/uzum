@@ -9,7 +9,7 @@ import { webLink } from './context.js';
 /** Callback ma'lumot prefikslari (bitta joyda — xatoga yo'l qo'ymaslik uchun) */
 export const CB = {
   lang: 'lang:', // lang:uz | lang:ru
-  settings: 'set:', // set:daily | set:orders | set:stock | set:lang | set:api
+  settings: 'set:', // set:daily | set:orders | set:stock | set:weekly | set:monthly | set:lang | set:api
   settingsHome: 'set:home',
   support: 'sup:', // sup:more | sup:close:<id> | sup:to:<id> | sup:cancel
 } as const;
@@ -69,6 +69,8 @@ export interface NotifyFlags {
   daily: boolean;
   orders: boolean;
   stock: boolean;
+  weekly: boolean;
+  monthly: boolean;
 }
 
 /** Sozlamalar: bildirishnoma tugmalari + til + API kalit */
@@ -80,6 +82,10 @@ export function settingsKeyboard(lang: BotLang, flags: NotifyFlags): InlineKeybo
     .text(tr(lang, 'set_notify_orders', { value: state(flags.orders) }), `${CB.settings}orders`)
     .row()
     .text(tr(lang, 'set_notify_stock', { value: state(flags.stock) }), `${CB.settings}stock`)
+    .row()
+    .text(tr(lang, 'set_notify_weekly', { value: state(flags.weekly) }), `${CB.settings}weekly`)
+    .row()
+    .text(tr(lang, 'set_notify_monthly', { value: state(flags.monthly) }), `${CB.settings}monthly`)
     .row()
     .text(tr(lang, 'set_lang', { value: tr(lang, lang === 'ru' ? 'lang_ru' : 'lang_uz') }), `${CB.settings}lang`)
     .row()

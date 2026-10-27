@@ -955,6 +955,273 @@ export function LinesChart({ data, xKey = 'date', series, height = 280, classNam
   );
 }
 
+// ─────────────────────────── Ikki o'qli grafik ───────────────────────────
+
+/** Ikki o'qli grafikning chizig'i (o'ng o'q) */
+export interface ComboLineDef {
+  key: string;
+  name: string;
+  color?: string;
+  money?: boolean;
+  /**
+   * Nisbat: katakdagi qiymat = surat ÷ maxraj, masalan o'rtacha narx =
+   * tushum ÷ dona. Haftalik/oylik katakda ham qayta shunday hisoblanadi —
+   * kunlik narxlarning o'rtachasi emas. Maxraj 0 bo'lgan katakda qiymat yo'q
+   * (sotuv bo'lmagan kunning "narxi" o'ylab topilmaydi). Berilmasa — `key` yig'indisi.
+   */
+  ratioOf?: [string, string];
+}
+
+/** Chiziq qiymati qatorda shu kalitda — sahifa kalitlari bilan to'qnashmaydi */
+const COMBO_LINE = '__line';
+
+/**
+ * O'ng o'q belgilari chap o'qdagi bilan BIR XIL sonda: ikkala o'qning
+ * yozuvlari bitta to'r chizig'iga tushadi. Aks holda chap o'q 0–40 ni 4 ga,
+ * o'ng o'q 0–60 ming ni 3 ga bo'lib, o'ng yozuvlar chiziqlar orasida "suzib"
+ * qolardi. Qadam — 1 / 2 / 2,5 / 5 ning o'n darajasi (niceTicks bilan bir xil).
+ */
+function alignedTicks(max: number, intervals: number, integers: boolean): number[] {
+  const n = Math.max(1, intervals);
+  if (!(max > 0)) return Array.from({ length: n + 1 }, (_, i) => i);
+  let pow = 10 ** Math.floor(Math.log10(max / n));
+  if (integers) pow = Math.max(1, pow);
+  let step = pow * 10;
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    const s = m * pow;
+    if (integers && !Number.isInteger(s)) continue;
+    if (s * n >= max - 1e-9) {
+      step = s;
+      break;
+    }
+  }
+  return Array.from({ length: n + 1 }, (_, i) => Number((i * step).toPrecision(12)));
+}
+
+/** Berilgan belgilar uchun o'q kengligi va yozuv funksiyasi (useYScale bilan bir xil o'lchov) */
+function useTickAxis(ticks: number[]) {
+  const label = useAxisLabel();
+  const longest = Math.max(...ticks.map((v) => label(v).length));
+  return {
+    label,
+    ticks,
+    domain: [ticks[0] ?? 0, ticks[ticks.length - 1] ?? 1] as [number, number],
+    width: Math.min(88, Math.max(26, Math.round(longest * 6.2 + 14))),
+  };
+}
+
+/**
+ * Ikki o'qli grafik: ustunlar — chap o'q (masalan, sotilgan dona), chiziq —
+ * o'ng o'q (o'rtacha narx yoki tushum). Qiymatlar manfiy bo'lmaydi (dona,
+ * narx, tushum) — ikkala o'q noldan boshlanadi.
+ *
+ * Ilgari mahsulot sahifasida dona pul o'qida chizilsa nolga yopishib qolardi
+ * (o'ng o'q yo'q edi), shuning uchun u grafik ustida faqat "Dona: N" chipi
+ * edi — narx o'zgarganda sotuv qanday o'zgargani ko'rinmasdi (2026-10-24).
+ * Kunlik qatorlar TrendChart'dagi kabi: uzoq bo'sh boshlanish kesiladi, tor
+ * ekranda haftalarga yig'iladi, yiriklik almashtirgichi bor.
+ */
+export function ComboChart({
+  data,
+  xKey = 'date',
+  bar,
+  line,
+  height = 300,
+  className,
+}: {
+  data: Record<string, unknown>[];
+  xKey?: string;
+  bar: SeriesDef;
+  line: ComboLineDef;
+  height?: number;
+  className?: string;
+}) {
+  const f = useFormat();
+  const t = useT('charts');
+  const dates = useDateLabels();
+  const uid = useId().replace(/:/g, '');
+  const [picked, setPicked] = useState<Granularity | null>(null);
+  const [boxRef, width] = useWidth();
+  // Ikki o'q yozuvlari uchun joy ayirilgach, bir kunga kamida 9 px
+  const maxBars = width > 0 ? Math.max(8, Math.floor((width - 120) / 9)) : 92;
+
+  const ratio = line.ratioOf ?? null;
+  const ratioSig = ratio ? ratio.join('/') : '';
+  // Takrorsiz: o'rtacha narxda maxraj ("dona") ustun kaliti bilan bir xil — ikki marta qo'shilsa haftalik dona ikki barobar chiqardi
+  const sumSig = [...new Set(ratio ? [bar.key, ...ratio] : [bar.key, line.key])].join('|');
+
+  const prep = useMemo(() => {
+    const keys = sumSig.split('|');
+    const [num0, den0] = ratioSig ? ratioSig.split('/') : [];
+    const lineOf = (r: Row): number | undefined => {
+      if (!num0 || !den0) return num(r[line.key]);
+      const den = num(r[den0]);
+      return den > 0 ? num(r[num0]) / den : undefined;
+    };
+    const isDates = data.length > 0 && dayNumber(data[0]?.[xKey]) !== null;
+    if (!isDates) {
+      return {
+        rows: data.map(
+          (r): Row => ({ ...r, __from: String(r[xKey] ?? ''), __to: String(r[xKey] ?? ''), [COMBO_LINE]: lineOf(r) }),
+        ),
+        options: ['day'] as Granularity[],
+        gran: 'day' as Granularity,
+        since: null as string | null,
+        isDates,
+      };
+    }
+    const cut = trimLeadingEmpty(data, keys);
+    const options = granularityOptions(cut.rows.length);
+    const gran = picked && options.includes(picked) ? picked : autoGranularity(cut.rows.length, maxBars);
+    // Kesilganda birinchi qator — harakatdan oldingi bo'sh kun; ustunli grafikda u faqat bo'sh katak
+    const lead = cut.trimmed > 0 ? 1 : 0;
+    const rows = bucketize(cut.rows.slice(lead), xKey, keys, gran).map((b): Row => ({ ...b, [COMBO_LINE]: lineOf(b) }));
+    return {
+      rows,
+      options,
+      gran,
+      since: cut.trimmed > 0 ? String(cut.rows[1]?.[xKey] ?? '') : null,
+      isDates,
+    };
+  }, [data, xKey, sumSig, ratioSig, line.key, picked, maxBars]);
+
+  const { rows, gran } = prep;
+  const barExt = extent(rows, [bar.key]);
+  const lineValues = rows
+    .map((r) => r[COMBO_LINE])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  const lineMax = lineValues.length ? Math.max(0, ...lineValues) : 0;
+  const lineIntegers = !ratio && lineValues.every((v) => Number.isInteger(v));
+
+  const leftTicks = niceTicks(0, Math.max(0, barExt.max), 5, barExt.integers);
+  const yL = useTickAxis(leftTicks);
+  const yR = useTickAxis(alignedTicks(lineMax, leftTicks.length - 1, lineIntegers));
+  const axis = chartAxisProps();
+
+  const barColor = bar.color ?? seriesColor(0);
+  const lineColor = line.color ?? seriesColor(1);
+  const fmtBar = (v: number) => (bar.money ? f.money(v) : f.num(v));
+  const fmtLine = (v: number) => (line.money ? f.money(v) : f.num(v, ratio ? 1 : 0));
+
+  // Afsona: ustun — davr jami; chiziq — nisbat bo'lsa butun davr bo'yicha (jami surat ÷ jami maxraj), aks holda jami
+  const barSum = rows.reduce((acc, r) => acc + num(r[bar.key]), 0);
+  const lineSummary = (() => {
+    if (!ratio) return rows.reduce((acc, r) => acc + num(r[line.key]), 0);
+    const den = rows.reduce((acc, r) => acc + num(r[ratio[1]]), 0);
+    return den > 0 ? rows.reduce((acc, r) => acc + num(r[ratio[0]]), 0) / den : null;
+  })();
+  const legend: LegendItem[] = [
+    { name: bar.name, color: barColor, value: fmtBar(barSum) },
+    { name: line.name, color: lineColor, mark: 'line', value: lineSummary === null ? '—' : fmtLine(lineSummary) },
+  ];
+
+  const xTick = (v: string) => (!prep.isDates ? String(v) : gran === 'month' ? dates.month(v) : dates.day(v));
+
+  const controls =
+    prep.options.length > 1 || prep.since ? (
+      <>
+        {prep.since ? <span className="text-2xs text-muted">{t('since', { d: dates.day(prep.since) })}</span> : null}
+        {prep.options.length > 1 ? (
+          <Segmented<Granularity>
+            size="sm"
+            value={gran}
+            onChange={setPicked}
+            options={prep.options.map((g) => ({ value: g, label: t(`gran.${g}`) }))}
+          />
+        ) : null}
+      </>
+    ) : null;
+
+  return (
+    <div ref={boxRef} className={cn('w-full', className)}>
+      <LegendRow items={legend} right={controls} />
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={rows} margin={{ top: 8, right: 4, left: 0, bottom: 0 }} barCategoryGap={rows.length > 60 ? '14%' : '22%'}>
+            <defs>
+              <BarGradient id={`combo-${uid}`} color={barColor} />
+            </defs>
+            <CartesianGrid vertical={false} stroke={GRID_STROKE} strokeOpacity={0.7} />
+            <XAxis dataKey={xKey} {...axis} tickFormatter={xTick} minTickGap={28} tickMargin={8} interval="preserveStartEnd" />
+            <YAxis yAxisId="left" {...axis} ticks={yL.ticks} domain={yL.domain} tickFormatter={yL.label} width={yL.width} interval={0} />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              {...axis}
+              ticks={yR.ticks}
+              domain={yR.domain}
+              tickFormatter={yR.label}
+              width={yR.width}
+              interval={0}
+            />
+            <Tooltip
+              isAnimationActive={false}
+              wrapperStyle={TIP_WRAPPER}
+              cursor={<BandCursor count={rows.length} />}
+              content={({ active, payload }) => {
+                const row = payload?.[0]?.payload as (Bucket & Record<string, unknown>) | undefined;
+                if (!active || !row) return null;
+                const from = dayNumber(row.__from);
+                const to = dayNumber(row.__to);
+                const span = prep.isDates ? (to ?? 0) - (from ?? 0) + 1 : 1;
+                const lv = row[COMBO_LINE];
+                return (
+                  <TipCard
+                    title={
+                      !prep.isDates
+                        ? String(row[xKey] ?? '')
+                        : gran === 'month'
+                          ? dates.month(row.__from, true)
+                          : dates.range(row.__from, row.__to)
+                    }
+                    sub={gran === 'week' && span < 7 ? t('days', { n: span }) : undefined}
+                    rows={[
+                      { name: bar.name, color: barColor, value: fmtBar(num(row[bar.key])) },
+                      {
+                        name: line.name,
+                        color: lineColor,
+                        value: typeof lv === 'number' && Number.isFinite(lv) ? fmtLine(lv) : '—',
+                      },
+                    ]}
+                  />
+                );
+              }}
+            />
+            <Bar
+              yAxisId="left"
+              dataKey={bar.key}
+              name={bar.name}
+              isAnimationActive={ANIMATE}
+              animationDuration={450}
+              shape={(p: BarGeom) => {
+                const g = geom(p);
+                if (g.h < 0.5) return <g />;
+                const full = Math.min(g.w, MAX_BAND);
+                return <path d={barPath(g.x + (g.w - full) / 2, g.top, full, g.h, 4, g.negative)} fill={`url(#combo-${uid})`} />;
+              }}
+            />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey={COMBO_LINE}
+              name={line.name}
+              stroke={lineColor}
+              strokeWidth={2}
+              strokeLinecap="round"
+              // Sotuv bo'lmagan kunda narx yo'q — chiziq uzilmaydi, lekin nuqta faqat haqiqiy qiymatda
+              connectNulls
+              dot={rows.length <= 45 ? { r: 2.5, strokeWidth: 0, fill: lineColor } : false}
+              activeDot={{ r: 4.5, strokeWidth: 2.5, stroke: 'rgb(var(--c-surface))' }}
+              isAnimationActive={ANIMATE}
+              animationDuration={600}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────── Ustunli grafiklar ───────────────────────────
 
 export function BarsChart({
