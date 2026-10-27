@@ -568,6 +568,9 @@ export function TurnoverSection({ storeId }: { storeId?: string }) {
    * mahsulot ID'si yoki uzum.uz havolasi — qator kalitlari serverdan keladi.
    * Ilgari `${sku} ${title}`.toLowerCase() edi (2026-10-24). KPI kartochkalari
    * avvalgidek qidiruvga bog'liq emas (server jamlari butun ro'yxat bo'yicha).
+   * Mahsulot nomi ham — server skuInfoMatches bilan AYNAN bir xil maydonlar:
+   * u yo'qligida variant nomli («ЧЕРН») SKU mahsulot nomi bo'yicha jadvalda
+   * topilmasdi, `?search=` bilan esa topilardi (2026-10-27).
    */
   const query = useSkuQuery(search);
   const visible = useMemo(() => {
@@ -579,7 +582,7 @@ export function TurnoverSection({ storeId }: { storeId?: string }) {
           matchesSkuQuery(
             query,
             { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
-            { id: r.productId, uzumProductId: r.uzumProductId },
+            { id: r.productId, title: r.productTitle, uzumProductId: r.uzumProductId },
           )),
     );
   }, [rows, filter, query]);

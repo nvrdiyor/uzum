@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, ChevronRight, Globe, LogOut, Menu, Moon, Settings, Sun, User as UserIcon, Zap } from '@/components/icons';
+import { Bell, ChevronDown, ChevronRight, Globe, LogOut, Menu, Moon, PartyPopper, Settings, Sun, User as UserIcon, Zap } from '@/components/icons';
 import { useUi } from '@/store/ui';
 import { useSession } from '@/store/session';
 import { useLangStore, useT, type Lang } from '@/i18n';
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { useCanSeeSettings } from '@/lib/view';
 import { PaletteTrigger } from '@/components/palette/PaletteTrigger';
 import { CompanySwitcher } from '@/components/team/CompanySwitcher';
+import { useNews } from '@/components/news/store';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
   { id: 'uz', label: "O'zbek", flag: '🇺🇿' },
@@ -81,6 +82,8 @@ function ProfileMenu() {
   const logout = useSession((s) => s.logout);
   const navigate = useNavigate();
   const ref = useClose(() => setOpen(false));
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const setNewsOpen = useNews((s) => s.setOpen);
 
   const name = [me?.user.firstName, me?.user.lastName].filter(Boolean).join(' ') || me?.user.username || t('menu.user');
   // Uzum kabinetini boshqarish — faqat shablonsiz a'zo va egasiga (views.ts: Sozlamalar bo'limlari)
@@ -89,6 +92,7 @@ function ProfileMenu() {
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={toggleRef}
         onClick={() => setOpen((v) => !v)}
         className="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 transition-colors hover:bg-surface-2"
       >
@@ -128,6 +132,22 @@ function ProfileMenu() {
             >
               <Zap className="h-4 w-4" /> {t('nav.pricing')}
             </Link>
+            {/*
+              "Yangiliklar" — o'zi bir marta chiqqan oynani qayta ochish (2026-10-27).
+              Fokus avval profil tugmasiga: menyu yopilib, bu tugma yo'qoladi va oyna
+              yopilgach fokus qaytadigan joy qolmasdi (Modal ochganni eslab qoladi).
+            */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                toggleRef.current?.focus({ preventScroll: true });
+                setNewsOpen(true);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-surface-2"
+            >
+              <PartyPopper className="h-4 w-4" /> {t('menu.news')}
+            </button>
             {canSee('uzum') ? (
               <Link
                 to="/settings#uzum"

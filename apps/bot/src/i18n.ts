@@ -20,6 +20,20 @@ export function toBotLang(code: string | null | undefined): BotLang {
   return 'uz';
 }
 
+/**
+ * Telegram yuborgan `from.language_code` (IETF teg: "ru", "en-US", "uz") —
+ * bot tiliga: ru* → ru, en* → en, uz* va qolgan hammasi → uz. FAQAT birinchi
+ * murojaatda (foydalanuvchi bazada hali yo'q) ishlatiladi: tanlangan til hech
+ * qachon almashtirilmaydi. Ilgari yangi foydalanuvchi til tugmasini bosguncha
+ * doim o'zbekcha ko'rardi — rus tilidagi Telegram'da ham (2026-10-27).
+ */
+export function telegramLang(code: string | null | undefined): BotLang {
+  const c = (code ?? '').trim().toLowerCase();
+  if (c.startsWith('ru')) return 'ru';
+  if (c.startsWith('en')) return 'en';
+  return 'uz';
+}
+
 export interface Messages {
   // ── Til ─────────────────────────────────────────────
   lang_ask: string;

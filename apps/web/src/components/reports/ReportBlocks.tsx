@@ -58,6 +58,15 @@ import { useCountUp } from '@/hooks/useCountUp';
 import { CHART_COLORS, COST_COLORS } from '@/lib/theme';
 import { useFormat, useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import type { DateBasis } from '@/store/ui';
+
+/**
+ * Qabul sanasi rejimidagi matn kaliti: `kalit.receipt` (Reports.tsx). Raqamlar
+ * o'sha javobdan — faqat izoh rejimga mos bo'ladi: bu rejimda yo'ldagi tovar
+ * yo'q va "bekor qilingan" deyarli doim 0, eski matnlar esa buni aytmasdi
+ * (2026-10-27).
+ */
+const byBasis = (key: string, basis: DateBasis | undefined): string => (basis === 'receipt' ? `${key}.receipt` : key);
 
 // ─────────────────────────── Chop etish uslublari ───────────────────────────
 
@@ -103,7 +112,17 @@ export function PrintStyles() {
 }
 
 /** Chop etilgan varaqning sarlavhasi (ekranda ko'rinmaydi) */
-export function PrintHead({ from, to, finality }: { from: string; to: string; finality?: MonthlyReportFinality }) {
+export function PrintHead({
+  from,
+  to,
+  finality,
+  basis,
+}: {
+  from: string;
+  to: string;
+  finality?: MonthlyReportFinality;
+  basis?: DateBasis;
+}) {
   const t = useT('reports');
   const f = useFormat();
   return (
@@ -111,6 +130,8 @@ export function PrintHead({ from, to, finality }: { from: string; to: string; fi
       <p className="font-display text-xl font-extrabold text-ink">{t('print.head')}</p>
       <p className="tnum mt-1 text-sm text-muted">
         {f.date(from)} — {f.date(to)}
+        {/* Qabul sanasi bo'yicha PDF buni o'zi aytsin — buyurtma sanasidagi bilan adashmasin */}
+        {basis === 'receipt' ? ` · ${t('print.receipt')}` : null}
         {/* PDF ham Excel kabi holatini aytadi — oraliq hisobot buxgalterga yakuniy deb ketmasin */}
         {finality
           ? ` · ${
@@ -133,17 +154,26 @@ export function PrintHead({ from, to, finality }: { from: string; to: string; fi
  * Foiz bir kasr bilan — butunga yaxlitlansa 94,6% "95%" bo'lib, chegaraga
  * yetgandek ko'rinardi.
  */
-export function FinalityChip({ finality, className }: { finality: MonthlyReportFinality; className?: string }) {
+export function FinalityChip({
+  finality,
+  className,
+  basis,
+}: {
+  finality: MonthlyReportFinality;
+  className?: string;
+  basis?: DateBasis;
+}) {
   const t = useT('reports');
   const f = useFormat();
   const final = finality.status === 'final';
   const done = f.pct(finality.completionPct, 1);
+  // Qabul sanasida 'in_transit' bo'lmaydi (server finalityOf) — faqat "davr tugamagan" yoki "yakuniy"
   const why = final
-    ? t('final.finalHint')
+    ? t(byBasis('final.finalHint', basis))
     : finality.reason === 'current'
-      ? t('final.currentHint')
+      ? t(byBasis('final.currentHint', basis))
       : t('final.transitHint', { n: f.num(finality.inTransitUnits) });
-  const rule = t('final.rule', {
+  const rule = t(byBasis('final.rule', basis), {
     done: f.num(finality.completedUnits),
     total: f.num(finality.orderedUnits),
     v: f.pct(finality.thresholdPct, 0),
@@ -488,7 +518,7 @@ export function ResultHero({
 
 // ─────────────────────────── Buyurtmalar oqimi ───────────────────────────
 
-export function OrdersFlowCard({ report }: { report: MonthlyReportResponse }) {
+export function OrdersFlowCard({ report, basis }: { report: MonthlyReportResponse; basis?: DateBasis }) {
   const t = useT('reports');
   const f = useFormat();
   const rate = Number.isFinite(report.successRate) ? report.successRate : 0;
@@ -498,7 +528,7 @@ export function OrdersFlowCard({ report }: { report: MonthlyReportResponse }) {
       <CardHeader
         icon={<PackageCheck className="h-4 w-4" />}
         title={t('orders.title')}
-        subtitle={t('orders.subtitle')}
+        subtitle={t(byBasis('orders.subtitle', basis))}
       />
       <CardBody className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
         {/* Halqa brend rangida: muvaffaqiyatli buyurtma — sotuvchining puli */}
@@ -513,7 +543,7 @@ export function OrdersFlowCard({ report }: { report: MonthlyReportResponse }) {
           ustunga bo'linganda yorliqlar sinib, izohlar uch qatorga tushardi.
         */}
         <div className="w-full flex-1 space-y-2">
-          <StatRow label={t('orders.total')} value={f.num(report.ordersTotal)} hint={t('orders.totalHint')} />
+          <StatRow label={t('orders.total')} value={f.num(report.ordersTotal)} hint={t(byBasis('orders.totalHint', basis))} />
           <StatRow
             label={t('orders.success')}
             value={f.num(report.ordersSuccess)}
@@ -534,7 +564,7 @@ const RISK_SCALE = 5;
 /** Xavfli zona chegarasi, % — rates.ts returnsTone dagi "danger" bilan bir xil */
 const RISK_DANGER_PCT = 8;
 
-export function RiskCard({ report }: { report: MonthlyReportResponse }) {
+export function RiskCard({ report, basis }: { report: MonthlyReportResponse; basis?: DateBasis }) {
   const t = useT('reports');
   const f = useFormat();
   /*
@@ -592,7 +622,7 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
               </p>
             </div>
             {/* Formula — butun kenglikda, chapdan: tor ustunda o'ngga tekislangan uzun matn qiyin o'qilardi */}
-            <p className="w-full text-2xs leading-snug text-muted">{t('risk.rateHint')}</p>
+            <p className="w-full text-2xs leading-snug text-muted">{t(byBasis('risk.rateHint', basis))}</p>
           </div>
           {/* Shkala 0–20%: belgi 8% da — undan o'ngi xavfli zona (panel kartasidagi qizil chegara) */}
           <ProgressBar
@@ -613,7 +643,7 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
               </>
             }
             value={f.num(report.canceled)}
-            hint={t('risk.canceledHint')}
+            hint={t(byBasis('risk.canceledHint', basis))}
             tone="warn"
           />
           <StatWell
@@ -624,7 +654,7 @@ export function RiskCard({ report }: { report: MonthlyReportResponse }) {
               </>
             }
             value={f.num(report.returns)}
-            hint={t('risk.returnsHint')}
+            hint={t(byBasis('risk.returnsHint', basis))}
             tone="danger"
           />
         </div>

@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  Archive,
   ArrowRight,
   BellRing,
-  FileSpreadsheet,
+  Box,
+  Gauge,
   Layers,
   PackageX,
   PieChart,
@@ -12,6 +14,8 @@ import {
   Sparkles,
   Star,
   TrendingUp,
+  Users,
+  Wallet,
 } from '@/components/icons';
 import { Button } from '@/components/ui';
 import { registerNamespace, useT } from '@/i18n';
@@ -67,7 +71,8 @@ registerNamespace('landing', {
     'trust.a.l': 'To‘liq tahlil tayyor bo‘ladi',
     'trust.b.v': '24/7',
     'trust.b.l': 'Telegram’da bildirishnomalar',
-    'trust.c.v': '25+',
+    // Menyuda 30 dan ortiq hisobot sahifasi bor (lib/nav.ts, 2026-10-27) — "25+" eskirgan edi
+    'trust.c.v': '30+',
     'trust.c.l': 'Hisobot va tahlil bo‘limi',
     'trust.d.v': '3 til',
     'trust.d.l': 'O‘zbek, rus va ingliz',
@@ -76,22 +81,34 @@ registerNamespace('landing', {
     'features.title': 'Sotuvchiga kerak bo‘lgan hamma narsa',
     'features.subtitle':
       'Buyurtmadan sof foydagacha — bitta hisobda. Har bir raqam ortida qanday hisoblanganini ham ko‘rasiz.',
-    'f1.t': 'Sotuv tahlili',
-    'f1.d': 'Kun, hafta va oy kesimida tushum, buyurtmalar, o‘rtacha chek va sotib olish darajasi.',
-    'f2.t': 'Sof foyda va unit-iqtisod',
-    'f2.d': 'Komissiya, logistika, saqlash va soliq ayirilgandan keyingi marja hamda ROI — har bir SKU uchun.',
-    'f3.t': 'Qoldiq va rejalashtiruvchi',
-    'f3.d': 'FBO/FBS qoldiqlari, tugash prognozi va keyingi yetkazma uchun tayyor ro‘yxat.',
-    'f4.t': 'ABC va nolikvid',
-    'f4.d': 'Daromadning 80% ini qaysi tovar berayotganini va qaysi biri pulni muzlatib turganini ko‘ring.',
-    'f5.t': 'Yo‘qotish va qaytarishlar',
-    'f5.d': 'Omborda yo‘qolgan, shikastlangan va qaytgan tovarlar — tayyor da’vo matni bilan birga.',
-    'f6.t': 'Sharhlarga avto-javob',
-    'f6.d': 'Ijobiy sharhlarga shablon bo‘yicha avtomatik javob, salbiylari esa darhol bildiriladi.',
-    'f7.t': 'Telegram bildirishnomalar',
-    'f7.d': 'Kunlik hisobot, qoldiq tugashi, yangi salbiy sharh va to‘lov haqida xabar.',
-    'f8.t': 'Excel eksport',
-    'f8.d': 'Har bir jadvalni bir bosishda .xlsx qilib yuklab oling — buxgalteriya uchun tayyor.',
+    'features.new': 'Yangi',
+    'fg.money': 'Pul va foyda',
+    'fg.stock': 'Mahsulot va ombor',
+    'fg.growth': 'O‘sish, jamoa va Telegram',
+    'f1.t': 'Sotuv tahlili va voronka',
+    'f1.d': 'Kun, hafta va oy kesimida tushum, buyurtmalar va sotib olish darajasi. Buyurtma qayerda yo‘qolayotgani — 4 bosqichli voronkada, sabablari so‘mda.',
+    'f2.t': 'Moliya markazi',
+    'f2.d': 'Tushumdan Uzum to‘loviga va sof foydagacha — bitta sharsharada. Oldingi davr, o‘tgan oy yoki o‘tgan yil bilan taqqoslash; oylik hisobot ekrandagi raqamlar bilan bir xil va Telegram’ga yuboriladi.',
+    'f3.t': 'Mahsulot iqtisodi',
+    'f3.d': 'Komissiya, logistika, saqlash, reklama va soliqdan keyingi foyda, marja va ROI — har bir SKU va variant uchun. Jadval Excel’ga sahifa filtrlari bilan tushadi.',
+    'f4.t': 'Yo‘qotish va qaytarishlar',
+    'f4.d': 'Omborda yo‘qolgan, shikastlangan va qaytgan tovarlar — tayyor da’vo matni bilan. Qaytarish ulushi hamma joyda dona bo‘yicha.',
+    'f5.t': 'Qoldiq va rejalashtiruvchi',
+    'f5.d': 'Hamma joyda bitta “buyurtma kerak” soni. O‘z omboringizdan FBO ga jo‘natiladigan va sotib olinadigan tovar alohida; yetkazma qoralamasi va yetkazuvchi uchun Excel — bir bosishda.',
+    'f6.t': 'Pullik saqlash — Uzum tarifi bo‘yicha',
+    'f6.d': '01.06.2026 dagi rasmiy tarif: 60 kungacha aylanma bepul, yangi SKU dastlabki 30/60 kun bepul. 30 kunlik prognoz Uzum haqiqatda olgan summa yonida, ogohlantirish Telegram’da.',
+    'f7.t': 'Hajm, VGH va Litrovka',
+    'f7.d': 'Logistika uchun to‘langan summa kartochkadagi hajm bilan solishtiriladi. Litrovka va unit kalkulyator har bir tarif qayerdan olinganini ko‘rsatadi.',
+    'f8.t': 'ABC va nolikvid',
+    'f8.d': 'Daromadning 80% ini qaysi tovar berayotganini va qaysi biri pulni muzlatib turganini ko‘ring.',
+    'f9.t': 'O‘sish: kategoriya, radar, narxlar',
+    'f9.d': 'Kategoriyalarim — foyda, marja, qaytarish va muzlagan qoldiq. Mening radarim — tezlashgan, sekinlashgan va tugayotgan tovarlar. Narxlar xaritasi — o‘zingiz kiritgan raqobatchi narxlari. Faqat o‘z ma’lumotingizdan.',
+    'f10.t': 'Jamoa va ko‘rinish shablonlari',
+    'f10.d': 'Xodimni havola orqali taklif qiling. Omborchi, Buxgalter va Marketolog shablonlari faqat kerakli bo‘limlarni ochadi va kerak joyda pulni yashiradi.',
+    'f11.t': 'Telegram: hisobot va dayjest',
+    'f11.d': 'Botda Bugun, Kecha, Shu oy va Shu yil hisoboti — saytdagi raqamlar bilan bir xil. Dushanba 09:00 da haftalik, oyning 1-kuni oylik dayjest; qoldiq va salbiy sharh haqida xabar.',
+    'f12.t': 'Sharhlarga avto-javob',
+    'f12.d': 'Ijobiy sharhlarga shablon bo‘yicha avtomatik javob, salbiylari esa darhol bildiriladi.',
 
     'how.eyebrow': 'Qanday ishlaydi',
     'how.title': 'To‘rt qadam — va analitika tayyor',
@@ -102,14 +119,18 @@ registerNamespace('landing', {
     'how.s2.t': 'API kalitni yuboring',
     'how.s2.d': 'seller.uzum.uz → Mening profilim → API kalitlar. Kalit shifrlangan holda saqlanadi.',
     'how.s3.t': 'Ma’lumot yig‘iladi',
-    'how.s3.d': 'Platforma buyurtmalar, qoldiq, moliya va sharhlar tarixini yig‘ib chiqadi — tarifga qarab 1 yilgacha.',
+    'how.s3.d': 'Platforma buyurtmalar, qoldiq, moliya va sharhlar tarixini yig‘ib chiqadi — tarifga qarab 1 yilgacha. Tarifni oshirsangiz, eski tarix o‘zi yuklanadi.',
     'how.s4.t': 'Tayyor analitika',
     'how.s4.d': 'Saytga kiring — barcha hisobotlar to‘ldirilgan holda sizni kutib turadi.',
 
     'pricing.eyebrow': 'Tariflar',
     'pricing.title': 'Oddiy va tushunarli narxlar',
+    /*
+     * Ilgari "farq faqat do'kon, kabinet va jamoa hajmida" edi — sinovda esa
+     * ABC, rejalashtiruvchi va VGH faqat namuna, jamoa yo'q (plans.ts, 2026-10-27)
+     */
     'pricing.subtitle':
-      'Barcha tariflarda asosiy hisobotlar ochiq — farq faqat do‘kon, kabinet va jamoa hajmida.',
+      'Asosiy hisobotlar hamma tarifda ochiq — farq do‘kon, kabinet va jamoa hajmida hamda ilg‘or bo‘limlarda.',
     'pricing.monthly': 'Oylik',
     'pricing.yearly': 'Yillik',
     'pricing.save': 'Yillik to‘lovda {pct}% gacha chegirma',
@@ -126,15 +147,23 @@ registerNamespace('landing', {
     'pricing.cabinetsInf': 'Cheksiz Uzum kabineti',
     'pricing.members': '{n} ta jamoa a’zosi',
     'pricing.note': 'Narxlar UZS’da, QQS bilan. To‘lov Payme, Click yoki bank o‘tkazmasi orqali.',
-    'plan.trial.1': 'Barcha asosiy hisobotlar',
-    'plan.trial.2': 'Sotuv, foyda va qoldiq tahlili',
-    'plan.trial.3': 'Telegram bildirishnomalar',
-    'plan.trial.4': 'ABC va nolikvid — namuna rejimida',
+    /*
+     * Punktlar plans.ts dagi ruxsatdan (2026-10-27): sinovda abc_analysis
+     * (Kategoriyalarim ham), growth_radar, price_map, planner, vgh_report —
+     * 'preview'; paid_storage va telegram_notifications — to'liq; jamoa
+     * (members) sinovda 1 kishi. Radar va narxlar xaritasi faqat pullik
+     * tarifda — egasining qarori.
+     */
+    'plan.trial.1': 'Barcha asosiy hisobotlar va moliya markazi',
+    'plan.trial.2': 'Pullik saqlash — Uzum tarifi bo‘yicha',
+    'plan.trial.3': 'Telegram hisobotlari va dayjestlar',
+    'plan.trial.4': 'O‘sish bo‘limi, ABC, rejalashtiruvchi va VGH — namuna rejimida',
     'plan.standard.1': 'Sinovdagi hamma narsa',
-    'plan.standard.2': 'ABC, nolikvid va rejalashtiruvchi',
-    'plan.standard.3': 'Unit-iqtisod va tannarx boshqaruvi',
-    'plan.standard.4': 'Sharhlarga avto-javob (kuniga 50 ta)',
-    'plan.standard.5': 'Excel eksport va 1 yillik tarix',
+    'plan.standard.2': 'O‘sish: Kategoriyalarim, Mening radarim, Narxlar xaritasi',
+    'plan.standard.3': 'ABC, nolikvid, rejalashtiruvchi, Hajm va VGH',
+    'plan.standard.4': 'Jamoa: taklif havolasi va ko‘rinish shablonlari',
+    'plan.standard.5': 'Sharhlarga avto-javob (kuniga 50 ta)',
+    'plan.standard.6': 'Excel eksport va 1 yillik tarix',
     'plan.vip.1': 'Standartdagi hamma narsa',
     'plan.vip.2': 'Uzum kabinetlari cheksiz',
     'plan.vip.3': 'API kirish — o‘z tizimingizga ulash',
@@ -218,7 +247,7 @@ registerNamespace('landing', {
     'trust.a.l': 'И полная аналитика готова',
     'trust.b.v': '24/7',
     'trust.b.l': 'Уведомления в Telegram',
-    'trust.c.v': '25+',
+    'trust.c.v': '30+',
     'trust.c.l': 'Отчётов и разделов аналитики',
     'trust.d.v': '3 языка',
     'trust.d.l': 'Узбекский, русский и английский',
@@ -227,22 +256,34 @@ registerNamespace('landing', {
     'features.title': 'Всё, что нужно селлеру',
     'features.subtitle':
       'От заказа до чистой прибыли — в одном аккаунте. И за каждой цифрой видно, как она посчитана.',
-    'f1.t': 'Аналитика продаж',
-    'f1.d': 'Выручка, заказы, средний чек и процент выкупа в разрезе дня, недели и месяца.',
-    'f2.t': 'Чистая прибыль и юнит-экономика',
-    'f2.d': 'Маржа и ROI по каждому SKU — после комиссии, логистики, хранения и налога.',
-    'f3.t': 'Остатки и планировщик',
-    'f3.d': 'Остатки FBO/FBS, прогноз окончания и готовый список для следующей поставки.',
-    'f4.t': 'ABC и неликвиды',
-    'f4.d': 'Видно, какие товары дают 80% выручки, а какие просто замораживают деньги.',
-    'f5.t': 'Потери и возвраты',
-    'f5.d': 'Утерянные, повреждённые и возвращённые товары — вместе с готовым текстом претензии.',
-    'f6.t': 'Автоответы на отзывы',
-    'f6.d': 'Положительные отзывы закрываются шаблоном автоматически, о негативных сообщаем сразу.',
-    'f7.t': 'Уведомления в Telegram',
-    'f7.d': 'Ежедневный отчёт, окончание остатка, новый негативный отзыв и статус оплаты.',
-    'f8.t': 'Экспорт в Excel',
-    'f8.d': 'Любая таблица выгружается в .xlsx одним нажатием — готово для бухгалтерии.',
+    'features.new': 'Новое',
+    'fg.money': 'Деньги и прибыль',
+    'fg.stock': 'Товары и склад',
+    'fg.growth': 'Рост, команда и Telegram',
+    'f1.t': 'Аналитика продаж и воронка',
+    'f1.d': 'Выручка, заказы и процент выкупа по дням, неделям и месяцам. Где теряются заказы — в воронке из 4 этапов, с причинами в сумах.',
+    'f2.t': 'Финансовый центр',
+    'f2.d': 'От выручки до выплаты Uzum и чистой прибыли — одним водопадом. Сравнение с прошлым периодом, прошлым месяцем или прошлым годом; месячный отчёт совпадает с экраном и отправляется в Telegram.',
+    'f3.t': 'Экономика товаров',
+    'f3.d': 'Прибыль, маржа и ROI по каждому SKU и варианту — после комиссии, логистики, хранения, рекламы и налога. Таблица выгружается в Excel с фильтрами страницы.',
+    'f4.t': 'Потери и возвраты',
+    'f4.d': 'Утерянные, повреждённые и возвращённые товары — с готовым текстом претензии. Доля возвратов везде считается в штуках.',
+    'f5.t': 'Остатки и планировщик',
+    'f5.d': 'Одно число «нужно заказать» на всех страницах. Что отгрузить со своего склада на FBO, а что закупить — отдельно; черновик поставки и Excel для поставщика — в один клик.',
+    'f6.t': 'Платное хранение — по тарифу Uzum',
+    'f6.d': 'Официальный тариф с 01.06.2026: оборачиваемость до 60 дней бесплатно, новые SKU бесплатны первые 30/60 дней. Прогноз на 30 дней рядом с тем, что Uzum реально списал, уведомления — в Telegram.',
+    'f7.t': 'Объём, ВГХ и литровка',
+    'f7.d': 'Оплаченная логистика сверяется с объёмом из карточки. Калькулятор литровки и юнит-калькулятор показывают, откуда взят каждый тариф.',
+    'f8.t': 'ABC и неликвиды',
+    'f8.d': 'Видно, какие товары дают 80% выручки, а какие просто замораживают деньги.',
+    'f9.t': 'Рост: категории, радар, цены',
+    'f9.d': 'Мои категории — прибыль, маржа, возвраты и замороженный остаток. Мой радар — ускорившиеся, замедлившиеся и заканчивающиеся товары. Карта цен — цены конкурентов, которые вы вносите сами. Только по вашим данным.',
+    'f10.t': 'Команда и шаблоны доступа',
+    'f10.d': 'Приглашайте сотрудников по ссылке. Шаблоны Кладовщик, Бухгалтер и Маркетолог открывают только нужные разделы и скрывают деньги там, где нужно.',
+    'f11.t': 'Telegram: отчёты и дайджесты',
+    'f11.d': 'Отчёты в боте за сегодня, вчера, этот месяц и этот год — с теми же цифрами, что на сайте. Недельный дайджест в понедельник в 09:00, месячный — 1-го числа; уведомления об остатках и негативных отзывах.',
+    'f12.t': 'Автоответы на отзывы',
+    'f12.d': 'Положительные отзывы закрываются шаблоном автоматически, о негативных сообщаем сразу.',
 
     'how.eyebrow': 'Как это работает',
     'how.title': 'Четыре шага — и аналитика готова',
@@ -253,14 +294,14 @@ registerNamespace('landing', {
     'how.s2.t': 'Отправьте API-ключ',
     'how.s2.d': 'seller.uzum.uz → Мой профиль → API-ключи. Ключ хранится в зашифрованном виде.',
     'how.s3.t': 'Сбор данных',
-    'how.s3.d': 'Платформа выгружает историю заказов, остатков, финансов и отзывов — до 1 года, в зависимости от тарифа.',
+    'how.s3.d': 'Платформа выгружает историю заказов, остатков, финансов и отзывов — до 1 года, в зависимости от тарифа. При повышении тарифа старая история догружается сама.',
     'how.s4.t': 'Готовая аналитика',
     'how.s4.d': 'Заходите на сайт — все отчёты уже заполнены и ждут вас.',
 
     'pricing.eyebrow': 'Тарифы',
     'pricing.title': 'Простые и понятные цены',
     'pricing.subtitle':
-      'Основные отчёты открыты на всех тарифах — разница только в числе магазинов, кабинетов и мест в команде.',
+      'Основные отчёты открыты на всех тарифах — разница в числе магазинов, кабинетов и мест в команде и в продвинутых разделах.',
     'pricing.monthly': 'Помесячно',
     'pricing.yearly': 'На год',
     'pricing.save': 'При оплате за год скидка до {pct}%',
@@ -277,15 +318,16 @@ registerNamespace('landing', {
     'pricing.cabinetsInf': 'Безлимит кабинетов Uzum',
     'pricing.members': '{n} участника(ов) команды',
     'pricing.note': 'Цены в UZS с НДС. Оплата через Payme, Click или банковский перевод.',
-    'plan.trial.1': 'Все базовые отчёты',
-    'plan.trial.2': 'Аналитика продаж, прибыли и остатков',
-    'plan.trial.3': 'Уведомления в Telegram',
-    'plan.trial.4': 'ABC и неликвиды — в режиме просмотра',
+    'plan.trial.1': 'Все базовые отчёты и финансовый центр',
+    'plan.trial.2': 'Платное хранение — по тарифу Uzum',
+    'plan.trial.3': 'Отчёты и дайджесты в Telegram',
+    'plan.trial.4': 'Раздел «Рост», ABC, планировщик и ВГХ — в режиме просмотра',
     'plan.standard.1': 'Всё из пробного тарифа',
-    'plan.standard.2': 'ABC, неликвиды и планировщик',
-    'plan.standard.3': 'Юнит-экономика и себестоимость',
-    'plan.standard.4': 'Автоответы на отзывы (50 в день)',
-    'plan.standard.5': 'Экспорт в Excel и год истории',
+    'plan.standard.2': 'Рост: Мои категории, Мой радар, Карта цен',
+    'plan.standard.3': 'ABC, неликвиды, планировщик, объём и ВГХ',
+    'plan.standard.4': 'Команда: приглашение по ссылке и шаблоны доступа',
+    'plan.standard.5': 'Автоответы на отзывы (50 в день)',
+    'plan.standard.6': 'Экспорт в Excel и год истории',
     'plan.vip.1': 'Всё из Стандарта',
     'plan.vip.2': 'Безлимит кабинетов Uzum',
     'plan.vip.3': 'Доступ к API — интеграция в свою систему',
@@ -366,7 +408,7 @@ registerNamespace('landing', {
     'trust.a.l': 'And your full analytics is ready',
     'trust.b.v': '24/7',
     'trust.b.l': 'Telegram notifications',
-    'trust.c.v': '25+',
+    'trust.c.v': '30+',
     'trust.c.l': 'Reports and analytics sections',
     'trust.d.v': '3 languages',
     'trust.d.l': 'Uzbek, Russian and English',
@@ -375,22 +417,34 @@ registerNamespace('landing', {
     'features.title': 'Everything a seller actually needs',
     'features.subtitle':
       'From the order to the net profit — in one account. And every number shows how it was calculated.',
-    'f1.t': 'Sales analytics',
-    'f1.d': 'Revenue, orders, average check and buyout rate by day, week and month.',
-    'f2.t': 'Net profit and unit economics',
-    'f2.d': 'Margin and ROI per SKU after commission, logistics, storage and tax.',
-    'f3.t': 'Stock and planner',
-    'f3.d': 'FBO/FBS stock levels, stock-out forecast and a ready list for the next shipment.',
-    'f4.t': 'ABC and dead stock',
-    'f4.d': 'See which products bring 80% of the revenue and which ones just freeze your cash.',
-    'f5.t': 'Losses and returns',
-    'f5.d': 'Lost, damaged and returned items — together with a ready-to-send claim text.',
-    'f6.t': 'Review auto-replies',
-    'f6.d': 'Positive reviews are answered from templates automatically; negatives reach you instantly.',
-    'f7.t': 'Telegram notifications',
-    'f7.d': 'Daily report, stock running out, a new negative review and payment status.',
-    'f8.t': 'Excel export',
-    'f8.d': 'Download any table as .xlsx in one click — ready for your accountant.',
+    'features.new': 'New',
+    'fg.money': 'Money and profit',
+    'fg.stock': 'Products and warehouse',
+    'fg.growth': 'Growth, team and Telegram',
+    'f1.t': 'Sales analytics and funnel',
+    'f1.d': 'Revenue, orders and buyout rate by day, week and month. Where orders get lost — in a 4-stage funnel with the reasons in so‘m.',
+    'f2.t': 'Finance hub',
+    'f2.d': 'From revenue to the Uzum payout and net profit in one waterfall. Compare with the previous period, last month or last year; the monthly report matches the screen and can be sent to Telegram.',
+    'f3.t': 'Product economics',
+    'f3.d': 'Profit, margin and ROI for every SKU and variant after commission, logistics, storage, ads and tax. The table exports to Excel with the page filters.',
+    'f4.t': 'Losses and returns',
+    'f4.d': 'Lost, damaged and returned items — with a ready-to-send claim text. The return rate is unit-based everywhere.',
+    'f5.t': 'Stock and planner',
+    'f5.d': 'One “reorder” number on every page. What to ship from your own warehouse to FBO and what to buy, shown separately; a shipment draft and a supplier Excel in one click.',
+    'f6.t': 'Paid storage by Uzum’s tariff',
+    'f6.d': 'The official tariff from 01.06.2026: turnover up to 60 days is free, new SKUs are free for their first 30/60 days. A 30-day forecast next to what Uzum actually charged, alerts in Telegram.',
+    'f7.t': 'Volume, dimensions and Litrovka',
+    'f7.d': 'Logistics you paid is checked against the volume on the card. The Litrovka and unit calculators show where every tariff comes from.',
+    'f8.t': 'ABC and dead stock',
+    'f8.d': 'See which products bring 80% of the revenue and which ones just freeze your cash.',
+    'f9.t': 'Growth: categories, radar, prices',
+    'f9.d': 'My categories — profit, margin, returns and frozen stock. My radar — products speeding up, slowing down or running out. Price map — competitor prices you enter yourself. Built only from your own data.',
+    'f10.t': 'Team and view templates',
+    'f10.d': 'Invite people with a link. The Warehouse, Accountant and Marketer templates open only the sections they need and hide money where it matters.',
+    'f11.t': 'Telegram: reports and digests',
+    'f11.d': 'Bot reports for today, yesterday, this month and this year — the same numbers as the site. A weekly digest on Monday at 09:00 and a monthly one on the 1st; alerts for low stock and negative reviews.',
+    'f12.t': 'Review auto-replies',
+    'f12.d': 'Positive reviews are answered from templates automatically; negatives reach you instantly.',
 
     'how.eyebrow': 'How it works',
     'how.title': 'Four steps and your analytics is live',
@@ -401,14 +455,14 @@ registerNamespace('landing', {
     'how.s2.t': 'Send your API key',
     'how.s2.d': 'seller.uzum.uz → My profile → API keys. The key is stored encrypted.',
     'how.s3.t': 'Data import',
-    'how.s3.d': 'The platform imports your orders, stock, finance and review history — up to 1 year, depending on your plan.',
+    'how.s3.d': 'The platform imports your orders, stock, finance and review history — up to 1 year, depending on your plan. Upgrade, and the older history loads on its own.',
     'how.s4.t': 'Analytics ready',
     'how.s4.d': 'Sign in to the web app — every report is already filled in and waiting.',
 
     'pricing.eyebrow': 'Pricing',
     'pricing.title': 'Simple, honest pricing',
     'pricing.subtitle':
-      'Core reports are open on every plan — the difference is the number of stores, cabinets and team seats.',
+      'Core reports are open on every plan — the difference is the number of stores, cabinets and team seats, plus the advanced sections.',
     'pricing.monthly': 'Monthly',
     'pricing.yearly': 'Yearly',
     'pricing.save': 'Save up to {pct}% when paying yearly',
@@ -425,15 +479,16 @@ registerNamespace('landing', {
     'pricing.cabinetsInf': 'Unlimited Uzum cabinets',
     'pricing.members': '{n} team members',
     'pricing.note': 'Prices in UZS, VAT included. Pay with Payme, Click or a bank transfer.',
-    'plan.trial.1': 'All the core reports',
-    'plan.trial.2': 'Sales, profit and stock analytics',
-    'plan.trial.3': 'Telegram notifications',
-    'plan.trial.4': 'ABC and dead stock — in preview mode',
+    'plan.trial.1': 'All the core reports and the finance hub',
+    'plan.trial.2': 'Paid storage by Uzum’s tariff',
+    'plan.trial.3': 'Telegram reports and digests',
+    'plan.trial.4': 'Growth section, ABC, the planner and dimensions — in preview mode',
     'plan.standard.1': 'Everything in Trial',
-    'plan.standard.2': 'ABC, dead stock and the planner',
-    'plan.standard.3': 'Unit economics and cost price',
-    'plan.standard.4': 'Review auto-replies (50 per day)',
-    'plan.standard.5': 'Excel export and 1 year of history',
+    'plan.standard.2': 'Growth: My categories, My radar, Price map',
+    'plan.standard.3': 'ABC, dead stock, the planner, volume and dimensions',
+    'plan.standard.4': 'Team: invite link and view templates',
+    'plan.standard.5': 'Review auto-replies (50 per day)',
+    'plan.standard.6': 'Excel export and 1 year of history',
     'plan.vip.1': 'Everything in Standard',
     'plan.vip.2': 'Unlimited Uzum cabinets',
     'plan.vip.3': 'API access — plug it into your own systems',
@@ -482,15 +537,42 @@ registerNamespace('landing', {
   },
 });
 
-const FEATURES = [
-  { icon: TrendingUp, k: 'f1', tone: 'brand' },
-  { icon: Scale, k: 'f2', tone: 'info' },
-  { icon: Layers, k: 'f3', tone: 'violet' },
-  { icon: PieChart, k: 'f4', tone: 'warn' },
-  { icon: PackageX, k: 'f5', tone: 'danger' },
-  { icon: Star, k: 'f6', tone: 'warn' },
-  { icon: BellRing, k: 'f7', tone: 'info' },
-  { icon: FileSpreadsheet, k: 'f8', tone: 'brand' },
+/*
+ * Imkoniyatlar uch guruhda, har birida 4 ta karta (xl da bitta qator).
+ * Ilgari 8 ta karta edi va moliya markazi, "O'sish", jamoa, dayjestlar va
+ * rasmiy tarif bo'yicha saqlash/VGH umuman tilga olinmasdi (2026-10-27).
+ * `isNew` — shu relizda qo'shilgan bo'lim; keyingi relizda olib tashlanadi.
+ * Bozor (raqobatchi do'konlari) o'qilmaydi — "O'sish" kartasi faqat sotuvchining
+ * o'z ma'lumotidan ekanini aytadi, tarix esa 365 kundan oshmaydi (plans.ts).
+ */
+const FEATURE_GROUPS = [
+  {
+    k: 'fg.money',
+    items: [
+      { icon: TrendingUp, k: 'f1', tone: 'brand', isNew: false },
+      { icon: Wallet, k: 'f2', tone: 'violet', isNew: false },
+      { icon: Scale, k: 'f3', tone: 'info', isNew: false },
+      { icon: PackageX, k: 'f4', tone: 'danger', isNew: false },
+    ],
+  },
+  {
+    k: 'fg.stock',
+    items: [
+      { icon: Layers, k: 'f5', tone: 'info', isNew: false },
+      { icon: Archive, k: 'f6', tone: 'warn', isNew: true },
+      { icon: Box, k: 'f7', tone: 'violet', isNew: true },
+      { icon: PieChart, k: 'f8', tone: 'brand', isNew: false },
+    ],
+  },
+  {
+    k: 'fg.growth',
+    items: [
+      { icon: Gauge, k: 'f9', tone: 'brand', isNew: true },
+      { icon: Users, k: 'f10', tone: 'violet', isNew: true },
+      { icon: BellRing, k: 'f11', tone: 'info', isNew: true },
+      { icon: Star, k: 'f12', tone: 'warn', isNew: false },
+    ],
+  },
 ] as const;
 
 const TONE_CLASS: Record<string, string> = {
@@ -622,23 +704,39 @@ export default function Landing() {
             <SectionHead eyebrow={t('features.eyebrow')} title={t('features.title')} subtitle={t('features.subtitle')} />
           </FadeUp>
 
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {FEATURES.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <FadeUp key={f.k} delay={(i % 4) * 0.06} className="h-full">
-                  <div className="card card-hover group h-full p-5">
-                    <span
-                      className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-transform duration-300 ease-spring group-hover:scale-110 ${TONE_CLASS[f.tone]}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <h3 className="mt-4 font-display text-base font-bold tracking-tight text-ink">{t(`${f.k}.t`)}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-muted">{t(`${f.k}.d`)}</p>
-                  </div>
+          <div className="mt-12 space-y-10">
+            {FEATURE_GROUPS.map((group) => (
+              <div key={group.k}>
+                <FadeUp>
+                  <h3 className="eyebrow mb-3 px-1">{t(group.k)}</h3>
                 </FadeUp>
-              );
-            })}
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {group.items.map((f, i) => {
+                    const Icon = f.icon;
+                    return (
+                      <FadeUp key={f.k} delay={i * 0.06} className="h-full">
+                        <div className="card card-hover group h-full p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <span
+                              className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-transform duration-300 ease-spring group-hover:scale-110 ${TONE_CLASS[f.tone]}`}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </span>
+                            {f.isNew ? (
+                              <span className="chip bg-brand/10 px-2 py-0.5 text-2xs font-bold text-brand-ink ring-1 ring-inset ring-brand/25">
+                                {t('features.new')}
+                              </span>
+                            ) : null}
+                          </div>
+                          <h4 className="mt-4 font-display text-base font-bold tracking-tight text-ink">{t(`${f.k}.t`)}</h4>
+                          <p className="mt-2 text-sm leading-relaxed text-muted">{t(`${f.k}.d`)}</p>
+                        </div>
+                      </FadeUp>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </Section>
 

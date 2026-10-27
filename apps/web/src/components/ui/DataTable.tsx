@@ -128,6 +128,15 @@ export interface DataTableProps<T> {
   footer?: ReactNode;
   /** Mahalliy saralash yoqilsin */
   localSort?: boolean;
+  /**
+   * Saralash SERVERDA (sahifalash ham serverda bo'lsa): tanlangan ustun va
+   * yo'nalish shu yerdan keladi, ustun bosilganda `onSort` chaqiriladi,
+   * qatorlar mahalliy saralanmaydi. Mahalliy saralash server sahifalagan
+   * jadvalda faqat joriy sahifani saralardi — Qoldiqlar butun ro'yxat bo'yicha
+   * saralanishi uchun qo'shildi (2026-10-27). Berilmasa — avvalgidek mahalliy.
+   */
+  sort?: { key: string; dir: 'asc' | 'desc' } | null;
+  onSort?: (next: { key: string; dir: 'asc' | 'desc' } | null) => void;
   density?: 'comfortable' | 'compact';
   className?: string;
   stickyFirstColumn?: boolean;
@@ -232,6 +241,8 @@ export function DataTable<T>({
   pagination,
   footer,
   localSort = true,
+  sort,
+  onSort,
   density = 'comfortable',
   className,
   stickyFirstColumn,
@@ -241,8 +252,19 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const t = useT('table');
   const f = useFormat();
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const serverSort = onSort !== undefined;
+  const [localKey, setLocalKey] = useState<string | null>(null);
+  const [localDir, setLocalDir] = useState<'asc' | 'desc'>('desc');
+  const sortKey = serverSort ? (sort?.key ?? null) : localKey;
+  const sortDir = serverSort ? (sort?.dir ?? 'desc') : localDir;
+  /** Ustun va yo'nalish birga o'zgaradi — server rejimida bitta so'rov ketsin */
+  const setSort = (key: string | null, dir: 'asc' | 'desc') => {
+    if (onSort) onSort(key ? { key, dir } : null);
+    else {
+      setLocalKey(key);
+      setLocalDir(dir);
+    }
+  };
   const [limit, setLimit] = useState(ROWS_STEP);
   // Ochilgan qatorlar kaliti bo'yicha: saralash yoki filtr o'zgarsa ham ochiq qator ochiqligicha qoladi
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
@@ -266,7 +288,7 @@ export function DataTable<T>({
   useEffect(() => setLimit(ROWS_STEP), [rows]);
 
   const sorted = useMemo(() => {
-    if (!localSort || !sortKey) return rows;
+    if (serverSort || !localSort || !sortKey) return rows;
     const col = columns.find((c) => c.key === sortKey);
     if (!col?.sortValue) return rows;
     const copy = [...rows];
@@ -279,7 +301,7 @@ export function DataTable<T>({
         : String(bv).localeCompare(String(av));
     });
     return copy;
-  }, [rows, sortKey, sortDir, columns, localSort]);
+  }, [rows, sortKey, sortDir, columns, localSort, serverSort]);
 
   // Saralash butun ro'yxat bo'yicha, chizish esa bosqichma-bosqich
   // Chegaradan ozgina oshsa (masalan 121 qator) "yana 21 ta" tugmasi o'rniga hammasi chiziladi
@@ -365,7 +387,7 @@ export function DataTable<T>({
     ) : null;
 
   if (!isDesktop) {
-    const sortables = localSort ? columns.filter((c) => c.sortable && c.sortValue) : [];
+    const sortables = localSort || serverSort ? columns.filter((c) => c.sortable && c.sortValue) : [];
     return (
       <div className={cn('w-full', className)}>
         {sortables.length > 0 ? (
@@ -373,7 +395,7 @@ export function DataTable<T>({
             <span className="shrink-0 text-xs text-muted">{t('sortBy')}</span>
             <Select
               value={sortKey ?? ''}
-              onChange={(e) => setSortKey(e.target.value || null)}
+              onChange={(e) => setSort(e.target.value || null, sortDir)}
               className="h-9 min-w-0 flex-1 py-1.5 text-xs"
               aria-label={t('sortBy')}
             >
@@ -391,7 +413,7 @@ export function DataTable<T>({
                 className="h-9 shrink-0 px-2.5"
                 aria-label={sortDir === 'asc' ? t('sortAsc') : t('sortDesc')}
                 title={sortDir === 'asc' ? t('sortAsc') : t('sortDesc')}
-                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+                onClick={() => setSort(sortKey, sortDir === 'asc' ? 'desc' : 'asc')}
               >
                 {sortDir === 'asc' ? <TrendingUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
               </Button>
@@ -475,13 +497,7 @@ export function DataTable<T>({
                   {c.sortable && c.sortValue ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (sortKey === c.key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-                        else {
-                          setSortKey(c.key);
-                          setSortDir('desc');
-                        }
-                      }}
+                      onClick={() => setSort(c.key, sortKey === c.key && sortDir === 'desc' ? 'asc' : 'desc')}
                       className={cn(
                         'inline-flex items-center gap-1 transition-colors hover:text-ink',
                         sortKey === c.key && 'text-brand-ink',

@@ -55,6 +55,11 @@ export interface WarehouseTotals {
   fbo?: SchemeTotal;
   fbs?: SchemeTotal;
   own?: SchemeTotal;
+  /**
+   * FBO / FBS / o'z ombori kesimi — server butun ombor bo'yicha (routes/stocks.ts
+   * GET /warehouse). Pulsiz ko'rinish shablonida costValue — null.
+   */
+  schemes?: Record<'fbo' | 'fbs' | 'own', { units: number; costValue: number | null }>;
   /** Server costValue qaytaradi; eski javoblarda amount bo'lishi mumkin */
   byStore?: { storeId?: string | null; title: string; units: number; costValue?: number; amount?: number }[];
 }

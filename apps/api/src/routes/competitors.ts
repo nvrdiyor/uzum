@@ -21,8 +21,8 @@
  * o'sha davr, o'sha do'kon so'rovi bilan: xaritadagi "raqobatchi nol foyda
  * narxidan past" va sahifadagi "Zararsizlik narxi" bir xil raqamdan.
  *
- * TARIF — 'products_assortment' (Mahsulotlar oilasi: narx mahsulot kartochkasi
- * bilan birga yuradi). Yozish — egasi va menejer, kuzatuvchi faqat ko'radi.
+ * TARIF — 'price_map': faqat pullik tarifda, sinovda namuna (2026-10-27;
+ * ilgari 'products_assortment' edi). Yozish — egasi va menejer, kuzatuvchi faqat ko'radi.
  * Hammasi kompaniyaning o'z do'konlari va mahsulotlari bilan cheklangan:
  * boshqa kompaniyaning yozuvi yoki mahsuloti — 404 (borligi ham aytilmaydi).
  */
@@ -73,7 +73,12 @@ import {
 } from '../services/product-unit.js';
 
 const router = Router();
-router.use(requireAuth, requireCompany, requireFeature('products_assortment'));
+/*
+ * Narxlar xaritasi va mahsulot sahifasidagi "Raqobatchilar narxi" — faqat
+ * pullik tarifda (price_map, 2026-10-27). Ilgari products_assortment edi,
+ * ya'ni sinovda ham to'liq ochiq edi; endi sinovda 402 'preview'.
+ */
+router.use(requireAuth, requireCompany, requireFeature('price_map'));
 
 /** Yozish — egasi va menejer; kuzatuvchi (viewer) faqat ko'radi */
 const canWrite = requireRole('owner', 'manager');

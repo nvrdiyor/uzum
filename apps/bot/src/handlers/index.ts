@@ -45,7 +45,10 @@ export function registerHandlers(bot: Bot<BotContext>): void {
     if (ctx.chat && ctx.chat.type !== 'private') return;
 
     const telegramId = ctx.from ? String(ctx.from.id) : null;
-    ctx.sp = telegramId ? await loadState(telegramId) : { lang: 'uz', user: null, company: null };
+    // Hali ro'yxatda yo'q foydalanuvchiga — Telegram tilida (loadState); borida — o'zi tanlagan til
+    ctx.sp = telegramId
+      ? await loadState(telegramId, ctx.from?.language_code)
+      : { lang: 'uz', user: null, company: null };
     await next();
   });
 

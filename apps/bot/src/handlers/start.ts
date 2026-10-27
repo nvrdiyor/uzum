@@ -102,6 +102,8 @@ export async function onStart(ctx: BotContext, payload: string): Promise<void> {
     firstName: from.first_name ?? null,
     lastName: from.last_name ?? null,
     chatId: String(chatId),
+    // Faqat yangi foydalanuvchining boshlang'ich tili — tanlangan til almashtirilmaydi (context.ts upsertUser)
+    telegramLanguage: from.language_code ?? null,
     referredById,
   });
 

@@ -287,6 +287,9 @@ export default function Abc() {
    * qoladi), lekin serverdagi BILAN BIR XIL qoida (shared search.ts): nom,
    * SKU kodi, shtrix-kod, Uzum SKU / mahsulot ID'si, uzum.uz havolasi —
    * kalitlar qatorda keladi. Ilgari faqat nom va SKU kodi edi (2026-10-24).
+   * Mahsulot nomi ham — server skuInfoMatches bilan AYNAN bir xil maydonlar:
+   * u yo'qligida variant nomli («ЧЕРН») SKU mahsulot nomi bo'yicha jadvalda
+   * topilmasdi, `?search=` va Excel'da esa topilardi (2026-10-27).
    */
   const query = useSkuQuery(search);
   const filtered = useMemo(() => {
@@ -298,7 +301,7 @@ export default function Abc() {
         !matchesSkuQuery(
           query,
           { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
-          { id: r.productId, uzumProductId: r.uzumProductId },
+          { id: r.productId, title: r.productTitle, uzumProductId: r.uzumProductId },
         )
       )
         return false;

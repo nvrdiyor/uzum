@@ -1182,13 +1182,22 @@ async function notifyNewSales(
   if (fresh.length === 0) return budget;
 
   const single = fresh.slice(0, Math.max(0, budget));
+  const today = todayInBusinessTz();
   for (const sale of single) {
     const more = sale.positions > 1 ? ` va yana ${sale.positions - 1} ta mahsulot` : '';
+    /*
+     * Buyurtma berilgan vaqt (Uzumdagi "Yaratish sanasi") — Telegram ko'rsatadigan
+     * xabar vaqti sinxron vaqti, u buyurtmadan 30 daqiqagacha kech bo'lishi mumkin.
+     * Yarim tundan keyingi sinxronda kechagi buyurtma kelsa, sana ham yoziladi.
+     */
+    const day = todayInBusinessTz(sale.orderedAt);
+    const when = `${day === today ? '' : `${day.slice(8, 10)}.${day.slice(5, 7)} `}${tashkentTime(sale.orderedAt)}`;
     await notifyCompanyOwners(run.companyId, {
       type: 'success',
       requireFlag: 'notifyOrders',
       title: `Sotildi: ${sale.title}`,
       body: `${sale.qty} dona · ${formatMoney(sale.amount, 'uz')}${more}
+Buyurtma vaqti: ${when}
 ${storeTitle} · №${sale.uzumOrderId}`,
       link: `/sales?order=${encodeURIComponent(sale.uzumOrderId)}`,
       buttonText: 'Buyurtmani ko‘rish',

@@ -49,6 +49,7 @@ import {
   money,
 } from '@/components/competitors/common';
 import '@/components/competitors/texts';
+import { PRICE_MAP_SAMPLE } from '@/components/competitors/priceMapSample';
 import { SkuSearchInput } from '@/components/products/SkuSearchInput';
 import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
@@ -246,7 +247,12 @@ const matchesFocus = (r: PriceMapRow, focus: Focus | null): boolean => {
 export default function PriceMap() {
   const t = useT('priceMap');
   const tc = useT('competitors');
-  const access = useFeature('products_assortment');
+  /*
+   * Faqat pullik tarifda (price_map, egasining qarori 2026-10-27; ilgari
+   * products_assortment edi va sinovda to'liq ochiq turardi). Sinovda so'rov
+   * yuborilmaydi — qulf ostida xira namuna (components/competitors/priceMapSample.ts).
+   */
+  const access = useFeature('price_map');
   const pq = usePeriodQuery();
   const [params] = useSearchParams();
   const [searchRaw, setSearchRaw] = useState(params.get('search') ?? '');
@@ -278,7 +284,7 @@ export default function PriceMap() {
         icon={<Target className="h-5 w-5" />}
         title={t('title')}
         description={t('subtitle')}
-        badge={<PreviewBadge feature="products_assortment" />}
+        badge={<PreviewBadge feature="price_map" />}
         meta={
           <>
             <PeriodChip />
@@ -295,7 +301,20 @@ export default function PriceMap() {
       {/* Telefonda do'kon tanlagichi; davr va do'kon — yuqori panelda */}
       <FilterBar />
 
-      <PlanGate feature="products_assortment">
+      <PlanGate
+        feature="price_map"
+        previewChildren={
+          <div className="space-y-5">
+            <Summary data={PRICE_MAP_SAMPLE} focus={null} onFocus={() => undefined} />
+            <Card className="overflow-hidden">
+              <CardHeader icon={<Target />} tone="violet" title={t('table.title')} subtitle={t('table.subtitle')} />
+              <div className="mt-4">
+                <PriceMapTable rows={PRICE_MAP_SAMPLE.rows} />
+              </div>
+            </Card>
+          </div>
+        }
+      >
         {query.isError ? (
           <Card>
             <ErrorState

@@ -4,6 +4,7 @@ import { Amount, Card, CardBody, CardHeader, Delta, EmptyState, ErrorState, Skel
 import { useFormat, useT } from '@/i18n';
 import { CHART_COLORS, COST_COLORS, tooltipStyle } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+import { useUi } from '@/store/ui';
 import { PNL_LINE_COLOR, SUBTOTAL_FILL, type FlowStep } from './financeData';
 
 /**
@@ -457,9 +458,16 @@ function FlowTip({ bar, comparable }: { bar: FlowBar; comparable: boolean }) {
   const t = useT('finance');
   const f = useFormat();
   const tx = useFlowText();
+  /*
+   * "Hisobga tushadi" izohi sana asosiga qarab: buyurtma sanasida yo'ldagi
+   * buyurtmalar ham kiradi, qabul sanasida — yo'q. Asos sahifa so'rovi bilan
+   * bitta joydan (store/ui.ts, Finance.tsx useMoneyQuery) (2026-10-27).
+   */
+  const basis = useUi((st) => st.basis);
   const s = bar.step;
   const minus = s.kind === 'minus';
-  const hint = HINTED.has(s.id) && !(s.kind === 'end' && s.amount < 0) ? t(`flow.hint.${s.id}`) : null;
+  const hintKey = s.id === 'payout' && basis === 'receipt' ? 'flow.hint.payout.receipt' : `flow.hint.${s.id}`;
+  const hint = HINTED.has(s.id) && !(s.kind === 'end' && s.amount < 0) ? t(hintKey) : null;
 
   return (
     <div style={tooltipStyle()} className="w-max min-w-[212px] max-w-[288px]">

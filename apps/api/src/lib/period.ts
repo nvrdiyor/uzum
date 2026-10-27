@@ -13,6 +13,23 @@ import {
   type PlanId,
 } from '@savdoiq/shared';
 
+/**
+ * Pul sahifalarida sotuv davrga QAYSI sana bilan yoziladi (2026-10-27):
+ *  • 'order'   — buyurtma berilgan kun (OrderItem.orderedAt). Standart: butun
+ *                sayt shu bo'yicha (Boshqaruv paneli, mahsulotlar, bot, dayjestlar);
+ *  • 'receipt' — xaridor tovarni QABUL QILGAN kun (Order.deliveredAt, Uzum
+ *                moliyasidagi `dateIssued`). Uzum oylik hisoboti va to'lovlari
+ *                shu sana bo'yicha — "oktabr tushumi" Uzum kabinetidagi bilan
+ *                mos kelishi uchun. Yo'ldagi buyurtma bu rejimda hali sotuv emas.
+ *
+ * Hozircha faqat Moliya (routes/finance.ts) va Oylik hisobot
+ * (services/monthly-report.ts, uning Excel va Telegram nusxasi) o'qiydi;
+ * qolgan sahifalar parametrni e'tiborsiz qoldiradi.
+ */
+export type DateBasis = 'order' | 'receipt';
+
+export const isDateBasis = (v: unknown): v is DateBasis => v === 'order' || v === 'receipt';
+
 export interface ResolvedRange {
   period: Period;
   /**
@@ -27,6 +44,12 @@ export interface ResolvedRange {
   previous: Period;
   /** `?compare=` rejimi; noma'lum yoki yo'q qiymat — 'prev' (standart so'rov avvalgidek) */
   compare: CompareMode;
+  /**
+   * `?basis=` — sotuv sanasi asosi (DateBasis); noma'lum yoki yo'q qiymat —
+   * 'order', ya'ni standart so'rov javobi avvalgidek baytma-bayt. Taqqoslash
+   * davri (`previous`) ham AYNAN shu asosda hisoblanadi.
+   */
+  basis: DateBasis;
   from: Date;
   to: Date;
   /**
@@ -57,6 +80,8 @@ export function resolveRange(req: Request, plan: PlanId = 'trial'): ResolvedRang
   const q = req.query as Record<string, string | undefined>;
   // Takrorlangan (?compare=a&compare=b — massiv) yoki noma'lum qiymat ham 'prev': xato emas, standart
   const compare: CompareMode = isCompareMode(q.compare) ? q.compare : 'prev';
+  // `compare` kabi: massiv yoki noma'lum qiymat xato emas — standart 'order'
+  const basis: DateBasis = isDateBasis(q.basis) ? q.basis : 'order';
 
   let period: Period;
   if (q.preset) {
@@ -90,6 +115,7 @@ export function resolveRange(req: Request, plan: PlanId = 'trial'): ResolvedRang
     period,
     previous: comparePeriodFor(period, compare),
     compare,
+    basis,
     from,
     to,
     toExclusive: addDays(to, 1),

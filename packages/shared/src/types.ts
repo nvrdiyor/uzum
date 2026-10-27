@@ -1366,6 +1366,14 @@ export interface RadarResponse {
  */
 export interface SkuSearchKeys {
   productId?: string;
+  /**
+   * Mahsulot nomi — faqat qidiruv uchun: server (services/common.ts
+   * skuInfoMatches) ham SKU'ni mahsulot nomi bo'yicha topadi. Jonli Uzumda
+   * SKU nomi ko'pincha faqat variant («ЧЕРН», «БЕЛЫЙ»): ilgari Qoldiqlar, ABC,
+   * Ombor va Pullik saqlash jadvallari mahsulot nomi bo'yicha bunday SKU'ni
+   * topmasdi, server qidiruvi va Excel esa topardi (2026-10-27).
+   */
+  productTitle?: string;
   uzumProductId?: string | null;
   barcode?: string | null;
   uzumSkuId?: string | null;
@@ -1426,13 +1434,7 @@ export interface StockRow extends SkuSearchKeys {
   skuId: string;
   sku: string;
   title: string;
-  /**
-   * Mahsulot nomi — faqat qidiruv uchun (sahifa jadvalni o'zi qidiradi).
-   * Jonli Uzumda SKU nomi ko'pincha faqat variant («ЧЕРН»): ilgari sahifa
-   * mahsulot nomi bo'yicha bunday SKU'ni topmasdi, Excel fayli (server qoidasi,
-   * services/common.ts skuInfoMatches) esa topardi — ro'yxatlar farq qilardi (2026-10-27).
-   */
-  productTitle?: string;
+  // productTitle (mahsulot nomi, qidiruv uchun) — SkuSearchKeys'dan
   imageUrl: string | null;
   storeTitle: string;
   fbo: number;
@@ -1461,6 +1463,28 @@ export interface StockRow extends SkuSearchKeys {
   plan?: StockPlanSummary;
 }
 
+/** Qoldiqlar sahifasidagi holat (StockRow.status) */
+export type StockStatus = StockRow['status'];
+
+/** Bir holatdagi SKU'lar: soni, donasi va tannarx qiymati */
+export interface StockStatusStat {
+  skus: number;
+  units: number;
+  costValue: number;
+}
+
+/**
+ * GET /stocks — qidiruv (`?search=`), holat (`?status=`), tartib
+ * (`?sort=&order=`) va sahifalash SERVERDA (2026-10-27). Ilgari sahifa 500
+ * qatorni olib, qolganini o'zi qilardi: 500 dan ortiq SKU'li do'konda jadval
+ * kesilib, 10 000 qatorgacha bo'lgan Excel bilan farq qilardi.
+ *
+ * Har blok o'z to'plami bo'yicha (sahifadagidek):
+ *  - `totals` (KPI kartochkalari) — do'kon filtridagi BUTUN ombor, qidiruv va holatdan qat'i nazar;
+ *  - `byStatus`, `topCost` — qidiruvga mos barcha SKU, holat filtridan oldin;
+ *  - `filtered` (jadval oyog'idagi jami) va `rows.total` — qidiruv + holat, BARCHA sahifalar;
+ *  - `rows.items` — faqat so'ralgan sahifa.
+ */
 export interface StocksResponse {
   totals: {
     units: number;
@@ -1474,6 +1498,12 @@ export interface StocksResponse {
     /** Qoldig'i bor, tannarxi kiritilmagan dona — foydaga kirmagan */
     unitsNoCost: number;
   };
+  /** Holatlar kesimi (tugmalardagi son va taqsimot kartasi) */
+  byStatus: Record<StockStatus, StockStatusStat>;
+  /** Jadval oyog'i: filtrlangan BARCHA qatorlar jami (faqat joriy sahifa emas) */
+  filtered: { units: number; costValue: number; payoutValue: number };
+  /** Tannarx qiymati bo'yicha eng katta 10 SKU */
+  topCost: { skuId: string; sku: string; title: string; costValue: number }[];
   rows: Paginated<StockRow>;
 }
 

@@ -47,7 +47,13 @@ export function calcUnitEconomics(input: UnitCalcInput): UnitCalcResult {
   const returnedUnits = qty - soldUnits;
   const logisticsTotal = input.logistics * soldUnits + input.returnLogistics * returnedUnits;
   const storageTotal = input.storagePerDay * Math.max(0, input.storageDays) * qty;
-  const cogs = input.purchasePrice * qty;
+  /*
+   * Tannarx faqat SOTILGAN donadan: qaytgan tovar omborga qaytib, qayta
+   * sotuvga chiqadi — uning tannarxi zarar emas, keyingi sotuvda hisoblanadi
+   * (egasi qarori, 2026-10-27). Ilgari yuborilgan HAR dona tannarxi xarajat
+   * edi va 92% sotib olishda nol foyda narxi ~8% oshib chiqardi.
+   */
+  const cogs = input.purchasePrice * soldUnits;
   const packaging = (input.packaging || 0) * qty;
   const other = (input.otherCost || 0) * qty;
   const tax = (revenue * (input.taxPct || 0)) / 100;
@@ -68,7 +74,7 @@ export function calcUnitEconomics(input: UnitCalcInput): UnitCalcResult {
    * ham oxirida bo'linib, nol foyda narxi oshirib ko'rsatilardi.
    */
   const fixedPerUnit =
-    input.purchasePrice +
+    input.purchasePrice * buyout +
     (input.packaging || 0) +
     (input.otherCost || 0) +
     input.logistics * buyout +

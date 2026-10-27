@@ -29,7 +29,9 @@ import {
   type Period,
   type PlanId,
 } from '@savdoiq/shared';
+import type { DateBasis } from '../lib/period.js';
 import { aggregateSales, getDailySeries, getExpenses, type SalesAgg } from './common.js';
+import { getDailySeriesByBasis } from './sale-basis.js';
 
 export interface PeriodCosts {
   /** Omborga yetkazish va boshqa buyurtmaga bog'lanmagan logistika */
@@ -181,9 +183,11 @@ export async function getNetDailySeries(
   storeIds: string[],
   period: Period,
   storeId?: string,
+  basis: DateBasis = 'order',
 ): Promise<NetDailyPoint[]> {
   const [series, costs] = await Promise.all([
-    getDailySeries(storeIds, period),
+    // Sotuv kunlari sana asosi bo'yicha ('order' — getDailySeries'ning o'zi); davr xarajatlari esa har doim o'z sanasida
+    getDailySeriesByBasis(storeIds, period, basis),
     getPeriodCostsByDay(
       companyId,
       storeIds,
@@ -211,6 +215,15 @@ export async function getNetDailySeries(
  * `previous.from` tekshiriladi. "O'tgan yil" ('prevYear') da tarix chuqurligi
  * (ko'pi bilan 365 kun) deyarli har doim yetmaydi va natija null — sahifada
  * tire. Bu to'g'ri: bir yil oldingi nol "sotuv bo'lmagan" emas (2026-10-24).
+ *
+ * Sana asosiga ham bog'liq emas (2026-10-27): qabul sanasi bo'yicha ham pastki
+ * chegara — birinchi saqlangan BUYURTMA. Qabul har doim buyurtmadan keyin,
+ * shuning uchun bu chegaradan keyingi oynada bizda bor buyurtmalarning qabuli
+ * to'liq. Faqat bitta istisno: tarixdan oldin berilib, oyna boshida qabul
+ * qilingan buyurtmalar bazada yo'q — birinchi sinxrondan keyingi bir necha kun
+ * (yetkazish muddati) qabul bo'yicha biroz kam chiqadi. Chegarani taxminiy
+ * kunlarga surish o'rniga ATAYLAB avvalgicha qoldirildi: ikkala rejimda bitta
+ * qoida, sahifadagi "taqqoslanmaydi" chipi ham bir xil ishlaydi.
  */
 export async function comparablePeriod(storeIds: string[], previous: Period, plan: PlanId): Promise<Period | null> {
   if (storeIds.length === 0) return null;
@@ -245,10 +258,12 @@ export async function getPreviousNetSeries(
   previous: Period,
   plan: PlanId,
   storeId?: string,
+  // Joriy davr qaysi sana asosida bo'lsa, taqqoslash ham o'sha asosda — aralashsa yo'q o'sish chiqardi
+  basis: DateBasis = 'order',
 ): Promise<{ period: Period; series: NetDailyPoint[] } | null> {
   const period = await comparablePeriod(storeIds, previous, plan);
   if (!period) return null;
-  return { period, series: await getNetDailySeries(companyId, storeIds, period, storeId) };
+  return { period, series: await getNetDailySeries(companyId, storeIds, period, storeId, basis) };
 }
 
 /** ROI maxraji: tovarga sarflangan pul — tannarx va bir donaga qo'shimcha xarajat */

@@ -2,11 +2,12 @@ import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarRange, Gauge, Hourglass, Lock, RotateCcw, Star, TrendingDown, TrendingUp } from '@/components/icons';
 import type { RadarResponse, RadarSignal, RadarSignalKind } from '@savdoiq/shared';
-import { Card, ErrorState, PageHeader, PlanGate, Skeleton, StatCard, StatGrid, type Tone } from '@/components/ui';
+import { Card, ErrorState, PageHeader, PlanGate, PreviewBadge, Skeleton, StatCard, StatGrid, type Tone } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
 import { OwnDataChip, OwnDataNote } from '@/components/growth/OwnData';
 import { NewStarRow, ReturnsRow, StockoutRow, VelocityRow } from '@/components/growth/RadarRows';
 import { SignalCard } from '@/components/growth/SignalCard';
+import { RADAR_SAMPLE } from '@/components/growth/radarSample';
 import '@/components/growth/radarTexts';
 import { formatCompareRange } from '@/components/trust/ComparePeriod';
 import { DataFreshness } from '@/components/trust/DataFreshness';
@@ -38,15 +39,18 @@ const anchor = (kind: RadarSignalKind): string => `radar-${kind}`;
  * oxirgi to'liq kun bilan tugaydi. Faqat do'kon filtri so'rovga tushadi —
  * shuning uchun so'rov kaliti davrdan emas, do'kondan (2026-10-24).
  *
- * Tarif — 'sales_analytics' (Sotuv tahlili oilasi). Kartalar ichida o'z
- * bo'limining tarifi: "Tez orada tugaydi" — Rejalashtiruvchi, "Qaytarish" —
- * Qaytarishlar hisoboti; yopiq bo'lsa server qatorlarni bermaydi ('locked').
+ * Tarif — 'growth_radar': faqat pullik tarifda, sinovda qulf ostida xira
+ * namuna (components/growth/radarSample.ts), so'rov yuborilmaydi (egasining
+ * qarori, 2026-10-27; ilgari 'sales_analytics' edi va sinovda to'liq ochiq
+ * turardi). Kartalar ichida o'z bo'limining tarifi: "Tez orada tugaydi" —
+ * Rejalashtiruvchi, "Qaytarish" — Qaytarishlar hisoboti; yopiq bo'lsa server
+ * qatorlarni bermaydi ('locked').
  */
 export default function Radar() {
   const t = useT('radar');
   const f = useFormat();
   const storeId = useUi((s) => s.storeId);
-  const access = useFeature('sales_analytics');
+  const access = useFeature('growth_radar');
   const store = storeId === 'all' ? undefined : storeId;
 
   const query = useQuery({
@@ -62,6 +66,8 @@ export default function Radar() {
         icon={<Gauge className="h-5 w-5" />}
         title={t('title')}
         description={t('subtitle')}
+        // Sinovda "Namuna rejimi" — qulf oynasi uzun namunaning o'rtasida, birinchi ekranda ko'rinmasligi mumkin
+        badge={<PreviewBadge feature="growth_radar" />}
         meta={
           <>
             {data ? (
@@ -78,7 +84,7 @@ export default function Radar() {
 
       <FilterBar />
 
-      <PlanGate feature="sales_analytics">
+      <PlanGate feature="growth_radar" previewChildren={<RadarReport data={RADAR_SAMPLE} />}>
         {query.isError ? (
           <Card>
             <ErrorState

@@ -72,7 +72,7 @@ import {
   type MonthlyReportResponse,
   type PlanId,
 } from '@savdoiq/shared';
-import type { ResolvedRange } from '../lib/period.js';
+import type { DateBasis, ResolvedRange } from '../lib/period.js';
 import {
   RETURNS_DANGER_PCT,
   RETURNS_WARN_PCT,
@@ -90,6 +90,7 @@ import {
   planStockStatus,
   planTable,
 } from '../services/plan.js';
+import { compareStockRows, filterStockList, loadStockList } from '../services/stock-rows.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('export_excel'));
@@ -778,31 +779,24 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
-      getSkuCatalog(storeIds, true),
-      /*
-       * "Holat", "Qoldiq (kun)" va "O'rt. kunlik" — Qoldiqlar sahifasining
-       * o'zi (GET /stocks: planStockStatus, kompaniyaning yetkazish muddati,
-       * yo'ldagi tovar bilan). Ilgari fayl 7/14 kunlik qat'iy chegara va oddiy
-       * 30 kunlik o'rtacha bilan hisoblardi: sahifada "Kritik" turgan SKU
-       * faylda "Tugayapti" edi (2026-10-24). Qoldiq ham rejadan — u
-       * `getLatestStocks` ni o'zi yuklaydi.
-       */
-      loadPlanData(company.id, storeIds),
-      getAvgDaily(storeIds, 30),
-      getLastSaleDates(storeIds),
-    ]);
-    const stocks = planData.stocks;
     /*
+     * Qatorlar — Qoldiqlar sahifasining (GET /stocks) O'ZI, bitta manbadan
+     * (services/stock-rows.ts): "Holat", "Qoldiq (kun)" va "O'rt. kunlik"
+     * Rejalashtiruvchidan (2026-10-24). Ilgari fayl qatorlarni o'zicha qayta
+     * yig'ardi; sahifa 500 qatordan ortig'ini ko'rmagani uchun 500 dan ortiq
+     * SKU'da ular farq qilardi. Endi sahifa ham serverda sahifalanadi va fayl
+     * — sahifadagi filtrlangan to'plamning HAMMASI, shu tartibda (2026-10-27).
+     *
      * Fayl — sahifadagi jadvalning AYNAN o'zi: do'kon, `?status=` (sahifadagi
-     * holat tugmasi) va `?search=` (umumiy qidiruv qoidasi, services/common.ts
-     * skuInfoMatches — sahifa ham shu maydonlar bilan qidiradi). Ilgari ikkalasi
-     * e'tiborsiz qolardi va faylda doim butun ombor chiqardi; qoldig'i 0 bo'lgan
-     * SKU esa (sahifada qizil "0" bilan turgan "Kritik") faylga umuman
-     * tushmasdi (2026-10-27).
+     * holat tugmasi), `?search=` (umumiy qidiruv qoidasi, services/common.ts
+     * skuInfoMatches) va `?sort=&order=` (sahifada tanlangan ustun). Ilgari
+     * holat va qidiruv e'tiborsiz qolardi va faylda doim butun ombor chiqardi;
+     * qoldig'i 0 bo'lgan SKU esa (sahifada qizil "0" bilan turgan "Kritik")
+     * faylga umuman tushmasdi (2026-10-27).
      */
     const onlyStatus = parseStockStatus(req.query.status);
     const query = parseSkuQuery(range.search);
+    const all = await loadStockList(company.id, company.taxRate, storeIds);
 
     const columns: ColumnDef[] = [
       { header: 'SKU', width: 16 },
@@ -821,51 +815,26 @@ router.get(
       { header: 'Holat', width: 14 },
     ];
 
-    const list = [...catalog.values()]
-      .filter((info) => query === null || skuInfoMatches(info, query))
-      .map((info) => {
-        const st = stocks.get(info.id);
-        const avg = avgDaily.get(info.id) ?? 0;
-        const total = st?.total ?? 0;
-        // Sotuvi yo'q va arxivdagi SKU (rejada `no_action` yoki umuman yo'q) — eski qoldiq qoidasi
-        const planned = planSku(planData, info.id);
-        return {
-          info,
-          fbo: st?.fbo ?? 0,
-          fbs: st?.fbs ?? 0,
-          own: st?.own ?? 0,
-          reserved: st?.reserved ?? 0,
-          inTransit: st?.inTransit ?? 0,
-          total,
-          costValue: total * (info.purchasePrice + info.extraCost),
-          retailValue: total * info.price,
-          // "Yetadi" shu tezlikdan chiqadi — sahifadagi kabi bir manbadan
-          avg: planned && planned.status !== 'no_action' ? planned.avgDaily : avg,
-          state: planStockStatus(
-            planned,
-            stockState(total, avg, daysSince(lastSale.get(info.id)), daysSince(info.createdAt)),
-          ),
-        };
-      })
-      .filter((r) => onlyStatus === null || r.state.status === onlyStatus)
-      // Sahifaning standart tartibi (GET /stocks: tannarx qiymati, kamayish) — o'sha yaxlitlangan qiymat bo'yicha
-      .sort((a, b) => round(b.costValue) - round(a.costValue));
+    // Sahifadagi tartib: standart — tannarx qiymati, kamayish; teng qiymatlar SKU id bo'yicha
+    const list = filterStockList(all, query, onlyStatus)
+      .map((x) => x.row)
+      .sort(compareStockRows(range.sort, range.order));
 
     const rows: Cell[][] = list.slice(0, MAX_ROWS).map((r) => [
-      r.info.sku,
-      r.info.title,
-      r.info.storeTitle,
+      r.sku,
+      r.title,
+      r.storeTitle,
       r.fbo,
       r.fbs,
       r.own,
       r.reserved,
       r.inTransit,
       r.total,
-      round(r.costValue),
-      round(r.retailValue),
-      round(r.avg, 2),
-      r.state.daysLeft,
-      STOCK_STATUS_LABEL[r.state.status],
+      r.costValue,
+      r.retailValue,
+      round(r.avgDaily, 2),
+      r.daysLeft,
+      STOCK_STATUS_LABEL[r.status],
     ]);
 
     const wb = newWorkbook();
@@ -1196,6 +1165,13 @@ export interface MonthlyFileContext {
   storeTitle: string | null;
   /** Sinov uchun: fayl tuzilgan payt */
   now?: Date;
+  /**
+   * Hisobot qaysi sana asosida tuzilgan (lib/period.ts DateBasis). 'receipt'
+   * da fayl buni "Hisob asosi" qatori va izohlarda aytadi; 'order' (standart)
+   * da fayl ATAYLAB avvalgidek — oylik dayjest shu faylni biriktiradi va u
+   * katakma-katak o'zgarmasligi kerak (2026-10-27).
+   */
+  basis?: DateBasis;
 }
 
 /** Oylik hisobot fayli — sahifadagi har blok alohida varaqda, raqamlar javobdan o'zgarishsiz */
@@ -1208,9 +1184,18 @@ export function buildMonthlyWorkbook(
   const ofRevenue = (v: number): string | undefined => (r.revenue > 0 ? `tushumning ${p1(pct(v, r.revenue))}` : undefined);
   const activeOrders = Math.max(0, r.ordersTotal - r.canceled - r.returns);
   const capital = r.warehouse.fboAmount + r.warehouse.fbsAmount;
+  /*
+   * Qabul sanasi bo'yicha fayl: sotuv xaridor tovarni olgan kunga yozilgan,
+   * yo'ldagi tovar yo'q. Izohlar shu rejimga moslanadi — "yo'lda" degan gap
+   * bu faylda bo'lmaydi, raqamlar esa yana javobning o'zi (2026-10-27).
+   */
+  const receipt = ctx.basis === 'receipt';
 
-  const statusNote =
-    fin.reason === 'current'
+  const statusNote = receipt
+    ? fin.reason === 'current'
+      ? 'Davr hali tugamagan — yangi qabullar va qaytarishlar raqamlarni o‘zgartiradi'
+      : 'Davr tugagan — qabul sanasi bo‘yicha hisobot yakuniy: keyingi qabullar keyingi davrga yoziladi'
+    : fin.reason === 'current'
       ? 'Davr hali tugamagan — yangi buyurtma, bekor qilish va qaytarishlar raqamlarni o‘zgartiradi'
       : fin.reason === 'in_transit'
         ? `${n0(fin.inTransitUnits)} dona hali xaridorga yetib bormagan — ular bekor bo‘lishi yoki qaytishi mumkin`
@@ -1223,12 +1208,24 @@ export function buildMonthlyWorkbook(
     { label: 'Kompaniya', value: ctx.companyName },
     { label: 'Do‘kon', value: ctx.storeTitle ?? 'Barcha do‘konlar' },
     { label: 'Davr', value: `${dmy(r.period.from)} — ${dmy(r.period.to)}` },
+    ...(receipt
+      ? [
+          {
+            label: 'Hisob asosi',
+            value: 'Qabul sanasi',
+            note: 'Sotuv xaridor tovarni qabul qilgan kunga yozilgan — Uzum oylik hisoboti va to‘lovlari kabi. Yo‘ldagi buyurtmalar kirmaydi; qo‘lda kiritilgan xarajat va saqlash to‘lovi — o‘z sanasida',
+            strong: true,
+          } satisfies SummaryRow,
+        ]
+      : []),
     { label: 'Holat', value: fin.status === 'final' ? 'Yakuniy' : 'Oraliq', note: statusNote, strong: true },
     {
       label: 'Yakunlangan',
       value: fin.completionPct,
       fmt: 'percent',
-      note: `${n0(fin.completedUnits)} / ${n0(fin.orderedUnits)} dona — xaridor qabul qilgan, bekor qilingan yoki qaytgan. Yakuniy bo‘lishi uchun kamida ${fin.thresholdPct}%`,
+      note: receipt
+        ? `${n0(fin.completedUnits)} / ${n0(fin.orderedUnits)} dona — qabul sanasi bo‘yicha hisobda faqat xaridor qabul qilgan buyurtmalar bor`
+        : `${n0(fin.completedUnits)} / ${n0(fin.orderedUnits)} dona — xaridor qabul qilgan, bekor qilingan yoki qaytgan. Yakuniy bo‘lishi uchun kamida ${fin.thresholdPct}%`,
     },
     { label: 'Tuzilgan', value: tashkentStamp(ctx.now ?? new Date()), note: 'Toshkent vaqti' },
     { label: '', value: null },
@@ -1256,7 +1253,12 @@ export function buildMonthlyWorkbook(
     },
     { label: 'Sof marja', value: r.margin, fmt: 'percent' },
     { label: '', value: null },
-    { label: 'Buyurtmalar', value: r.ordersTotal, fmt: 'int', note: 'Bekor va qaytganlar bilan' },
+    {
+      label: 'Buyurtmalar',
+      value: r.ordersTotal,
+      fmt: 'int',
+      note: receipt ? 'Davrda xaridor qabul qilgan buyurtmalar, keyin qaytganlari bilan' : 'Bekor va qaytganlar bilan',
+    },
     { label: 'Muvaffaqiyatli', value: r.ordersSuccess, fmt: 'int', note: 'Bekor qilinmagan, qaytmagan' },
     /*
      * Ulushlar nomida asosi yoziladi: muvaffaqiyat — BUYURTMA bo'yicha,
@@ -1273,7 +1275,9 @@ export function buildMonthlyWorkbook(
       // Asos yo'q (hamma tovar hali yo'lda) — panel kartasidagidek tire, "0%" emas
       value: r.receivedUnits + r.returnedUnits > 0 ? r.returnRate : '—',
       fmt: 'percent',
-      note: `Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — Boshqaruv paneli bilan bir xil. ${n0(r.returnedUnits)} dona qaytdi, ${n0(r.receivedUnits)} dona qabul qilindi. ${RETURNS_WARN_PCT}% gacha — normal, ${RETURNS_DANGER_PCT}% dan — xavfli`,
+      note: receipt
+        ? `Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — davrda qabul qilingan buyurtmalardan; olib ketilmagan buyurtma kirmaydi. ${n0(r.returnedUnits)} dona qaytdi, ${n0(r.receivedUnits)} dona qabul qilindi. ${RETURNS_WARN_PCT}% gacha — normal, ${RETURNS_DANGER_PCT}% dan — xavfli`
+        : `Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — Boshqaruv paneli bilan bir xil. ${n0(r.returnedUnits)} dona qaytdi, ${n0(r.receivedUnits)} dona qabul qilindi. ${RETURNS_WARN_PCT}% gacha — normal, ${RETURNS_DANGER_PCT}% dan — xavfli`,
     },
     { label: 'Sotildi, dona', value: r.unitsSold, fmt: 'int', note: 'Muvaffaqiyatli buyurtmalarda' },
     { label: 'O‘rtacha chek', value: r.avgCheck, fmt: 'money', note: `${n0(activeOrders)} buyurtma asosida` },
@@ -1308,7 +1312,7 @@ export function buildMonthlyWorkbook(
     totals: totalsRow(dailyColumns, dailyRows, { 6: r.margin }),
     note:
       limitNote(r.daily.length) ??
-      'Sof foyda — davr xarajatlaridan keyin: qo‘lda kiritilgan oylik xarajat (ish haqi, ijara) oy kunlariga teng bo‘lingan. Kunlar yig‘indisi «Xulosa»dagi sof foydaga teng.',
+      `Sof foyda — davr xarajatlaridan keyin: qo‘lda kiritilgan oylik xarajat (ish haqi, ijara) oy kunlariga teng bo‘lingan. Kunlar yig‘indisi «Xulosa»dagi sof foydaga teng.${receipt ? ' Sana — xaridor tovarni qabul qilgan kun.' : ''}`,
   });
 
   // 3-varaq — davr xarajatlari (sahifadagi "Davr xarajatlari" kartochkasi)
@@ -1447,7 +1451,7 @@ export function buildMonthlyWorkbook(
     columns: compareColumns,
     rows: compareRows,
     totals: totalsRow(compareColumns, compareRows, { 3: pct(compareProfit, compareRevenue) }),
-    note: 'Oxirgi oylar (joriy oy — bugungacha), tanlangan davrga bog‘liq emas. Sof foyda — davr xarajatlaridan keyin.',
+    note: `Oxirgi oylar (joriy oy — bugungacha), tanlangan davrga bog‘liq emas. Sof foyda — davr xarajatlaridan keyin.${receipt ? ' Tushum va foyda xaridor qabul qilgan oyga yozilgan.' : ''}`,
   });
 
   // 9-varaq — xulosalar matni
@@ -1480,17 +1484,30 @@ export async function loadMonthlyWorkbook(input: {
   const { company, plan, range } = input;
   const storeIds = await getStoreIds(company.id, range.storeId);
   const [report, compare, storeTitles] = await Promise.all([
+    // Sana asosi (`range.basis`) hisobot ichida o'qiladi; "Oylar" varag'i ham o'sha asosda
     buildMonthlyReport({ companyId: company.id, taxRate: company.taxRate, plan, storeIds, range, month: input.month }),
-    collectMonthCompare(company.id, storeIds, plan, range.storeId),
+    collectMonthCompare(company.id, storeIds, plan, range.storeId, range.basis),
     range.storeId ? getStoreTitles(company.id) : Promise.resolve(null),
   ]);
   const workbook = buildMonthlyWorkbook(report, compare, {
     companyName: company.name,
     storeTitle: range.storeId ? (storeTitles?.get(range.storeId) ?? null) : null,
+    basis: range.basis,
   });
   // sendWorkbook bilan bir xil nom — yuklab olingan va Telegram'dagi fayl bir xil atalsin
-  return { report, workbook, fileName: `savdoiq-monthly-${report.period.from}_${report.period.to}.xlsx` };
+  return {
+    report,
+    workbook,
+    fileName: `savdoiq-${monthlySection(range.basis)}-${report.period.from}_${report.period.to}.xlsx`,
+  };
 }
+
+/**
+ * Fayl nomidagi bo'lim: qabul sanasi bo'yicha fayl alohida atalsin — ikkalasi
+ * bir papkaga yuklansa, "(1)" qo'shimchasi bilan adashib ketmasin. Standart
+ * nom avvalgidek (2026-10-27).
+ */
+const monthlySection = (basis: DateBasis): string => (basis === 'receipt' ? 'monthly-receipt' : 'monthly');
 
 router.get(
   '/monthly',
@@ -1498,13 +1515,14 @@ router.get(
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const q = req.query as Record<string, string | undefined>;
+    const range = resolveRange(req, plan);
     const { report, workbook } = await loadMonthlyWorkbook({
       company,
       plan,
-      range: resolveRange(req, plan),
+      range,
       month: q.month,
     });
-    await sendWorkbook(res, workbook, 'monthly', report.period);
+    await sendWorkbook(res, workbook, monthlySection(range.basis), report.period);
   }),
 );
 

@@ -20,7 +20,6 @@ import {
   storageFeePerDay,
   storageRatePerLiterDay,
   turnoverDays,
-  type StocksResponse,
 } from '@savdoiq/shared';
 import { MANUAL_STORAGE_URL, TIER_COUNT, paidRates, tierIndex, tierLabel, tierRate } from '@/components/calculator/tariff';
 import {
@@ -263,16 +262,19 @@ export default function Warehouse() {
   const totals = data?.totals;
   const rows = useMemo(() => rowsOf<Row>(data?.rows), [data]);
 
-  /** Sxemalar bo'yicha taqsimot javobda bo'lmasa — /stocks dan hisoblaymiz */
-  const needSchemeFallback = Boolean(data) && !totals?.fbo && !totals?.fbs;
-
-  const schemesQuery = useQuery({
-    queryKey: ['warehouse-schemes', q],
-    queryFn: () => api.get<StocksResponse>('/stocks', { ...q, page: 1, pageSize: 500 }),
-    enabled: needSchemeFallback,
-  });
-
+  /*
+   * FBO / FBS / o'z ombori kesimi — serverdan, butun ombor bo'yicha
+   * (`totals.schemes`). Ilgari sahifa buni GET /stocks dan 500 qator olib
+   * o'zi yig'ardi: 500 dan ortiq SKU'li do'konda kartalardagi dona va qiymat
+   * faqat eng qimmat 500 SKU bo'yicha edi, ortiqcha og'ir so'rov ham ketardi
+   * (2026-10-27).
+   */
   const schemes = useMemo(() => {
+    if (totals?.schemes) {
+      const s = totals.schemes;
+      const pick = (x: { units: number; costValue: number | null }) => ({ units: x.units, amount: x.costValue ?? 0 });
+      return { fbo: pick(s.fbo), fbs: pick(s.fbs), own: pick(s.own) };
+    }
     if (totals?.fbo || totals?.fbs || totals?.own) {
       return {
         fbo: totals.fbo ?? EMPTY_SCHEME,
@@ -280,23 +282,16 @@ export default function Warehouse() {
         own: totals.own ?? EMPTY_SCHEME,
       };
     }
-    const stockRows = schemesQuery.data?.rows.items ?? [];
-    const acc = { fbo: { ...EMPTY_SCHEME }, fbs: { ...EMPTY_SCHEME }, own: { ...EMPTY_SCHEME } };
-    stockRows.forEach((r) => {
-      const unitCost = r.total > 0 ? (r.costValue ?? 0) / r.total : 0;
-      acc.fbo.units += r.fbo;
-      acc.fbo.amount += r.fbo * unitCost;
-      acc.fbs.units += r.fbs;
-      acc.fbs.amount += r.fbs * unitCost;
-      acc.own.units += r.own;
-      acc.own.amount += r.own * unitCost;
-    });
-    if (acc.own.units === 0 && rows.length > 0) {
-      acc.own.units = rows.reduce((s, r) => s + (r.own ?? 0), 0);
-      acc.own.amount = rows.reduce((s, r) => s + (r.costValue ?? 0), 0);
-    }
-    return acc;
-  }, [totals, schemesQuery.data, rows]);
+    // Eski javob (sxemalarsiz): faqat o'z ombori — jadval qatorlaridan
+    return {
+      fbo: { ...EMPTY_SCHEME },
+      fbs: { ...EMPTY_SCHEME },
+      own: {
+        units: rows.reduce((s, r) => s + (r.own ?? 0), 0),
+        amount: rows.reduce((s, r) => s + (r.costValue ?? 0), 0),
+      },
+    };
+  }, [totals, rows]);
 
   const schemeUnits = schemes.fbo.units + schemes.fbs.units + schemes.own.units;
   const share = (v: number) => (schemeUnits > 0 ? (v / schemeUnits) * 100 : 0);
@@ -379,6 +374,9 @@ export default function Warehouse() {
    * Ilgari faqat nom va SKU kodi `toLowerCase().includes` bilan edi
    * (2026-10-24). KPI, sxemalar va saqlash bahosi avvalgidek butun ombor
    * bo'yicha — qidiruv faqat jadvalni (va uning jami qatorini) toraytiradi.
+   * Mahsulot nomi ham — server skuInfoMatches bilan AYNAN bir xil maydonlar:
+   * u yo'qligida variant nomli («ЧЕРН») SKU mahsulot nomi bo'yicha jadvalda
+   * topilmasdi, `?search=` bilan esa topilardi (2026-10-27).
    */
   const query = useSkuQuery(search);
   const filtered = useMemo(() => {
@@ -387,7 +385,7 @@ export default function Warehouse() {
       matchesSkuQuery(
         query,
         { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
-        { id: r.productId, uzumProductId: r.uzumProductId },
+        { id: r.productId, title: r.productTitle, uzumProductId: r.uzumProductId },
       ),
     );
   }, [rows, query]);

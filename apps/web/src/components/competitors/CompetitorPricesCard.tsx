@@ -15,7 +15,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Pencil, Plus, RefreshCw, Tags, Trash2 } from '@/components/icons';
+import { AlertTriangle, ArrowRight, Lock, Pencil, Plus, RefreshCw, Sparkles, Tags, Trash2 } from '@/components/icons';
 import {
   COMPETITOR_LIMITS,
   toBusinessDate,
@@ -25,6 +25,7 @@ import {
 import { Button, Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton, toast, type Tone } from '@/components/ui';
 import { variantOf } from '@/components/products/DetailBento';
 import { api } from '@/lib/api';
+import { useFeature } from '@/store/session';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { CompetitorForm, todayBusiness, type CompetitorFormSku, type CompetitorFormValue } from './CompetitorForm';
@@ -91,11 +92,17 @@ export function CompetitorPricesCard({
   const qc = useQueryClient();
   const [editor, setEditor] = useState<Editor>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  /*
+   * Raqobatchi narxlari faqat pullik tarifda (price_map, 2026-10-27). Aks
+   * holda so'rov yuborilmaydi (server 402 beradi) va karta o'rnida qisqa
+   * "tarifni yangilang" bloki turadi — mahsulot sahifasining qolgani ochiq.
+   */
+  const access = useFeature('price_map');
 
   const query = useQuery({
     queryKey: ['competitors', productId, period.from, period.to],
     queryFn: () => api.get<CompetitorListResponse>('/competitors', { productId, from: period.from, to: period.to }),
-    enabled: Boolean(productId),
+    enabled: Boolean(productId) && access === 'full',
   });
   const data = query.data;
   const items = data?.items ?? [];
@@ -170,6 +177,38 @@ export function CompetitorPricesCard({
         {t('card.add')}
       </Button>
     ) : null;
+
+  if (access !== 'full') {
+    return (
+      <Card tone="muted" className={className}>
+        <CardHeader
+          icon={<Tags />}
+          title={t('card.title')}
+          subtitle={
+            <span className="cursor-help" title={t('manualHint')}>
+              {t('manual')}
+            </span>
+          }
+          actions={
+            <span className="chip bg-warn/10 text-warn-ink">
+              <Lock className="h-3 w-3" />
+              {t('locked.badge')}
+            </span>
+          }
+        />
+        <CardBody>
+          <div className="flex flex-col gap-3 rounded-xl border border-dashed border-line bg-surface-2/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-relaxed text-muted">{t('locked.hint')}</p>
+            <Link to="/pricing" className="shrink-0">
+              <Button size="sm" icon={<Sparkles className="h-3.5 w-3.5" />}>
+                {t('btn.upgrade')}
+              </Button>
+            </Link>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
 
   return (
     <Card tone={tone} className={className}>

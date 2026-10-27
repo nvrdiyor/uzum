@@ -732,8 +732,13 @@ router.get(
         cumulativeShare,
         group,
         xyzGroup: xyzGroup(buckets.get(r.agg.skuId) ?? []),
-        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        /*
+         * Sahifa jadvalni o'zi qidiradi — shtrix-kod, Uzum ID va mahsulot nomi
+         * bo'yicha ham topsin (shared search.ts). Mahsulot nomisiz variant nomli
+         * («ЧЕРН») SKU sahifada topilmay, `?search=` bilan esa topilardi (2026-10-27).
+         */
         productId: r.info.productId,
+        productTitle: r.info.productTitle,
         uzumProductId: r.info.uzumProductId,
         barcode: r.info.barcode,
         uzumSkuId: r.info.uzumSkuId,

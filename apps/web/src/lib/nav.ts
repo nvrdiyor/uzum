@@ -84,20 +84,24 @@ export const NAV: NavGroup[] = [
   },
   /*
    * O'sish — faqat sotuvchining o'z ma'lumotidan (bozor o'qilmaydi, 2026-10-24).
-   * Kategoriyalar — ABC tahlil oilasi (assortiment tuzilmasi), radar — sotuv
-   * tezligi (Sotuv tahlili oilasi); tariflari shunga ko'ra.
+   * Kategoriyalar — ABC tahlil oilasi (assortiment tuzilmasi, abc_analysis);
+   * radar va narxlar xaritasi — o'z imkoniyatlari (growth_radar, price_map), 2026-10-27.
    */
   {
     titleKey: 'group.growth',
     items: [
       { to: '/categories', labelKey: 'nav.categories', icon: LayoutGrid, feature: 'abc_analysis' },
-      // Spidometr — tezlik: radar sotuv sur'ati o'zgargan SKU'larni ko'rsatadi
-      { to: '/radar', labelKey: 'nav.radar', icon: Gauge, feature: 'sales_analytics' },
+      /*
+       * Spidometr — tezlik: radar sotuv sur'ati o'zgargan SKU'larni ko'rsatadi.
+       * Radar va narxlar xaritasi — faqat pullik tarifda, sinovda namuna
+       * (egasining qarori, 2026-10-27; ilgari sales_analytics va products_assortment).
+       */
+      { to: '/radar', labelKey: 'nav.radar', icon: Gauge, feature: 'growth_radar' },
       /*
        * Raqobatchilar narxi — narxni sotuvchi o'zi kiritadi, Uzum o'qilmaydi
-       * (2026-10-24). Mahsulot sahifasidagi karta bilan bir oila — tarifi ham.
+       * (2026-10-24). Mahsulot sahifasidagi karta bilan bir oila — tarifi ham (price_map).
        */
-      { to: '/price-map', labelKey: 'nav.priceMap', icon: Target, feature: 'products_assortment' },
+      { to: '/price-map', labelKey: 'nav.priceMap', icon: Target, feature: 'price_map' },
     ],
   },
   {

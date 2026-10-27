@@ -31,9 +31,10 @@ import {
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
-import { paginate, resolveRange } from '../lib/period.js';
+import { paginate, resolveRange, type DateBasis } from '../lib/period.js';
 import { getExpenses, getStoreIds, getStoreTitles } from '../services/common.js';
 import { comparablePeriod, getNetDailySeries, getPreviousNetSeries, type NetDailyPoint } from '../services/pnl.js';
+import { lineDateWhere } from '../services/sale-basis.js';
 import { getUzumBalance } from '../services/balance.js';
 import { getPayoutRules, nextPayoutFromToday } from '../services/payout-schedule.js';
 
@@ -155,12 +156,17 @@ async function uzumAdSpend(companyId: string, period: Period, storeId?: string):
  * farq qilardi. Endi soliq har pozitsiyadan AYNAN qancha ayrilgan bo'lsa
  * shuncha: netProfit = to'lov − tannarx − qo'shimcha − soliq (importer.ts,
  * item-cost.ts) (2026-10-24).
+ *
+ * `basis` — pozitsiya davrga qaysi sana bilan tushadi (services/sale-basis.ts):
+ * 'order' da avvalgi shartning o'zi, 'receipt' da xaridor qabul qilgan kun.
+ * Qaysi pozitsiya pulga kirmasligi (bekor, qaytgan) ikkala rejimda AYNAN shu
+ * pastdagi qoida (2026-10-27).
  */
-async function sumLiveLines(storeIds: string[], from: Date, toExclusive: Date) {
+async function sumLiveLines(storeIds: string[], from: Date, toExclusive: Date, basis: DateBasis = 'order') {
   const t = { revenue: 0, payout: 0, cogs: 0, units: 0, commission: 0, logistics: 0, otherCost: 0, tax: 0 };
   if (storeIds.length === 0) return t;
   const items = await prisma.orderItem.findMany({
-    where: { orderedAt: { gte: from, lt: toExclusive }, order: { storeId: { in: storeIds } } },
+    where: lineDateWhere(storeIds, from, toExclusive, basis),
     select: {
       qty: true,
       revenue: true,
@@ -221,18 +227,22 @@ interface FinanceSnapshot {
  * Davr bo'yicha moliyaviy kesim.
  * Komissiya/logistika/soliq/boshqa xarajatlar buyurtma satrlaridan (sumLiveLines),
  * ombor — StorageFee'dan, qolgani esa qo'lda kiritilgan Expense yozuvlaridan olinadi.
+ *
+ * Sana asosi (`basis`) faqat buyurtma satrlariga ta'sir qiladi: qo'lda
+ * kiritilgan xarajat va saqlash to'lovi ikkala rejimda ham o'z sanasida.
  */
 async function collectFinance(
   companyId: string,
   storeIds: string[],
   period: Period,
   storeId?: string,
+  basis: DateBasis = 'order',
 ): Promise<FinanceSnapshot> {
   const from = businessDayStart(period.from);
   const toExclusive = addDays(businessDayStart(period.to), 1);
 
   const [lines, manual, storage] = await Promise.all([
-    sumLiveLines(storeIds, from, toExclusive),
+    sumLiveLines(storeIds, from, toExclusive, basis),
     getExpenses(companyId, from, toExclusive, storeId),
     storageAmount(storeIds, from, toExclusive),
   ]);
@@ -303,7 +313,7 @@ router.get(
     const range = resolveRange(req, plan);
     const storeIds = await getStoreIds(company.id, range.storeId);
 
-    const snap = await collectFinance(company.id, storeIds, range.period, range.storeId);
+    const snap = await collectFinance(company.id, storeIds, range.period, range.storeId, range.basis);
 
     /*
      * Kunlik seriya: buyurtmalardan kelgan foydadan davr xarajatlari (qo'lda
@@ -311,11 +321,16 @@ router.get(
      * expenses bo'ladi. Boshqaruv paneli grafigi bilan BITTA funksiya
      * (services/pnl.ts): `uzum-payout` satrlari buyurtmada allaqachon ayrilgan,
      * ikki marta ushlanmaydi; oylik xarajat oy kunlariga bo'linadi.
+     *
+     * Grafik va uzuq chiziq ham sana asosida (`?basis=`): qabul sanasi rejimida
+     * kunlar yig'indisi yuqoridagi kartochkalarga teng qolsin. "Balans"
+     * plitkalari (to'langan / kutilmoqda) esa ATAYLAB o'zgarmaydi: ular foyda
+     * emas, Uzum bilan hisob-kitob holati — buyurtma holati bo'yicha.
      */
     const [series, previous, paidAgg, pendingAgg, uzumBalance] = await Promise.all([
-      getNetDailySeries(company.id, storeIds, range.period, range.storeId),
+      getNetDailySeries(company.id, storeIds, range.period, range.storeId, range.basis),
       // Oldingi teng davr — grafikdagi uzuq chiziq; tarix yetmasa null
-      getPreviousNetSeries(company.id, storeIds, range.previous, plan, range.storeId),
+      getPreviousNetSeries(company.id, storeIds, range.previous, plan, range.storeId, range.basis),
       prisma.orderItem.aggregate({
         _sum: { payout: true },
         where: {
@@ -582,8 +597,9 @@ router.get(
     const storeIds = await getStoreIds(company.id, range.storeId);
 
     const [cur, prev, comparable, curAds, prevAds] = await Promise.all([
-      collectFinance(company.id, storeIds, range.period, range.storeId),
-      collectFinance(company.id, storeIds, range.previous, range.storeId),
+      // Joriy va taqqoslash davri BITTA sana asosida (`?basis=`) — aralashsa yo'q o'sish chiqardi
+      collectFinance(company.id, storeIds, range.period, range.storeId, range.basis),
+      collectFinance(company.id, storeIds, range.previous, range.storeId, range.basis),
       /*
        * Boshqaruv paneli va grafikdagi uzuq chiziq bilan bitta qoida: oldingi
        * davr saqlangan tarixdan tashqarida bo'lsa (tarif chegarasi, birinchi

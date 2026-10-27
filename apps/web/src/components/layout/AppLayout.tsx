@@ -7,6 +7,7 @@ import { useUi } from '@/store/ui';
 import { SkeletonRows } from '@/components/ui';
 import { SyncBanner } from './SyncBanner';
 import { PaletteHost } from '@/components/palette/PaletteHost';
+import { NewsHost } from '@/components/news/NewsHost';
 import { PaletteTrigger } from '@/components/palette/PaletteTrigger';
 import { CompanySwitcher } from '@/components/team/CompanySwitcher';
 import { ViewGate } from '@/components/team/ViewGate';
@@ -61,6 +62,11 @@ export function AppLayout() {
       <MobileNav />
       {/* "Sahifaga o‘tish" oynasi (Ctrl K) — faqat kirgan foydalanuvchi qobig‘ida */}
       <PaletteHost />
+      {/*
+        "Yangiliklar" oynasi — faqat shu qobiqda: bosh sahifa, kirish va
+        onboarding (birinchi sinxron ekrani ham) bu qobiqdan tashqarida
+      */}
+      <NewsHost />
 
       <div
         className="transition-[padding] duration-300 ease-spring"

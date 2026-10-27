@@ -130,7 +130,8 @@ registerNamespace('calculator', {
     'split.revenue': 'Tushum: {v}',
     'split.unit': '1 dona',
     'split.batch': 'Partiya',
-    'split.note': 'Bir donaga tushum sotuv narxidan ({price}) kam: yuborilgan tovarning {pct} i sotib olinadi, qolgani qaytadi.',
+    'split.note':
+      'Bir donaga tushum sotuv narxidan ({price}) kam: yuborilgan tovarning {pct} i sotib olinadi, qolgani qaytadi. Qaytgan tovar omborga qaytib qayta sotiladi — uning tannarxi va logistikasi zarar hisoblanmaydi.',
     'res.cogs': 'Tannarx',
     'res.commission': 'Komissiya',
     'res.logistics': 'Logistika',
@@ -211,7 +212,8 @@ registerNamespace('calculator', {
     'split.revenue': 'Выручка: {v}',
     'split.unit': '1 шт.',
     'split.batch': 'Партия',
-    'split.note': 'Выручка на единицу меньше цены ({price}): выкупают {pct} отправленного товара, остальное возвращается.',
+    'split.note':
+      'Выручка на единицу меньше цены ({price}): выкупают {pct} отправленного товара, остальное возвращается. Возврат снова поступает на склад и продаётся — его себестоимость и логистика не считаются убытком.',
     'res.cogs': 'Себестоимость',
     'res.commission': 'Комиссия',
     'res.logistics': 'Логистика',
@@ -292,7 +294,8 @@ registerNamespace('calculator', {
     'split.revenue': 'Revenue: {v}',
     'split.unit': '1 unit',
     'split.batch': 'Batch',
-    'split.note': 'Revenue per unit is lower than the price ({price}): {pct} of shipped items are bought out, the rest come back.',
+    'split.note':
+      'Revenue per unit is lower than the price ({price}): {pct} of shipped items are bought out, the rest come back. Returns go back to stock and are sold again, so their cost and logistics are not counted as a loss.',
     'res.cogs': 'Cost of goods',
     'res.commission': 'Commission',
     'res.logistics': 'Logistics',

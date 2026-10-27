@@ -23,6 +23,7 @@ import {
   Lock,
   Moon,
   PanelLeftClose,
+  PartyPopper,
   Search,
   Store,
   Sun,
@@ -38,6 +39,7 @@ import { prefetchPage } from '@/lib/lazyPage';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useUi } from '@/store/ui';
+import { useNews } from '@/components/news/store';
 import { usePlan, useSession, useStores } from '@/store/session';
 import { translate, useFormat, useLangStore, useT, type Lang } from '@/i18n';
 import { ACTION_SYNONYMS, LANG_NAMES, LANG_SYNONYMS, PAGE_SYNONYMS, PERIOD_PRESETS, SETTINGS_SECTIONS } from './catalog';
@@ -266,6 +268,24 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         }),
       });
     }
+    /*
+     * "Yangiliklar" oynasi — o‘zi bir marta chiqadi, keyin shu yerdan va profil
+     * menyusidan qayta ochiladi (components/news, 2026-10-27). Bu oyna avval
+     * yopiladi (activate → onClose), keyin u ochiladi — ikkalasi ustma-ust turmaydi.
+     */
+    list.push({
+      key: 'act:news',
+      kind: 'action',
+      label: t('action.news'),
+      hint: t('action.newsHint'),
+      icon: PartyPopper,
+      run: () => useNews.getState().setOpen(true),
+      search: prepareFields({
+        label: t('action.news'),
+        other: others((l) => translate('palette', 'action.news', l)),
+        syn: ACTION_SYNONYMS.news,
+      }),
+    });
     // Yig‘iladigan yon menyu faqat keng ekranda bor — telefonda bu amal hech narsa qilmasdi
     if (wideScreen) {
       const railKey = rail ? 'action.railExpand' : 'action.railCollapse';

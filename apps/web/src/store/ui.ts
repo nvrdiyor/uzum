@@ -9,6 +9,17 @@ const PERIOD_KEY = 'sq-period';
 const STORE_KEY = 'sq-store';
 const RAIL_KEY = 'sq-rail';
 const COMPARE_KEY = 'sq-compare';
+const BASIS_KEY = 'sq-basis';
+
+/**
+ * Pul sahifalarida sotuv qaysi sanaga yoziladi — server lib/period.ts
+ * `DateBasis` bilan bir xil qiymatlar: 'order' — buyurtma sanasi (standart),
+ * 'receipt' — xaridor qabul qilgan sana (Uzum hisoboti va to'lovlari kabi).
+ * Hozircha faqat Moliya va Oylik hisobot o'qiydi (2026-10-27).
+ */
+export type DateBasis = 'order' | 'receipt';
+
+export const isDateBasis = (v: unknown): v is DateBasis => v === 'order' || v === 'receipt';
 
 function readTheme(): 'dark' | 'light' {
   try {
@@ -51,6 +62,15 @@ function readCompare(): CompareMode {
   }
 }
 
+function readBasis(): DateBasis {
+  try {
+    const v = localStorage.getItem(BASIS_KEY);
+    return isDateBasis(v) ? v : 'order';
+  } catch {
+    return 'order';
+  }
+}
+
 interface UiState {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
@@ -74,6 +94,13 @@ interface UiState {
    */
   compare: CompareMode;
   setCompare: (c: CompareMode) => void;
+
+  /**
+   * Sotuv sanasi asosi (Moliya va Oylik hisobot). Taqqoslash kabi saqlanadi:
+   * Uzum hisoboti bilan solishtiradigan sotuvchi har safar qayta tanlamasin.
+   */
+  basis: DateBasis;
+  setBasis: (b: DateBasis) => void;
 
   storeId: string;
   setStoreId: (id: string) => void;
@@ -137,6 +164,16 @@ export const useUi = create<UiState>((set, get) => ({
     set({ compare });
   },
 
+  basis: readBasis(),
+  setBasis: (basis) => {
+    try {
+      localStorage.setItem(BASIS_KEY, basis);
+    } catch {
+      /* noop */
+    }
+    set({ basis });
+  },
+
   storeId: readStore(),
   setStoreId: (storeId) => {
     try {
@@ -168,4 +205,17 @@ export function usePeriodQuery(): { from: string; to: string; storeId?: string; 
      */
     ...(compare !== 'prev' ? { compare } : {}),
   };
+}
+
+/**
+ * Pul sahifalari (Moliya, Oylik hisobot) so'rovi: umumiy davr + sotuv sanasi
+ * asosi. `basis` ham `compare` kabi FAQAT standartdan farq qilganda qo'shiladi
+ * — "Buyurtma sanasi" da URL, react-query kaliti va Excel havolasi avvalgidek.
+ * Boshqa sahifalar `usePeriodQuery` dan foydalanadi: Boshqaruv paneli va
+ * mahsulotlar hozircha faqat buyurtma sanasi bo'yicha (2026-10-27).
+ */
+export function useMoneyQuery(): ReturnType<typeof usePeriodQuery> & { basis?: DateBasis } {
+  const q = usePeriodQuery();
+  const basis = useUi((s) => s.basis);
+  return basis !== 'order' ? { ...q, basis } : q;
 }

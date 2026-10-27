@@ -52,8 +52,8 @@
  * saqlangan tarixdan (tarif chegarasi yoki birinchi sinxron) tashqarida
  * bo'lsa signal 'noHistory' — u yerdagi nol "sotuv bo'lmagan" emas, "ma'lumot yo'q".
  *
- * TARIF. Sahifa 'sales_analytics' (Sotuv tahlili, voronka bilan bir oila).
- * Kartalar o'z bo'limining tarifi bilan: "Tez orada tugaydi" — 'planner',
+ * TARIF. Sahifa 'growth_radar' — faqat pullik tarifda, sinovda namuna
+ * (2026-10-27; ilgari 'sales_analytics' edi). Kartalar o'z bo'limining tarifi bilan: "Tez orada tugaydi" — 'planner',
  * "Qaytarish o'sdi" — 'returns_report'. Faqat ko'rish uchun ('preview',
  * sinovdagi Rejalashtiruvchi) — eng muhim uchtasi, Rejalashtiruvchining o'z
  * namunasidagi kabi (`limited`); yopiq ('off') — 'locked': nechta SKU ekani
@@ -304,7 +304,9 @@ function gated<R>(access: ReturnType<typeof featureAccess>, rows: R[], count = r
 
 router.get(
   '/',
-  requireFeature('sales_analytics'),
+  // Faqat pullik tarifda: sinovda 402 'preview' — sayt namunani ko'rsatadi (2026-10-27).
+  // Ilgari sales_analytics edi va radar sinovda ham to'liq ochiq turardi
+  requireFeature('growth_radar'),
   ah(async (req, res) => {
     const { company, plan } = companyCtx(req);
     const q = req.query as Record<string, string | undefined>;

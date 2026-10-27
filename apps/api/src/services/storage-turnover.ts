@@ -487,8 +487,13 @@ export async function getStorageTurnover(
       title: info.title,
       imageUrl: info.imageUrl,
       storeId: info.storeId,
-      // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+      /*
+       * Sahifa jadvalni o'zi qidiradi — shtrix-kod, Uzum ID va mahsulot nomi
+       * bo'yicha ham topsin (shared search.ts). Mahsulot nomisiz variant nomli
+       * («ЧЕРН») SKU sahifada topilmay, `?search=` bilan esa topilardi (2026-10-27).
+       */
       productId: info.productId,
+      productTitle: info.productTitle,
       uzumProductId: info.uzumProductId,
       barcode: info.barcode,
       uzumSkuId: info.uzumSkuId,

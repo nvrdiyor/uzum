@@ -35,6 +35,7 @@ import {
 } from '@/components/ui';
 import { ChartCard, TrendChart, type CompareDef, type SeriesDef } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { BasisSwitch } from '@/components/finance/BasisSwitch';
 import { NetProfitHero } from '@/components/finance/NetProfitHero';
 import { PeriodChip } from '@/components/finance/PeriodChip';
 import { PnlTable } from '@/components/finance/PnlTable';
@@ -47,7 +48,7 @@ import { DataFreshness } from '@/components/trust/DataFreshness';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { api } from '@/lib/api';
 import { CHART_COLORS, COST_COLORS } from '@/lib/theme';
-import { usePeriodQuery } from '@/store/ui';
+import { useMoneyQuery } from '@/store/ui';
 import { cn, downloadBlob } from '@/lib/utils';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 
@@ -181,6 +182,9 @@ registerNamespace('finance', {
     'flow.short.operatingProfit': 'Sof foyda',
     'flow.hint.payout':
       'Tushum − komissiya − yetkazish: Uzum shu sotuvlar uchun hisobingizga o‘tkazadigan pul (yo‘ldagi buyurtmalar ham kiradi)',
+    // Qabul sanasi rejimida yo'ldagi buyurtma hisobda yo'q — izoh ham shuni aytadi (ProfitWaterfall)
+    'flow.hint.payout.receipt':
+      'Tushum − komissiya − yetkazish: xaridor qabul qilgan sotuvlar uchun Uzum hisobingizga o‘tkazadigan pul (yo‘ldagi buyurtmalar kirmaydi)',
     'flow.hint.itemOther':
       '«Tannarx» sahifasida har dona uchun kiritilgan xarajat: qadoq, bojxona, yo‘l haqi. Uzum uni to‘lovdan ayirmaydi',
     'flow.hint.marketingUzum': 'Uzum hisobingizdan yechgan reklama: buyurtmalarni ko‘paytirish va boshqa xizmatlar',
@@ -330,6 +334,8 @@ registerNamespace('finance', {
     'flow.short.operatingProfit': 'Чистая прибыль',
     'flow.hint.payout':
       'Выручка − комиссия − доставка: сколько Uzum перечислит на ваш счёт за эти продажи (включая заказы в пути)',
+    'flow.hint.payout.receipt':
+      'Выручка − комиссия − доставка: сколько Uzum перечислит на ваш счёт за полученные покупателями товары (заказы в пути не входят)',
     'flow.hint.itemOther':
       'Расходы на единицу со страницы «Себестоимость»: упаковка, таможня, дорога. Uzum не вычитает их из выплаты',
     'flow.hint.marketingUzum': 'Реклама, которую Uzum списал с вашего счёта: продвижение заказов и другие услуги',
@@ -478,6 +484,8 @@ registerNamespace('finance', {
     'flow.short.operatingProfit': 'Net profit',
     'flow.hint.payout':
       'Revenue − commission − delivery: what Uzum pays into your account for these sales (orders in transit included)',
+    'flow.hint.payout.receipt':
+      'Revenue − commission − delivery: what Uzum pays into your account for items buyers received (orders in transit not included)',
     'flow.hint.itemOther':
       'Per-unit extra cost from the Cost price page: packaging, customs, freight. Uzum does not deduct it from the payout',
     'flow.hint.marketingUzum': 'Ads Uzum charged to your account: order boosting and other services',
@@ -508,7 +516,8 @@ export default function Finance() {
   const t = useT('finance');
   const tc = useT('common');
   const f = useFormat();
-  const q = usePeriodQuery();
+  // Davr + sotuv sanasi asosi (`basis` faqat "Qabul sanasi" tanlanganda) — ikkala so'rov ham shu bilan
+  const q = useMoneyQuery();
   const wide = useMediaQuery('(min-width: 1280px)');
   const [exporting, setExporting] = useState(false);
 
@@ -708,7 +717,10 @@ export default function Finance() {
   return (
     <>
       {header}
-      <FilterBar />
+      {/* Sana asosi davr tanlagichi yonida — u ham raqamlarning QAYSI kunlardan ekanini belgilaydi */}
+      <FilterBar>
+        <BasisSwitch />
+      </FilterBar>
 
       <PlanGate feature="unit_economics">
         {finance.isError ? (

@@ -46,10 +46,11 @@ import {
   type TimeSeriesPoint,
   type TopProductRow,
 } from '@savdoiq/shared';
-import type { ResolvedRange } from '../lib/period.js';
-import { getDailySeries, getLatestStocks, getSkuCatalog, type SkuInfo } from './common.js';
+import type { DateBasis, ResolvedRange } from '../lib/period.js';
+import { getLatestStocks, getSkuCatalog, type SkuInfo } from './common.js';
 import { getAdFeesBySku, getPeriodCosts, getPeriodCostsByDay } from './pnl.js';
-import { splitLine, summarizeReturns } from './returns.js';
+import { returnsRate, splitLine, summarizeReturns } from './returns.js';
+import { getDailySeriesByBasis, lineDate, lineDateWhere, orderDateWhere } from './sale-basis.js';
 
 // ─────────────────────────── Doimiylar ───────────────────────────
 
@@ -179,6 +180,12 @@ interface ReportSnapshot {
   bySku: Map<string, { units: number; revenue: number; netProfit: number }>;
   /** Davrda buyurtma qilingan va taqdiri hal bo'lgan dona — yakuniylik uchun */
   fate: { ordered: number; completed: number };
+  /**
+   * Qabul sanasi rejimidagi qaytarish ulushi asosi (splitLine): davrda xaridor
+   * qabul qilgan buyurtmalardagi tirik va qaytgan dona. Buyurtma sanasi
+   * rejimida ishlatilmaydi — u yerda Boshqaruv paneli kartasi (summarizeReturns).
+   */
+  received: { sold: number; returned: number };
 }
 
 /**
@@ -188,6 +195,9 @@ interface ReportSnapshot {
  * Uzum'dan kelgan, lekin katalogda topilmagan tovarning sotuvi ham haqiqiy
  * pul. Ilgari bu yerda `aggregateSales` ishlatilardi va u SKU'siz satrni
  * tashlab yuborardi — hisobot tushumi paneldagidan kam chiqardi.
+ *
+ * `basis` — pozitsiya davrga qaysi sana bilan tushadi (services/sale-basis.ts).
+ * Davr xarajatlari ikkala rejimda ham o'z sanasida (2026-10-27).
  */
 async function collectSnapshot(
   companyId: string,
@@ -196,11 +206,12 @@ async function collectSnapshot(
   toExclusive: Date,
   storeId: string | undefined,
   now: Date,
+  basis: DateBasis,
 ): Promise<ReportSnapshot> {
   const [items, costs] = await Promise.all([
     storeIds.length
       ? prisma.orderItem.findMany({
-          where: { orderedAt: { gte: from, lt: toExclusive }, order: { storeId: { in: storeIds } } },
+          where: lineDateWhere(storeIds, from, toExclusive, basis, now),
           select: {
             skuId: true,
             qty: true,
@@ -234,6 +245,8 @@ async function collectSnapshot(
   let itemTax = 0;
   let ordered = 0;
   let completed = 0;
+  let receivedSold = 0;
+  let receivedReturned = 0;
   const bySku = new Map<string, { units: number; revenue: number; netProfit: number }>();
   const nowMs = now.getTime();
 
@@ -243,11 +256,21 @@ async function collectSnapshot(
      * splitLine): bekor qilingan va qaytgan dona taqdiri hal bo'lgan, tirik
      * dona esa xaridor QABUL QILGANDAN keyingina. Kelajakdagi `deliveredAt`
      * (demo ma'lumot) hali yo'lda sanaladi.
+     *
+     * Qabul sanasi rejimida bu yerga faqat qabul qilingan buyurtmalar keladi
+     * (lineDateWhere: deliveredAt ≤ hozir) — har dona `handed`, ya'ni
+     * yakunlangan ulushi doim 100%. Bu ATAYLAB: bu rejimda yo'ldagi tovar
+     * hisobotda umuman yo'q, shuning uchun "oraliq" bo'lishining yagona sababi
+     * — davr hali tugamagani (finalityOf, 'current'). Qabul qilingan tovar
+     * keyin qaytishi mumkinligi buyurtma sanasidagi "yakuniy" kabi hisobga
+     * olinmaydi: u yerda ham qabul qilingan dona yakunlangan sanaladi.
      */
     const fate = splitLine(it);
     ordered += fate.live + fate.lost;
     const handed = it.order.deliveredAt !== null && it.order.deliveredAt.getTime() <= nowMs;
     completed += fate.lost + (handed ? fate.live : 0);
+    if (handed) receivedSold += fate.live;
+    if (fate.kind === 'returned') receivedReturned += fate.lost;
 
     // Bekor qilingan va qaytarilgan pozitsiyalar pulda hisoblanmaydi
     if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
@@ -304,10 +327,18 @@ async function collectSnapshot(
     netProfit: itemProfit - costs.total,
     bySku,
     fate: { ordered, completed },
+    received: { sold: receivedSold, returned: receivedReturned },
   };
 }
 
-/** Yakuniy yoki oraliq: davr tugaganmi va buyurtma qilingan donaning qanchasi taqdiri hal bo'lgan */
+/**
+ * Yakuniy yoki oraliq: davr tugaganmi va buyurtma qilingan donaning qanchasi taqdiri hal bo'lgan.
+ *
+ * Qabul sanasi rejimida `fate` faqat qabul qilingan buyurtmalardan
+ * (collectSnapshot) — yakunlangan ulushi 100%, 'in_transit' chiqmaydi: hisobot
+ * davr tugashi bilan yakuniy. Bu rejimning ma'nosi ham shu — Uzum oyni qabul
+ * sanasi bo'yicha yopadi, keyingi oy qabullari keyingi oyga yoziladi.
+ */
 function finalityOf(period: Period, fate: ReportSnapshot['fate'], now: Date): MonthlyReportFinality {
   const done = Math.min(fate.completed, fate.ordered);
   const completionPct = fate.ordered > 0 ? pct(done, fate.ordered) : 100;
@@ -335,8 +366,22 @@ interface OrderStats {
   byDelivery: Map<DeliveryType, { orders: number; success: number }>;
 }
 
-/** Buyurtma darajasidagi statistika (holat va yetkazish turi kesimida) */
-async function collectOrderStats(storeIds: string[], from: Date, toExclusive: Date): Promise<OrderStats> {
+/**
+ * Buyurtma darajasidagi statistika (holat va yetkazish turi kesimida).
+ *
+ * Qabul sanasi rejimida — davrda xaridor QABUL QILGAN buyurtmalar (pul
+ * raqamlari bilan bitta to'plam, services/sale-basis.ts): o'rtacha chek ham,
+ * "Jami / Muvaffaqiyatli" ham shulardan. Bekor qilingan buyurtma qabul
+ * qilinmaydi, shuning uchun bu rejimda "bekor" deyarli doim 0; "qaytarilgan" —
+ * qabul qilib, keyin qaytarilgani (2026-10-27).
+ */
+async function collectOrderStats(
+  storeIds: string[],
+  from: Date,
+  toExclusive: Date,
+  basis: DateBasis,
+  now: Date,
+): Promise<OrderStats> {
   const stats: OrderStats = {
     total: 0,
     success: 0,
@@ -348,7 +393,7 @@ async function collectOrderStats(storeIds: string[], from: Date, toExclusive: Da
   if (storeIds.length === 0) return stats;
 
   const rows = await prisma.order.findMany({
-    where: { storeId: { in: storeIds }, orderedAt: { gte: from, lt: toExclusive } },
+    where: orderDateWhere(storeIds, from, toExclusive, basis, now),
     select: { status: true, deliveryType: true },
   });
 
@@ -412,6 +457,8 @@ interface InsightInput {
   categoriesShare: { category: string; revenue: number; share: number }[];
   warehouse: { fbo: number; fboAmount: number; fbs: number; fbsAmount: number };
   daily: TimeSeriesPoint[];
+  /** Sana asosi — qaytarish ulushi matni qaysi to'plamdan ekanini aytadi */
+  basis: DateBasis;
 }
 
 /** Oylik hisobot uchun 3-5 ta xulosa — har biri aniq raqamlar bilan */
@@ -460,9 +507,12 @@ function buildInsights(inp: InsightInput): Insight[] {
   const returnBase = inp.receivedUnits + inp.returnedUnits;
   if (inp.ordersTotal > 0 && (inp.canceled > 0 || inp.returns > 0 || inp.returnedUnits > 0)) {
     const lost = inp.canceled + inp.returns;
+    // Qabul sanasi rejimida ulush panel kartasi emas — davrda qabul qilingan buyurtmalardan (buildMonthlyReport)
+    const rateBase =
+      inp.basis === 'receipt' ? 'dona bo‘yicha, davrda qabul qilingan buyurtmalardan' : 'dona bo‘yicha, Boshqaruv panelidagi kabi';
     const rateText =
       returnBase > 0
-        ? ` Qaytarish ulushi ${num(inp.returnRate, 1)}% (dona bo‘yicha, Boshqaruv panelidagi kabi): xaridorlar ${num(inp.receivedUnits)} dona qabul qildi, ${num(inp.returnedUnits)} dona qaytdi.`
+        ? ` Qaytarish ulushi ${num(inp.returnRate, 1)}% (${rateBase}): xaridorlar ${num(inp.receivedUnits)} dona qabul qildi, ${num(inp.returnedUnits)} dona qaytdi.`
         : ' Qaytarish ulushi hali yo‘q — xaridorlar hali birorta donani qabul qilmagan.';
     out.push({
       id: 'order_quality',
@@ -604,13 +654,19 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
   const period = reportPeriod(range, plan, input.month);
   const from = businessDayStart(period.from);
   const toExclusive = addDays(businessDayStart(period.to), 1);
+  /*
+   * Sana asosi (`?basis=`, lib/period.ts): tushum, foyda, dona, buyurtmalar,
+   * kunlik grafik, top mahsulot va kategoriyalar — hammasi bitta to'plamdan.
+   * Davr xarajatlari va ombor qoldig'i ikkala rejimda bir xil (2026-10-27).
+   */
+  const basis = range.basis;
 
   const [snap, stats, catalog, stocks, series, returnsSummary] = await Promise.all([
-    collectSnapshot(companyId, storeIds, from, toExclusive, range.storeId, now),
-    collectOrderStats(storeIds, from, toExclusive),
+    collectSnapshot(companyId, storeIds, from, toExclusive, range.storeId, now, basis),
+    collectOrderStats(storeIds, from, toExclusive, basis, now),
     getSkuCatalog(storeIds, true),
     getLatestStocks(storeIds),
-    getDailySeries(storeIds, period),
+    getDailySeriesByBasis(storeIds, period, basis),
     /*
      * Qaytarish ulushi — Boshqaruv panelidagi "Qaytarish va bekor qilish"
      * kartasining AYNAN o'zi (routes/returnsSummary.ts → summarizeReturns):
@@ -619,8 +675,14 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
      * barcha buyurtma" deb o'zi hisoblardi va bir oy uchun panel bilan ikki xil
      * foiz chiqardi (2026-10-27). Buyurtma sonlari (bekor/qaytarilgan) — son
      * bo'lib qoladi.
+     *
+     * Qabul sanasi rejimida esa — o'sha formula, lekin davrda QABUL QILINGAN
+     * buyurtmalardan (snap.received): hisobotdagi buyurtma sonlari va "qaytarilgan
+     * buyurtma" ham shu to'plamdan, karta ichida ikki asos aralashmasin.
+     * Olib ketilmagan (qabul qilinmagan) qaytish bu rejimda hech qaysi davrga
+     * tushmaydi — Uzumning qabul sanasi bo'yicha hisobotida ham u yo'q.
      */
-    summarizeReturns(storeIds, from, toExclusive, now),
+    basis === 'order' ? summarizeReturns(storeIds, from, toExclusive, now) : Promise.resolve(null),
   ]);
 
   // Mahsulotga bog'langan reklama to'lovi (mahsulot foydasidan) va davr xarajatlari kunma-kun (grafik uchun)
@@ -695,10 +757,12 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
   // ── Ko'rsatkichlar ──
   // Buyurtmalar bo'yicha (sonlar ulushi) — "Buyurtmalar oqimi"
   const successRate = pct(stats.success, stats.total);
-  // Dona bo'yicha — panel kartasi bilan bir xil son (yuqoridagi summarizeReturns)
-  const returnRate = returnsSummary.returned.rate;
-  const returnedUnits = returnsSummary.returned.qty;
-  const receivedUnits = returnsSummary.soldUnits;
+  // Dona bo'yicha — panel kartasi bilan bir xil son (yuqoridagi summarizeReturns); qabul sanasida — qabul qilinganlardan
+  const returnedUnits = returnsSummary ? returnsSummary.returned.qty : snap.received.returned;
+  const receivedUnits = returnsSummary ? returnsSummary.soldUnits : snap.received.sold;
+  const returnRate = returnsSummary
+    ? returnsSummary.returned.rate
+    : returnsRate('returned', returnedUnits, { soldUnits: receivedUnits, orderedUnits: 0 });
   const grossMargin = pct(snap.grossProfit, snap.revenue);
   const margin = pct(snap.netProfit, snap.revenue);
   const avgCheck = safeDiv(snap.revenue, stats.active);
@@ -737,6 +801,7 @@ export async function buildMonthlyReport(input: MonthlyReportInput): Promise<Mon
     categoriesShare: categories,
     warehouse,
     daily,
+    basis,
   });
 
   return {
@@ -804,12 +869,19 @@ const emptyBucket = (): MonthBucket => ({ revenue: 0, itemProfit: 0, periodCosts
  * bo'yicha foyda − davr xarajatlari. Ilgari bu yerda "tushum − tannarx −
  * kategoriyalar" alohida yig'ilardi va joriy oy ustuni yuqoridagi sof
  * foydadan farq qilishi mumkin edi.
+ *
+ * `basis` — oylar sahifadagi hisobot bilan BITTA sana asosida (`?basis=`):
+ * qabul sanasi rejimida tushum va foyda qabul qilingan oyga yoziladi, davr
+ * xarajatlari esa o'z sanasida. Aks holda joriy oy ustuni sarlavhadagi sof
+ * foydadan, "oldingi oy marjasi" esa hisobotning o'zidan boshqa asosda
+ * chiqardi (2026-10-27).
  */
 export async function collectMonthCompare(
   companyId: string,
   storeIds: string[],
   plan: PlanId,
   storeId?: string,
+  basis: DateBasis = 'order',
 ): Promise<MonthCompareRow[]> {
   const todayIso = toBusinessDate(new Date());
   const today = parseISODate(todayIso);
@@ -846,10 +918,22 @@ export async function collectMonthCompare(
 
   const [items, manualRows, feeRows] = await Promise.all([
     storeIds.length
-      ? prisma.orderItem.findMany({
-          where: { orderedAt: { gte: spanFrom, lt: spanTo }, order: { storeId: { in: storeIds } } },
-          select: { orderedAt: true, revenue: true, netProfit: true, status: true, returnedAt: true },
-        })
+      ? basis === 'receipt'
+        ? prisma.orderItem.findMany({
+            where: lineDateWhere(storeIds, spanFrom, spanTo, basis),
+            select: {
+              orderedAt: true,
+              revenue: true,
+              netProfit: true,
+              status: true,
+              returnedAt: true,
+              order: { select: { deliveredAt: true } },
+            },
+          })
+        : prisma.orderItem.findMany({
+            where: { orderedAt: { gte: spanFrom, lt: spanTo }, order: { storeId: { in: storeIds } } },
+            select: { orderedAt: true, revenue: true, netProfit: true, status: true, returnedAt: true },
+          })
       : Promise.resolve([]),
     prisma.expense.findMany({
       where: {
@@ -872,7 +956,8 @@ export async function collectMonthCompare(
   for (const it of items) {
     // Bekor qilingan va qaytarilgan pozitsiyalar pulda hisoblanmaydi
     if (it.status === 'canceled' || it.status === 'returned' || it.returnedAt) continue;
-    const bucket = buckets.get(monthKeyOf(it.orderedAt));
+    // Oy — sana asosi bo'yicha: qabul sanasida xaridor olgan oy (services/sale-basis.ts)
+    const bucket = buckets.get(monthKeyOf(lineDate(it, basis)));
     if (!bucket) continue;
     bucket.revenue += it.revenue;
     bucket.itemProfit += it.netProfit;

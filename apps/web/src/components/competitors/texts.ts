@@ -11,6 +11,10 @@ registerNamespace('competitors', {
     manualHint:
       'Raqobatchi narxini o‘zingiz ko‘rib, shu yerga yozasiz. SavdoIQ havolani ochmaydi, yuklab olmaydi va Uzum sahifalarini o‘qimaydi — faqat siz kiritgan raqamni zararsizlik narxingiz va marjangiz bilan solishtiradi.',
     'card.title': 'Raqobatchilar narxi',
+    // Faqat pullik tarifda (price_map, 2026-10-27) — sinovda karta o'rnida shu blok
+    'locked.badge': 'Standart va VIP’da',
+    'locked.hint':
+      'Raqobatchi narxlarini kiritib, ularni o‘z narxingiz, zararsizlik narxi va marjangiz bilan solishtirish — hamda Narxlar xaritasi — Standart va VIP tariflarida.',
     'card.add': 'Raqobatchi qo‘shish',
     'card.limit': 'Bitta mahsulotga ko‘pi bilan {n} ta raqobatchi',
     'card.map': 'Narxlar xaritasi',
@@ -102,6 +106,9 @@ registerNamespace('competitors', {
     manualHint:
       'Цену конкурента вы смотрите сами и вписываете сюда. SavdoIQ не открывает и не скачивает ссылку и не читает страницы Uzum — только сравнивает введённую вами цифру с вашей ценой безубыточности и маржой.',
     'card.title': 'Цены конкурентов',
+    'locked.badge': 'В Стандарте и VIP',
+    'locked.hint':
+      'Вносить цены конкурентов и сравнивать их со своей ценой, точкой безубыточности и маржой — а также Карта цен — доступно на тарифах Стандарт и VIP.',
     'card.add': 'Добавить конкурента',
     'card.limit': 'Не больше {n} конкурентов на товар',
     'card.map': 'Карта цен',
@@ -193,6 +200,9 @@ registerNamespace('competitors', {
     manualHint:
       'You look up the competitor’s price and type it in here. SavdoIQ never opens or downloads the link and does not read Uzum pages — it only compares the number you entered with your break-even price and margin.',
     'card.title': 'Competitor prices',
+    'locked.badge': 'On Standard and VIP',
+    'locked.hint':
+      'Entering competitor prices and comparing them with your price, break-even and margin — plus the Price map — are available on the Standard and VIP plans.',
     'card.add': 'Add competitor',
     'card.limit': 'Up to {n} competitors per product',
     'card.map': 'Price map',

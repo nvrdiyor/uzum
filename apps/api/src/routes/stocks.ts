@@ -24,7 +24,8 @@ import {
   type SalesStockRow,
   type SkuQuery,
   type SkuSearchKeys,
-  type StockRow,
+  type StockStatus,
+  type StockStatusStat,
   type StocksResponse,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
@@ -46,8 +47,8 @@ import {
   type StockInfo,
 } from '../services/common.js';
 import { aggregateSalesNet } from '../services/pnl.js';
-import { loadPlanData, parseStockStatus, planSku, planSkuSummary, planStockStatus } from '../services/plan.js';
-import { estimateStockValue, stockLineValue } from '../services/stock-value.js';
+import { loadPlanData, parseStockStatus, planSku, planStockStatus } from '../services/plan.js';
+import { compareStockRows, filterStockList, loadStockList } from '../services/stock-rows.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -104,28 +105,22 @@ function matches(info: SkuInfo, query: SkuQuery | null): boolean {
  * Holat filtri (?status=critical|low|ok|excess|dead) — services/plan.ts
  * `parseStockStatus`: Excel eksporti (routes/export.ts) ham aynan shuni o'qiydi.
  */
-type StockStatus = StockRow['status'];
 const statusFilter = parseStockStatus;
 
 // ─────────────────────────── GET / — qoldiqlar ───────────────────────────
 
-const STOCK_SORT: Record<string, (r: StockRow) => SortValue> = {
-  total: (r) => r.total,
-  fbo: (r) => r.fbo,
-  fbs: (r) => r.fbs,
-  own: (r) => r.own,
-  reserved: (r) => r.reserved,
-  inTransit: (r) => r.inTransit,
-  costValue: (r) => r.costValue,
-  retailValue: (r) => r.retailValue,
-  payoutValue: (r) => r.payoutValue,
-  profitValue: (r) => r.profitValue ?? Number.NEGATIVE_INFINITY,
-  avgDaily: (r) => r.avgDaily,
-  daysLeft: (r) => r.daysLeft ?? Number.MAX_SAFE_INTEGER,
-  title: (r) => r.title,
-  sku: (r) => r.sku,
-};
-
+/*
+ * Qidiruv, holat, tartib va sahifalash — SERVERDA (2026-10-27). Ilgari sahifa
+ * 500 qatorni (pageSize chegarasi) olib, qolganini o'zi qilardi: 500 dan
+ * ortiq SKU'li do'konda jadval va holat sonlari kesilardi, Excel esa 10 000
+ * tagacha berardi — ikkalasi farq qilardi. Chegarani 10 000 ga ko'tarish
+ * o'rniga sahifalash tanlandi: bir qator JSON'da ~0,8 KB (reja xulosasi
+ * bilan, 634 SKU'da o'lchangan), 10 000 SKU — ~8 MB javob va har qidiruvda
+ * shuncha qatorni brauzerda filtrlash; endi har so'rov 25 qator (~21 KB).
+ * Server baribir barcha SKU'ni hisoblaydi (634 SKU — ~0,2 s) — KPI va holat
+ * sonlari butun ombor bo'yicha bo'lishi shart.
+ * Qatorlar va tartib Excel bilan BITTA manbadan (services/stock-rows.ts).
+ */
 router.get(
   '/',
   requireFeature('stocks_fbo_fbs'),
@@ -136,104 +131,62 @@ router.get(
     const onlyStatus = statusFilter(q.status);
 
     const storeIds = await getStoreIds(company.id, range.storeId);
-    const [catalog, planData, avgDaily, lastSale] = await Promise.all([
-      getSkuCatalog(storeIds, true),
-      /*
-       * Yon paneldagi "Tavsiya" — Rejalashtiruvchining o'zi (services/plan.ts,
-       * kompaniyaning yetkazish muddati). Ilgari sayt uni o'zi hisoblardi:
-       * 30 + 7 kun qat'iy, oddiy o'rtacha bilan, yo'ldagi tovarsiz — son
-       * Rejalashtiruvchidagidan farq qilardi (2026-10-24).
-       */
-      loadPlanData(company.id, storeIds),
-      getAvgDaily(storeIds, AVG_WINDOW),
-      getLastSaleDates(storeIds),
-    ]);
-    const stocks = planData.stocks;
+    const all = await loadStockList(company.id, company.taxRate, storeIds);
 
-    // Hammasi sotilsa qancha tushadi — komissiya va logistika SKU'ning haqiqiy sotuvidan
-    const { lines } = await estimateStockValue(
-      storeIds,
-      [...catalog.values()],
-      (skuId) => stocks.get(skuId)?.total ?? 0,
-      company.taxRate,
-    );
-
-    const query = parseSkuQuery(range.search);
-    const rows: StockRow[] = [];
-
-    for (const [skuId, info] of catalog) {
-      if (!matches(info, query)) continue;
-      const st = stocks.get(skuId) ?? EMPTY_STOCK;
-      const avg = avgDaily.get(skuId) ?? 0;
-      /*
-       * "Yetadi" va holat — Rejalashtiruvchining o'zi (planStockStatus): yetkazish
-       * muddati, yo'ldagi tovar va tugab turgan kunlarsiz tezlik bilan. Ilgari
-       * jadval 7/14 kunlik qat'iy chegara va oddiy o'rtacha bilan hisoblardi,
-       * shu qatorning yon panelidagi tavsiya esa Rejalashtiruvchidan kelardi:
-       * yetkazish 14 kun bo'lsa 12 kunlik SKU jadvalda "Tugayapti", tavsiyada
-       * esa shoshilinch edi (2026-10-24). Sotuvi yo'q va arxivdagi SKU — eski
-       * qoldiq qoidasi (harakatsiz, tugagan).
-       */
-      const row = planSku(planData, skuId);
-      const state = planStockStatus(
-        row,
-        stockState(st.total, avg, daysSince(lastSale.get(skuId)), daysSince(info.createdAt)),
-      );
-      if (onlyStatus && state.status !== onlyStatus) continue;
-      const line = lines.get(skuId);
-      const value = stockLineValue(info, st.total, line, company.taxRate);
-      const planned = planSkuSummary(planData, skuId);
-
-      rows.push({
-        skuId,
-        sku: info.sku,
-        title: info.title,
-        imageUrl: info.imageUrl,
-        storeTitle: info.storeTitle,
-        // Sahifa jadvalni o'zi qidiradi — shtrix-kod, Uzum ID va mahsulot nomi bo'yicha ham topsin (shared search.ts)
-        productId: info.productId,
-        productTitle: info.productTitle,
-        uzumProductId: info.uzumProductId,
-        barcode: info.barcode,
-        uzumSkuId: info.uzumSkuId,
-        fbo: st.fbo,
-        fbs: st.fbs,
-        own: st.own,
-        reserved: st.reserved,
-        inTransit: st.inTransit,
-        total: st.total,
-        // Tannarx bo'yicha qiymat — omborda "muzlab turgan" pul
-        costValue: round(st.total * (info.purchasePrice + info.extraCost)),
-        // Sotuv narxi bo'yicha qiymat — potentsial tushum
-        retailValue: round(st.total * info.price),
-        payoutValue: round(value.payout),
-        payoutPerUnit: round(line?.payoutPerUnit ?? 0),
-        payoutSource: line?.source ?? 'estimate',
-        profitValue: value.profit === null ? null : round(value.profit),
-        // "Yetadi" shu tezlikdan chiqadi — ikkalasi bir manbadan bo'lsin (mahsulot sahifasidagi kabi)
-        avgDaily: row && row.status !== 'no_action' ? row.avgDaily : round(avg, 2),
-        daysLeft: state.daysLeft,
-        status: state.status,
-        ...(planned ? { plan: planned } : {}),
-      });
-    }
-
-    const sorter = STOCK_SORT[range.sort ?? 'costValue'] ?? STOCK_SORT.costValue;
-    applySort(rows, range.order, sorter);
-
+    // KPI kartochkalari — do'kon filtridagi BUTUN ombor: qidiruv va holat ularni o'zgartirmaydi (sahifadagidek)
     let units = 0;
     let costValue = 0;
     let retailValue = 0;
     let payoutValue = 0;
     let profitValue = 0;
     let unitsNoCost = 0;
-    for (const r of rows) {
+    let skuCount = 0;
+    for (const { row: r } of all) {
       units += r.total;
       costValue += r.costValue;
       retailValue += r.retailValue;
       payoutValue += r.payoutValue;
       if (r.profitValue !== null) profitValue += r.profitValue;
       else unitsNoCost += r.total;
+      // Faqat omborda qoldig'i bor SKU sanaladi — KPI jadval bilan mos bo'lsin
+      if (r.total > 0) skuCount += 1;
+    }
+
+    /*
+     * Holatlar kesimi va "eng qimmat 10 SKU" — qidiruvga mos BARCHA SKU
+     * bo'yicha, holat filtridan OLDIN: "Kritik" bosilganda qolgan tugmalar
+     * 0 ga tushmasin ("Sotuv va qoldiq" sahifasidagi qoida).
+     */
+    const searched = filterStockList(all, parseSkuQuery(range.search), null);
+    const byStatus: Record<StockStatus, StockStatusStat> = {
+      critical: { skus: 0, units: 0, costValue: 0 },
+      low: { skus: 0, units: 0, costValue: 0 },
+      ok: { skus: 0, units: 0, costValue: 0 },
+      excess: { skus: 0, units: 0, costValue: 0 },
+      dead: { skus: 0, units: 0, costValue: 0 },
+    };
+    for (const { row } of searched) {
+      const s = byStatus[row.status];
+      s.skus += 1;
+      s.units += row.total;
+      s.costValue += row.costValue;
+    }
+    for (const s of Object.values(byStatus)) s.costValue = round(s.costValue);
+    const topCost = searched
+      .map((x) => x.row)
+      .sort(compareStockRows('costValue', 'desc'))
+      .slice(0, 10)
+      .map((r) => ({ skuId: r.skuId, sku: r.sku, title: r.title, costValue: r.costValue }));
+
+    // Jadval: qidiruv + holat, tanlangan tartib (teng qiymatlar SKU id bo'yicha — sahifalar barqaror)
+    const rows = filterStockList(searched, null, onlyStatus)
+      .map((x) => x.row)
+      .sort(compareStockRows(range.sort, range.order));
+    const filtered = { units: 0, costValue: 0, payoutValue: 0 };
+    for (const r of rows) {
+      filtered.units += r.total;
+      filtered.costValue += r.costValue;
+      filtered.payoutValue += r.payoutValue;
     }
 
     const payload: StocksResponse = {
@@ -241,12 +194,14 @@ router.get(
         units,
         costValue: round(costValue),
         retailValue: round(retailValue),
-        // Faqat omborda qoldig'i bor SKU sanaladi — KPI jadval bilan mos bo'lsin
-        skuCount: rows.filter((r) => r.total > 0).length,
+        skuCount,
         payoutValue: round(payoutValue),
         profitValue: round(profitValue),
         unitsNoCost,
       },
+      byStatus,
+      filtered: { units: filtered.units, costValue: round(filtered.costValue), payoutValue: round(filtered.payoutValue) },
+      topCost,
       rows: paginate(rows, range.page, range.pageSize),
     };
 
@@ -439,6 +394,14 @@ export interface WarehouseStoreTotals {
   volumeL: number;
 }
 
+/** Bir saqlash sxemasidagi qoldiq: dona va tannarx qiymati (pulsiz shablonda costValue — null) */
+export interface WarehouseSchemeTotal {
+  units: number;
+  costValue: number;
+}
+
+const SCHEMES = ['fbo', 'fbs', 'own'] as const;
+
 export interface WarehouseStockResponse {
   totals: {
     skuCount: number;
@@ -451,6 +414,12 @@ export interface WarehouseStockResponse {
     volumeL: number;
     weightKg: number;
     byStore: WarehouseStoreTotals[];
+    /**
+     * FBO / FBS / o'z ombori kesimi — qidiruvga mos BARCHA SKU (o'z omborida
+     * qoldig'i yo'q SKU ham). Ilgari sahifa buni GET /stocks dan 500 qator
+     * olib o'zi yig'ardi: 500 dan ortiq SKU'da kartalar kesilgan edi (2026-10-27).
+     */
+    schemes: Record<(typeof SCHEMES)[number], WarehouseSchemeTotal>;
   };
   rows: Paginated<WarehouseStockRow>;
 }
@@ -488,10 +457,20 @@ router.get(
     const query = parseSkuQuery(range.search);
     const rows: WarehouseStockRow[] = [];
     const byStore = new Map<string, WarehouseStoreTotals>();
+    const schemes = {
+      fbo: { units: 0, costValue: 0 },
+      fbs: { units: 0, costValue: 0 },
+      own: { units: 0, costValue: 0 },
+    } satisfies Record<(typeof SCHEMES)[number], WarehouseSchemeTotal>;
 
     for (const [skuId, info] of catalog) {
       if (!matches(info, query)) continue;
       const st = stocks.get(skuId) ?? EMPTY_STOCK;
+      // Sxemalar kesimi — pastdagi "faqat o'z ombori" filtridan OLDIN: FBO'dagi qoldiq ham shu yerda sanaladi
+      for (const k of SCHEMES) {
+        schemes[k].units += st[k];
+        schemes[k].costValue += st[k] * (info.purchasePrice + info.extraCost);
+      }
       // Bu bo'lim faqat o'z ombori haqida: FBO qoldig'i bu yerda ko'rsatilmaydi
       if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
 
@@ -518,8 +497,13 @@ router.get(
         imageUrl: info.imageUrl,
         storeId: info.storeId,
         storeTitle: info.storeTitle,
-        // Sahifa jadvalni o'zi qidiradi — shtrix-kod va Uzum ID bo'yicha ham topsin (shared search.ts)
+        /*
+         * Sahifa jadvalni o'zi qidiradi — shtrix-kod, Uzum ID va mahsulot nomi
+         * bo'yicha ham topsin (shared search.ts). Mahsulot nomisiz variant nomli
+         * («ЧЕРН») SKU sahifada topilmay, `?search=` bilan esa topilardi (2026-10-27).
+         */
         productId: info.productId,
+        productTitle: info.productTitle,
         uzumProductId: info.uzumProductId,
         barcode: info.barcode,
         uzumSkuId: info.uzumSkuId,
@@ -593,6 +577,11 @@ router.get(
         byStore: [...byStore.values()]
           .map((s) => ({ ...s, costValue: round(s.costValue), volumeL: round(s.volumeL, 2) }))
           .sort((a, b) => b.costValue - a.costValue),
+        schemes: {
+          fbo: { units: schemes.fbo.units, costValue: round(schemes.fbo.costValue) },
+          fbs: { units: schemes.fbs.units, costValue: round(schemes.fbs.costValue) },
+          own: { units: schemes.own.units, costValue: round(schemes.own.costValue) },
+        },
       },
       rows: paginate(rows, range.page, range.pageSize),
     };

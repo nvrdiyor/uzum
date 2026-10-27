@@ -458,8 +458,11 @@ export async function getExpenses(
  * kunlarga ajratish ham. Seriya bugundan nariga o'tmaydi: "shu oy"
  * tanlanganda oy oxirigacha nol kunlar chizilsa, grafik har doim nolga
  * qulagandek ko'rinardi.
+ *
+ * Eksport: qabul sanasi bo'yicha seriya (services/sale-basis.ts) ham AYNAN shu
+ * kunlar bilan chiziladi — ikki rejimda grafik o'qi bir xil (2026-10-27).
  */
-function seriesWindow(period: Period): { from: Date; to: Date; keys: string[] } {
+export function seriesWindow(period: Period): { from: Date; to: Date; keys: string[] } {
   const from = businessDayStart(period.from);
   const tomorrow = addDays(businessDayStart(toBusinessDate(new Date())), 1);
   const periodEnd = addDays(businessDayStart(period.to), 1);

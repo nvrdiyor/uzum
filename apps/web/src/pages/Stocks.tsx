@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Boxes, Download, Gauge, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from '@/components/icons';
-import { matchesSkuQuery, type StockRow, type StocksResponse } from '@savdoiq/shared';
+import type { StockRow, StocksResponse } from '@savdoiq/shared';
 import {
   Button,
   Card,
@@ -19,7 +19,8 @@ import {
   toast,
   type Column,
 } from '@/components/ui';
-import { SkuSearchInput, useSkuQuery } from '@/components/products/SkuSearchInput';
+import { SkuSearchInput } from '@/components/products/SkuSearchInput';
+import { useDebounced } from '@/components/sales/useDebounced';
 import { ZeroAware } from '@/components/ui/ZeroAware';
 import { BarsChart, CHART_COLORS } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
@@ -202,8 +203,14 @@ registerNamespace('stocks', {
 });
 
 type StatusFilter = 'all' | StockState;
+type Sort = { key: string; dir: 'asc' | 'desc' };
 
 const PAGE_SIZE = 25;
+
+/** Jadval ustuni → serverdagi `?sort=` kaliti (services/stock-rows.ts STOCK_SORT); qolganlari bir xil nomda */
+const SERVER_SORT: Record<string, string> = { product: 'title' };
+
+const NO_STAT = { skus: 0, units: 0, costValue: 0 };
 
 /*
  * Kataklar orasi 20 px (DataTable'ning px-5 o'rniga) — Sotuv va qoldiq
@@ -232,6 +239,7 @@ export default function Stocks() {
   const [status, setStatus] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<Sort | null>(null);
   const [active, setActive] = useState<StockRow | null>(null);
   const [exporting, setExporting] = useState(false);
   /*
@@ -242,68 +250,62 @@ export default function Stocks() {
   const money = useSeesMoney();
   const canExport = useCanFetch('/export/stocks');
 
+  /*
+   * Qidiruv, holat, tartib va sahifalash — SERVERDA (GET /stocks). Ilgari
+   * sahifa 500 qatorni olib, qolganini o'zi qilardi: 500 dan ortiq SKU'li
+   * do'konda jadval va holat sonlari kesilib, 10 000 qatorgacha bo'lgan Excel
+   * bilan farq qilardi (2026-10-27). Qidiruv qoidasi o'zgarmadi (shared
+   * search.ts: nom, mahsulot nomi, SKU kodi, shtrix-kod, Uzum ID, havola) —
+   * endi uni server qo'llaydi. KPI kartochkalari — butun ombor; taqsimot,
+   * tugmalardagi son va "eng qimmat 10 SKU" — qidiruvga mos barcha SKU;
+   * jadval va uning oyog'i — qidiruv + holat, barcha sahifalar bo'yicha.
+   */
+  const debouncedSearch = useDebounced(search.trim());
+  const filters = {
+    ...q,
+    status: status === 'all' ? undefined : status,
+    search: debouncedSearch || undefined,
+    sort: sort ? (SERVER_SORT[sort.key] ?? sort.key) : undefined,
+    order: sort?.dir,
+  };
+
+  // Davr yoki do'kon almashsa — birinchi sahifa (qidiruv, holat va tartib o'z tugmasida qaytaradi)
+  useEffect(() => {
+    setPage(1);
+  }, [q.from, q.to, q.storeId]);
+
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['stocks', q],
-    queryFn: () => api.get<StocksResponse>('/stocks', { ...q, page: 1, pageSize: 500 }),
+    queryKey: ['stocks', filters, page],
+    queryFn: () => api.get<StocksResponse>('/stocks', { ...filters, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData,
   });
 
-  const allRows = useMemo<StockRow[]>(() => data?.rows?.items ?? [], [data]);
+  const pageRows = useMemo<StockRow[]>(() => data?.rows?.items ?? [], [data]);
+  const stats = data?.byStatus;
 
-  /*
-   * Qidiruv shu yerda (yuklangan 500 qator ichida), lekin serverdagi BILAN
-   * BIR XIL qoida (shared search.ts): nom, SKU kodi, shtrix-kod, Uzum SKU /
-   * mahsulot ID'si yoki uzum.uz havolasi — qator kalitlari serverdan keladi.
-   * Ilgari faqat nom va SKU kodi edi (2026-10-24). KPI kartochkalari
-   * qidiruvga bog'liq emas (butun ombor), taqsimot va jadval — qidiruv bo'yicha.
-   * Mahsulot nomi ham — server skuInfoMatches bilan AYNAN bir xil maydonlar:
-   * u yo'qligida variant nomli («ЧЕРН») SKU sahifada topilmay, Excel'da
-   * chiqardi (2026-10-27).
-   */
-  const query = useSkuQuery(search);
-  const searched = useMemo(() => {
-    if (!query) return allRows;
-    return allRows.filter((r) =>
-      matchesSkuQuery(
-        query,
-        { id: r.skuId, sku: r.sku, title: r.title, barcode: r.barcode, uzumSkuId: r.uzumSkuId },
-        { id: r.productId, title: r.productTitle, uzumProductId: r.uzumProductId },
-      ),
-    );
-  }, [allRows, query]);
+  // Ro'yxat qisqarib, joriy sahifa oxirgisidan keyin qolsa — oxirgi sahifaga (server bo'sh sahifa qaytaradi)
+  const lastPage = data?.rows?.pages;
+  useEffect(() => {
+    if (lastPage !== undefined && page > lastPage) setPage(lastPage);
+  }, [page, lastPage]);
 
   const counts = useMemo(() => {
-    const map: Record<StatusFilter, number> = { all: searched.length, critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
-    searched.forEach((r) => {
-      map[r.status] += 1;
-    });
+    const map: Record<StatusFilter, number> = { all: 0, critical: 0, low: 0, ok: 0, excess: 0, dead: 0 };
+    for (const s of STOCK_STATES) {
+      map[s] = stats?.[s]?.skus ?? 0;
+      map.all += map[s];
+    }
     return map;
-  }, [searched]);
-
-  const filtered = useMemo(
-    () => (status === 'all' ? searched : searched.filter((r) => r.status === status)),
-    [searched, status],
-  );
-
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, pages);
-  const pageRows = useMemo(
-    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filtered, safePage],
-  );
+  }, [stats]);
 
   /** Holatlar kesimi: SKU soni, dona va tannarx qiymati (ilgari halqa faqat donani ko'rsatardi) */
   const byStatus = useMemo(
     () =>
       STOCK_STATES.map((s) => {
-        const list = searched.filter((r) => r.status === s);
-        return {
-          status: s,
-          skus: list.length,
-          units: list.reduce((sum, r) => sum + r.total, 0),
-          value: list.reduce((sum, r) => sum + (r.costValue ?? 0), 0),
-        };
+        const x = stats?.[s] ?? NO_STAT;
+        return { status: s, skus: x.skus, units: x.units, value: x.costValue ?? 0 };
       }),
-    [searched],
+    [stats],
   );
 
   /*
@@ -312,27 +314,16 @@ export default function Stocks() {
    * ko'rinmasdi. Endi variant (yoki SKU) nom yonida to'liq turadi.
    */
   const topCost = useMemo(
-    () =>
-      [...searched]
-        .sort((a, b) => b.costValue - a.costValue)
-        .slice(0, 10)
-        .map((r) => ({ ...splitVariant(r.title, r.sku), value: r.costValue })),
-    [searched],
+    () => (data?.topCost ?? []).map((r) => ({ ...splitVariant(r.title, r.sku), value: r.costValue ?? 0 })),
+    [data],
   );
 
-  const visibleTotals = useMemo(
-    () =>
-      filtered.reduce(
-        (acc, r) => {
-          acc.total += r.total;
-          acc.costValue += r.costValue ?? 0;
-          acc.payoutValue += r.payoutValue ?? 0;
-          return acc;
-        },
-        { total: 0, costValue: 0, payoutValue: 0 },
-      ),
-    [filtered],
-  );
+  // Jadval oyog'i — filtrlangan BARCHA qatorlar (faqat joriy sahifa emas)
+  const visibleTotals = {
+    total: data?.filtered?.units ?? 0,
+    costValue: data?.filtered?.costValue ?? 0,
+    payoutValue: data?.filtered?.payoutValue ?? 0,
+  };
 
   const totals = data?.totals;
 
@@ -340,15 +331,12 @@ export default function Stocks() {
     setExporting(true);
     try {
       /*
-       * Fayl — jadvalning o'zi: do'kon, holat VA qidiruv (server o'sha umumiy
-       * qoida bilan filtrlaydi). Ilgari qidiruv yuborilmasdi: "naushnik"
+       * Fayl — jadvalning o'zi: do'kon, holat, qidiruv VA tartib (server o'sha
+       * qatorlarni o'sha tartibda beradi, services/stock-rows.ts) — faqat
+       * barcha sahifalar bilan. Ilgari qidiruv yuborilmasdi: "naushnik"
        * qidirilgan jadvaldan Excel bosilsa, faylda butun ombor chiqardi (2026-10-27).
        */
-      const blob = await api.blob('/export/stocks', {
-        ...q,
-        status: status === 'all' ? undefined : status,
-        search: search.trim() || undefined,
-      });
+      const blob = await api.blob('/export/stocks', filters);
       downloadBlob(blob, `stocks-${q.from}-${q.to}.xlsx`);
       toast.success(t('export.done'));
     } catch {
@@ -602,7 +590,7 @@ export default function Stocks() {
                   <CardBody>
                     {isLoading ? (
                       <SkeletonRows rows={5} />
-                    ) : searched.length === 0 ? (
+                    ) : counts.all === 0 ? (
                       <EmptyState icon={<Boxes className="h-6 w-6" />} title={tc('common.noData')} />
                     ) : (
                       <StatusBreakdown
@@ -696,6 +684,12 @@ export default function Stocks() {
                     onRowClick={(r) => setActive(r)}
                     density="compact"
                     stickyFirstColumn
+                    // Tartib serverda — butun ro'yxat bo'yicha, faqat joriy 25 qator emas
+                    sort={sort}
+                    onSort={(next) => {
+                      setSort(next);
+                      setPage(1);
+                    }}
                     empty={
                       <EmptyState
                         icon={<PackageSearch className="h-6 w-6" />}
@@ -704,9 +698,9 @@ export default function Stocks() {
                       />
                     }
                     pagination={{
-                      page: safePage,
-                      pages,
-                      total: filtered.length,
+                      page: data?.rows.page ?? page,
+                      pages: data?.rows.pages ?? 1,
+                      total: data?.rows.total ?? 0,
                       pageSize: PAGE_SIZE,
                       onPage: setPage,
                     }}

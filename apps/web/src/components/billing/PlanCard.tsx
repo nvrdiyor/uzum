@@ -4,11 +4,11 @@
 
 import { motion } from 'framer-motion';
 import { Check } from '@/components/icons';
-import { planPrice, type FeatureAccess, type FeatureId, type PlanPublic } from '@savdoiq/shared';
+import { planPrice, type PlanPublic } from '@savdoiq/shared';
 import { Button } from '@/components/ui';
 import { useFormat, useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { FEATURE_LABELS, CARD_FEATURES, COMING_SOON_FEATURES } from './features';
+import { CARD_FEATURES, COMING_SOON_FEATURES, rowAccess, rowLabel } from './features';
 import { FeatureLine, LimitRow, PLAN_ICON, SoonChip, historyLimitText } from './atoms';
 
 export type BillingCycle = 'monthly' | 'yearly';
@@ -37,10 +37,6 @@ export function PlanCard({
   const discounted = cycle === 'yearly' && plan.yearlyDiscount > 0;
   const featured = plan.badge === 'popular';
   const best = plan.badge === 'best';
-
-  const accessOf = (id: FeatureId): FeatureAccess => plan.features.find((x) => x.id === id)?.access ?? 'off';
-  const labelOf = (id: FeatureId): string =>
-    FEATURE_LABELS[id]?.[lang] ?? plan.features.find((x) => x.id === id)?.label ?? id;
 
   const cabinets = plan.limits.cabinets >= 100 ? '∞' : f.num(plan.limits.cabinets);
 
@@ -152,8 +148,8 @@ export function PlanCard({
         {/* Imkoniyatlar */}
         <ul className="mt-5 space-y-2.5 border-t border-line pt-5">
           {CARD_FEATURES.map((id) => (
-            <FeatureLine key={id} access={accessOf(id)} previewLabel={t('access.preview')}>
-              {labelOf(id)}
+            <FeatureLine key={id} access={rowAccess(plan, id)} previewLabel={t('access.preview')}>
+              {rowLabel(plan, id, lang)}
               {COMING_SOON_FEATURES.has(id) ? <SoonChip label={t('access.soon')} /> : null}
             </FeatureLine>
           ))}

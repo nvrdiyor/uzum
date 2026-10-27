@@ -83,9 +83,16 @@ const ONBOARD_STEPS: CompanySummary['onboardStep'][] = ['company', 'tax', 'api_k
 const MEMBER_ROLES: CompanySummary['role'][] = ['owner', 'manager', 'viewer'];
 const SUB_STATUSES: SubscriptionSummary['status'][] = ['active', 'expired', 'canceled', 'pending'];
 
-/** Bazadagi til kodini `Lang` ga keltiradi (notanish qiymat → 'uz') */
+/**
+ * Bazadagi til kodini yoki Telegram'ning `language_code` ini `Lang` ga
+ * keltiradi: ru* → ru, en* → en, uz* va notanish qiymat → 'uz'. Bot yangi
+ * foydalanuvchiga xuddi shu qoida bilan til beradi (apps/bot i18n.ts
+ * telegramLang). Ilgari faqat aniq "ru"/"en" tanilardi: Mini App orqali
+ * kirgan "en-US" foydalanuvchi o'zbekcha bilan yaratilardi (2026-10-27).
+ */
 export function asLang(value: string | null | undefined): Lang {
-  return LANGS.includes(value as Lang) ? (value as Lang) : 'uz';
+  const code = (value ?? '').trim().toLowerCase();
+  return LANGS.find((l) => code.startsWith(l)) ?? 'uz';
 }
 
 /** Onboarding bosqichini xavfsiz o'qish */

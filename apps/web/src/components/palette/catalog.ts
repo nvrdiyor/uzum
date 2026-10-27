@@ -101,4 +101,6 @@ export const ACTION_SYNONYMS = {
   rail: ['menyu', 'yon menyu', 'yon panel', 'меню', 'боковая панель', 'sidebar', 'menu', 'collapse', 'expand'],
   period: ['davr', 'sana', 'oraliq', 'период', 'дата', 'period', 'date', 'range'],
   store: ['do‘kon', 'magazin', 'магазин', 'store', 'shop'],
+  // "Yangiliklar" oynasini qayta ochish (components/news, 2026-10-27)
+  news: ['yangilik', 'yangiliklar', 'nima yangi', 'yangilanish', 'что нового', 'новое', 'новости', 'обновление', 'what’s new', 'whats new', 'news', 'changelog', 'update'],
 } as const;

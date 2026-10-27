@@ -11,7 +11,8 @@ type Billing = 'monthly' | 'yearly';
 
 const BULLETS: Record<PlanId, string[]> = {
   trial: ['plan.trial.1', 'plan.trial.2', 'plan.trial.3', 'plan.trial.4'],
-  standard: ['plan.standard.1', 'plan.standard.2', 'plan.standard.3', 'plan.standard.4', 'plan.standard.5'],
+  // Jamoa punkti (plan.standard.4) — sinovda members 1, shuning uchun u Standartdan boshlanadi (2026-10-27)
+  standard: ['plan.standard.1', 'plan.standard.2', 'plan.standard.3', 'plan.standard.4', 'plan.standard.5', 'plan.standard.6'],
   vip: ['plan.vip.1', 'plan.vip.2', 'plan.vip.3', 'plan.vip.4', 'plan.vip.5'],
   // 'expired' PLAN_ORDER da yo'q — bu ro'yxat hech qachon o'qilmaydi
   expired: [],
@@ -47,7 +48,8 @@ export function LandingPricing() {
         <span className="chip bg-brand/10 text-brand-ink">{t('pricing.save', { pct: MAX_DISCOUNT })}</span>
       </FadeUp>
 
-      <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      {/* Tarif uchta (PLAN_ORDER) — 4 ustunli panjarada o'ng chet bo'sh qolardi (2026-10-27) */}
+      <div className="mx-auto mt-10 grid max-w-5xl gap-5 md:grid-cols-2 lg:grid-cols-3">
         {PLAN_ORDER.map((id, i) => {
           const plan = PLANS[id];
           const Icon = PLAN_ICON[id];

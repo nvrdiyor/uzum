@@ -179,8 +179,14 @@ registerNamespace('pricing', {
     'faq.title': 'Ko‘p so‘raladigan savollar',
     'faq.subtitle': 'To‘lov va tariflar bo‘yicha eng keng tarqalgan savollar',
     'faq.q1': 'Sinov davri qanday ishlaydi?',
+    /*
+     * Ilgari "faqat ilg'or bo'limlar yopiladi" deyilardi. Muddat tugagan obuna
+     * esa 'expired' holati: boshqaruv paneli namuna, qolgan bo'limlar yopiq
+     * (plans.ts expiredFeatures). Sinovning o'zida ham ABC, rejalashtiruvchi,
+     * VGH, radar va narxlar xaritasi faqat namuna, jamoa yo'q (2026-10-27).
+     */
     'faq.a1':
-      'Ro‘yxatdan o‘tganingizda 7 kunlik bepul Sinov tarifi beriladi. Karta talab qilinmaydi — muddat tugagach ma’lumotlaringiz saqlanadi, faqat ilg‘or bo‘limlar yopiladi.',
+      'Ro‘yxatdan o‘tganingizda 7 kunlik bepul Sinov tarifi beriladi: asosiy hisobotlar, moliya markazi va Telegram hisobotlari ochiq; ABC, rejalashtiruvchi, VGH, Mening radarim va Narxlar xaritasi — namuna rejimida. Karta talab qilinmaydi. Muddat tugagach ma’lumotlaringiz saqlanadi, bo‘limlar esa tarif tanlanguncha yopiladi.',
     'faq.q2': 'Tarifni istalgan vaqtda o‘zgartira olamanmi?',
     'faq.a2':
       'Ha. Yuqoriroq tarifga o‘tsangiz, u darhol faollashadi va qolgan kunlar hisobga olinadi. Pastroq tarifga o‘tish joriy muddat tugagach amalga oshadi.',
@@ -320,7 +326,7 @@ registerNamespace('pricing', {
     'faq.subtitle': 'Самое важное про оплату и тарифы',
     'faq.q1': 'Как работает пробный период?',
     'faq.a1':
-      'При регистрации вы получаете 7 дней бесплатного тарифа «Пробный». Карта не нужна — после окончания данные сохраняются, закрываются только продвинутые разделы.',
+      'При регистрации вы получаете 7 дней бесплатного тарифа «Пробный»: открыты основные отчёты, финансовый центр и отчёты в Telegram, а ABC, планировщик, ВГХ, Мой радар и Карта цен — в режиме просмотра. Карта не нужна. После окончания данные сохраняются, а разделы закрываются до выбора тарифа.',
     'faq.q2': 'Можно ли сменить тариф в любой момент?',
     'faq.a2':
       'Да. Переход на более высокий тариф происходит сразу, остаток дней учитывается. Переход на более низкий — после окончания текущего периода.',
@@ -459,7 +465,7 @@ registerNamespace('pricing', {
     'faq.subtitle': 'The essentials about billing and plans',
     'faq.q1': 'How does the trial work?',
     'faq.a1':
-      'You get a 7-day free Trial plan when you sign up. No card required — when it ends your data stays, only the advanced sections lock.',
+      'You get a 7-day free Trial plan when you sign up: the core reports, the finance hub and Telegram reports are open, while ABC, the planner, dimensions, My radar and the Price map are in preview mode. No card required. When it ends your data stays, and the sections lock until you choose a plan.',
     'faq.q2': 'Can I change plans at any time?',
     'faq.a2':
       'Yes. Upgrading takes effect immediately and the remaining days are credited. Downgrading applies once the current period ends.',
@@ -669,8 +675,8 @@ export default function Pricing() {
             />
           </Card>
         ) : plansQ.isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
               <div key={i} className="card p-6">
                 <Skeleton className="h-9 w-9 rounded-xl" />
                 <Skeleton className="mt-4 h-5 w-28" />
@@ -687,7 +693,8 @@ export default function Pricing() {
             <EmptyState icon={<CreditCard className="h-6 w-6" />} title={t('plans.empty')} hint={t('plans.emptyHint')} />
           </Card>
         ) : (
-          <div className="grid gap-4 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 pt-3 sm:grid-cols-2 xl:grid-cols-3">
+            {/* Tarif uchta — 4 ustunli panjarada o'ng chet bo'sh qolardi (2026-10-27) */}
             {plans.map((plan, i) => (
               <PlanCard
                 key={plan.id}

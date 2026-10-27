@@ -13,7 +13,7 @@ import { asMemberView, resolvePlan, viewSeesMoney, type PlanId } from '@savdoiq/
 import { prisma } from '../lib/db.js';
 import { env, isAdmin } from '../lib/env.js';
 import { randomReferralCode } from '../crypto.js';
-import { toBotLang, tr, type BotLang, type TKey } from '../i18n.js';
+import { telegramLang, toBotLang, tr, type BotLang, type TKey } from '../i18n.js';
 
 // ─────────────────────────── Tiplar ───────────────────────────
 
@@ -224,10 +224,15 @@ export async function loadCompany(userId: string): Promise<BotCompany | null> {
   };
 }
 
-/** telegramId bo'yicha foydalanuvchi + kompaniya (bo'lmasa null) */
-export async function loadState(telegramId: string): Promise<SpState> {
+/**
+ * telegramId bo'yicha foydalanuvchi + kompaniya (bo'lmasa null).
+ * `telegramLanguage` — Telegram'ning `from.language_code`: foydalanuvchi
+ * bazada hali YO'Q bo'lsa (birinchi xabar, /start dan oldin) shu tilda
+ * javob beriladi; bor foydalanuvchida e'tiborsiz — uning tanlagan tili.
+ */
+export async function loadState(telegramId: string, telegramLanguage?: string | null): Promise<SpState> {
   const row = await prisma.user.findUnique({ where: { telegramId }, select: USER_SELECT });
-  if (!row) return { lang: 'uz', user: null, company: null };
+  if (!row) return { lang: telegramLang(telegramLanguage), user: null, company: null };
   const user = toBotUser(row);
   const company = await loadCompany(user.id);
   return { lang: user.lang, user, company };
@@ -237,12 +242,19 @@ export async function loadState(telegramId: string): Promise<SpState> {
 export async function refreshState(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from ? String(ctx.from.id) : null;
   if (!telegramId) return;
-  ctx.sp = await loadState(telegramId);
+  ctx.sp = await loadState(telegramId, ctx.from?.language_code);
 }
 
 /**
  * /start paytida foydalanuvchini yaratadi yoki yangilaydi.
  * `referralCode` faqat bir marta beriladi, `referredById` esa faqat yangi foydalanuvchiga.
+ *
+ * Til: `languageCode` — aniq tanlov (bor foydalanuvchida ham yoziladi);
+ * `telegramLanguage` — Telegram'ning `from.language_code`, faqat YANGI
+ * foydalanuvchining boshlang'ich tili (ru* → ru, en* → en, qolgani → uz).
+ * Bor foydalanuvchining tili undan hech qachon almashtirilmaydi: u botda
+ * yoki saytda o'zi tanlagan bo'lishi mumkin. Ilgari yangi foydalanuvchi
+ * doim 'uz' bilan yaratilardi (2026-10-27).
  */
 export async function upsertUser(input: {
   telegramId: string;
@@ -251,6 +263,7 @@ export async function upsertUser(input: {
   lastName: string | null;
   chatId: string;
   languageCode?: BotLang;
+  telegramLanguage?: string | null;
   referredById?: string | null;
 }): Promise<{ user: BotUser; isNew: boolean; refApplied: boolean }> {
   const existing = await prisma.user.findUnique({ where: { telegramId: input.telegramId }, select: USER_SELECT });
@@ -277,7 +290,7 @@ export async function upsertUser(input: {
       firstName: input.firstName,
       lastName: input.lastName,
       botChatId: input.chatId,
-      languageCode: input.languageCode ?? 'uz',
+      languageCode: input.languageCode ?? telegramLang(input.telegramLanguage),
       referralCode: await uniqueReferralCode(),
       referredById: input.referredById ?? null,
     },

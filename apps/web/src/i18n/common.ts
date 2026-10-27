@@ -53,6 +53,7 @@ registerNamespace('common', {
     'menu.user': 'Foydalanuvchi',
     'menu.uzum': 'Uzum kabinet',
     'menu.logout': 'Chiqish',
+    'menu.news': 'Yangiliklar',
     // Tugmalar
     'btn.save': 'Saqlash',
     'btn.cancel': 'Bekor qilish',
@@ -209,6 +210,7 @@ registerNamespace('common', {
     'menu.user': 'Пользователь',
     'menu.uzum': 'Кабинет Uzum',
     'menu.logout': 'Выйти',
+    'menu.news': 'Что нового',
     'btn.save': 'Сохранить',
     'btn.cancel': 'Отмена',
     'btn.download': 'Скачать',
@@ -358,6 +360,7 @@ registerNamespace('common', {
     'menu.user': 'User',
     'menu.uzum': 'Uzum account',
     'menu.logout': 'Log out',
+    'menu.news': 'What’s new',
     'btn.save': 'Save',
     'btn.cancel': 'Cancel',
     'btn.download': 'Download',

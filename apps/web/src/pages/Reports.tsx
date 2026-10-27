@@ -28,6 +28,7 @@ import {
 } from '@/components/ui';
 import { BarsChart, ChartCard, TrendChart } from '@/components/charts';
 import { FilterBar } from '@/components/filters';
+import { BasisSwitch } from '@/components/finance/BasisSwitch';
 import {
   CategoriesCard,
   DeliveryTypesCard,
@@ -45,7 +46,7 @@ import {
 import { CostCoverage } from '@/components/trust/CostCoverage';
 import { DataFreshness } from '@/components/trust/DataFreshness';
 import { ApiError, api } from '@/lib/api';
-import { usePeriodQuery } from '@/store/ui';
+import { useMoneyQuery } from '@/store/ui';
 import { CHART_COLORS } from '@/lib/theme';
 import { downloadBlob } from '@/lib/utils';
 import { registerNamespace, useFormat, useT } from '@/i18n';
@@ -81,7 +82,16 @@ registerNamespace('reports', {
     'final.finalHint': 'Davr tugagan va buyurtmalar yakunlangan — raqamlar endi deyarli o‘zgarmaydi',
     'final.rule':
       '{done} / {total} dona yakunlangan (xaridor qabul qilgan, bekor qilingan yoki qaytgan). Yakuniy bo‘lishi uchun kamida {v}',
+    /*
+     * Qabul sanasi rejimi (2026-10-27): hisobda faqat qabul qilingan buyurtmalar
+     * bor — "yo'lda" degan sabab bo'lmaydi, hisobot davr tugashi bilan yakuniy.
+     */
+    'final.currentHint.receipt': 'Davr hali tugamagan — yangi qabullar va qaytarishlar raqamlarni o‘zgartiradi',
+    'final.finalHint.receipt': 'Davr tugagan — qabul sanasi bo‘yicha hisobot yakuniy: keyingi qabullar keyingi davrga yoziladi',
+    'final.rule.receipt':
+      '{done} / {total} dona — qabul sanasi bo‘yicha hisobda faqat xaridor qabul qilgan buyurtmalar bor, shuning uchun davr tugashi bilan hisobot yakuniy',
     'print.head': 'SavdoIQ — davr hisoboti',
+    'print.receipt': 'qabul sanasi bo‘yicha',
     'meta.orders': '{n} buyurtma',
 
     'kpi.revenue': 'Tushum',
@@ -109,8 +119,10 @@ registerNamespace('reports', {
 
     'orders.title': 'Buyurtmalar oqimi',
     'orders.subtitle': 'Qabul qilingandan yetkazilgangacha',
+    'orders.subtitle.receipt': 'Davrda xaridor qabul qilgan buyurtmalar',
     'orders.total': 'Jami',
     'orders.totalHint': 'Bekor va qaytganlar bilan',
+    'orders.totalHint.receipt': 'Keyin qaytganlari bilan',
     'orders.success': 'Muvaffaqiyatli',
     'orders.successHint': 'Bekor qilinmagan, qaytmagan',
     'orders.units': 'Sotildi, dona',
@@ -122,6 +134,10 @@ registerNamespace('reports', {
     'risk.returnRate': 'Qaytarish ulushi, dona',
     'risk.rateHint':
       'Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — Boshqaruv panelidagi kabi. 4% gacha — normal, 8% dan — xavfli',
+    'risk.rateHint.receipt':
+      'Qaytgan dona ÷ (xaridor qabul qilgan + qaytgan dona) — davrda qabul qilingan buyurtmalardan; olib ketilmagan buyurtma kirmaydi. 4% gacha — normal, 8% dan — xavfli',
+    'risk.canceledHint.receipt': 'Qabul sanasi bo‘yicha bekor qilingan buyurtma hisobga kirmaydi',
+    'risk.returnsHint.receipt': 'Qabul qilib, keyin qaytarilgan buyurtmalar',
     'risk.marker': '8% — xavfli zona chegarasi',
     'risk.units': '{r} dona qaytdi · {s} dona qabul qilindi',
     'risk.noBase': 'Xaridorlar hali qabul qilmagan',
@@ -239,7 +255,12 @@ registerNamespace('reports', {
     'final.finalHint': 'Период закончился, заказы завершены — цифры почти не изменятся',
     'final.rule':
       'Завершено {done} из {total} шт. (получено покупателем, отменено или возвращено). Итоговым отчёт становится от {v}',
+    'final.currentHint.receipt': 'Период ещё не закончился — новые получения и возвраты изменят цифры',
+    'final.finalHint.receipt': 'Период закончился — отчёт по дате получения итоговый: следующие получения попадут в следующий период',
+    'final.rule.receipt':
+      '{done} из {total} шт. — в учёте по дате получения только заказы, полученные покупателем, поэтому отчёт итоговый, как только закончится период',
     'print.head': 'SavdoIQ — отчёт за период',
+    'print.receipt': 'по дате получения',
     'meta.orders': 'Заказов: {n}',
 
     'kpi.revenue': 'Выручка',
@@ -267,8 +288,10 @@ registerNamespace('reports', {
 
     'orders.title': 'Поток заказов',
     'orders.subtitle': 'От оформления до доставки',
+    'orders.subtitle.receipt': 'Заказы, полученные покупателями за период',
     'orders.total': 'Всего',
     'orders.totalHint': 'С отменами и возвратами',
+    'orders.totalHint.receipt': 'Включая возвращённые позже',
     'orders.success': 'Успешных',
     'orders.successHint': 'Без отмен и возвратов',
     'orders.units': 'Продано, шт.',
@@ -280,6 +303,10 @@ registerNamespace('reports', {
     'risk.returnRate': 'Доля возвратов, шт.',
     'risk.rateHint':
       'Возвращённые шт. ÷ (полученные покупателем + возвращённые шт.) — как на главной панели. До 4% — норма, от 8% — рискованно',
+    'risk.rateHint.receipt':
+      'Возвращённые шт. ÷ (полученные покупателем + возвращённые шт.) — по заказам, полученным за период; невыкупленные не входят. До 4% — норма, от 8% — рискованно',
+    'risk.canceledHint.receipt': 'В учёте по дате получения отменённые заказы не участвуют',
+    'risk.returnsHint.receipt': 'Получены, а затем возвращены',
     'risk.marker': '8% — граница зоны риска',
     'risk.units': 'Возвращено {r} шт. · получено {s} шт.',
     'risk.noBase': 'Покупатели ещё не получили',
@@ -397,7 +424,12 @@ registerNamespace('reports', {
     'final.finalHint': 'The period is over and orders are completed — the numbers will barely change',
     'final.rule':
       '{done} of {total} units completed (received, cancelled or returned). A report becomes final at {v} or more',
+    'final.currentHint.receipt': 'The period is not over yet — new receipts and returns will change the numbers',
+    'final.finalHint.receipt': 'The period is over — a receipt-date report is final: later receipts go to the next period',
+    'final.rule.receipt':
+      '{done} of {total} units — a receipt-date report only holds orders buyers received, so it is final as soon as the period ends',
     'print.head': 'SavdoIQ — period report',
+    'print.receipt': 'by receipt date',
     'meta.orders': '{n} orders',
 
     'kpi.revenue': 'Revenue',
@@ -425,8 +457,10 @@ registerNamespace('reports', {
 
     'orders.title': 'Order flow',
     'orders.subtitle': 'From placement to delivery',
+    'orders.subtitle.receipt': 'Orders buyers received in the period',
     'orders.total': 'Total',
     'orders.totalHint': 'Incl. cancelled and returned',
+    'orders.totalHint.receipt': 'Incl. ones returned later',
     'orders.success': 'Successful',
     'orders.successHint': 'Not cancelled or returned',
     'orders.units': 'Units sold',
@@ -438,6 +472,10 @@ registerNamespace('reports', {
     'risk.returnRate': 'Return rate, units',
     'risk.rateHint':
       'Returned units ÷ (units received by buyers + returned units) — same as on the dashboard. Up to 4% is normal, 8% and above is risky',
+    'risk.rateHint.receipt':
+      'Returned units ÷ (units received by buyers + returned units) — from orders received in the period; never-collected orders are not included. Up to 4% is normal, 8% and above is risky',
+    'risk.canceledHint.receipt': 'Cancelled orders are not part of a receipt-date report',
+    'risk.returnsHint.receipt': 'Received and then returned',
     'risk.marker': '8% — risk zone threshold',
     'risk.units': '{r} pcs returned · {s} pcs received',
     'risk.noBase': 'Not received by buyers yet',
@@ -542,7 +580,13 @@ function prevMonthKey(key: string): string {
 export default function Reports() {
   const t = useT('reports');
   const f = useFormat();
-  const q = usePeriodQuery();
+  /*
+   * Davr + sotuv sanasi asosi: sahifa, Excel va Telegram tugmasi bitta `q`
+   * bilan — "Qabul sanasi" tanlangan bo'lsa, fayl ham, Telegram'ga ketgan
+   * nusxa ham o'sha asosda (2026-10-27).
+   */
+  const q = useMoneyQuery();
+  const basis = q.basis ?? 'order';
   const [exporting, setExporting] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -551,9 +595,10 @@ export default function Reports() {
     queryFn: () => api.get<MonthlyReportResponse>('/reports/monthly', q),
   });
 
+  // Oylar taqqoslovi ham hisobot bilan bitta asosda — "oldingi oy marjasi" shu jadvaldan
   const compare = useQuery({
-    queryKey: ['reports-compare', q.storeId],
-    queryFn: () => api.get<CompareRow[]>('/reports/compare', { storeId: q.storeId }),
+    queryKey: ['reports-compare', q.storeId, q.basis],
+    queryFn: () => api.get<CompareRow[]>('/reports/compare', { storeId: q.storeId, basis: q.basis }),
   });
 
   const data = report.data;
@@ -603,7 +648,8 @@ export default function Reports() {
     try {
       const blob = await api.blob('/export/monthly', q);
       // Nom serverdagidek (Content-Disposition) va fayl ichidagi davrdan — Telegram'ga ketgan fayl bilan bir xil atalsin
-      downloadBlob(blob, `savdoiq-monthly-${period.from}_${period.to}.xlsx`);
+      const section = basis === 'receipt' ? 'monthly-receipt' : 'monthly';
+      downloadBlob(blob, `savdoiq-${section}-${period.from}_${period.to}.xlsx`);
       toast.success(t('exportOk'));
     } catch {
       toast.error(t('exportErr'));
@@ -661,7 +707,7 @@ export default function Reports() {
               </span>
             ) : null}
             {/* Excel va Telegram'dagi faylning "Holat" qatori bilan bitta qiymat */}
-            {data ? <FinalityChip finality={data.finality} /> : null}
+            {data ? <FinalityChip finality={data.finality} basis={basis} /> : null}
             <DataFreshness />
             <CostCoverage />
           </>
@@ -689,7 +735,10 @@ export default function Reports() {
       />
 
       <div className="no-print">
-        <FilterBar />
+        {/* Sana asosi — davr tanlagichi kabi butun hisobotga (fayl va Telegram nusxasiga ham) ta'sir qiladi */}
+        <FilterBar>
+          <BasisSwitch />
+        </FilterBar>
       </div>
 
       <PlanGate feature="monthly_reports">
@@ -730,7 +779,7 @@ export default function Reports() {
           </Card>
         ) : (
           <div className="report-sheet space-y-5">
-            <PrintHead from={data.period.from} to={data.period.to} finality={data.finality} />
+            <PrintHead from={data.period.from} to={data.period.to} finality={data.finality} basis={basis} />
 
             {/*
               ── Davr natijasi ──
@@ -771,8 +820,8 @@ export default function Reports() {
 
             {/* ── Oqim va xavf ── */}
             <div className="grid gap-4 lg:grid-cols-2">
-              <OrdersFlowCard report={data} />
-              <RiskCard report={data} />
+              <OrdersFlowCard report={data} basis={basis} />
+              <RiskCard report={data} basis={basis} />
             </div>
 
             {/* ── Top sotuvlar (ulush va konsentratsiya shu yerda) ── */}

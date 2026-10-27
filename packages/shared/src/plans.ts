@@ -45,6 +45,14 @@ export const FEATURE_IDS = [
   'sku_health',
   /** Kartochka SEO: audit bali, kalit so'zlar, bepul AI chatbot uchun so'rov */
   'card_seo',
+  /**
+   * "Mening radarim" (/radar) va "Narxlar xaritasi" (/price-map + mahsulot
+   * sahifasidagi "Raqobatchilar narxi" kartasi) — faqat pullik tarifda
+   * (egasining qarori, 2026-10-27). Ilgari ular sales_analytics va
+   * products_assortment bilan ochilardi, ya'ni sinovda ham to'liq edi.
+   */
+  'growth_radar',
+  'price_map',
   'reviews_autoreply',
   'telegram_notifications',
   'referral',
@@ -104,6 +112,9 @@ const trialFeatures = (): Record<FeatureId, FeatureAccess> => {
   f.planner = 'preview';
   f.promos = 'preview';
   f.vgh_report = 'preview';
+  // Radar va narxlar xaritasi — pullik tarif ustunligi: sinovda namuna (2026-10-27)
+  f.growth_radar = 'preview';
+  f.price_map = 'preview';
   f.api_access = 'off';
   f.priority_support = 'off';
   return f;
