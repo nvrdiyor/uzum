@@ -39,6 +39,7 @@
 import { InlineKeyboard, type Bot } from 'grammy';
 import {
   FREE_TURNOVER_DAYS,
+  NEW_AFTER_CONNECT_MS,
   NEW_SKU_FREE_DAYS,
   TURNOVER_WINDOW_DAYS,
   addDays,
@@ -52,6 +53,7 @@ import {
   parseISODate,
   resolvePlan,
   round,
+  skuSaleAge,
   storageFeePerDay,
   storageTariffKind,
   toBusinessDate,
@@ -79,8 +81,6 @@ export const STOCK_ALERT_HOUR = 10;
 const NEAR_TURNOVER_DAYS = 45;
 /** Oynadan oldingi oxirgi qoldiq shu chuqurlikda qidiriladi (API bilan bir xil) */
 const SEED_LOOKBACK_DAYS = 30;
-/** API: NEW_AFTER_CONNECT_MS — do'kon ulangandan bir sutka keyin paydo bo'lgan SKU'ning yoshi aniq */
-const NEW_AFTER_CONNECT_MS = 86_400_000;
 /** Tugash tezligi oynasi va eng kichik bo'luvchi (services/demand.ts) */
 const DEMAND_DAYS = 30;
 const MIN_DEMAND_DAYS = 7;
@@ -351,7 +351,35 @@ export async function buildStockAlert(
       const start = catalogStart.get(s.storeId);
       return start !== undefined && s.createdAt.getTime() - start > NEW_AFTER_CONNECT_MS;
     };
-    const candidates = skus.filter(isCandidate).map((s) => s.id);
+    /*
+     * Ulanganda qoldig'i NOL bo'lib, qoldiq keyin kelgan SKU — o'sha kuni
+     * sotuvga chiqqan (shared skuSaleAge, 2-holat). So'rov API'dagi
+     * `loadStockFirsts` bilan bir xil: birinchi qoldiq yozuvi va FBO/FBS > 0
+     * bo'lgan birinchi kun.
+     */
+    const stockFirsts = new Map<string, { firstSeen: Date; firstOnSale?: Date }>();
+    const plain = skus.filter((s) => !isCandidate(s)).map((s) => s.id);
+    for (let i = 0; i < plain.length; i += IN_CHUNK) {
+      const chunk = plain.slice(i, i + IN_CHUNK);
+      const [seen, onSale] = await Promise.all([
+        prisma.stockSnapshot.groupBy({ by: ['skuId'], where: { skuId: { in: chunk } }, _min: { date: true } }),
+        prisma.stockSnapshot.groupBy({
+          by: ['skuId'],
+          where: { skuId: { in: chunk }, OR: [{ fbo: { gt: 0 } }, { fbs: { gt: 0 } }] },
+          _min: { date: true },
+        }),
+      ]);
+      const firstOnSale = new Map(onSale.map((r) => [r.skuId, r._min.date ?? undefined]));
+      for (const r of seen) {
+        if (r._min.date) stockFirsts.set(r.skuId, { firstSeen: r._min.date, firstOnSale: firstOnSale.get(r.skuId) });
+      }
+    }
+    const arrivedLater = (id: string): boolean => {
+      const st = stockFirsts.get(id);
+      return Boolean(st?.firstOnSale && st.firstOnSale.getTime() > st.firstSeen.getTime());
+    };
+
+    const candidates = skus.filter((s) => isCandidate(s) || arrivedLater(s.id)).map((s) => s.id);
     const firstOrder = new Map<string, Date>();
     for (let i = 0; i < candidates.length; i += IN_CHUNK) {
       const rows = await prisma.orderItem.groupBy({
@@ -399,10 +427,14 @@ export async function buildStockAlert(
       let sold = 0;
       if (sales) for (const k of keys) sold += sales.get(k) ?? 0;
 
-      const first = firstOrder.get(s.id);
-      const since = first && first < s.createdAt ? first : s.createdAt;
-      const ageKnown =
-        isCandidate(s) && !(first && first.getTime() < s.createdAt.getTime() - NEW_AFTER_CONNECT_MS);
+      // Yosh — API bilan BITTA qoida (shared skuSaleAge)
+      const age = skuSaleAge({
+        createdAt: s.createdAt,
+        storeCatalogStart: catalogStart.get(s.storeId),
+        firstOrder: firstOrder.get(s.id),
+        stock: stockFirsts.get(s.id),
+        todayKey: asOfKey,
+      });
 
       return turnoverState({
         stock,
@@ -410,8 +442,8 @@ export async function buildStockAlert(
         sold,
         volumeL: s.volumeL,
         category: s.product.category,
-        daysOnSale: daysBetween(toBusinessDate(since), asOfKey),
-        ageKnown,
+        daysOnSale: age.daysOnSale,
+        ageKnown: age.ageKnown,
       });
     };
 

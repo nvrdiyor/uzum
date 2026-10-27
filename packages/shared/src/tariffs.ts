@@ -12,6 +12,7 @@
  * Bepul davr ham yo'q edi. Qo'llanmada esa saqlash qabul qilingan kundan
  * emas, AYLANMADAN hisoblanadi (2026-10-24).
  */
+import { daysBetween, toBusinessDate } from './format.js';
 
 /** Qo'llanmadagi tariflar shu sanadan amalda */
 export const TARIFF_EFFECTIVE_FROM = '2026-06-01';
@@ -116,6 +117,62 @@ export const FREE_TURNOVER_DAYS = 60;
 export const TURNOVER_WINDOW_DAYS = 15;
 /** Yangi SKU sotuvga chiqqanidan keyin bepul turadigan kunlar (2-ilova toifalari — 60) */
 export const NEW_SKU_FREE_DAYS = { default: 30, extended: 60 } as const;
+
+/**
+ * SKU do'konning birinchi katalog importidan shuncha keyin paydo bo'lsa —
+ * ulangandan KEYIN qo'shilgan, yoshi aniq. Bir sutka: birinchi sinxron katta
+ * katalogni bir necha soat yuklashi mumkin.
+ */
+export const NEW_AFTER_CONNECT_MS = 86_400_000;
+
+export interface SkuSaleAgeInput {
+  /** SKU bizning katalogimizga qo'shilgan payt (Sku.createdAt) */
+  createdAt: Date;
+  /** Do'konning birinchi katalog importi (eng erta Sku.createdAt) */
+  storeCatalogStart?: number;
+  /** SKU'ning eng birinchi buyurtmasi (yuklangan tarix ichida) */
+  firstOrder?: Date;
+  /** Qoldiq yozuvlari: birinchi yozuv kuni va sotuvga yaroqli (FBO yoki FBS) qoldiq birinchi paydo bo'lgan kun */
+  stock?: { firstSeen: Date; firstOnSale?: Date };
+  todayKey: string;
+}
+
+/**
+ * SKU sotuvda necha kundan beri va bu aniqmi — yangi SKU bepul saqlash davri
+ * uchun (Ombor sahifasi, kalkulyator, bot). Uchta holat:
+ *
+ * 1. SKU do'kon ulangandan KEYIN katalogda paydo bo'lgan — yoshi aniq,
+ *    qo'shilgan kunidan (birinchi buyurtmasi ancha oldin bo'lsa — aniq emas).
+ * 2. SKU ulanganda katalogda bor edi, lekin QOLDIG'I NOL edi va qoldiq keyin
+ *    keldi, undan oldin buyurtma yo'q — u biz ko'rgan kuni sotuvga chiqqan:
+ *    yoshi aniq, birinchi qoldiq kunidan. Ilgari bunday SKU "yoshi noma'lum"
+ *    deb bepul davrsiz hisoblanardi: 10-oktyabrda omborga kelgan tovar
+ *    17-kuni "Pullik" chiqardi, Uzum esa birinchi 30 kunda olmaydi (2026-10-27).
+ * 3. Qolgani — ulanishdan oldin ham sotuvda bo'lgan, qachondanligi noma'lum.
+ */
+export function skuSaleAge(inp: SkuSaleAgeInput): { sinceKey: string; daysOnSale: number; ageKnown: boolean } {
+  const { createdAt, storeCatalogStart, firstOrder, stock, todayKey } = inp;
+  const result = (since: Date, ageKnown: boolean) => {
+    const sinceKey = toBusinessDate(since);
+    return { sinceKey, daysOnSale: daysBetween(sinceKey, todayKey), ageKnown };
+  };
+
+  const candidate = storeCatalogStart !== undefined && createdAt.getTime() - storeCatalogStart > NEW_AFTER_CONNECT_MS;
+  if (candidate) {
+    // Buyurtma katalog sanasidan oldin — SKU biz ko'rgunimizcha ham bor edi
+    const since = firstOrder && firstOrder < createdAt ? firstOrder : createdAt;
+    return result(since, !(firstOrder && firstOrder.getTime() < createdAt.getTime() - NEW_AFTER_CONNECT_MS));
+  }
+
+  const onSale = stock?.firstOnSale;
+  const arrivedLater = Boolean(onSale && stock && onSale.getTime() > stock.firstSeen.getTime());
+  const soldBefore = Boolean(onSale && firstOrder && firstOrder.getTime() < onSale.getTime() - NEW_AFTER_CONNECT_MS);
+  if (onSale && arrivedLater && !soldBefore) {
+    return result(firstOrder && firstOrder < onSale ? firstOrder : onSale, true);
+  }
+
+  return result(firstOrder && firstOrder < createdAt ? firstOrder : createdAt, false);
+}
 
 /**
  * Aylanma, kun = o'rtacha kunlik qoldiq ÷ o'rtacha kunlik sotuv (oxirgi 15

@@ -47,6 +47,7 @@
 import { prisma } from '@savdoiq/db';
 import {
   FREE_TURNOVER_DAYS,
+  NEW_AFTER_CONNECT_MS,
   NEW_SKU_FREE_DAYS,
   STORAGE_TARIFF,
   TARIFF_EFFECTIVE_FROM,
@@ -59,12 +60,14 @@ import {
   parseISODate,
   parseSkuQuery,
   round,
+  skuSaleAge,
   storageFeePerDay,
   storageRatePerLiterDay,
   storageTariffKind,
   toBusinessDate,
   toISODate,
   turnoverDays,
+  type SkuSaleAgeInput,
   type StorageTariffKind,
   type StorageTurnoverResponse,
   type StorageTurnoverRow,
@@ -83,12 +86,6 @@ const SEED_LOOKBACK_DAYS = 30;
 const ACTUAL_DAYS = 30;
 /** Javobdagi qatorlar chegarasi — jadval cheksiz o'smasin (jamlar baribir hammasi bo'yicha) */
 const MAX_ROWS = 2000;
-/**
- * SKU do'konning birinchi katalog importidan shuncha keyin paydo bo'lsa —
- * ulangandan KEYIN qo'shilgan, yoshi aniq. Bir sutka: birinchi sinxron katta
- * katalogni bir necha soat yuklashi mumkin.
- */
-const NEW_AFTER_CONNECT_MS = 86_400_000;
 /** Ortiqcha donani yaxlitlashda suzuvchi nuqta xatosi (3,0000001 → 4) bo'lmasin */
 const EPS = 1e-6;
 /** `in` ro'yxati bo'laklari (SQLite o'zgaruvchilar chegarasi) */
@@ -275,46 +272,54 @@ interface SkuSnaps {
  * saralaydi — kartochkalar qidiruvga qarab sakramasin. `totals.excessUnits`
  * — hozir to'lov olinayotgan (paid, no_volume) SKU'lar ortiqchasi.
  */
+type StockFirsts = NonNullable<SkuSaleAgeInput['stock']>;
+
 /**
- * SKU sotuvda necha kundan beri va bu aniqmi (yangi SKU bepul davri uchun).
- * Yoshi faqat do'kon ulangandan KEYIN — birinchi katalog importidan bir
- * sutka o'tib — paydo bo'lgan SKU'da aniq. Birinchi buyurtmasi katalogdagi
- * sanasidan ancha oldin bo'lsa, u biz ko'rgunimizcha ham sotuvda edi.
- * Kalkulyator ham shu qoidani ishlatadi (`skuAgeOnSale`).
+ * SKU qoldig'i birinchi yozilgan kun va sotuvga yaroqli (FBO yoki FBS)
+ * qoldiq birinchi paydo bo'lgan kun — `skuSaleAge` ning "ulanganda qoldiq
+ * nol edi" holati uchun. Bot (jobs/stock-alert.ts) xuddi shu so'rovni qiladi.
  */
-export function ageOnSale(
-  createdAt: Date,
-  storeCatalogStart: number | undefined,
-  firstOrder: Date | undefined,
-  todayKey: string,
-): { sinceKey: string; daysOnSale: number; ageKnown: boolean } {
-  const candidate = storeCatalogStart !== undefined && createdAt.getTime() - storeCatalogStart > NEW_AFTER_CONNECT_MS;
-  // Buyurtma katalog sanasidan oldin — SKU biz ko'rgunimizcha ham bor edi
-  const since = firstOrder && firstOrder < createdAt ? firstOrder : createdAt;
-  const ageKnown = candidate && !(firstOrder && firstOrder.getTime() < createdAt.getTime() - NEW_AFTER_CONNECT_MS);
-  const sinceKey = toBusinessDate(since);
-  return { sinceKey, daysOnSale: daysBetween(sinceKey, todayKey), ageKnown };
+export async function loadStockFirsts(skuIds: string[]): Promise<Map<string, StockFirsts>> {
+  const out = new Map<string, StockFirsts>();
+  for (let i = 0; i < skuIds.length; i += IN_CHUNK) {
+    const chunk = skuIds.slice(i, i + IN_CHUNK);
+    const [seen, onSale] = await Promise.all([
+      prisma.stockSnapshot.groupBy({ by: ['skuId'], where: { skuId: { in: chunk } }, _min: { date: true } }),
+      prisma.stockSnapshot.groupBy({
+        by: ['skuId'],
+        where: { skuId: { in: chunk }, OR: [{ fbo: { gt: 0 } }, { fbs: { gt: 0 } }] },
+        _min: { date: true },
+      }),
+    ]);
+    const firstOnSale = new Map(onSale.map((r) => [r.skuId, r._min.date ?? undefined]));
+    for (const r of seen) {
+      if (r._min.date) out.set(r.skuId, { firstSeen: r._min.date, firstOnSale: firstOnSale.get(r.skuId) });
+    }
+  }
+  return out;
 }
 
-/** `ageOnSale` bitta SKU uchun — kalkulyator butun katalog aylanmasini yig'masin */
+/** `skuSaleAge` bitta SKU uchun — kalkulyator butun katalog aylanmasini yig'masin */
 export async function skuAgeOnSale(
   sku: { id: string; storeId: string; createdAt: Date },
   now = new Date(),
 ): Promise<{ daysOnSale: number; ageKnown: boolean }> {
-  const [start, first] = await Promise.all([
+  const [start, first, stock] = await Promise.all([
     // getSkuCatalog(…, true) dagi to'plam: arxivdagisi ham, yashirilgan mahsulotning arxivdagisi emas
     prisma.sku.aggregate({
       where: { storeId: sku.storeId, NOT: { archived: true, product: { hidden: true } } },
       _min: { createdAt: true },
     }),
     prisma.orderItem.aggregate({ where: { skuId: sku.id }, _min: { orderedAt: true } }),
+    loadStockFirsts([sku.id]),
   ]);
-  const age = ageOnSale(
-    sku.createdAt,
-    start._min.createdAt?.getTime(),
-    first._min.orderedAt ?? undefined,
-    toBusinessDate(now),
-  );
+  const age = skuSaleAge({
+    createdAt: sku.createdAt,
+    storeCatalogStart: start._min.createdAt?.getTime(),
+    firstOrder: first._min.orderedAt ?? undefined,
+    stock: stock.get(sku.id),
+    todayKey: toBusinessDate(now),
+  });
   return { daysOnSale: age.daysOnSale, ageKnown: age.ageKnown };
 }
 
@@ -427,9 +432,20 @@ export async function getStorageTurnover(
     prepared.push({ skuId: info.id, stock, history, candidate });
   }
 
-  // Birinchi buyurtma — faqat ulangandan keyin paydo bo'lgan SKU'lar uchun (odatda bir nechta)
+  /*
+   * Ulanganda katalogda bor, lekin qoldig'i NOL bo'lgan va qoldiq keyin kelgan
+   * SKU — o'sha kuni sotuvga chiqqan (shared skuSaleAge, 2-holat). Ilgari u
+   * "yoshi noma'lum" bo'lib, yangi SKU bepul davri qo'llanmasdi (2026-10-27).
+   */
+  const stockFirsts = await loadStockFirsts(prepared.filter((p) => !p.candidate).map((p) => p.skuId));
+  const arrivedLater = (skuId: string): boolean => {
+    const s = stockFirsts.get(skuId);
+    return Boolean(s?.firstOnSale && s.firstOnSale.getTime() > s.firstSeen.getTime());
+  };
+
+  // Birinchi buyurtma — yoshi aniqlanishi mumkin bo'lgan SKU'lar uchun (odatda bir nechta)
   const firstOrder = new Map<string, Date>();
-  const candidates = prepared.filter((p) => p.candidate).map((p) => p.skuId);
+  const candidates = prepared.filter((p) => p.candidate || arrivedLater(p.skuId)).map((p) => p.skuId);
   for (let i = 0; i < candidates.length; i += IN_CHUNK) {
     const rows = await prisma.orderItem.groupBy({
       by: ['skuId'],
@@ -446,12 +462,13 @@ export async function getStorageTurnover(
   for (const p of prepared) {
     const info = catalog.get(p.skuId);
     if (!info) continue;
-    const { sinceKey, daysOnSale, ageKnown } = ageOnSale(
-      info.createdAt,
-      catalogStart.get(info.storeId),
-      firstOrder.get(info.id),
+    const { sinceKey, daysOnSale, ageKnown } = skuSaleAge({
+      createdAt: info.createdAt,
+      storeCatalogStart: catalogStart.get(info.storeId),
+      firstOrder: firstOrder.get(info.id),
+      stock: stockFirsts.get(info.id),
       todayKey,
-    );
+    });
     const sold = soldBySku.get(info.id) ?? 0;
 
     const r = analyzeTurnover({
