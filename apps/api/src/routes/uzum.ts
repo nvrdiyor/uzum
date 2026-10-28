@@ -308,8 +308,14 @@ router.post(
 // ─────────────────────────── DELETE /:id ───────────────────────────
 
 /**
- * Kabinetni o'chirish — unga bog'langan do'konlar (va ular orqali mahsulot, buyurtma,
- * qoldiq va sharhlar) ham o'chadi. Amal qaytarilmaydi.
+ * Kabinetni o'chirish — faqat kabinet va uning API kaliti. Do'konlar va ularning
+ * ma'lumoti (tannarx, qoldiq tarixi, buyurtmalar) QOLADI: do'kon kabinetdan
+ * uziladi (relation SetNull) va yangilanmay turadi. Xuddi shu Uzum do'konini
+ * yangi kalit bilan ulasa, `upsertShops` uni qayta bog'laydi.
+ *
+ * 2026-10-28 gacha do'konlar ham o'chirilardi, sayt esa "analitika saqlanib
+ * qoladi" deb yozardi: egasi kalitni almashtirish uchun eskisini o'chirdi va
+ * tannarxlari, 322 kunlik qoldiq tarixi bilan birga yo'qoldi.
  */
 router.delete(
   '/:id',
@@ -319,16 +325,13 @@ router.delete(
     const account = await findAccount(company.id, String(req.params.id));
     const stores = await countStores(account.id);
 
-    await prisma.$transaction([
-      prisma.store.deleteMany({ where: { uzumAccountId: account.id } }),
-      prisma.uzumAccount.delete({ where: { id: account.id } }),
-    ]);
+    await prisma.uzumAccount.delete({ where: { id: account.id } });
 
     res.json({
       ok: true,
       id: account.id,
-      storesRemoved: stores,
-      message: `“${account.label}” kabineti o‘chirildi${stores > 0 ? ` (${stores} ta do‘kon bilan)` : ''}`,
+      storesKept: stores,
+      message: `“${account.label}” kabineti o‘chirildi${stores > 0 ? ` — ${stores} ta do‘kon ma’lumoti saqlanib qoldi` : ''}`,
     });
   }),
 );

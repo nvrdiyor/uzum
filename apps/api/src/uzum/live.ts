@@ -402,6 +402,18 @@ export class LiveUzumClient implements UzumClient {
    */
   private expenseMemo: { key: string; rows: Promise<unknown[]>; uses: number } | null = null;
 
+  /**
+   * Uzum 401/403 bilan rad etgan bo'limlar: `products:<shopId>`, `orders:<shopId>`.
+   * 2026-10-28: kalit `/v1/shops` ga javob berib, qolgan hamma joyda
+   * "403 Token not found" qaytardi — sinxron jim "tugadi" deb yozaverdi,
+   * buyurtma va qoldiq kelmay qoldi. Sinxron shu ro'yxatdan buni aniqlaydi.
+   */
+  private denied = new Set<string>();
+
+  deniedAccess(area: 'products' | 'orders', shopId: string): boolean {
+    return this.denied.has(`${area}:${shopId}`);
+  }
+
   // ─────────────── Kalitni tekshirish ───────────────
 
   /**
@@ -470,7 +482,7 @@ export class LiveUzumClient implements UzumClient {
       );
       return this.normalizeProducts(rows);
     } catch (err) {
-      this.warn(`mahsulotlar (shop ${shopId})`, err);
+      this.warn(`mahsulotlar (shop ${shopId})`, err, { kind: 'products', shopId });
       return [];
     }
   }
@@ -721,7 +733,7 @@ export class LiveUzumClient implements UzumClient {
       );
       truncated ||= listMeta(rows).truncated === true;
     } catch (err) {
-      failed = this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err);
+      failed = this.warn(`moliyaviy buyurtmalar (shop ${shopId})`, err, { kind: 'orders', shopId });
     }
 
     for (const raw of rows) {
@@ -1253,9 +1265,13 @@ export class LiveUzumClient implements UzumClient {
     return rows;
   }
 
-  /** Xatolarni jurnalga yozamiz, lekin oqimni to'xtatmaymiz. Qaytaradi: qisqa xato matni (`failed` belgisi uchun) */
-  private warn(what: string, err: unknown): string {
+  /**
+   * Xatolarni jurnalga yozamiz, lekin oqimni to'xtatmaymiz. Qaytaradi: qisqa xato matni (`failed` belgisi uchun).
+   * `area` berilsa va Uzum 401/403 bilan rad etsa — `deniedAccess` uchun eslab qolinadi.
+   */
+  private warn(what: string, err: unknown, area?: { kind: 'products' | 'orders'; shopId: string }): string {
     const e = toUzumApiError(err);
+    if (area && (e.code === 'unauthorized' || e.code === 'forbidden')) this.denied.add(`${area.kind}:${area.shopId}`);
     // eslint-disable-next-line no-console
     console.warn(`[uzum] ${what}: ${e.code} — ${describeUzumError(e)}`);
     return `${what}: ${e.code}${e.status ? ` (HTTP ${e.status})` : ''}`;

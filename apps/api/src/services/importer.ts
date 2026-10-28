@@ -1163,12 +1163,25 @@ export async function upsertInvoices(
       source: 'uzum',
     };
 
-    const existing = await prisma.shipment.findUnique({
-      where: { storeId_uzumInvoiceId: { storeId, uzumInvoiceId } },
-      select: { id: true },
-    });
+    /*
+     * Do'kon o'chirilib, keyin xuddi shu Uzum do'koni qayta ulansa, do'kon id'si
+     * avvalgidek chiqadi, nakladnoy esa `storeId = null` bo'lib qolgan bo'ladi
+     * (relation SetNull). Uni o'sha barqaror id bo'yicha topib, do'konga qayta
+     * bog'laymiz. 2026-10-28: aynan shu holatda `shipment.create` "Unique
+     * constraint failed on id" bilan butun sinxronni yiqitdi.
+     */
+    const stable = stableId('sh', storeId, uzumInvoiceId);
+    const existing =
+      (await prisma.shipment.findUnique({
+        where: { storeId_uzumInvoiceId: { storeId, uzumInvoiceId } },
+        select: { id: true },
+      })) ??
+      (await prisma.shipment.findFirst({
+        where: { id: stable, companyId, storeId: null },
+        select: { id: true },
+      }));
 
-    const shipmentId = existing?.id ?? stableId('sh', storeId, uzumInvoiceId);
+    const shipmentId = existing?.id ?? stable;
     if (existing) {
       await prisma.shipment.update({ where: { id: shipmentId }, data });
       res.updated += 1;
@@ -1665,9 +1678,10 @@ export async function upsertExpenses(
     const creates: Prisma.ExpenseCreateManyInput[] = [];
     for (const row of batch) {
       if (known.has(row.id)) {
+        // storeId ham yoziladi: do'kon o'chirilib qayta ulanganda (SetNull) yozuv do'konga qaytadi
         await prisma.expense.update({
           where: { id: row.id },
-          data: { amount: row.amount, note: row.note, category: row.category, date: row.date },
+          data: { amount: row.amount, note: row.note, category: row.category, date: row.date, storeId: row.storeId },
         });
         res.updated += 1;
       } else {

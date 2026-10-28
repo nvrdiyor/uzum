@@ -1198,7 +1198,7 @@ async function notifyNewSales(
       title: `Sotildi: ${sale.title}`,
       body: `${sale.qty} dona · ${formatMoney(sale.amount, 'uz')}${more}
 Buyurtma vaqti: ${when}
-${storeTitle} · №${sale.uzumOrderId}`,
+Do‘kon: ${storeTitle} · №${sale.uzumOrderId}`,
       link: `/sales?order=${encodeURIComponent(sale.uzumOrderId)}`,
       buttonText: 'Buyurtmani ko‘rish',
     });
@@ -1218,7 +1218,7 @@ ${storeTitle} · №${sale.uzumOrderId}`,
       type: 'success',
       requireFlag: 'notifyOrders',
       title: `Yana ${restCount} ta sotuv`,
-      body: complete ? `${storeTitle} · jami ${formatMoney(sum, 'uz')}` : storeTitle,
+      body: complete ? `Do‘kon: ${storeTitle} · jami ${formatMoney(sum, 'uz')}` : `Do‘kon: ${storeTitle}`,
       link: '/sales',
       buttonText: 'Sotuvlarni ko‘rish',
     });
@@ -1254,7 +1254,7 @@ async function notifyOrderChanges(
       requireFlag: 'notifyOrders',
       title: `${returned ? 'Qaytarildi' : 'Bekor qilindi'}: ${change.title}`,
       body: `${change.qty} dona${money}${cause}
-${storeTitle} · №${change.uzumOrderId}`,
+Do‘kon: ${storeTitle} · №${change.uzumOrderId}`,
       link: `/returns?kind=${change.kind}`,
       buttonText: returned ? 'Qaytarishlarni ko‘rish' : 'Bekor qilishlarni ko‘rish',
     });
@@ -1266,7 +1266,7 @@ ${storeTitle} · №${change.uzumOrderId}`,
       type: 'warning',
       requireFlag: 'notifyOrders',
       title: `Yana ${restCount} ta bekor qilish yoki qaytarish`,
-      body: storeTitle,
+      body: `Do‘kon: ${storeTitle}`,
       link: '/returns?kind=all',
       buttonText: 'Ro‘yxatni ko‘rish',
     });
@@ -1306,7 +1306,7 @@ async function notifyAccepted(
       title: `Xaridor qabul qilib oldi: ${order.title}`,
       body: `${order.qty} dona · ${formatMoney(order.amount, 'uz')}${more}
 Pul ${unlockLabel} da ochiladi
-${storeTitle} · №${order.uzumOrderId}`,
+Do‘kon: ${storeTitle} · №${order.uzumOrderId}`,
       link: calendarOpen ? '/payout' : `/sales?order=${encodeURIComponent(order.uzumOrderId)}`,
       buttonText: calendarOpen ? 'Pul kalendarini ko‘rish' : 'Buyurtmani ko‘rish',
     });
@@ -1318,7 +1318,7 @@ ${storeTitle} · №${order.uzumOrderId}`,
       type: 'success',
       requireFlag: 'notifyOrders',
       title: `Yana ${restCount} ta buyurtma qabul qilib olindi`,
-      body: storeTitle,
+      body: `Do‘kon: ${storeTitle}`,
       link: calendarOpen ? '/payout' : '/sales',
       buttonText: calendarOpen ? 'Pul kalendarini ko‘rish' : 'Sotuvlarni ko‘rish',
     });
@@ -1497,6 +1497,8 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
     }
   }
 
+  assertDataAccess(run, client);
+
   if (lockedNewOrders > 0 || lockedChanged) {
     try {
       await notifyLockedOrders(run, lockedNewOrders, lockedChanged);
@@ -1504,6 +1506,24 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
       log(`job ${run.jobId}: tarif taklifi yuborilmadi — ${errorMessage(err)}`);
     }
   }
+}
+
+/**
+ * Kalit faqat do'kon ro'yxatini beryapti: mahsulot va buyurtmalarni Uzum HAR
+ * BIR do'kon uchun 401/403 bilan rad etdi. 2026-10-28: sotuvchi ikkinchi
+ * do'kon ochgach eski kalit `/v1/shops` dan boshqa hamma joyda "403 Token not
+ * found" qaytardi — sinxron 0 ta buyurtma bilan "tugadi" deb yozaverdi, sotuv
+ * xabarlari to'xtadi, sotuvchi esa hech narsa bilmadi. Endi bu kalit xatosi:
+ * kabinet 'invalid' bo'ladi va egasiga xabar boradi (failJob).
+ * Faqat bitta bo'lim yopiq bo'lsa (masalan, moliya) — avvalgidek jim o'tkaziladi.
+ */
+function assertDataAccess(run: SyncRun, client: UzumClient): void {
+  const denied = client.deniedAccess?.bind(client);
+  if (!denied || run.stores.length === 0) return;
+  if (!run.stores.every((s) => denied('products', s.uzumShopId) && denied('orders', s.uzumShopId))) return;
+  throw new UzumAuthError(
+    'Uzum API kalit do‘kon ma’lumotlarini bermayapti (HTTP 403) — Uzum kabinetida yangi kalit yarating, unda barcha do‘konlarni belgilang',
+  );
 }
 
 /**

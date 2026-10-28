@@ -341,6 +341,12 @@ export interface UzumClient {
   getInvoices(shopId: string): Promise<UzumInvoice[]>;
   getExpenses(shopId: string, from: Date, to: Date): Promise<UzumExpense[]>;
   replyReview(shopId: string, reviewId: string, text: string): Promise<boolean>;
+  /**
+   * Shu klient orqali Uzum bu bo'limni 401/403 bilan rad etganmi (mahsulotlar
+   * yoki moliyaviy buyurtmalar). Sinxron "kalit faqat do'kon ro'yxatini
+   * beryapti" holatini shundan aniqlaydi. Demo klientda yo'q.
+   */
+  deniedAccess?(area: 'products' | 'orders', shopId: string): boolean;
 }
 
 /**
