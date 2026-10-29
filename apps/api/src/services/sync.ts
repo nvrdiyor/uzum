@@ -1091,7 +1091,8 @@ async function reloadStores(run: SyncRun): Promise<void> {
   const rows = await prisma.store.findMany({
     where: { companyId: run.companyId, uzumAccountId: run.accountId },
     select: { id: true, uzumShopId: true, title: true },
-    orderBy: { createdAt: 'asc' },
+    // Tartib barqaror bo'lishi shart: birinchisi sotuvchi darajasidagi to'lovlarni oladi (`ownExpenses`)
+    orderBy: [{ createdAt: 'asc' }, { uzumShopId: 'asc' }],
   });
   run.stores = rows
     .filter((r): r is { id: string; uzumShopId: string; title: string } => Boolean(r.uzumShopId))
@@ -1553,6 +1554,21 @@ async function notifyLockedOrders(run: SyncRun, newOrders: number, changed: bool
 const LOGISTICS_BATCH_ORDERS = 2_000;
 
 /**
+ * Sotuvchi darajasidagi to'lovlar (Uzum satrida `shopId` yo'q — `sellerLevel`)
+ * har bir do'kon so'rovida takrorlanadi: ular faqat kabinetning birinchi
+ * do'koniga (`reloadStores` tartibi) yoziladi. 2026-10-29: ikkinchi do'kon
+ * ulangach, yechib olish haqlari ikkala do'konga yozilib, balans ikki marta
+ * kamaydi.
+ */
+function ownExpenses(run: SyncRun, storeId: string, expenses: UzumExpense[]): UzumExpense[] {
+  if (storeId === run.stores[0]?.id) return expenses;
+  return markList(
+    expenses.filter((e) => !e.sellerLevel),
+    listMeta(expenses),
+  );
+}
+
+/**
  * Do'konning [range] dagi xarajat va saqlash to'lovlarini oynama-oyna yozadi.
  *
  * Yetkazish to'lovlari (buyurtma raqami bilan kelgan satrlar) butun oraliq
@@ -1572,7 +1588,9 @@ async function importFinanceRange(
   const recentSince = toISODate(addDays(new Date(), -3));
 
   await walkWindows(range, await regularPlan(store.id, 'finance', range), async (w) => {
-    const { expenses, fees } = await fetchFinanceWindow(client, store.uzumShopId, w, `job ${run.jobId}`);
+    const window = await fetchFinanceWindow(client, store.uzumShopId, w, `job ${run.jobId}`);
+    const expenses = ownExpenses(run, store.id, window.expenses);
+    const fees = window.fees;
     const expRes = await upsertExpenses(run.companyId, store.id, expenses);
     const feeRes = await upsertStorageFees(store.id, fees);
     collectDeliveries(delivery, expenses);
@@ -3332,9 +3350,10 @@ async function backfillWindow(ctx: SliceCtx, store: AccountStore, w: TimeWindow,
   const financeTo = new Date(Math.max(w.to.getTime(), Math.min(w.to.getTime() + lookahead, todayEnd)));
   const fin = await fetchFinanceWindow(ctx.client, store.uzumShopId, { from: w.from, to: financeTo }, `job ${ctx.job.id}`);
   stopIfIncomplete(ctx, fin.meta);
-  ctx.run.totals.expenses += countOf(await upsertExpenses(ctx.run.companyId, store.id, fin.expenses));
+  const finExpenses = ownExpenses(ctx.run, store.id, fin.expenses);
+  ctx.run.totals.expenses += countOf(await upsertExpenses(ctx.run.companyId, store.id, finExpenses));
   ctx.run.totals.storage += countOf(await upsertStorageFees(store.id, fin.fees));
-  await rememberDeliveries(ctx, store.id, w, fin.expenses);
+  await rememberDeliveries(ctx, store.id, w, finExpenses);
 
   await stampWindow(ctx, store.id, w);
   return Math.max(orderRows(orders), fin.expenses.length + fin.fees.length);

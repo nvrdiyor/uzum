@@ -1013,6 +1013,9 @@ export class LiveUzumClient implements UzumClient {
 
     for (const raw of rows) {
       const r = asRecord(raw);
+      // Boshqa do'konning to'lovi (getExpenses'dagi kabi) — o'sha do'kon so'rovida yoziladi
+      const rowShop = asString(r.shopId).replace(/^0$/, '');
+      if (rowShop && rowShop !== shopId) continue;
       const source = asString(firstOf(r, KEYS.expenseSource)) + ' ' + asString(firstOf(r, KEYS.expenseNote));
       if (mapExpenseCategory(source) !== 'storage') continue;
 
@@ -1158,6 +1161,18 @@ export class LiveUzumClient implements UzumClient {
     for (const raw of rows) {
       const r = asRecord(raw);
 
+      /*
+       * `/v1/finance/expenses?shopIds=X` sotuvchi darajasidagi to'lovlarni
+       * (yechib olish xizmati haqi) HAR BIR do'kon uchun qaytaradi. 2026-10-29:
+       * ikkinchi do'kon ulangach, 4 ta yechish haqi (18 931 so'm) ikkinchi
+       * do'konga ham yozilib, balans va "Ochilgan" Uzumdagidan kam chiqdi.
+       * Satr boshqa do'konniki bo'lsa — o'tkaziladi (o'sha do'kon so'rovida
+       * yoziladi); do'kon ko'rsatilmagan bo'lsa — belgilanadi, sinxron uni
+       * bitta do'konga yozadi (sync.ts `ownExpenses`).
+       */
+      const rowShop = asString(r.shopId).replace(/^0$/, '');
+      if (rowShop && rowShop !== shopId) continue;
+
       const name = asString(r.name) || asString(firstOf(r, KEYS.expenseNote));
       const source = asString(r.source) || asString(firstOf(r, KEYS.expenseSource));
       const code = asString(r.code);
@@ -1225,6 +1240,7 @@ export class LiveUzumClient implements UzumClient {
         note: name || source || undefined,
         inPayout,
         ...(deliveryOrderId ? { deliveryOrderId } : {}),
+        ...(rowShop ? {} : { sellerLevel: true }),
       });
     }
 

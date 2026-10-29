@@ -460,20 +460,44 @@ router.get(
     // 2) Hisob bloklanganmi — faqat Uzumda ma'lum
     checks.push({ key: 'not_blocked', status: 'unknown', detail: 'Faqat Uzum kabinetida ko‘rinadi' });
 
-    // 3) Platformada 60 kundan ortiq
-    const first = await prisma.order.findFirst({
-      where: { storeId: { in: storeIds }, status: { in: EFFECTIVE_STATUSES } },
-      orderBy: { orderedAt: 'asc' },
-      select: { orderedAt: true },
-    });
-    if (!first) {
-      checks.push({ key: 'age_60d', status: 'fail', detail: 'Hali birorta sotuv yo‘q' });
+    /*
+     * 3) Platformada 60 kundan ortiq. Uzum ro'yxatdan o'tgan sanani API'da
+     *    bermaydi (`/v1/shops` — faqat id va nom), shuning uchun eng erta
+     *    faollik olinadi: birinchi buyurtma (holatidan qat'i nazar), Uzum
+     *    omboriga birinchi nakladnoy yoki Uzum ushlagan birinchi to'lov.
+     *    2026-10-29: faqat birinchi sotuv olinardi — sotishdan oldin tovar
+     *    jo'natgan sotuvchi "52 kun" deb rad etildi, Uzum esa erta yechishga
+     *    ruxsat berib turgan edi (ro'yxatdan o'tganiga 69 kun, birinchi
+     *    nakladnoyga 64 kun).
+     */
+    const [firstOrder, firstInvoice, firstCharge] = await Promise.all([
+      prisma.order.findFirst({
+        where: { storeId: { in: storeIds } },
+        orderBy: { orderedAt: 'asc' },
+        select: { orderedAt: true },
+      }),
+      prisma.shipment.findFirst({
+        where: { storeId: { in: storeIds }, source: 'uzum' },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      }),
+      prisma.expense.findFirst({
+        where: { companyId: company.id, storeId: { in: storeIds }, source: { in: ['uzum', 'uzum-payout'] } },
+        orderBy: { date: 'asc' },
+        select: { date: true },
+      }),
+    ]);
+    const firstSeen = [firstOrder?.orderedAt, firstInvoice?.createdAt, firstCharge?.date]
+      .filter((d): d is Date => d instanceof Date)
+      .reduce<Date | null>((min, d) => (min === null || d < min ? d : min), null);
+    if (!firstSeen) {
+      checks.push({ key: 'age_60d', status: 'fail', detail: 'Hali birorta sotuv yoki yetkazma yo‘q' });
     } else {
-      const ageDays = Math.floor((today.getTime() - first.orderedAt.getTime()) / 86_400_000);
+      const ageDays = Math.floor((today.getTime() - firstSeen.getTime()) / 86_400_000);
       checks.push({
         key: 'age_60d',
         status: ageDays > MIN_ACCOUNT_AGE_DAYS ? 'ok' : 'fail',
-        detail: `Birinchi sotuvdan ${ageDays} kun o‘tgan (kamida ${MIN_ACCOUNT_AGE_DAYS} kerak)`,
+        detail: `Uzumdagi birinchi faollikdan ${ageDays} kun o‘tgan (kamida ${MIN_ACCOUNT_AGE_DAYS} kerak)`,
       });
     }
 

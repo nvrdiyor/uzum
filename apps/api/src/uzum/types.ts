@@ -289,6 +289,12 @@ export interface UzumExpense {
    * esa baribir 5 250 turadi. Nol summali satr ham shu sabab saqlanadi.
    */
   deliveryOrderId?: string;
+  /**
+   * Uzum satrida `shopId` yo'q — sotuvchi darajasidagi to'lov (masalan, yechib
+   * olish xizmati haqi). Bunday satr kabinetning HAR BIR do'koni so'rovida
+   * qaytadi, shuning uchun sinxron uni faqat bitta do'konga yozadi.
+   */
+  sellerLevel?: boolean;
 }
 
 // ─────────────────────────── Klient shartnomasi ───────────────────────────
