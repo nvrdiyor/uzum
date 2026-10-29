@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   HelpCircle,
+  Info,
   Receipt,
   Settings2,
   Zap,
@@ -97,6 +98,8 @@ registerNamespace('payout', {
     'inst.no': 'Shartlar bajarilmagan',
     'inst.maybe': 'To‘liq aytib bo‘lmaydi',
     'inst.maybeHint': 'Bizga ko‘rinadigan shartlar bajarilgan, lekin ikkitasini faqat Uzum biladi',
+    'inst.auto':
+      'Ertaroq yechib olishni Uzumning o‘zi avtomatik beradi: hammaga emas va har doim ham butun summaga emas. Uni qo‘lda yoqib ham, qo‘llab-quvvatlash orqali qo‘shtirib ham bo‘lmaydi. Bu yerdagi shartlar — taxminiy; aniq summani Uzum kabinetidagi «Ertaroq yechib olish» ko‘rsatadi.',
     'inst.fee': 'Xizmat haqi {n}%',
     'inst.feeFree': 'Xizmat haqi 0% · {date} gacha',
     'chk.no_debt': 'Marketpleys oldida qarzdorlik yo‘q',
@@ -204,6 +207,8 @@ registerNamespace('payout', {
     'inst.no': 'Условия не выполнены',
     'inst.maybe': 'Точно сказать нельзя',
     'inst.maybeHint': 'Видимые нам условия выполнены, но два известны только Uzum',
+    'inst.auto':
+      'Досрочный вывод Uzum открывает сам и автоматически: не всем и не всегда на всю сумму. Включить его вручную или через поддержку нельзя. Условия здесь — ориентир; точную сумму показывает «Вывести досрочно» в кабинете Uzum.',
     'inst.fee': 'Комиссия {n}%',
     'inst.feeFree': 'Комиссия 0% · до {date}',
     'chk.no_debt': 'Нет задолженности перед маркетплейсом',
@@ -311,6 +316,8 @@ registerNamespace('payout', {
     'inst.no': 'Conditions not met',
     'inst.maybe': 'Cannot say for sure',
     'inst.maybeHint': 'What we can see is fine, but two conditions are known only to Uzum',
+    'inst.auto':
+      'Uzum grants early withdrawal on its own, automatically — not to every seller and not always for the full amount. It cannot be turned on manually or through support. The conditions here are a guide; the exact amount is shown under “Withdraw early” in your Uzum cabinet.',
     'inst.fee': 'Fee {n}%',
     'inst.feeFree': 'Fee 0% · until {date}',
     'chk.no_debt': 'No debt to the marketplace',
@@ -1205,9 +1212,18 @@ function InstantCard({
             <CheckRow key={c.key} check={c} />
           ))}
         </ul>
-        {instant.eligible === null ? (
-          <p className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{t('inst.maybeHint')}</p>
-        ) : null}
+        {/*
+         * Erta yechishni Uzum o'zi avtomatik beradi (hammaga emas, butun summaga
+         * emas) — qo'lda yoki qo'llab-quvvatlash orqali yoqilmaydi. Shartlar
+         * ro'yxati bunga va'da emas, taxmin ekanini doim aytamiz (egasi, 2026-10-29).
+         */}
+        <div className="mt-3 space-y-1 border-t border-line pt-3 text-xs leading-relaxed text-muted">
+          {instant.eligible === null ? <p>{t('inst.maybeHint')}</p> : null}
+          <p className="flex gap-2">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{t('inst.auto')}</span>
+          </p>
+        </div>
       </CardBody>
     </Card>
   );
