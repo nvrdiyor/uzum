@@ -92,7 +92,8 @@ function stemsOf(word: string): string[] {
   } else {
     forms.push(word.replace(/(lari?|si)$/, '').replace(/[aeiou]+$/, ''));
   }
-  return [...new Set(forms)].filter((form) => form === word || form.length >= 3);
+  // Bo'sh shakl bo'lmasin: "ь" lotinga o'girilganda "" bo'ladi, bo'sh satr esa hamma joyda "topiladi"
+  return [...new Set(forms)].filter((form) => form && (form === word || form.length >= 3));
 }
 
 const LATIN_TO_CYRILLIC: [RegExp, string][] = [
@@ -333,6 +334,7 @@ function wordsOf(full: string): string[] {
  * lekin "kos" → "kosmetika" emas va "ремен" → "беременных" emas.
  */
 function stemIn(text: string, stem: string): boolean {
+  if (!stem) return false;
   const room = stem.length <= 3 ? 3 : 5;
   for (let at = text.indexOf(stem); at !== -1; at = text.indexOf(stem, at + 1)) {
     if (at > 0 && WORD_CHAR.test(text[at - 1])) continue;
@@ -434,6 +436,7 @@ export function highlightRanges(text: string, query: string): Array<[number, num
   }
 
   const locate = (q: string): [number, number] | null => {
+    if (!q) return null;
     let at = -1;
     // So'z boshidagi moslik afzal: "kol" → "Avto [kol]onkalar", "Mo[kol]..." emas
     for (let from = flat.indexOf(q); from !== -1; from = flat.indexOf(q, from + 1)) {

@@ -384,19 +384,23 @@ export function CategoryPicker({
   // ── Faol qatorni ko'rsatish ──
   /** 'nearest' — klaviatura bilan yurganda; 'center' — ochilganda tanlangan qator o'rtada */
   const pendingScroll = useRef<'nearest' | 'center' | null>(null);
-  useLayoutEffect(() => {
-    const mode = pendingScroll.current;
+  const scrollToRow = (index: number, mode: 'nearest' | 'center') => {
     const list = listRef.current;
-    if (!mode || !list || active < 0) return;
-    pendingScroll.current = null;
+    if (!list) return;
     // Qator balandligi qat'iy — hisoblash scrollIntoView dan aniqroq va sahifani qimirlatmaydi
-    const top = active * ROW_H;
+    const top = index * ROW_H;
     const bottom = top + ROW_H;
     if (mode === 'center') list.scrollTop = top - (list.clientHeight - ROW_H) / 2;
     else if (top < list.scrollTop) list.scrollTop = top;
     else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
     // Qatorlar shu qiymatdan chiziladi: aylanish hodisasini kutilsa, bir kadr bo'sh ro'yxat ko'rinardi
     setListTop(list.scrollTop);
+  };
+  useLayoutEffect(() => {
+    const mode = pendingScroll.current;
+    if (!mode || active < 0) return;
+    pendingScroll.current = null;
+    scrollToRow(active, mode);
   }, [active]);
 
   /*
@@ -471,13 +475,12 @@ export function CategoryPicker({
 
   const onHover = useCallback((index: number) => setActive((cur) => (cur === index ? cur : index)), []);
 
-  const onInput = (next: string) => {
+  const onInput = (next: string, deleting: boolean) => {
     let typed = next;
     if (!open) {
-      // Yopiq maydonda tanlangan nom turadi — yozilgan harf unga qo'shilib ketmasin
-      if (selectedName && next.startsWith(selectedName)) typed = next.slice(selectedName.length);
-      // Backspace nomning oxirgi harfini o'chirdi — nom butunlay ketadi
-      else if (selectedName && selectedName.slice(0, -1) === next) typed = '';
+      // Yopiq maydonda tanlangan nom turadi: o'chirish uni butunlay oladi, yozilgan harf unga qo'shilib ketmaydi
+      if (deleting) typed = '';
+      else if (selectedName && next.includes(selectedName)) typed = next.replace(selectedName, '');
       setOpen(true);
     }
     setQuery(typed);
@@ -488,8 +491,11 @@ export function CategoryPicker({
 
   const move = (next: number) => {
     if (results.length === 0) return;
-    pendingScroll.current = 'nearest';
-    setActive(Math.max(0, Math.min(results.length - 1, next)));
+    const index = Math.max(0, Math.min(results.length - 1, next));
+    // Qator o'sha, lekin yarim ko'rinib turgan bo'lishi mumkin: effekt bu holda ishlamaydi
+    if (index === active) scrollToRow(index, 'nearest');
+    else pendingScroll.current = 'nearest';
+    setActive(index);
   };
   /** Faol qator yo'q (ro'yxat g'ildirak bilan aylantirilgan) — ko'rinib turgan birinchi qatordan davom etadi */
   const step = (delta: number) => {
@@ -718,7 +724,7 @@ export function CategoryPicker({
           const next = e.relatedTarget;
           if (next instanceof Node && !panelRef.current?.contains(next)) close();
         }}
-        onChange={(e) => onInput(e.target.value)}
+        onChange={(e) => onInput(e.target.value, (e.nativeEvent as InputEvent).inputType?.startsWith('delete') ?? false)}
         onKeyDown={onKey}
         className={cn(
           compact

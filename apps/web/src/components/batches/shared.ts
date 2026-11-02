@@ -517,7 +517,11 @@ export function parseAmount(value: string, integer = false): number {
   if (integer) {
     // "369000.50", "369000.000" — kasr: oxirida 1–2 raqam yoki butun qismi 3 raqamdan uzun. "8.000" va "1,234,567" — minglik
     const decimal = /^(.*)[.,](\d{1,2})$/.exec(s) ?? /^(\d{4,})[.,](\d+)$/.exec(s);
-    if (decimal) return Math.round(Number(`${decimal[1].replace(/[^\d]/g, '')}.${decimal[2]}`));
+    if (decimal) {
+      // Butun qismidagi ajratkichlar minglik bo'lishi shart: "1761.321786.62", "1.2.3" — tushunib bo'lmaydi
+      if (/[.,]/.test(decimal[1]) && !/^\d{1,3}([.,]\d{3})+$/.test(decimal[1])) return NaN;
+      return Math.round(Number(`${decimal[1].replace(/[^\d]/g, '')}.${decimal[2]}`));
+    }
     return Number(s.replace(/[^\d]/g, ''));
   }
   // Ikkala belgi bo'lsa — oxirgisi kasr ajratkichi, qolgani minglik

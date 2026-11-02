@@ -205,6 +205,21 @@ function PlanCell({
     ref.current?.select();
   }, [text]);
 
+  const applyText = (raw: string) => {
+    // Excel'dan bir necha katak joylansa birinchisi olinadi: raqamlar qo'shilib ketib, ulkan summa chiqardi
+    const first = raw.split(/[\t\r\n]/).find((part) => part.trim()) ?? '';
+    // Harf kiritilmaydi — tasodifan yozilgan matn narxni jimgina o'zgartirmasin
+    const clean = first.replace(/[^\d\s.,]/g, '');
+    setText(clean);
+    if (!/\d/.test(clean)) {
+      onChange(null);
+      return;
+    }
+    const n = parseAmount(clean, integer);
+    // Tushunib bo'lmaydigan matnda oxirgi to'g'ri qiymat saqlanadi
+    if (Number.isFinite(n)) onChange(max === undefined ? n : Math.min(n, max));
+  };
+
   return (
     <input
       ref={ref}
@@ -220,19 +235,13 @@ function PlanCell({
         setText(value === null ? '' : String(value));
       }}
       onBlur={() => setText(null)}
-      onChange={(e) => {
-        // Excel'dan bir necha katak joylansa birinchisi olinadi: raqamlar qo'shilib ketib, ulkan summa chiqardi
-        const first = e.target.value.split(/[\t\r\n]/).find((part) => part.trim()) ?? '';
-        // Harf kiritilmaydi — tasodifan yozilgan matn narxni jimgina o'zgartirmasin
-        const clean = first.replace(/[^\d\s.,]/g, '');
-        setText(clean);
-        if (!/\d/.test(clean)) {
-          onChange(null);
-          return;
-        }
-        const n = parseAmount(clean, integer);
-        // Tushunib bo'lmaydigan matnda oxirgi to'g'ri qiymat saqlanadi
-        if (Number.isFinite(n)) onChange(max === undefined ? n : Math.min(n, max));
+      onChange={(e) => applyText(e.target.value)}
+      onPaste={(e) => {
+        // Brauzer qator oxirini bo'shliqqa almashtiradi, shuning uchun xom matn shu yerda o'qiladi
+        const raw = e.clipboardData.getData('text');
+        if (!/[\t\r\n]/.test(raw)) return;
+        e.preventDefault();
+        applyText(raw);
       }}
       onKeyDown={onKeyDown}
       className={cn(className ?? CELL_INPUT, 'tnum text-right')}
@@ -1085,7 +1094,8 @@ export function PlanTab() {
       const box = scrollerRef.current;
       const table = tableRef.current;
       const row = td.parentElement;
-      if (!box || !table || !(row instanceof HTMLTableRowElement)) return;
+      // O'chirish tugmasi bosilgan: qator endi yo'q, o'lchamlari nol va jadval tepaga sakrardi
+      if (!box || !table || !td.isConnected || !(row instanceof HTMLTableRowElement)) return;
       const cell = td.getBoundingClientRect();
       const view = box.getBoundingClientRect();
       const stickyName = row.cells[1];
