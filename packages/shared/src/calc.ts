@@ -306,21 +306,23 @@ export interface BatchRowCalc {
  * `priceCny` — qatordagi barcha donalarning jami narxi, shuning uchun 1 dona
  * tannarxi = (tovar + kargo) ÷ soni.
  *
- * Qo'shimcha xarajat (bojxona, yo'l haqi...) qatorlarga avvalo SONIGA, keyin KG
- * ga qarab bo'linadi (`BATCH_EXTRA_QTY_SHARE`). Xarajat bilan 1 dona =
- * (tovar + kargo + ulush) ÷ soni. Qatorning kg'i kiritilmagan, boshqalariniki
- * esa kiritilgan bo'lsa bu ko'rsatkich hisoblanmaydi (null) — kg ulushisiz son
- * tannarxni kamaytirib ko'rsatardi. Hech bir qatorda kg bo'lmasa, butun xarajat
- * soniga qarab bo'linadi; soni bo'lmasa — kg ga.
+ * Qo'shimcha xarajat (bojxona, yo'l haqi...) qatorlarga SONI VA KG NI BIRGA
+ * hisobga olib bo'linadi: ulush √(soni × kg) ga mutanosib, ya'ni 4 barobar og'ir
+ * dona 2 barobar ko'p xarajat oladi. Egasining qarori (2026-11-02). Uning
+ * partiyasida (320 650 so'm xarajat; 10 dona 5,5 kg va 50 dona 0,1 kg qatorlar):
+ *  • faqat kg bo'lganda 1 dona kovrikka 23 832 so'm, mayda tovarga 87 so'm tushardi;
+ *  • 70% soni + 30% kg da mayda tovar qimmatlashdi: 1 863 so'mlik donaga 1 543 so'm;
+ *  • ildizda kovrikka 11 360, mayda tovarga 685 so'm.
+ * Hamma donaning og'irligi bir xil bo'lsa, natija soniga ham, kg ga ham teng.
+ * Ildizlar yig'indisi ulushlar yig'indisidan kichik va hamma qator masshtablanadi,
+ * shuning uchun o'rtadagi qator ikkala toza usuldan ham ko'proq olishi mumkin.
+ *
+ * Xarajat bilan 1 dona = (tovar + kargo + ulush) ÷ soni. Qatorda soni bor-u kg
+ * yo'q, boshqalarida kg bor bo'lsa, unga ulush tushmaydi va bu ko'rsatkich
+ * hisoblanmaydi (null) — ulushsiz son tannarxni kamaytirib ko'rsatardi. Hech bir
+ * qatorda soni va kg birga bo'lmasa — xarajat soniga, soni ham bo'lmasa kg ga
+ * qarab bo'linadi.
  */
-/**
- * Qo'shimcha xarajatning soniga qarab bo'linadigan qismi; qolgani — kg ga.
- * 2026-11-02 gacha hammasi kg bo'yicha edi: 7,4 kg lik partiyada 5,5 kg lik
- * kovrikning 1 donasiga 23 832 so'm, 0,1 kg lik mayda tovarga 87 so'm tushardi.
- * Egasining qarori: birinchi navbatda soni, keyin kg — tafovut katta bo'lmasin.
- */
-export const BATCH_EXTRA_QTY_SHARE = 0.7;
-
 /**
  * Qo'shimcha xarajat turi. Tanlangan bo'lsa — o'sha; tanlanmasdan oldin yozilgan
  * qatorda nomidan aniqlanadi: "Yo'l haqi", "yol kira", "дорога", "проезд" — yo'l kira.
@@ -358,11 +360,8 @@ export function calcBatch(
 
   const ex = Math.round(Math.max(0, extra || 0));
   const kgs = items.map((it) => Math.max(0, it.weightKg || 0));
-  // Bo'lishdagi `weightKg` yaxlitlanmagan jami; biri umuman kiritilmagan bo'lsa — butun xarajat ikkinchisiga
-  const qtyPart = weightKg > 0 ? (qty > 0 ? BATCH_EXTRA_QTY_SHARE : 0) : 1;
-  const weights = base.map(
-    ({ n }, i) => (qty > 0 ? (qtyPart * n) / qty : 0) + (weightKg > 0 ? ((1 - qtyPart) * kgs[i]) / weightKg : 0),
-  );
+  const both = base.map(({ n }, i) => Math.sqrt(n * kgs[i]));
+  const weights = both.some((w) => w > 0) ? both : qty > 0 ? base.map(({ n }) => n) : kgs;
   const shares = splitByWeight(ex, weights);
   return {
     rows: base.map(({ n, ...row }, i) => ({

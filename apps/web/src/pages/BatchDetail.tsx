@@ -32,7 +32,6 @@ import {
   X,
 } from '@/components/icons';
 import {
-  BATCH_EXTRA_QTY_SHARE,
   BATCH_MAX_EXTRAS,
   BATCH_MAX_ITEMS,
   calcBatch,
@@ -110,9 +109,6 @@ function blankRow(prev?: Row): Row {
     cargoCost: 0,
   };
 }
-
-/** Qo'shimcha xarajat bo'linishi matnlar uchun: soniga va kg ga, foizda */
-const EXTRA_SPLIT = { q: Math.round(BATCH_EXTRA_QTY_SHARE * 100), k: 100 - Math.round(BATCH_EXTRA_QTY_SHARE * 100) };
 
 const isBlankExtra = (e: ExtraRow) => !e.name.trim() && !e.amount;
 const sumExtras = (list: readonly ExtraRow[]) => Math.round(list.reduce((a, e) => a + (e.amount || 0), 0));
@@ -325,7 +321,7 @@ function ExtrasModal({
       open={open}
       onClose={onClose}
       title={t('extras.title')}
-      description={t('extras.hint', EXTRA_SPLIT)}
+      description={t('extras.hint')}
       size="md"
       footer={
         <div className="flex items-center justify-between gap-3">
@@ -799,6 +795,11 @@ function BatchDetail({ id }: { id: string }) {
 
   // ── Hisob ──
   const calc = useMemo(() => (draft ? calcBatch(draft.rate, draft.extra, draft.rows) : null), [draft]);
+  // Soni bor-u kg yo'q qatorlar: ulush ularga tushmaydi, kg kiritilguncha boshqa qatorlar ko'tarib turadi
+  const missingKg =
+    draft && calc
+      ? calc.rows.filter((res, i) => draft.rows[i].qty >= 1 && res.unitCostFull === null && res.extraShare === 0).length
+      : 0;
   const cargoSplit = useMemo(() => {
     const split = { avia: 0, avto: 0 };
     draft?.rows.forEach((r) => (split[r.delivery] += Math.round(r.cargoCost || 0)));
@@ -1004,9 +1005,11 @@ function BatchDetail({ id }: { id: string }) {
                 value={f.num(calc.totals.extra)}
                 hint={
                   calc.totals.extra > 0
-                    ? calc.totals.qty > 0
-                      ? t('kpi.extraPerUnit', { sum: f.num(calc.totals.extraPerUnit) })
-                      : t('kpi.extraNoQty')
+                    ? missingKg > 0
+                      ? t('kpi.extraMissingKg', { n: missingKg })
+                      : calc.totals.qty > 0
+                        ? t('kpi.extraPerUnit', { sum: f.num(calc.totals.extraPerUnit) })
+                        : t('kpi.extraNoQty')
                     : t('f.extraHint')
                 }
               />
@@ -1087,7 +1090,7 @@ function BatchDetail({ id }: { id: string }) {
                     <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
                       {t('th.unit')}
                     </th>
-                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint', EXTRA_SPLIT)}>
+                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint')}>
                       {t('th.unitFull')}
                     </th>
                     <th className={th} />
@@ -1269,7 +1272,7 @@ function BatchDetail({ id }: { id: string }) {
                             !res.total || !r.qty
                               ? undefined
                               : res.unitCostFull === null
-                                ? t('row.noKg', EXTRA_SPLIT)
+                                ? t('row.noKg')
                                 : calc.totals.extra > 0
                                   ? t('row.extraShare', { sum: f.num(res.extraShare) })
                                   : undefined
