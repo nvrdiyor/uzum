@@ -32,6 +32,7 @@ import {
   X,
 } from '@/components/icons';
 import {
+  BATCH_EXTRA_QTY_SHARE,
   BATCH_MAX_EXTRAS,
   BATCH_MAX_ITEMS,
   calcBatch,
@@ -109,6 +110,9 @@ function blankRow(prev?: Row): Row {
     cargoCost: 0,
   };
 }
+
+/** Qo'shimcha xarajat bo'linishi matnlar uchun: soniga va kg ga, foizda */
+const EXTRA_SPLIT = { q: Math.round(BATCH_EXTRA_QTY_SHARE * 100), k: 100 - Math.round(BATCH_EXTRA_QTY_SHARE * 100) };
 
 const isBlankExtra = (e: ExtraRow) => !e.name.trim() && !e.amount;
 const sumExtras = (list: readonly ExtraRow[]) => Math.round(list.reduce((a, e) => a + (e.amount || 0), 0));
@@ -321,7 +325,7 @@ function ExtrasModal({
       open={open}
       onClose={onClose}
       title={t('extras.title')}
-      description={t('extras.hint')}
+      description={t('extras.hint', EXTRA_SPLIT)}
       size="md"
       footer={
         <div className="flex items-center justify-between gap-3">
@@ -1000,9 +1004,9 @@ function BatchDetail({ id }: { id: string }) {
                 value={f.num(calc.totals.extra)}
                 hint={
                   calc.totals.extra > 0
-                    ? calc.totals.weightKg > 0
-                      ? t('kpi.extraPerKg', { sum: f.num(calc.totals.extraPerKg) })
-                      : t('kpi.extraNoKg')
+                    ? calc.totals.qty > 0
+                      ? t('kpi.extraPerUnit', { sum: f.num(calc.totals.extraPerUnit) })
+                      : t('kpi.extraNoQty')
                     : t('f.extraHint')
                 }
               />
@@ -1083,7 +1087,7 @@ function BatchDetail({ id }: { id: string }) {
                     <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
                       {t('th.unit')}
                     </th>
-                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint')}>
+                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint', EXTRA_SPLIT)}>
                       {t('th.unitFull')}
                     </th>
                     <th className={th} />
@@ -1265,9 +1269,9 @@ function BatchDetail({ id }: { id: string }) {
                             !res.total || !r.qty
                               ? undefined
                               : res.unitCostFull === null
-                                ? t('row.noKg')
+                                ? t('row.noKg', EXTRA_SPLIT)
                                 : calc.totals.extra > 0
-                                  ? t('row.extraShare', { kg: kgText(r.weightKg), sum: f.num(res.extraShare) })
+                                  ? t('row.extraShare', { sum: f.num(res.extraShare) })
                                   : undefined
                           }
                         >

@@ -1945,7 +1945,7 @@ export interface BatchItemInput {
 /**
  * Qo'shimcha xarajat turi. Yo'l kira — tovarni olib kelish puli, partiyalar
  * umumiy summasiga kiradi. Boshqalari (logistika, paket...) — kirmaydi.
- * Ikkalasi ham tovar tannarxiga kg bo'yicha bo'linadi.
+ * Ikkalasi ham tovar tannarxiga avvalo soni, keyin kg bo'yicha bo'linadi (`calcBatch`).
  */
 export type BatchExtraKind = 'road' | 'other';
 
@@ -1966,9 +1966,9 @@ export interface BatchItemRow extends BatchItemInput {
   total: number;
   /** total ÷ qty; soni kiritilmagan bo'lsa null */
   unitCost: number | null;
-  /** Qo'shimcha xarajatning shu qatorga kg ulushi bo'yicha tushgan qismi, so'm */
+  /** Qo'shimcha xarajatning shu qatorga tushgan qismi (soni va kg bo'yicha, `calcBatch`), so'm */
   extraShare: number;
-  /** (total + extraShare) ÷ qty; soni yoki (xarajat bo'lsa) kg kiritilmagan bo'lsa null */
+  /** (total + extraShare) ÷ qty; soni kiritilmagan yoki (xarajat bo'lib, boshqalarda kg bor-u) shu qatorda kg yo'q bo'lsa null */
   unitCostFull: number | null;
 }
 
@@ -1980,8 +1980,8 @@ export interface BatchTotals {
   goodsUzs: number;
   cargoUzs: number;
   extra: number;
-  /** Qo'shimcha xarajat ÷ jami kg; kg kiritilmagan bo'lsa 0 */
-  extraPerKg: number;
+  /** Qo'shimcha xarajat ÷ jami soni (o'rtacha); soni kiritilmagan bo'lsa 0 */
+  extraPerUnit: number;
   total: number;
 }
 

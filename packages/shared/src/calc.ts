@@ -306,12 +306,21 @@ export interface BatchRowCalc {
  * `priceCny` — qatordagi barcha donalarning jami narxi, shuning uchun 1 dona
  * tannarxi = (tovar + kargo) ÷ soni.
  *
- * Qo'shimcha xarajat (bojxona, yo'l haqi...) qatorlarga KG ulushiga qarab
- * bo'linadi: og'irroq tovar ko'proq xarajat ko'taradi. Xarajat bilan 1 dona =
- * (tovar + kargo + kg ulushi) ÷ soni. Xarajat bor-u, qatorning kg'i
- * kiritilmagan bo'lsa bu ko'rsatkich hisoblanmaydi (null) — ulushsiz son
- * tannarxni kamaytirib ko'rsatardi.
+ * Qo'shimcha xarajat (bojxona, yo'l haqi...) qatorlarga avvalo SONIGA, keyin KG
+ * ga qarab bo'linadi (`BATCH_EXTRA_QTY_SHARE`). Xarajat bilan 1 dona =
+ * (tovar + kargo + ulush) ÷ soni. Qatorning kg'i kiritilmagan, boshqalariniki
+ * esa kiritilgan bo'lsa bu ko'rsatkich hisoblanmaydi (null) — kg ulushisiz son
+ * tannarxni kamaytirib ko'rsatardi. Hech bir qatorda kg bo'lmasa, butun xarajat
+ * soniga qarab bo'linadi; soni bo'lmasa — kg ga.
  */
+/**
+ * Qo'shimcha xarajatning soniga qarab bo'linadigan qismi; qolgani — kg ga.
+ * 2026-11-02 gacha hammasi kg bo'yicha edi: 7,4 kg lik partiyada 5,5 kg lik
+ * kovrikning 1 donasiga 23 832 so'm, 0,1 kg lik mayda tovarga 87 so'm tushardi.
+ * Egasining qarori: birinchi navbatda soni, keyin kg — tafovut katta bo'lmasin.
+ */
+export const BATCH_EXTRA_QTY_SHARE = 0.7;
+
 /**
  * Qo'shimcha xarajat turi. Tanlangan bo'lsa — o'sha; tanlanmasdan oldin yozilgan
  * qatorda nomidan aniqlanadi: "Yo'l haqi", "yol kira", "дорога", "проезд" — yo'l kira.
@@ -349,12 +358,18 @@ export function calcBatch(
 
   const ex = Math.round(Math.max(0, extra || 0));
   const kgs = items.map((it) => Math.max(0, it.weightKg || 0));
-  const shares = splitByWeight(ex, kgs);
+  // Bo'lishdagi `weightKg` yaxlitlanmagan jami; biri umuman kiritilmagan bo'lsa — butun xarajat ikkinchisiga
+  const qtyPart = weightKg > 0 ? (qty > 0 ? BATCH_EXTRA_QTY_SHARE : 0) : 1;
+  const weights = base.map(
+    ({ n }, i) => (qty > 0 ? (qtyPart * n) / qty : 0) + (weightKg > 0 ? ((1 - qtyPart) * kgs[i]) / weightKg : 0),
+  );
+  const shares = splitByWeight(ex, weights);
   return {
     rows: base.map(({ n, ...row }, i) => ({
       ...row,
       extraShare: shares[i],
-      unitCostFull: n > 0 && (ex === 0 || kgs[i] > 0) ? Math.round((row.total + shares[i]) / n) : null,
+      unitCostFull:
+        n > 0 && (ex === 0 || weightKg === 0 || kgs[i] > 0) ? Math.round((row.total + shares[i]) / n) : null,
     })),
     totals: {
       items: items.length,
@@ -364,7 +379,7 @@ export function calcBatch(
       goodsUzs,
       cargoUzs,
       extra: ex,
-      extraPerKg: weightKg > 0 ? Math.round(ex / weightKg) : 0,
+      extraPerUnit: qty > 0 ? Math.round(ex / qty) : 0,
       total: goodsUzs + cargoUzs + ex,
     },
   };
