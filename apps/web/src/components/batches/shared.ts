@@ -514,7 +514,12 @@ registerNamespace('batches', {
  */
 export function parseAmount(value: string, integer = false): number {
   let s = value.replace(/[\s  ]/g, '');
-  if (integer) return Number(s.replace(/[^\d]/g, ''));
+  if (integer) {
+    // "369000.50", "369000.000" — kasr: oxirida 1–2 raqam yoki butun qismi 3 raqamdan uzun. "8.000" va "1,234,567" — minglik
+    const decimal = /^(.*)[.,](\d{1,2})$/.exec(s) ?? /^(\d{4,})[.,](\d+)$/.exec(s);
+    if (decimal) return Math.round(Number(`${decimal[1].replace(/[^\d]/g, '')}.${decimal[2]}`));
+    return Number(s.replace(/[^\d]/g, ''));
+  }
   // Ikkala belgi bo'lsa — oxirgisi kasr ajratkichi, qolgani minglik
   const lastDot = s.lastIndexOf('.');
   const lastComma = s.lastIndexOf(',');

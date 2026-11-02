@@ -6,6 +6,7 @@ export * from './format.js';
 export * from './schemas.js';
 export * from './card-seo.js';
 export * from './tariffs.js';
+export * from './unit-plan.js';
 export * from './search.js';
 export * from './views.js';
 export * from './competitors.js';

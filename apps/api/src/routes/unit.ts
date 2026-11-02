@@ -7,11 +7,13 @@
  *  GET    /scenarios      → saqlangan stsenariylar
  *  POST   /scenarios      → yangi stsenariy (data — JSON string)
  *  DELETE /scenarios/:id  → stsenariyni o'chirish
+ *  GET    /plan           → UnitPlan — tovarlar jadvali (Unit.xlsx): stavkalar va qatorlar
+ *  PUT    /plan           → butun jadvalni saqlash; `expectedUpdatedAt` eskirgan bo'lsa 409
  *
  * Barcha pul qiymatlari UZS (butun so'm), sanalar ISO-8601.
  * Ma'lumot bo'lmasa marshrutlar 200 va bo'sh/nol qiymatlar qaytaradi.
  */
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { prisma } from '@savdoiq/db';
 import { z } from 'zod';
 import {
@@ -19,6 +21,7 @@ import {
   IMPORT_CALC_FALLBACK,
   NEW_SKU_FREE_DAYS,
   TURNOVER_WINDOW_DAYS,
+  UNIT_PLAN_DEFAULT_ADS_PCT,
   addDays,
   billableLiters,
   calcImportPrice,
@@ -37,6 +40,8 @@ import {
   toBusinessDate,
   turnoverDays,
   unitCalcSchema,
+  unitPlanSaveSchema,
+  viewSeesMoney,
   type ImportCalcInput,
   type ImportDefaults,
   type StorageTariffKind,
@@ -44,10 +49,12 @@ import {
   type UnitCalcResult,
   type UnitEconomicsResponse,
   type UnitEconomicsRow,
+  type UnitPlan,
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { paginate, resolveRange } from '../lib/period.js';
+import { effectiveView } from '../lib/views.js';
 import {
   aggregateSales,
   getLatestStocks,
@@ -58,6 +65,7 @@ import {
   type SalesAgg,
   type SkuInfo,
 } from '../services/common.js';
+import { getPayoutRules } from '../services/payout-schedule.js';
 import { aggregateSalesNet } from '../services/pnl.js';
 import { getRate } from '../services/rates.js';
 import { skuAgeOnSale } from '../services/storage-turnover.js';
@@ -770,6 +778,138 @@ router.delete(
     const result = await prisma.unitScenario.deleteMany({ where: { id, companyId: company.id } });
     if (result.count === 0) throw AppError.notFound('Stsenariy topilmadi');
     res.json({ ok: true, id });
+  }),
+);
+
+// ─────────────────────────── Tovarlar jadvali (Unit.xlsx) ───────────────────────────
+
+/** Butun jadval bitta yozuvda: JSON { rates, rows }, versiyasi — yozuvning `updatedAt` i */
+const UNIT_PLAN_KEY = 'unit:plan';
+
+const STALE_PLAN =
+  'Jadval boshqa joyda o‘zgargan (boshqa oyna yoki qurilma). O‘zgarishlar ustidan yozilmasligi uchun saqlanmadi — sahifani yangilang.';
+
+const isUniqueViolation = (err: unknown): boolean => (err as { code?: string } | null)?.code === 'P2002';
+
+/**
+ * Saqlangan JSON'ni tekshiradi; yaroqsiz bo'lsa null. Yozuvga umumiy PUT
+ * /company/settings ham yeta oladi (kalit qoidasi 'unit:plan' ni o'tkazadi,
+ * qiymatni esa tekshirmaydi), shuning uchun bazadagiga ishonilmaydi.
+ */
+function parseStoredPlan(value: string): Pick<UnitPlan, 'rates' | 'rows'> | null {
+  try {
+    const parsed = unitPlanSaveSchema.safeParse(JSON.parse(value));
+    return parsed.success ? { rates: parsed.data.rates, rows: parsed.data.rows } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Jadvalda sotib olish narxi bor. Pulsiz shablonda javobdagi `purchasePrice`
+ * `null` bo'lardi (shared views.ts `redactMoney`), sayt esa jadvalni butunligicha
+ * qaytarib yozadi — keyingi saqlash narxlarni jimgina o'chirib yuborardi.
+ * Hozirgi pulsiz shablonlarda 'unit' hududi yo'q, ular `requireCompany` da 403
+ * oladi; bu qo'riqchi hududlar ro'yxati keyin o'zgarsa ham shunday qolishi
+ * uchun (2026-11-02).
+ */
+const requireMoneyView: RequestHandler = (req, _res, next) => {
+  const view = effectiveView(req.ctx?.membership);
+  if (viewSeesMoney(view)) return next();
+  next(new AppError(403, 'view_forbidden', 'Bu bo‘lim sizning ko‘rinishingizda yopiq', { view }));
+};
+
+/**
+ * GET /plan — saqlangan jadval. Hali saqlanmagan yoki yozuv yaroqsiz bo'lsa — bo'sh
+ * jadval va kompaniyaning o'z stavkalari: soliq — kompaniya sozlamasidan, pul
+ * yechish — Uzum to'lov jadvali haqidan, reklama — Unit.xlsx dagi boshlang'ich qiymat.
+ */
+router.get(
+  '/plan',
+  requireMoneyView,
+  requireFeature('unit_calculator'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const row = await prisma.companySetting.findUnique({
+      where: { companyId_key: { companyId: company.id, key: UNIT_PLAN_KEY } },
+      select: { value: true, updatedAt: true },
+    });
+    const stored = row ? parseStoredPlan(row.value) : null;
+
+    let payload: UnitPlan;
+    if (row && stored) {
+      payload = { ...stored, updatedAt: row.updatedAt.toISOString() };
+    } else {
+      const { scheduleFeePct } = await getPayoutRules(company.id);
+      payload = {
+        rates: { taxPct: company.taxRate, withdrawPct: scheduleFeePct, adsPct: UNIT_PLAN_DEFAULT_ADS_PCT },
+        rows: [],
+        updatedAt: null,
+      };
+    }
+    res.json(payload);
+  }),
+);
+
+/**
+ * PUT /plan — butun jadvalni saqlash: sayt qatorlarni alohida emas, bitta PUT
+ * bilan yozadi (partiyalar kabi). `expectedUpdatedAt` — sayt GET yoki oldingi
+ * saqlashdan olgan `updatedAt`; baza undan o'zgargan bo'lsa 409, aks holda eski
+ * oyna yangi qatorlarni o'chirib yuborardi. null yoki berilmagan — "hali hech
+ * narsa saqlanmagan" degani: birinchi saqlashda o'tadi, keyin rad etiladi.
+ */
+router.put(
+  '/plan',
+  requireMoneyView,
+  requireFeature('unit_calculator'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const body = unitPlanSaveSchema.parse(req.body ?? {});
+    const where = { companyId: company.id, key: UNIT_PLAN_KEY };
+
+    const current = await prisma.companySetting.findUnique({
+      where: { companyId_key: where },
+      select: { value: true, updatedAt: true },
+    });
+
+    /*
+     * Saytdagi versiya GET qoidasi bilan solishtiriladi: yaroqsiz yozuvni GET
+     * "hech narsa yo'q" (updatedAt null) deb ko'rsatadi. Shuning uchun null bilan
+     * kelgan saqlash uni almashtira oladi — aks holda sotuvchi buzilgan yozuvdan
+     * chiqa olmasdi, har saqlash 409 olardi (2026-11-02).
+     */
+    const version = current && parseStoredPlan(current.value) ? current.updatedAt.getTime() : null;
+    const expected = body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt).getTime() : null;
+    if (expected !== version) throw AppError.conflict(STALE_PLAN);
+
+    // Versiya har yozuvda oshadi — soat orqaga ketsa yoki ikki saqlash bir millisekundga tushsa ham
+    const updatedAt = new Date(Math.max(Date.now(), (current?.updatedAt.getTime() ?? 0) + 1));
+    const value = JSON.stringify({ rates: body.rates, rows: body.rows });
+
+    /*
+     * Tekshiruvdan keyin boshqa oyna saqlab ulgurishi mumkin, shuning uchun yozuvning
+     * o'zi ham shartli: mavjudi o'qilgan versiya bo'yicha (batches.ts dagi kabi),
+     * birinchisi unique kalit bo'yicha. Oddiy upsert to'g'ri kelmaydi — u
+     * versiyaga qaramay ustidan yozadi.
+     */
+    if (current) {
+      const updated = await prisma.companySetting.updateMany({
+        where: { ...where, updatedAt: current.updatedAt },
+        data: { value, updatedAt },
+      });
+      if (updated.count === 0) throw AppError.conflict(STALE_PLAN);
+    } else {
+      try {
+        await prisma.companySetting.create({ data: { ...where, value, updatedAt } });
+      } catch (err) {
+        if (isUniqueViolation(err)) throw AppError.conflict(STALE_PLAN);
+        throw err;
+      }
+    }
+
+    const payload: UnitPlan = { rates: body.rates, rows: body.rows, updatedAt: updatedAt.toISOString() };
+    res.json(payload);
   }),
 );
 

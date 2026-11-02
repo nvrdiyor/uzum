@@ -27,8 +27,11 @@ import {
   type UnitCalcInput,
   type UnitCalcResult,
 } from '@savdoiq/shared';
+import { CategoryPicker, CategoryRateLine } from '@/components/calculator/CategoryPicker';
+import { categoryName, type CommissionCategory } from '@/components/calculator/commissions';
 import { LitrovkaTab } from '@/components/calculator/LitrovkaTab';
 import { LITR_EXAMPLE, MAX_TURNOVER, computeLitrovka, litrVolume, type LitrInput } from '@/components/calculator/litrovka';
+import { PlanTab } from '@/components/calculator/plan/PlanTab';
 import { SourceHint, SourceSlot } from '@/components/calculator/SourceBadge';
 import { literDigits } from '@/components/calculator/tariff';
 import {
@@ -73,7 +76,7 @@ import {
 } from '@/components/unit/types';
 import { api } from '@/lib/api';
 import { usePeriodQuery } from '@/store/ui';
-import { registerNamespace, useFormat, useT } from '@/i18n';
+import { registerNamespace, useFormat, useLang, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 registerNamespace('calculator', {
@@ -93,7 +96,7 @@ registerNamespace('calculator', {
     'fld.cost': 'Tannarx',
     'fld.costHint': 'Mahsulotning sizga tushgan xarid narxi (1 dona)',
     'fld.commission': 'Komissiya',
-    'fld.commissionHint': 'Uzum ushlab qoladigan foiz — kategoriyaga qarab odatda 8–20%',
+    'fld.commissionHint': 'Uzum ushlab qoladigan foiz — yuqorida kategoriyani tanlang, stavka o‘zi qo‘yiladi',
     'fld.logistics': 'Logistika',
     'fld.logisticsHint': 'Sotilgan 1 dona uchun Uzum logistika yig‘imi (tovar qaytsa, qaytariladi)',
     'fld.storagePerDay': 'Saqlash (kuniga)',
@@ -175,7 +178,7 @@ registerNamespace('calculator', {
     'fld.cost': 'Себестоимость',
     'fld.costHint': 'Закупочная цена товара (за 1 шт.)',
     'fld.commission': 'Комиссия',
-    'fld.commissionHint': 'Процент маркетплейса — обычно 8–20% по категории',
+    'fld.commissionHint': 'Процент, который удерживает Uzum — выберите категорию выше, и ставка подставится сама',
     'fld.logistics': 'Логистика',
     'fld.logisticsHint': 'Логистика Uzum за 1 проданную шт. (при возврате возвращается)',
     'fld.storagePerDay': 'Хранение (в день)',
@@ -257,7 +260,7 @@ registerNamespace('calculator', {
     'fld.cost': 'Cost price',
     'fld.costHint': 'What one unit costs you to buy',
     'fld.commission': 'Commission',
-    'fld.commissionHint': 'Marketplace fee — usually 8–20% depending on the category',
+    'fld.commissionHint': 'What Uzum keeps — pick a category above and the rate fills itself',
     'fld.logistics': 'Logistics',
     'fld.logisticsHint': 'Uzum logistics fee per sold unit (refunded if the item is returned)',
     'fld.storagePerDay': 'Storage (per day)',
@@ -333,8 +336,8 @@ interface SkuOption {
 /** "Narx qayerga ketadi" bloki: bitta dona yoki butun partiya bo'yicha */
 type SplitMode = 'unit' | 'batch';
 
-/** Sahifa bo'limlari: unit-iqtisod va Litrovka (`?tab=litr`) */
-type CalcTab = 'unit' | 'litr';
+/** Sahifa bo'limlari: unit-iqtisod, Litrovka (`?tab=litr`) va tovarlar jadvali (`?tab=plan`) */
+type CalcTab = 'unit' | 'litr' | 'plan';
 
 /**
  * Qo'lda rejimdagi boshlang'ich qiymatlar. Namunadagi saqlash (300 so'm/kun)
@@ -350,19 +353,38 @@ export default function Calculator() {
   const t = useT('calculator');
   const ts = useT('calcSource');
   const tl = useT('litrovka');
+  const tp = useT('unitPlan');
+  const tc = useT('categoryPicker');
   const f = useFormat();
+  const lang = useLang();
   const qc = useQueryClient();
   const periodQuery = usePeriodQuery();
   const [params, setParams] = useSearchParams();
 
   const skuId = params.get('skuId') ?? '';
-  const tab: CalcTab = params.get('tab') === 'litr' ? 'litr' : 'unit';
+  const tabParam = params.get('tab');
+  const tab: CalcTab = tabParam === 'litr' || tabParam === 'plan' ? tabParam : 'unit';
   const setTab = (next: CalcTab) => {
     const p = new URLSearchParams(params);
-    if (next === 'litr') p.set('tab', 'litr');
-    else p.delete('tab');
+    if (next === 'unit') p.delete('tab');
+    else p.set('tab', next);
     setParams(p, { replace: true });
   };
+
+  /*
+   * Telefonda uch bo'lim ruscha yozuvlar bilan bir qatorga sig'maydi va qator ichida
+   * suriladi: `?tab=plan` havolasi bilan ochilganda faol bo'lim chetda kesilib qolardi.
+   */
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = tabsRef.current?.firstElementChild;
+    const active = strip?.children[(['unit', 'litr', 'plan'] as CalcTab[]).indexOf(tab)];
+    if (!strip || !active) return;
+    const over = active.getBoundingClientRect().right - strip.getBoundingClientRect().right;
+    const under = active.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    if (over > 0) strip.scrollLeft += over;
+    else if (under < 0) strip.scrollLeft += under;
+  }, [tab]);
 
   /** Formadagi joriy qiymatlar (har bosishda yangilanadi) */
   const [draft, setDraft] = useState<UnitCalcInput>(START_INPUT);
@@ -392,6 +414,18 @@ export default function Calculator() {
   }, [draft]);
 
   const patch = (key: keyof UnitCalcInput, value: number) => setDraft((d) => ({ ...d, [key]: value }));
+
+  /*
+   * Komissiya uchun tanlangan kategoriya. Faqat shu hisobga tegishli va saqlanmaydi:
+   * boshqa SKU yoki tozalashda eski kategoriya yangi raqam ustida turib adashtirmasin.
+   */
+  const [category, setCategory] = useState<CommissionCategory | null>(null);
+  useEffect(() => setCategory(null), [skuId]);
+  const onPickCategory = (cat: CommissionCategory | null) => {
+    setCategory(cat);
+    // Jadvalda stavka yo'q bo'lsa maydonga tegilmaydi — sotuvchi o'zi yozadi
+    if (cat?.pct !== null && cat?.pct !== undefined) patch('commissionPct', cat.pct);
+  };
 
   // ── SKU ro'yxati ──
   const products = useQuery({
@@ -524,6 +558,8 @@ export default function Calculator() {
     const value = auto.values[field];
     return value !== undefined && draft[field] === value ? auto.sources[field] : undefined;
   };
+  /** Stavka kategoriyadan qo'yilgan bo'lsa, u tasodifan avtomatik qiymatga teng chiqsa ham "Taxmin" emas */
+  const commissionSource = category && draft.commissionPct === category.pct ? undefined : activeSource('commissionPct');
 
   // ── Litrovka: SKU tanlansa kartochkadagi hajm, FBO qoldiq, aylanma va tarif turi ──
   useEffect(() => {
@@ -645,6 +681,7 @@ export default function Calculator() {
       f,
     );
     applyInput({ ...START_INPUT, ...manual.values });
+    setCategory(null);
     toast.info(t('reset.done'));
   };
 
@@ -658,7 +695,7 @@ export default function Calculator() {
       <PageHeader
         icon={<CalculatorIcon className="h-5 w-5" />}
         title={t('title')}
-        description={tab === 'litr' ? tl('subtitle') : t('subtitle')}
+        description={tab === 'litr' ? tl('subtitle') : tab === 'plan' ? tp('subtitle') : t('subtitle')}
         badge={<PreviewBadge feature="unit_calculator" />}
         meta={
           tab === 'litr' ? (
@@ -666,7 +703,7 @@ export default function Calculator() {
           ) : undefined
         }
         actions={
-          tab === 'litr' ? (
+          tab === 'plan' ? undefined : tab === 'litr' ? (
             <Button variant="outline" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetLitr}>
               {tl('reset')}
             </Button>
@@ -686,20 +723,26 @@ export default function Calculator() {
       <PlanGate feature="unit_calculator">
         <div className="space-y-5">
           {/*
-            Bo'limlar: unit-iqtisod va Litrovka (hajm → Uzum logistikasi va
-            saqlashi). Tanlov manzilda (`?tab=litr`) — havola bilan ochish mumkin.
-            SKU tanlovi umumiy: bir bo'limda tanlangan SKU ikkinchisida ham turadi.
+            Bo'limlar: unit-iqtisod, Litrovka (hajm → Uzum logistikasi va saqlashi) va
+            tovarlar jadvali. Tanlov manzilda (`?tab=litr`, `?tab=plan`) — havola bilan
+            ochish mumkin. SKU tanlovi umumiy: bir bo'limda tanlangan SKU ikkinchisida
+            ham turadi. Jadval o'zining SKU'siz: u hali sotuvda bo'lmagan tovarni ham hisoblaydi.
           */}
-          <Segmented<CalcTab>
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: 'unit', label: tl('tab.unit') },
-              { value: 'litr', label: tl('tab.litr') },
-            ]}
-          />
+          <div ref={tabsRef}>
+            <Segmented<CalcTab>
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'unit', label: tl('tab.unit') },
+                { value: 'litr', label: tl('tab.litr') },
+                { value: 'plan', label: tp('tab.plan') },
+              ]}
+            />
+          </div>
 
-          {tab === 'litr' ? (
+          {tab === 'plan' ? (
+            <PlanTab />
+          ) : tab === 'litr' ? (
             <LitrovkaTab
               value={litr}
               onChange={onLitrChange}
@@ -785,6 +828,22 @@ export default function Calculator() {
 
                   <FormSection icon={<Truck />} tone="violet" title={t('section.market')}>
                     {/*
+                      Komissiya qo'lda taxmin qilinmasin: "odatda 8–20%" izohi noto'g'ri edi,
+                      Uzum jadvalida 5% dan 30% gacha. Kategoriya tanlansa, stavka o'zi qo'yiladi
+                      (2026-11-02).
+                    */}
+                    <div className="mb-3.5">
+                      <label className="label" htmlFor="unit-category">
+                        {tc('label')}
+                      </label>
+                      <CategoryPicker
+                        id="unit-category"
+                        value={category ? { id: category.id, name: categoryName(category, lang) } : null}
+                        onSelect={onPickCategory}
+                      />
+                      <CategoryRateLine category={category} commissionPct={draft.commissionPct} className="mt-1.5" />
+                    </div>
+                    {/*
                       Ustunlar soni chap ustun kengligidan kelib chiqib tanlangan:
                       lg dan boshlab o'ngda natija paneli turadi va chap ustun torayadi
                       (1280 px'da ~436 px). Ilgari xl'da 4 ta maydon bir qatorga
@@ -801,7 +860,7 @@ export default function Calculator() {
                       <div className="min-w-0">
                         <NumberField
                           label={t('fld.commission')}
-                          hint={<SourceHint hint={t('fld.commissionHint')} source={activeSource('commissionPct')} />}
+                          hint={<SourceHint hint={t('fld.commissionHint')} source={commissionSource} />}
                           hintOnFocus
                           suffix={t('unit.pct')}
                           value={draft.commissionPct}
@@ -810,7 +869,7 @@ export default function Calculator() {
                           step={0.5}
                           onChange={(v) => patch('commissionPct', v)}
                         />
-                        <SourceSlot source={activeSource('commissionPct')} />
+                        <SourceSlot source={commissionSource} />
                       </div>
                       <div className="min-w-0">
                         <NumberField
@@ -1172,6 +1231,7 @@ export default function Calculator() {
                           icon={<TrendingUp className="h-3.5 w-3.5" />}
                           onClick={() => {
                             applyInput(s.input);
+                            setCategory(null);
                             toast.success(t('sc.loadedMsg'), s.name);
                           }}
                         >

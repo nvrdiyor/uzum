@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UNIT_PLAN_MAX_ROWS } from './unit-plan.js';
 
 /** Umumiy davr/filtr query */
 export const rangeQuerySchema = z.object({
@@ -203,3 +204,40 @@ export const settingsSchema = z.object({
 export type RangeQueryInput = z.infer<typeof rangeQuerySchema>;
 export type UzumAccountInput = z.infer<typeof uzumAccountSchema>;
 export type UnitCalcInputSchema = z.infer<typeof unitCalcSchema>;
+
+// ─────────────────────────── Tovarlar jadvali (Unit kalkulyator) ───────────────────────────
+
+const planMoney = z.coerce.number().min(0).max(100_000_000_000).nullable().default(null);
+
+export const unitPlanRatesSchema = z.object({
+  taxPct: z.coerce.number().min(0).max(100),
+  withdrawPct: z.coerce.number().min(0).max(100),
+  adsPct: z.coerce.number().min(0).max(100),
+});
+
+export const unitPlanRowSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  name: z.string().trim().max(200).default(''),
+  categoryId: z.string().trim().max(64).nullable().default(null),
+  categoryName: z.string().trim().max(300).nullable().default(null),
+  commissionPct: z.coerce.number().min(0).max(100).nullable().default(null),
+  liters: z.coerce.number().min(0).max(100_000).nullable().default(null),
+  purchasePrice: planMoney,
+  packaging: planMoney,
+  price: planMoney,
+  monthlyUnits: z.coerce.number().int().min(0).max(100_000_000).nullable().default(null),
+  goalProfit: planMoney,
+});
+
+export const unitPlanSaveSchema = z.object({
+  rates: unitPlanRatesSchema,
+  // Qator kaliti takrorlansa, sahifada bitta katak ikkala qatorni o'zgartirardi
+  rows: z
+    .array(unitPlanRowSchema)
+    .max(UNIT_PLAN_MAX_ROWS)
+    .refine((rows) => new Set(rows.map((r) => r.id)).size === rows.length, 'Qator kalitlari takrorlanmasligi kerak'),
+  /** Tahrir boshlangan paytdagi `updatedAt` — boshqa oyna ustidan yozib yubormaslik uchun */
+  expectedUpdatedAt: z.string().datetime().nullable().optional(),
+});
+
+export type UnitPlanSaveInput = z.infer<typeof unitPlanSaveSchema>;

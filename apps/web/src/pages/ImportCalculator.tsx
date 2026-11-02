@@ -24,7 +24,7 @@ import {
   type ImportDefaults,
 } from '@savdoiq/shared';
 import { api } from '@/lib/api';
-import { registerNamespace, useFormat, useT } from '@/i18n';
+import { registerNamespace, useFormat, useLang, useT } from '@/i18n';
 import {
   Amount,
   Badge,
@@ -38,6 +38,8 @@ import {
   Segmented,
   Skeleton,
 } from '@/components/ui';
+import { CategoryPicker, CategoryRateLine } from '@/components/calculator/CategoryPicker';
+import { categoryName, type CommissionCategory } from '@/components/calculator/commissions';
 import { SplitStrip } from '@/components/unit/CostSplitBar';
 import { COST_COLORS } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -327,10 +329,14 @@ function NumberField({
 
 export default function ImportCalculator() {
   const t = useT('importCalc');
+  const tc = useT('categoryPicker');
   const f = useFormat();
+  const lang = useLang();
 
   const [draft, setDraft] = useState<Draft | null>(() => readDraft());
   const [reversePrice, setReversePrice] = useState(100_000);
+  /** Komissiya uchun kategoriya: faqat stavkani qo'yadi, qoralamaga yozilmaydi */
+  const [category, setCategory] = useState<CommissionCategory | null>(null);
 
   const {
     data: defaults,
@@ -426,6 +432,7 @@ export default function ImportCalculator() {
             icon={<RotateCcw className="h-3.5 w-3.5" />}
             onClick={() => {
               if (defaults) setDraft({ ...defaults });
+              setCategory(null);
             }}
           >
             {t('reset')}
@@ -489,6 +496,20 @@ export default function ImportCalculator() {
               value={draft.cargoPerKg}
               onChange={(v) => patch({ cargoPerKg: v })}
             />
+            <div className="border-b border-line/70 py-3">
+              <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="import-category">
+                {tc('label')}
+              </label>
+              <CategoryPicker
+                id="import-category"
+                value={category ? { id: category.id, name: categoryName(category, lang) } : null}
+                onSelect={(cat) => {
+                  setCategory(cat);
+                  if (cat && cat.pct !== null) patch({ commissionPct: cat.pct });
+                }}
+              />
+              <CategoryRateLine category={category} commissionPct={draft.commissionPct} className="mt-1.5" />
+            </div>
             <NumberField
               label={t('f.commission')}
               hint={t('f.commission.hint')}

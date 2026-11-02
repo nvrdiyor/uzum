@@ -122,6 +122,7 @@ export { Rocket } from './glyphs/Rocket';
 export { RotateCcw } from './glyphs/RotateCcw';
 export { Route } from './glyphs/Route';
 export { Rows3 } from './glyphs/Rows3';
+export { Ruler } from './glyphs/Ruler';
 export { Save } from './glyphs/Save';
 export { Scale } from './glyphs/Scale';
 export { ScanBarcode } from './glyphs/ScanBarcode';

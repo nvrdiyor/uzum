@@ -137,6 +137,7 @@ const MAP = {
   RotateCcw: 'ArrowCounterClockwise',
   Route: 'Path',
   Rows3: 'Rows',
+  Ruler: 'Ruler',
   Save: 'FloppyDisk',
   Scale: 'Scales',
   ScanBarcode: 'Barcode',
