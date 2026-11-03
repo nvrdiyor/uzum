@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { isCompareMode, presetPeriod, type CompareMode, type Period, type PresetRange } from '@savdoiq/shared';
+import {
+  isCompareMode,
+  presetPeriod,
+  type CompareMode,
+  type Period,
+  type PresetRange,
+  type StoreSummary,
+} from '@savdoiq/shared';
 
 /** Server bilan bitta ro'yxat (shared PresetRange) — yangi preset ikki joyda alohida yozilmasin */
 export type PresetKey = PresetRange | 'custom';
@@ -105,6 +112,19 @@ interface UiState {
   storeId: string;
   setStoreId: (id: string) => void;
 
+  /**
+   * Administrator boshqa kompaniyaning ichini ko'rayotganda (/admin/companies/:id)
+   * — o'sha kompaniyaning do'konlari. Shu payt yuqori paneldagi do'kon
+   * tanlagichi (filters.tsx useStoreChoice) shularni ko'rsatadi, tanlov esa
+   * manzilda (?store=) turadi, `storeId` ga yozilmaydi. Ilgari tanlagich doim
+   * adminning O'Z kompaniyasi do'konlarini ko'rsatardi va sahifa uni o'qimasdi:
+   * Royce shop ichida LOOTBOX'lar chiqardi, ikki do'konli kompaniyaning
+   * do'konini alohida ko'rib bo'lmasdi (2026-11-03). null — oddiy holat;
+   * [] — kompaniya hali yuklanmoqda (tanlagich yashiriladi).
+   */
+  storeScope: StoreSummary[] | null;
+  setStoreScope: (stores: StoreSummary[] | null) => void;
+
   commandOpen: boolean;
   setCommandOpen: (open: boolean) => void;
 }
@@ -183,6 +203,9 @@ export const useUi = create<UiState>((set, get) => ({
     }
     set({ storeId });
   },
+
+  storeScope: null,
+  setStoreScope: (storeScope) => set({ storeScope }),
 
   commandOpen: false,
   setCommandOpen: (commandOpen) => set({ commandOpen }),

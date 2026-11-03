@@ -3,9 +3,13 @@
  *
  * Faqat o'qish: a'zolar, Uzum kabinetlari, do'konlar va tovarlar (narx,
  * tannarx, qoldiq, Uzum Market'dagi sahifasi). Hech narsa o'zgartirilmaydi.
+ *
+ * Do'kon tanlovi — egasi kirgandagi kabi yuqori paneldagi tanlagichda: shu
+ * sahifada u shu kompaniyaning do'konlarini ko'rsatadi (useUi.storeScope),
+ * tanlov manzilda (?store=), "Barcha do'konlar" — hammasi qo'shib.
  */
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -40,8 +44,10 @@ import {
   type Column,
   type Tone,
 } from '@/components/ui';
+import { FilterBar, SCOPE_STORE_PARAM } from '@/components/filters';
 import { api } from '@/lib/api';
 import { useSession } from '@/store/session';
+import { useUi } from '@/store/ui';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -291,12 +297,52 @@ function CompanyView() {
   const t = useT('adminCompany');
   const f = useFormat();
   const { id = '' } = useParams<{ id: string }>();
+  /*
+   * Tanlov manzildan o'qiladi, useStoreChoice'dan emas: kompaniya yuklanguncha
+   * u adminning O'Z do'kon tanlovini qaytaradi — birinchi so'rovga boshqa
+   * kompaniyaning do'koni ketib qolardi.
+   */
+  const [params, setParams] = useSearchParams();
+  const storeId = params.get(SCOPE_STORE_PARAM) ?? 'all';
+  const setStoreScope = useUi((s) => s.setStoreScope);
 
   const detail = useQuery({
-    queryKey: ['admin-company', id],
-    queryFn: () => api.get<AdminCompanyDetail>(`/admin/companies/${id}`),
+    queryKey: ['admin-company', id, storeId],
+    queryFn: () =>
+      api.get<AdminCompanyDetail>(`/admin/companies/${id}`, { storeId: storeId === 'all' ? undefined : storeId }),
     enabled: Boolean(id),
+    // Do'kon almashganda eski raqamlar yangisi kelguncha turadi — lekin faqat shu kompaniyaniki
+    placeholderData: (prev) => (prev?.id === id ? prev : undefined),
   });
+
+  const stores = detail.data?.id === id ? detail.data.stores : undefined;
+
+  // Yuqori paneldagi tanlagich shu kompaniyaning do'konlarini ko'rsatadi; yuklanguncha — yashirin ([])
+  useLayoutEffect(() => {
+    setStoreScope(
+      (stores ?? []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        uzumShopId: s.uzumShopId,
+        status: s.status,
+        productsCount: s.products,
+      })),
+    );
+  }, [stores, setStoreScope]);
+  useLayoutEffect(() => () => setStoreScope(null), [setStoreScope]);
+
+  // Ro'yxatda yo'q do'kon (eski havola) — "Barcha do'konlar" ga qaytamiz
+  useEffect(() => {
+    if (!stores || storeId === 'all' || stores.some((s) => s.id === storeId)) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(SCOPE_STORE_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [stores, storeId, setParams]);
 
   const back = (
     <Link to="/admin" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
@@ -339,6 +385,9 @@ function CompanyView() {
       ) : (
         <Skeleton className="h-14 w-72" />
       )}
+
+      {/* Telefonda yuqori paneldagi do'kon tanlagichi yashirin — u shu qatorda chiqadi */}
+      <FilterBar />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
@@ -453,7 +502,11 @@ function CompanyView() {
                   <p className="text-sm text-muted">{t('stores.none')}</p>
                 ) : (
                   c.stores.map((s) => (
-                    <div key={s.id} className="rounded-xl border border-line p-3">
+                    <div
+                      key={s.id}
+                      aria-current={s.id === storeId ? 'true' : undefined}
+                      className={cn('rounded-xl border p-3', s.id === storeId ? 'border-brand/50 bg-brand/5' : 'border-line')}
+                    >
                       <p className="text-sm font-medium text-ink">{s.title}</p>
                       <p className="tnum mt-0.5 text-xs text-muted">
                         {s.uzumShopId ? `${t('stores.shop', { id: s.uzumShopId })} · ` : ''}
@@ -473,12 +526,17 @@ function CompanyView() {
         </Card>
       </div>
 
-      <ProductsCard companyId={id} multiStore={(c?.stores.length ?? 0) > 1} />
+      <ProductsCard
+        companyId={id}
+        storeId={storeId}
+        // "Do'kon" ustuni — faqat bir nechta do'kon birga ko'rsatilganda
+        multiStore={storeId === 'all' && (c?.stores.length ?? 0) > 1}
+      />
     </div>
   );
 }
 
-function ProductsCard({ companyId, multiStore }: { companyId: string; multiStore: boolean }) {
+function ProductsCard({ companyId, storeId, multiStore }: { companyId: string; storeId: string; multiStore: boolean }) {
   const t = useT('adminCompany');
   const f = useFormat();
   const [search, setSearch] = useState('');
@@ -494,10 +552,14 @@ function ProductsCard({ companyId, multiStore }: { companyId: string; multiStore
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Boshqa do'kon tanlansa — birinchi sahifadan (uning sahifalari soni boshqa)
+  useEffect(() => setPage(1), [storeId]);
+
   const products = useQuery({
-    queryKey: ['admin-company-products', companyId, term, filter, page],
+    queryKey: ['admin-company-products', companyId, storeId, term, filter, page],
     queryFn: () =>
       api.get<Paginated<AdminCompanySkuRow>>(`/admin/companies/${companyId}/products`, {
+        storeId: storeId === 'all' ? undefined : storeId,
         search: term || undefined,
         filter: filter === 'live' ? undefined : filter,
         page,

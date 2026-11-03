@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowLeftRight, Calendar, CalendarOff, Check, ChevronDown, Lock, Store } from '@/components/icons';
-import { COMPARE_MODES, addDays, comparePeriodFor, getPlan, presetPeriod, toBusinessDate } from '@savdoiq/shared';
+import {
+  COMPARE_MODES,
+  addDays,
+  comparePeriodFor,
+  getPlan,
+  presetPeriod,
+  toBusinessDate,
+  type StoreSummary,
+} from '@savdoiq/shared';
 import { useUi, type PresetKey } from '@/store/ui';
 import { usePlan, useStores } from '@/store/session';
 import { PERIOD_PRESETS } from '@/lib/periodPresets';
@@ -236,12 +245,51 @@ export function PeriodPicker({ className }: { className?: string }) {
   );
 }
 
+/** Administrator kompaniya ichini ko'rayotganda tanlangan do'kon manzilda turadi: ?store=<id> */
+export const SCOPE_STORE_PARAM = 'store';
+
+/**
+ * Do'kon tanlovi — yuqori panel, telefondagi filtr qatori va Ctrl+K uchun
+ * bitta manba. Odatda sessiya kompaniyasining do'konlari va saqlangan tanlov
+ * (useUi.storeId). Administrator boshqa kompaniyaning ichini ko'rayotganda
+ * (useUi.storeScope) — o'sha kompaniyaning do'konlari, tanlov esa manzilda:
+ * adminning o'z tanlovi o'zgarmaydi va bir kompaniyaning do'koni boshqasining
+ * so'roviga o'tib ketmaydi. Ro'yxatda yo'q id (eski havola) — "Barcha do'konlar".
+ */
+export function useStoreChoice(): { stores: StoreSummary[]; storeId: string; setStoreId: (id: string) => void } {
+  const sessionStores = useStores();
+  const scope = useUi((s) => s.storeScope);
+  const savedId = useUi((s) => s.storeId);
+  const setSavedId = useUi((s) => s.setStoreId);
+  const [params, setParams] = useSearchParams();
+  const scopedId = params.get(SCOPE_STORE_PARAM);
+  const setScopedId = useCallback(
+    (id: string) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id === 'all') next.delete(SCOPE_STORE_PARAM);
+          else next.set(SCOPE_STORE_PARAM, id);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  if (!scope) return { stores: sessionStores, storeId: savedId, setStoreId: setSavedId };
+  return {
+    stores: scope,
+    storeId: scopedId && scope.some((s) => s.id === scopedId) ? scopedId : 'all',
+    setStoreId: setScopedId,
+  };
+}
+
 /** Do'kon (magazin) tanlash */
 export function StoreSwitcher({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const t = useT('common');
-  const stores = useStores();
-  const { storeId, setStoreId } = useUi();
+  const { stores, storeId, setStoreId } = useStoreChoice();
   const ref = useOutsideClose(() => setOpen(false));
 
   const current = stores.find((s) => s.id === storeId);
@@ -306,7 +354,7 @@ export function StoreSwitcher({ className }: { className?: string }) {
  * qo'shiladi, chunki yuqori panelda u `sm` dan pastda yashiriladi.
  */
 export function FilterBar({ children, className }: { children?: React.ReactNode; className?: string }) {
-  const stores = useStores();
+  const { stores } = useStoreChoice();
   const hasChildren = Boolean(children);
   if (!hasChildren && stores.length === 0) return null;
 

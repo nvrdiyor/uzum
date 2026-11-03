@@ -40,7 +40,8 @@ import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useUi } from '@/store/ui';
 import { useNews } from '@/components/news/store';
-import { usePlan, useSession, useStores } from '@/store/session';
+import { usePlan, useSession } from '@/store/session';
+import { useStoreChoice } from '@/components/filters';
 import { translate, useFormat, useLangStore, useT, type Lang } from '@/i18n';
 import { ACTION_SYNONYMS, LANG_NAMES, LANG_SYNONYMS, PAGE_SYNONYMS, PERIOD_PRESETS, SETTINGS_SECTIONS } from './catalog';
 import { highlightRanges, prepareFields, queryVariants, rank, type Match, type PreparedFields } from './search';
@@ -151,7 +152,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   // Ko'rinish shablonida yopiq sahifa va Sozlamalar bo'limi oynada ham chiqmaydi (yon menyu bilan bir xil)
   const view = useView();
   const plan = usePlan();
-  const stores = useStores();
+  // Yuqori paneldagi tanlagich bilan bitta manba: admin kompaniya ichida — o'sha kompaniya do'konlari
+  const { stores, storeId, setStoreId } = useStoreChoice();
   const theme = useUi((s) => s.theme);
   const toggleTheme = useUi((s) => s.toggleTheme);
   const rail = useUi((s) => s.rail);
@@ -159,8 +161,6 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const preset = useUi((s) => s.preset);
   const setPreset = useUi((s) => s.setPreset);
   const period = useUi((s) => s.period);
-  const storeId = useUi((s) => s.storeId);
-  const setStoreId = useUi((s) => s.setStoreId);
   const setLang = useLangStore((s) => s.setLang);
 
   const [query, setQuery] = useState('');

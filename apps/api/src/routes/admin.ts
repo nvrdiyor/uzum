@@ -7,8 +7,8 @@
  *  GET   /users/:id/delete-preview → o'chirilsa nima yo'qolishi (kompaniyalar, buyurtmalar)
  *  DELETE /users/:id            → foydalanuvchini va u yagona a'zo bo'lgan kompaniyalarni o'chirish
  *  GET   /companies             → kompaniyalar (tarif, do'konlar, egasi)
- *  GET   /companies/:id         → kompaniya ichi: a'zolar, kabinetlar, do'konlar, jami tovar/qoldiq
- *  GET   /companies/:id/products → tovarlar: narx, tannarx, qoldiq, kutilayotgan tushum, Uzum Market havolasi
+ *  GET   /companies/:id         → kompaniya ichi: a'zolar, kabinetlar, do'konlar, jami tovar/qoldiq (?storeId=)
+ *  GET   /companies/:id/products → tovarlar: narx, tannarx, qoldiq, kutilayotgan tushum, Uzum Market havolasi (?storeId=)
  *  GET   /invoices              → barcha hisob-fakturalar
  *  POST  /invoices/:id/approve  → qo'lda to'lovni tasdiqlash (tarif faollashadi)
  *  POST  /companies/:id/grant   → tarifni qo'lda berish (plan, months)
@@ -587,6 +587,18 @@ router.get(
 
 // ─────────────────────────── GET /companies/:id ───────────────────────────
 
+/**
+ * "Ichini ko'rish" dagi do'kon tanlovi (?storeId=) — egasining sahifalaridagi
+ * getStoreIds qoidasi: berilsa faqat shu do'kon, aks holda hammasi qo'shib.
+ * Ilgari bu marshrutlar do'kon tanlovini qabul qilmasdi va ikki do'konli
+ * kompaniyani faqat birga ko'rish mumkin edi (2026-11-03). Boshqa kompaniyaning
+ * do'koni berilsa ro'yxat bo'sh — uning ma'lumoti bu kompaniyaga aralashmaydi.
+ */
+function pickStoreIds(stores: { id: string }[], storeId: unknown): string[] {
+  const ids = stores.map((s) => s.id);
+  return typeof storeId === 'string' && storeId ? ids.filter((id) => id === storeId) : ids;
+}
+
 /** Kompaniya do'konlarining arxivda yashirilmagan SKU'lari (tovar ma'lumoti bilan) */
 async function companySkus(storeIds: string[]) {
   if (storeIds.length === 0) return [];
@@ -614,12 +626,14 @@ router.get(
     });
     if (!company) throw AppError.notFound('Kompaniya topilmadi');
 
-    const storeIds = company.stores.map((s) => s.id);
+    // Do'konlar ro'yxati (o'z sonlari bilan) doim to'liq — tanlagich hammasini ko'rsatsin; jami esa tanlangan do'kon bo'yicha
+    const allStoreIds = company.stores.map((s) => s.id);
+    const storeIds = pickStoreIds(company.stores, req.query.storeId);
     const [orderStats, skus, stocks] = await Promise.all([
-      storeIds.length
+      allStoreIds.length
         ? prisma.order.groupBy({
             by: ['storeId'],
-            where: { storeId: { in: storeIds } },
+            where: { storeId: { in: allStoreIds } },
             _count: { _all: true },
             _max: { orderedAt: true },
           })
@@ -697,7 +711,7 @@ router.get(
     });
     if (!company) throw AppError.notFound('Kompaniya topilmadi');
 
-    const storeIds = company.stores.map((s) => s.id);
+    const storeIds = pickStoreIds(company.stores, q.storeId);
     const [skus, stocks] = await Promise.all([companySkus(storeIds), getLatestStocks(storeIds)]);
     const stockOf = (skuId: string): number => stocks.get(skuId)?.total ?? 0;
     const { lines } = await estimateStockValue(storeIds, skus, stockOf, company.taxRate);
