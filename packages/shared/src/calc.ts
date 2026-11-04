@@ -322,6 +322,11 @@ export interface BatchRowCalc {
  * hisoblanmaydi (null) — ulushsiz son tannarxni kamaytirib ko'rsatardi. Hech bir
  * qatorda soni va kg birga bo'lmasa — xarajat soniga, soni ham bo'lmasa kg ga
  * qarab bo'linadi.
+ *
+ * Sotuvchi qatorni qo'shimcha xarajatdan chiqarishi mumkin (`extraExcluded`,
+ * masalan shaxsiy yoki namuna tovar, 2026-11-05): unga ulush tushmaydi, xarajat
+ * qolgan qatorlarga xuddi shu qoida bilan bo'linadi, uning 1 donasi esa faqat
+ * tovar va kargodan. Hamma qator chiqarilsa — xarajat hech kimga tushmaydi.
  */
 /**
  * Qo'shimcha xarajat turi. Tanlangan bo'lsa — o'sha; tanlanmasdan oldin yozilgan
@@ -335,7 +340,9 @@ export function batchExtraKind(e: { name: string; kind?: string | null }): 'road
 export function calcBatch(
   rate: number,
   extra: number,
-  items: ReadonlyArray<Pick<BatchItemInput, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>>,
+  items: ReadonlyArray<
+    Pick<BatchItemInput, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'> & Partial<Pick<BatchItemInput, 'extraExcluded'>>
+  >,
 ): { rows: BatchRowCalc[]; totals: BatchTotals } {
   const r = Math.max(0, rate || 0);
   let qty = 0;
@@ -360,15 +367,24 @@ export function calcBatch(
 
   const ex = Math.round(Math.max(0, extra || 0));
   const kgs = items.map((it) => Math.max(0, it.weightKg || 0));
-  const both = base.map(({ n }, i) => Math.sqrt(n * kgs[i]));
-  const weights = both.some((w) => w > 0) ? both : qty > 0 ? base.map(({ n }) => n) : kgs;
+  // Chiqarilgan qatorlar bo'linishda ham, "kg yo'q" tekshiruvida ham qatnashmaydi
+  const takes = items.map((it) => !it.extraExcluded);
+  const both = base.map(({ n }, i) => (takes[i] ? Math.sqrt(n * kgs[i]) : 0));
+  const byBoth = both.some((w) => w > 0);
+  const takenQty = base.reduce((a, { n }, i) => a + (takes[i] ? n : 0), 0);
+  const takenKg = kgs.reduce((a, kg, i) => a + (takes[i] ? kg : 0), 0);
+  const weights = byBoth
+    ? both
+    : takenQty > 0
+      ? base.map(({ n }, i) => (takes[i] ? n : 0))
+      : kgs.map((kg, i) => (takes[i] ? kg : 0));
   const shares = splitByWeight(ex, weights);
   return {
     rows: base.map(({ n, ...row }, i) => ({
       ...row,
       extraShare: shares[i],
       unitCostFull:
-        n > 0 && (ex === 0 || weightKg === 0 || kgs[i] > 0) ? Math.round((row.total + shares[i]) / n) : null,
+        n > 0 && (!takes[i] || ex === 0 || takenKg === 0 || kgs[i] > 0) ? Math.round((row.total + shares[i]) / n) : null,
     })),
     totals: {
       items: items.length,
@@ -378,7 +394,7 @@ export function calcBatch(
       goodsUzs,
       cargoUzs,
       extra: ex,
-      extraPerUnit: qty > 0 ? Math.round(ex / qty) : 0,
+      extraPerUnit: takenQty > 0 ? Math.round(ex / takenQty) : 0,
       total: goodsUzs + cargoUzs + ex,
     },
   };

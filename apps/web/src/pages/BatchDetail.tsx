@@ -107,6 +107,7 @@ function blankRow(prev?: Row): Row {
     trip: prev?.trip ?? '',
     weightKg: 0,
     cargoCost: 0,
+    extraExcluded: false,
   };
 }
 
@@ -118,7 +119,7 @@ const isBlank = (r: Row) =>
   !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
 
 function toDraft(d: BatchDetailData): Draft {
-  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost }) => ({
+  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost, extraExcluded }) => ({
     key: id,
     name,
     trackCode,
@@ -129,6 +130,7 @@ function toDraft(d: BatchDetailData): Draft {
     trip: trip ?? '',
     weightKg,
     cargoCost,
+    extraExcluded: extraExcluded ?? false,
   }));
   return {
     id: d.id,
@@ -681,6 +683,14 @@ function BatchDetail({ id }: { id: string }) {
   const patchRow = (key: string, p: Partial<BatchItemInput>) =>
     edit((d) => ({ ...d, rows: d.rows.map((r) => (r.key === key ? { ...r, ...p } : r)) }));
 
+  /** Sarlavhadagi belgi: hamma qatorga qo'shimcha xarajat bo'linsin (true) yoki hech biriga (false) */
+  const setAllExtra = (include: boolean) => {
+    // Bo'sh qatorlar doim "bo'linadi": unga keyin yozilgan tovar jimgina chiqarilgan bo'lib qolmasin
+    const want = (r: Row) => !include && !isBlank(r);
+    if (draftRef.current?.rows.every((r) => r.extraExcluded === want(r))) return;
+    edit((d) => ({ ...d, rows: d.rows.map((r) => (r.extraExcluded === want(r) ? r : { ...r, extraExcluded: want(r) })) }));
+  };
+
   const canAdd = (draft?.rows.length ?? 0) < BATCH_MAX_ITEMS;
   const addRow = () => {
     if (!canAdd) {
@@ -806,6 +816,11 @@ function BatchDetail({ id }: { id: string }) {
     return split;
   }, [draft]);
   const filledCount = draft?.rows.filter((r) => !isBlank(r)).length ?? 0;
+  // Qo'shimcha xarajatdan chiqarilgan qatorlar (bo'sh qatorlar hisobga olinmaydi)
+  const excludedCount = draft?.rows.filter((r) => !isBlank(r) && r.extraExcluded).length ?? 0;
+  const allExcluded = filledCount > 0 && excludedCount === filledCount;
+  // Xarajat bo'linadigan qatorlardagi dona: chiqarilganlarniki o'rtachaga kirmaydi
+  const takenQty = draft?.rows.reduce((a, r) => a + (r.extraExcluded ? 0 : Math.max(0, Math.floor(r.qty || 0))), 0) ?? 0;
 
   const cargoOptions = useMemo(() => {
     const set = new Set<string>([...(data?.cargoNames ?? []), ...addedCargo]);
@@ -1004,13 +1019,21 @@ function BatchDetail({ id }: { id: string }) {
                 label={t('kpi.extra')}
                 value={f.num(calc.totals.extra)}
                 hint={
-                  calc.totals.extra > 0
-                    ? missingKg > 0
-                      ? t('kpi.extraMissingKg', { n: missingKg })
-                      : calc.totals.qty > 0
-                        ? t('kpi.extraPerUnit', { sum: f.num(calc.totals.extraPerUnit) })
-                        : t('kpi.extraNoQty')
-                    : t('f.extraHint')
+                  calc.totals.extra <= 0
+                    ? t('f.extraHint')
+                    : allExcluded
+                      ? t('kpi.extraAllExcluded')
+                      : // Chiqarilganlar soni boshqa izoh oldidan: "kg yo'q" bo'lsa ham ko'rinib tursin
+                        [
+                          excludedCount > 0 ? t('kpi.extraExcluded', { n: excludedCount }) : null,
+                          missingKg > 0
+                            ? t('kpi.extraMissingKg', { n: missingKg })
+                            : takenQty > 0
+                              ? t('kpi.extraPerUnit', { sum: f.num(calc.totals.extraPerUnit) })
+                              : t('kpi.extraNoQty'),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
                 }
               />
               <SumOp>=</SumOp>
@@ -1091,7 +1114,23 @@ function BatchDetail({ id }: { id: string }) {
                       {t('th.unit')}
                     </th>
                     <th className={cn(th, 'text-right')} title={t('th.unitFullHint')}>
-                      {t('th.unitFull')}
+                      <span className="inline-flex items-center gap-2">
+                        {canEdit ? (
+                          <input
+                            type="checkbox"
+                            checked={excludedCount === 0}
+                            // Bir qismi chiqarilgan — chiziqcha; bosilsa hammasi qaytadi
+                            ref={(el) => {
+                              if (el) el.indeterminate = excludedCount > 0 && !allExcluded;
+                            }}
+                            onChange={() => setAllExtra(excludedCount > 0)}
+                            title={t('extra.toggleAll')}
+                            aria-label={t('extra.toggleAll')}
+                            className="h-4 w-4 shrink-0 cursor-pointer rounded border-line bg-surface-2 accent-brand"
+                          />
+                        ) : null}
+                        {t('th.unitFull')}
+                      </span>
                     </th>
                     <th className={th} />
                   </tr>
@@ -1267,24 +1306,44 @@ function BatchDetail({ id }: { id: string }) {
                           {res.unitCost !== null && res.total ? f.num(res.unitCost) : '—'}
                         </td>
                         <td
-                          className="tnum border-l border-line/60 bg-brand/5 px-3 py-2.5 text-right font-bold text-brand-ink"
+                          className={cn(
+                            'tnum border-l border-line/60 px-3 py-2.5 text-right font-bold',
+                            r.extraExcluded ? 'bg-surface-2/60 text-muted' : 'bg-brand/5 text-brand-ink',
+                          )}
                           title={
-                            !res.total || !r.qty
-                              ? undefined
-                              : res.unitCostFull === null
-                                ? t('row.noKg')
-                                : calc.totals.extra > 0
-                                  ? t('row.extraShare', { sum: f.num(res.extraShare) })
-                                  : undefined
+                            r.extraExcluded
+                              ? t(canEdit ? 'row.extraExcluded' : 'row.extraExcludedView')
+                              : !res.total || !r.qty
+                                ? undefined
+                                : res.unitCostFull === null
+                                  ? t('row.noKg')
+                                  : calc.totals.extra > 0
+                                    ? t('row.extraShare', { sum: f.num(res.extraShare) })
+                                    : undefined
                           }
                         >
-                          {!res.total || !r.qty ? (
-                            '—'
-                          ) : res.unitCostFull === null ? (
-                            <span className="text-xs font-medium text-warn-ink">{t('row.noKgShort')}</span>
-                          ) : (
-                            f.num(res.unitCostFull)
-                          )}
+                          {/* Belgi chap chetda, raqam o'ngda: belgilar bir chiziqda turadi. Bo'sh qatorda belgi yo'q */}
+                          <span className={cn('flex items-center gap-2', canEdit && !isBlank(r) ? 'justify-between' : 'justify-end')}>
+                            {canEdit && !isBlank(r) ? (
+                              <input
+                                type="checkbox"
+                                checked={!r.extraExcluded}
+                                onChange={(e) => patchRow(r.key, { extraExcluded: !e.target.checked })}
+                                title={t('row.extraToggle')}
+                                aria-label={t('row.extraToggle')}
+                                className="h-4 w-4 shrink-0 cursor-pointer rounded border-line bg-surface-2 accent-brand"
+                              />
+                            ) : null}
+                            <span className="min-w-0">
+                              {!res.total || !r.qty ? (
+                                '—'
+                              ) : res.unitCostFull === null ? (
+                                <span className="text-xs font-medium text-warn-ink">{t('row.noKgShort')}</span>
+                              ) : (
+                                f.num(res.unitCostFull)
+                              )}
+                            </span>
+                          </span>
                         </td>
                         <td className="px-1 text-center">
                           {canEdit ? (

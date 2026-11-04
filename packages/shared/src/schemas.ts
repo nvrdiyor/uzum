@@ -135,6 +135,7 @@ export const batchItemSchema = z.object({
   trip: z.string().trim().max(30).default(''),
   weightKg: z.coerce.number().min(0).max(1_000_000).default(0),
   cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
+  extraExcluded: z.boolean().default(false),
 });
 
 /** Qo'shimcha xarajat tafsilotidagi qatorlar chegarasi */

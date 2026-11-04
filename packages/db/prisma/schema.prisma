@@ -925,6 +925,9 @@ model PurchaseBatchItem {
   trip      String @default("")
   weightKg  Float  @default(0)
   cargoCost Float  @default(0)
+  /// Qo'shimcha xarajatdan chiqarilgan: ulush olmaydi, 1 dona narxi faqat tovar va kargo.
+  /// Sotuvchi tanlaydi — masalan shaxsiy yoki namuna tovar (2026-11-05)
+  extraExcluded Boolean @default(false)
 
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 

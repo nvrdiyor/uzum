@@ -1940,6 +1940,8 @@ export interface BatchItemInput {
   weightKg: number;
   /** Kargo haqi, so'm */
   cargoCost: number;
+  /** Qo'shimcha xarajatdan chiqarilgan: ulush olmaydi (masalan shaxsiy yoki namuna tovar) */
+  extraExcluded: boolean;
 }
 
 /**
@@ -1968,7 +1970,10 @@ export interface BatchItemRow extends BatchItemInput {
   unitCost: number | null;
   /** Qo'shimcha xarajatning shu qatorga tushgan qismi (√(soni × kg) ga mutanosib, `calcBatch`), so'm */
   extraShare: number;
-  /** (total + extraShare) ÷ qty; soni kiritilmagan yoki (xarajat bo'lib, boshqalarda kg bor-u) shu qatorda kg yo'q bo'lsa null */
+  /**
+   * (total + extraShare) ÷ qty; soni kiritilmagan yoki (xarajat bo'lib, boshqalarda kg bor-u) shu qatorda kg yo'q
+   * bo'lsa null. Xarajatdan chiqarilgan qatorda — total ÷ qty
+   */
   unitCostFull: number | null;
 }
 
@@ -1980,7 +1985,7 @@ export interface BatchTotals {
   goodsUzs: number;
   cargoUzs: number;
   extra: number;
-  /** Qo'shimcha xarajat ÷ jami soni (o'rtacha); soni kiritilmagan bo'lsa 0 */
+  /** Qo'shimcha xarajat ÷ xarajat bo'linadigan qatorlarning jami soni (o'rtacha); soni kiritilmagan bo'lsa 0 */
   extraPerUnit: number;
   total: number;
 }
