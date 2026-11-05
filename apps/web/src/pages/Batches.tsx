@@ -632,10 +632,12 @@ export default function Batches() {
 function CargoPayNote({ pay, className }: { pay: CargoPayment | undefined; className?: string }) {
   const t = useT('batches');
   const f = useFormat();
-  if (!pay || pay.status === 'none' || pay.status === 'untracked') return null;
+  if (!pay || pay.status === 'none') return null;
   // Raqam bo'linmaydi, so'z esa keyingi qatorga tushishi mumkin: ustun kengaymaydi
   const num = (v: number) => f.num(v).replace(/ /g, '\u00A0');
   const base = 'block whitespace-normal leading-tight';
+  // Eski partiya: qarz deb hisoblanmaydi, lekin to'lov hali yozilmagani ko'rinib tursin
+  if (pay.status === 'untracked') return <span className={cn(base, 'font-medium text-muted', className)}>{t('list.cargoUntracked')}</span>;
   if (pay.due > 0)
     return <span className={cn(base, 'font-semibold text-danger', className)}>{t('list.cargoDue', { due: num(pay.due) })}</span>;
   if (pay.over > 0 && pay.total > 0)
