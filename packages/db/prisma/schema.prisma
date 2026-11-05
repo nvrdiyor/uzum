@@ -861,6 +861,7 @@ model PurchaseBatch {
   items     PurchaseBatchItem[]
   extras    PurchaseBatchExtra[]
   shipments PurchaseBatchShipment[]
+  payments  PurchaseBatchPayment[]
 
   @@index([companyId, createdAt])
 }
@@ -887,6 +888,25 @@ model PurchaseBatchShipment {
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@unique([batchId, cargoKey, delivery])
+}
+
+/// Cargo uchun to'lov — oldindan yoki yetib kelganda. Tannarxga ta'sir qilmaydi:
+/// faqat qancha to'langani va qancha qolgani kuzatiladi (2026-11-05)
+model PurchaseBatchPayment {
+  id        String    @id @default(cuid())
+  batchId   String
+  position  Int       @default(0)
+  /// To'lov kuni (savdo kuni, 00:00 UTC); null — ko'rsatilmagan
+  paidOn    DateTime?
+  /// so'm
+  amount    Float     @default(0)
+  /// Qaysi kargoga (partiyada bir nechta kargo bo'lsa); bo'sh — butun partiya
+  cargoName String    @default("")
+  note      String    @default("")
+
+  batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, position])
 }
 
 /// Qo'shimcha xarajat tafsiloti (bojxona, yo'l haqi...). Yig'indisi PurchaseBatch.extra ga yoziladi

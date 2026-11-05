@@ -1,6 +1,8 @@
 import type {
   BatchItemInput,
   BatchTotals,
+  CargoPayment,
+  CargoPayStatus,
   ImportCalcInput,
   ImportCalcResult,
   UnitCalcInput,
@@ -335,6 +337,62 @@ export interface BatchRowCalc {
 export function batchExtraKind(e: { name: string; kind?: string | null }): 'road' | 'other' {
   if (e.kind === 'road' || e.kind === 'other') return e.kind;
   return /yo['‘’ʻ`]?l\s*(haq|kira|pul)|дорог|проезд/i.test(e.name) ? 'road' : 'other';
+}
+
+/**
+ * Cargo to'lovi: jadvaldagi cargo jami va yozilgan to'lovlar. Tannarxga ta'sir
+ * qilmaydi — faqat qancha to'langan va qancha qolganini ko'rsatadi (2026-11-05).
+ */
+export function cargoPayment(
+  total: number,
+  payments: ReadonlyArray<{ amount: number }>,
+  tracked = true,
+): CargoPayment {
+  const t = Math.round(Math.max(0, total || 0));
+  const paid = Math.round(payments.reduce((a, p) => a + Math.max(0, p.amount || 0), 0));
+  // Eski partiyaga hali hech narsa yozilmagan: qarz deb ko'rsatilmaydi
+  if (!tracked && paid === 0 && t > 0) return { total: t, paid: 0, due: 0, over: 0, status: 'untracked' };
+  const status: CargoPayStatus =
+    t === 0 && paid === 0 ? 'none' : paid === 0 ? 'unpaid' : paid < t ? 'partial' : paid === t ? 'paid' : 'over';
+  return { total: t, paid, due: Math.max(0, t - paid), over: Math.max(0, paid - t), status };
+}
+
+/**
+ * Cargo to'lovlari 2026-11-05 dan kuzatiladi. Undan oldin yaratilgan partiyalar
+ * cargosi ko'pincha allaqachon to'langan — to'lov yozilmaguncha ular qarz emas.
+ */
+export const CARGO_PAY_TRACKED_FROM = '2026-11-04T19:00:00.000Z';
+export const cargoPayTracked = (createdAt: string | Date): boolean =>
+  new Date(createdAt).getTime() >= Date.parse(CARGO_PAY_TRACKED_FROM);
+
+/** Kargo nomi qanday yozilganidan qat'i nazar bitta kalit: "Tez-tez " va "TEZ-TEZ" — bitta kargo */
+export const cargoKey = (name: string): string => name.trim().replace(/\s+/g, ' ').toUpperCase();
+
+/**
+ * Partiyada bir nechta kargo bo'lsa — har biri bo'yicha: jadvaldagi cargo jami va
+ * shu kargoga belgilangan to'lovlar. Kargosi ko'rsatilmagan to'lovlar alohida.
+ */
+export function cargoPaymentsByCargo(
+  items: ReadonlyArray<{ cargoName: string; cargoCost: number }>,
+  payments: ReadonlyArray<{ cargoName: string; amount: number }>,
+): { rows: { name: string; total: number; paid: number; due: number }[]; unassigned: number } {
+  const rows = new Map<string, { name: string; total: number; paid: number; due: number }>();
+  for (const it of items) {
+    const key = cargoKey(it.cargoName || '');
+    if (!key) continue;
+    const row = rows.get(key) ?? { name: it.cargoName.trim().replace(/\s+/g, ' '), total: 0, paid: 0, due: 0 };
+    row.total += Math.round(Math.max(0, it.cargoCost || 0));
+    rows.set(key, row);
+  }
+  let unassigned = 0;
+  for (const p of payments) {
+    const amount = Math.round(Math.max(0, p.amount || 0));
+    const row = rows.get(cargoKey(p.cargoName || ''));
+    if (row) row.paid += amount;
+    else unassigned += amount;
+  }
+  for (const row of rows.values()) row.due = Math.max(0, row.total - row.paid);
+  return { rows: [...rows.values()], unassigned };
 }
 
 export function calcBatch(

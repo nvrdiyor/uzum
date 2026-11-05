@@ -167,6 +167,23 @@ export const batchShipmentSchema = z.object({
   arrivedAt: isoDay.nullable().optional(),
 });
 
+/** Cargo to'lovlari chegarasi */
+export const BATCH_MAX_PAYMENTS = 50;
+
+export const batchPaymentSchema = z.object({
+  // 2026-02-30 ham Date.parse dan o'tib 2026-03-02 bo'lib qolardi — kun aynan o'zi bo'lishi shart
+  date: isoDay
+    .refine((v) => {
+      const d = new Date(`${v}T00:00:00Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+    }, 'Sana noto‘g‘ri')
+    .nullable()
+    .default(null),
+  amount: z.coerce.number().min(0).max(10_000_000_000).default(0),
+  cargoName: z.string().trim().max(60).default(''),
+  note: z.string().trim().max(120).default(''),
+});
+
 /** Partiyalar ro'yxatining yangi tartibi — yuqoridan pastga id'lar */
 export const batchOrderSchema = z.object({
   ids: z.array(z.string().min(1).max(64)).min(1).max(500),
@@ -182,6 +199,11 @@ export const batchUpdateSchema = z.object({
    * bo'lmasa `extra` shu qatorlar yig'indisidan olinadi; berilmasa tegilmaydi.
    */
   extras: z.array(batchExtraSchema).max(BATCH_MAX_EXTRAS).optional(),
+  /**
+   * Cargo to'lovlari. Berilsa to'liq almashtiriladi, berilmasa tegilmaydi —
+   * eski sahifa versiyasi saqlaganda yozilgan to'lovlar o'chib ketmaydi.
+   */
+  payments: z.array(batchPaymentSchema).max(BATCH_MAX_PAYMENTS).optional(),
   /**
    * Sahifa yuklagan versiya (`updatedAt`). Partiya o'shandan beri boshqa
    * joyda o'zgargan bo'lsa saqlash rad etiladi — eski oyna yangi holatni

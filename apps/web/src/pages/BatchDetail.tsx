@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -29,12 +30,20 @@ import {
   Trash2,
   Truck,
   Undo2,
+  Wallet,
   X,
 } from '@/components/icons';
 import {
   BATCH_MAX_EXTRAS,
   BATCH_MAX_ITEMS,
+  BATCH_MAX_PAYMENTS,
   calcBatch,
+  cargoKey,
+  cargoPayment,
+  cargoPaymentsByCargo,
+  cargoPayTracked,
+  type BatchPaymentInput,
+  type CargoPayment,
   type BatchDelivery,
   type BatchDetail as BatchDetailData,
   type BatchExtraInput,
@@ -71,6 +80,10 @@ interface ExtraRow extends BatchExtraInput {
   key: string;
 }
 
+interface PaymentRow extends BatchPaymentInput {
+  key: string;
+}
+
 interface Draft {
   id: string;
   name: string;
@@ -78,6 +91,8 @@ interface Draft {
   /** Tafsilot bo'lsa — uning yig'indisi, bo'lmasa qo'lda kiritilgan summa */
   extra: number;
   extras: ExtraRow[];
+  /** Cargo to'lovlari — tannarxga ta'sir qilmaydi */
+  payments: PaymentRow[];
   rows: Row[];
 }
 
@@ -114,6 +129,21 @@ function blankRow(prev?: Row): Row {
 const isBlankExtra = (e: ExtraRow) => !e.name.trim() && !e.amount;
 const sumExtras = (list: readonly ExtraRow[]) => Math.round(list.reduce((a, e) => a + (e.amount || 0), 0));
 
+/** Summasi va izohi yo'q to'lov saqlanmaydi (sanasi bo'lsa ham) */
+const isBlankPayment = (p: PaymentRow) => !p.amount && !p.note.trim();
+/** Bugungi kun brauzer vaqtida — Toshkentda kechqurun UTC sanasi ertangi kun bo'lmasin */
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const blankPayment = (amount = 0, note = '', cargoName = ''): PaymentRow => ({
+  key: newKey(),
+  date: todayIso(),
+  amount,
+  cargoName,
+  note,
+});
+
 /** Hech narsa yozilmagan qator saqlanmaydi (kargo va yetkazish oldingi qatordan meros) */
 const isBlank = (r: Row) =>
   !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
@@ -138,6 +168,13 @@ function toDraft(d: BatchDetailData): Draft {
     rate: d.rate,
     extra: d.extra,
     extras: d.extras.map((e) => ({ key: newKey(), name: e.name, amount: e.amount, kind: e.kind ?? 'other' })),
+    payments: (d.payments ?? []).map((p) => ({
+      key: newKey(),
+      date: p.date ?? null,
+      amount: p.amount,
+      cargoName: p.cargoName ?? '',
+      note: p.note ?? '',
+    })),
     rows: rows.length ? rows : [blankRow()],
   };
 }
@@ -151,12 +188,15 @@ function SumTerm({
   hint,
   dot,
   strong,
+  children,
 }: {
   label: string;
   value: string;
   hint?: string;
   dot: string;
   strong?: boolean;
+  /** Izoh ostidagi qo'shimcha qator (masalan cargo to'lovi holati) */
+  children?: ReactNode;
 }) {
   return (
     <div className="min-w-0">
@@ -173,7 +213,37 @@ function SumTerm({
         {value}
       </p>
       {hint ? <p className="mt-2 text-xs leading-snug text-muted">{hint}</p> : null}
+      {children}
     </div>
+  );
+}
+
+/** "Cargo" hadi ostidagi to'lov holati: bosilsa to'lovlar oynasi ochiladi */
+function PayLine({ pay, canEdit, onOpen }: { pay: CargoPayment; canEdit: boolean; onOpen: () => void }) {
+  const t = useT('batches');
+  const f = useFormat();
+  if ((pay.status === 'none' || pay.status === 'untracked') && !canEdit) return null;
+  const [text, tone] =
+    pay.status === 'none' || pay.status === 'untracked'
+      ? [t('pay.open'), 'text-brand-ink']
+      : pay.status === 'unpaid'
+        ? [t('pay.unpaid', { due: f.num(pay.due) }), 'text-danger']
+        : pay.status === 'partial'
+          ? [t('pay.partial', { paid: f.num(pay.paid), due: f.num(pay.due) }), 'text-warn-ink']
+          : pay.status === 'paid'
+            ? [t('pay.paid'), 'text-brand-ink']
+            : pay.total === 0
+              ? [t('pay.paidNoCargo', { paid: f.num(pay.paid) }), 'text-info-ink']
+              : [t('pay.over', { over: f.num(pay.over) }), 'text-info-ink'];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn('focusable mt-2 flex max-w-full items-center gap-1.5 rounded text-left text-xs font-semibold hover:underline', tone)}
+    >
+      <Wallet className="h-3.5 w-3.5 shrink-0" />
+      <span>{text}</span>
+    </button>
   );
 }
 
@@ -415,6 +485,250 @@ function ExtrasModal({
   );
 }
 
+/** Cargo to'lovlari: oldindan yoki yetib kelganda to'langan summalar. Tannarxga ta'sir qilmaydi */
+function PaymentsModal({
+  open,
+  onClose,
+  payments,
+  cargoTotal,
+  cargoByName,
+  unassigned,
+  readonly,
+  onChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  payments: PaymentRow[];
+  cargoTotal: number;
+  /** Partiyadagi kargolar va ularning jami: ikkitadan ko'p bo'lsa to'lov kargoga bog'lanadi */
+  cargoByName: { name: string; total: number; paid: number; due: number }[];
+  unassigned: number;
+  readonly: boolean;
+  onChange: (fn: (list: PaymentRow[]) => PaymentRow[]) => void;
+}) {
+  const t = useT('batches');
+  const f = useFormat();
+  const listRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<string | null>(null);
+  const multi = cargoByName.length > 1;
+  const pay = cargoPayment(cargoTotal, payments);
+
+  const focusCell = (cell: string) =>
+    listRef.current?.querySelector<HTMLInputElement>(`[data-cell="${cell}"]`)?.focus();
+
+  // Ochilganda birinchi bo'sh summaga (bo'lmasa birinchisiga) fokus
+  useEffect(() => {
+    if (!open || readonly) return;
+    const timer = window.setTimeout(() => {
+      const inputs = [...(listRef.current?.querySelectorAll<HTMLInputElement>('input[data-cell$=":amount"]') ?? [])];
+      (inputs.find((el) => !el.value || el.value === '0') ?? inputs[0])?.focus();
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [open, readonly]);
+
+  // Yangi qator chizilgach unga fokus
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    focusCell(pendingFocus.current);
+    pendingFocus.current = null;
+  });
+
+  const patch = (key: string, p: Partial<BatchPaymentInput>) =>
+    onChange((list) => list.map((x) => (x.key === key ? { ...x, ...p } : x)));
+  const canAdd = !readonly && payments.length < BATCH_MAX_PAYMENTS;
+  const add = () => {
+    const row = blankPayment();
+    pendingFocus.current = `${row.key}:amount`;
+    onChange((list) => [...list, row]);
+  };
+  /**
+   * Qolgan summani to'lov qilib yozadi — eski, allaqachon to'langan partiyalar uchun ham.
+   * Bir nechta kargo bo'lsa har biriga o'z qoldig'i yoziladi (kargo jadvali ham "0 qoldi" deydi);
+   * kargosiz yoki ortiqcha to'lovlar bo'lsa bo'lib bo'lmaydi — bitta umumiy to'lov.
+   */
+  const payRest = () =>
+    onChange((list) => {
+      const kept = list.filter((x) => !isBlankPayment(x));
+      const note = t('pay.restNote');
+      if (multi && unassigned === 0 && cargoByName.every((c) => c.paid <= c.total)) {
+        const rows = cargoByName.filter((c) => c.due > 0).map((c) => blankPayment(c.due, note, c.name));
+        const rest = pay.due - rows.reduce((a, r) => a + r.amount, 0);
+        return [...kept, ...rows, ...(rest > 0 ? [blankPayment(rest, note)] : [])];
+      }
+      return [...kept, blankPayment(pay.due, note)];
+    });
+  const remove = (key: string) => onChange((list) => list.filter((x) => x.key !== key));
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('pay.title')}
+      description={t('pay.hint')}
+      size="lg"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="tnum text-sm text-muted">
+            {t('pay.paidSum')}: <b className="text-base text-ink">{f.num(pay.paid)}</b>
+            {' · '}
+            {pay.over > 0 ? (
+              <span className="font-semibold text-info-ink">
+                {t('pay.overSum')}: {f.num(pay.over)}
+              </span>
+            ) : (
+              <span className={cn('font-semibold', pay.due > 0 ? 'text-danger' : 'text-brand-ink')}>
+                {t('pay.dueSum')}: {f.num(pay.due)}
+              </span>
+            )}
+          </span>
+          <Button onClick={onClose}>{t('pay.done')}</Button>
+        </div>
+      }
+    >
+      <p className="tnum mb-3 text-sm text-muted">
+        {t('pay.total')}:{' '}
+        <b className="text-ink">
+          {f.num(cargoTotal)} {t('sum')}
+        </b>
+      </p>
+      <div ref={listRef} className="space-y-2">
+        {payments.map((p, i) => (
+          // Joy yetmasa izoh keyingi qatorga tushadi — siqilib, o'qib bo'lmaydigan bo'lmaydi
+          <div key={p.key} className="flex flex-wrap items-center gap-2">
+            <span className="tnum w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+            <Input
+              type="date"
+              data-cell={`${p.key}:date`}
+              value={p.date ?? ''}
+              min="2000-01-01"
+              max="9999-12-31"
+              disabled={readonly}
+              aria-label={t('pay.date')}
+              title={t('pay.date')}
+              // Faqat to'liq YYYY-MM-DD: 5 xonali yil butun partiyani saqlashni to'xtatardi
+              onChange={(ev) => patch(p.key, { date: /^\d{4}-\d{2}-\d{2}$/.test(ev.target.value) ? ev.target.value : null })}
+              className="w-40 shrink-0"
+            />
+            <div className="relative w-36 shrink-0 sm:w-40">
+              <NumCell
+                cell={`${p.key}:amount`}
+                value={p.amount}
+                integer
+                disabled={readonly}
+                onChange={(amount) => patch(p.key, { amount })}
+                onKeyDown={(ev) => {
+                  if (ev.key !== 'Enter') return;
+                  ev.preventDefault();
+                  focusCell(`${p.key}:note`);
+                }}
+                className="input pr-12"
+              />
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-muted">
+                {t('sum')}
+              </span>
+            </div>
+            {multi ? (
+              <select
+                // Nomi boshqacha yozilgan bo'lsa ham ("Tez-tez" va "TEZ-TEZ") jadvaldagi kargo tanlangan ko'rinadi
+                value={cargoByName.find((c) => cargoKey(c.name) === cargoKey(p.cargoName))?.name ?? p.cargoName}
+                disabled={readonly}
+                aria-label={t('pay.cargo')}
+                title={t('pay.cargo')}
+                onChange={(ev) => patch(p.key, { cargoName: ev.target.value })}
+                className="input w-36 shrink-0"
+              >
+                <option value="">{t('pay.cargoAll')}</option>
+                {p.cargoName && !cargoByName.some((c) => cargoKey(c.name) === cargoKey(p.cargoName)) ? (
+                  <option value={p.cargoName}>{p.cargoName}</option>
+                ) : null}
+                {cargoByName.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <Input
+              data-cell={`${p.key}:note`}
+              value={p.note}
+              maxLength={120}
+              disabled={readonly}
+              placeholder={t('pay.notePh')}
+              onChange={(ev) => patch(p.key, { note: ev.target.value })}
+              onKeyDown={(ev) => {
+                if (ev.key !== 'Enter') return;
+                ev.preventDefault();
+                const next = payments[i + 1];
+                if (next) focusCell(`${next.key}:amount`);
+                else if (canAdd) add();
+              }}
+              className="min-w-[10rem] flex-1"
+            />
+            {readonly ? null : (
+              <button
+                type="button"
+                title={t('pay.remove')}
+                aria-label={t('pay.remove')}
+                onClick={() => remove(p.key)}
+                className="focusable shrink-0 rounded-md p-1.5 text-muted hover:text-danger"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ))}
+        {canAdd ? (
+          <div className="flex flex-wrap gap-2 pl-7 pt-1">
+            <Button variant="outline" size="sm" icon={<Plus className="h-4 w-4" />} onClick={add}>
+              {t('pay.add')}
+            </Button>
+            {pay.due > 0 ? (
+              <Button variant="soft" size="sm" icon={<Check className="h-4 w-4" />} onClick={payRest}>
+                {t('pay.payRest')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {multi ? (
+        <div className="mt-4 overflow-hidden rounded-xl border border-line">
+          <p className="border-b border-line bg-surface-2/60 px-3 py-2 text-xs font-semibold text-muted">{t('pay.byCargo')}</p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-2xs text-muted">
+                <th className="px-3 py-1.5 text-left font-medium">{t('pay.colCargo')}</th>
+                <th className="px-3 py-1.5 text-right font-medium">{t('pay.colTotal')}</th>
+                <th className="px-3 py-1.5 text-right font-medium">{t('pay.colPaid')}</th>
+                <th className="px-3 py-1.5 text-right font-medium">{t('pay.colDue')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cargoByName.map((c) => (
+                <tr key={c.name} className="border-t border-line/60">
+                  <td className="px-3 py-1.5 font-medium text-ink">{c.name}</td>
+                  <td className="tnum px-3 py-1.5 text-right text-ink-soft">{f.num(c.total)}</td>
+                  <td className="tnum px-3 py-1.5 text-right text-ink-soft">{f.num(c.paid)}</td>
+                  <td className={cn('tnum px-3 py-1.5 text-right font-semibold', c.due > 0 ? 'text-danger' : 'text-brand-ink')}>
+                    {f.num(c.due)}
+                  </td>
+                </tr>
+              ))}
+              {unassigned > 0 ? (
+                <tr className="border-t border-line/60 text-muted">
+                  <td className="px-3 py-1.5">{t('pay.unassigned')}</td>
+                  <td />
+                  <td className="tnum px-3 py-1.5 text-right">{f.num(unassigned)}</td>
+                  <td />
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
+
 function NewCargoModal({
   open,
   onClose,
@@ -561,6 +875,7 @@ function BatchDetail({ id }: { id: string }) {
   const [addedCargo, setAddedCargo] = useState<string[]>([]);
   const [cargoFor, setCargoFor] = useState<string | null>(null);
   const [extrasOpen, setExtrasOpen] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [rateLoading, setRateLoading] = useState(false);
 
@@ -605,6 +920,9 @@ function BatchDetail({ id }: { id: string }) {
           extras: d.extras
             .filter((e) => !isBlankExtra(e))
             .map((e) => ({ name: e.name.trim(), amount: e.amount, kind: e.kind ?? 'other' })),
+          payments: d.payments
+            .filter((p) => !isBlankPayment(p))
+            .map((p) => ({ date: p.date || null, amount: p.amount, cargoName: p.cargoName, note: p.note.trim() })),
           items: d.rows.filter((r) => !isBlank(r)).map(({ key: _key, ...item }) => item),
           expectedUpdatedAt: serverVersion.current ?? undefined,
         });
@@ -678,6 +996,23 @@ function BatchDetail({ id }: { id: string }) {
     setExtrasOpen(false);
     if (draftRef.current?.extras.some(isBlankExtra))
       edit((d) => ({ ...d, extras: d.extras.filter((e) => !isBlankExtra(e)) }));
+  };
+
+  const setPayments = (fn: (list: PaymentRow[]) => PaymentRow[]) => edit((d) => ({ ...d, payments: fn(d.payments) }));
+  /*
+   * Bo'sh qator saqlanmaydi, shuning uchun uni qo'shish va olib tashlash versiyani
+   * oshirmaydi: oynani ochib-yopishning o'zi saqlash yubormasin (boshqa oynada
+   * soxta "boshqa joyda o'zgargan" chiqardi).
+   */
+  const openPayments = () => {
+    // Hali to'lov yo'q — bugungi sana bilan bo'sh qator, summasini yozish qoladi
+    if (canEdit && draftRef.current?.payments.length === 0) setDraft((d) => (d ? { ...d, payments: [blankPayment()] } : d));
+    setPaymentsOpen(true);
+  };
+  const closePayments = () => {
+    setPaymentsOpen(false);
+    if (draftRef.current?.payments.some(isBlankPayment))
+      setDraft((d) => (d ? { ...d, payments: d.payments.filter((p) => !isBlankPayment(p)) } : d));
   };
 
   const patchRow = (key: string, p: Partial<BatchItemInput>) =>
@@ -831,6 +1166,14 @@ function BatchDetail({ id }: { id: string }) {
   const notFound = isError && error instanceof ApiError && error.status === 404;
   const readonly = !canEdit;
   const filledExtras = draft?.extras.filter((e) => !isBlankExtra(e)) ?? [];
+  // Cargo to'lovi: jadvaldagi cargo jami va yozilgan to'lovlar (bo'sh qatorlar hisobga kirmaydi)
+  const pay =
+    draft && calc ? cargoPayment(calc.totals.cargoUzs, draft.payments, data ? cargoPayTracked(data.createdAt) : true) : null;
+  // Bo'sh qator oldingi qatordan kargo nomini oladi — u "ikkinchi kargo" bo'lib ko'rinmasin
+  const byCargo = useMemo(
+    () => (draft ? cargoPaymentsByCargo(draft.rows.filter((r) => !isBlank(r)), draft.payments) : null),
+    [draft],
+  );
 
   const back = (
     <Link to="/batches" className="focusable mb-3 inline-flex items-center gap-1.5 rounded-lg text-sm text-muted hover:text-ink">
@@ -1012,7 +1355,9 @@ function BatchDetail({ id }: { id: string }) {
                       })
                     : t('kpi.cargoHint', { avia: f.num(cargoSplit.avia), avto: f.num(cargoSplit.avto) })
                 }
-              />
+              >
+                {pay ? <PayLine pay={pay} canEdit={canEdit} onOpen={openPayments} /> : null}
+              </SumTerm>
               <SumOp>+</SumOp>
               <SumTerm
                 dot="bg-[rgb(var(--c-slate))]"
@@ -1469,6 +1814,17 @@ function BatchDetail({ id }: { id: string }) {
         extras={draft.extras}
         readonly={readonly}
         onChange={setExtras}
+      />
+
+      <PaymentsModal
+        open={paymentsOpen}
+        onClose={closePayments}
+        payments={draft.payments}
+        cargoTotal={calc?.totals.cargoUzs ?? 0}
+        cargoByName={byCargo?.rows ?? []}
+        unassigned={byCargo?.unassigned ?? 0}
+        readonly={readonly}
+        onChange={setPayments}
       />
 
       <NewCargoModal

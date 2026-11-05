@@ -1960,6 +1960,35 @@ export interface BatchExtraInput {
   kind?: BatchExtraKind;
 }
 
+/** Cargo uchun to'lov (oldindan yoki yetib kelganda) — tannarxga ta'sir qilmaydi, faqat qarzni kuzatish */
+export interface BatchPaymentInput {
+  /** To'lov kuni, YYYY-MM-DD; null — ko'rsatilmagan */
+  date: string | null;
+  /** so'm */
+  amount: number;
+  /** Qaysi kargoga (partiyada bir nechta kargo bo'lsa); bo'sh — butun partiya */
+  cargoName: string;
+  note: string;
+}
+
+/**
+ * Cargo to'lovi holati: none — cargo ham, to'lov ham yo'q; untracked — to'lovlar
+ * kuzatilishidan oldin yaratilgan partiya va unga hali to'lov yozilmagan (qarz
+ * hisoblanmaydi: u allaqachon to'langan bo'lishi mumkin)
+ */
+export type CargoPayStatus = 'none' | 'untracked' | 'unpaid' | 'partial' | 'paid' | 'over';
+
+/** Jadvaldagi cargo jami va yozilgan to'lovlar (`cargoPayment`) */
+export interface CargoPayment {
+  total: number;
+  paid: number;
+  /** To'lash kerak: jami − to'langan (manfiy emas) */
+  due: number;
+  /** Ortiqcha to'langan: to'langan − jami (manfiy emas) */
+  over: number;
+  status: CargoPayStatus;
+}
+
 export interface BatchItemRow extends BatchItemInput {
   id: string;
   /** priceCny × kurs, so'm */
@@ -2040,6 +2069,8 @@ export interface BatchSummary {
   shipments: BatchShipment[];
   /** Qo'shimcha xarajatlardan yo'l kira yig'indisi — ro'yxatdagi "Umumiy" shu bilan */
   roadExtra: number;
+  /** Cargo qancha to'langan va qancha qolgan */
+  cargoPayment: CargoPayment;
 }
 
 /** Kargo kompaniyasi va yetkazish turi bo'yicha haqiqiy muddat */
@@ -2064,6 +2095,8 @@ export interface BatchDetail extends BatchSummary {
   extras: BatchExtraInput[];
   /** Kompaniyaning boshqa partiyalarida ishlatilgan kargo nomlari — tanlash uchun */
   cargoNames: string[];
+  /** Cargo to'lovlari, yozilgan tartibda */
+  payments: BatchPaymentInput[];
 }
 
 export interface BatchListResponse {
@@ -2082,6 +2115,9 @@ export interface BatchListResponse {
     roadExtra: number;
     otherExtra: number;
     total: number;
+    /** Cargo uchun to'langan va to'lanmagan (har partiyaning qoldig'i yig'indisi) */
+    cargoPaid: number;
+    cargoDue: number;
   };
   cargoStats: CargoStat[];
 }

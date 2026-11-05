@@ -15,6 +15,8 @@ import {
   batchShipmentSchema,
   batchUpdateSchema,
   calcBatch,
+  cargoPayment,
+  cargoPayTracked,
   toBusinessDate,
   type BatchDelivery,
   type BatchDetail,
@@ -273,25 +275,32 @@ function toSummary(
   items: ReadonlyArray<TotalsFields>,
   shipments: BatchShipment[] = [],
   roadExtra = 0,
+  payments: ReadonlyArray<{ amount: number }> = [],
 ): BatchSummary {
+  const totals = calcBatch(b.rate, b.extra, items).totals;
   return {
     id: b.id,
     name: b.name,
     rate: b.rate,
     extra: b.extra,
-    totals: calcBatch(b.rate, b.extra, items).totals,
+    totals,
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
     status: batchStatus(shipments),
     shipments,
     roadExtra: Math.round(roadExtra),
+    cargoPayment: cargoPayment(totals.cargoUzs, payments, cargoPayTracked(b.createdAt)),
   };
 }
 
 async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
   const batch = await prisma.purchaseBatch.findFirst({
     where: { id, companyId },
-    include: { items: { orderBy: { position: 'asc' } }, extras: { orderBy: { position: 'asc' } } },
+    include: {
+      items: { orderBy: { position: 'asc' } },
+      extras: { orderBy: { position: 'asc' } },
+      payments: { orderBy: { position: 'asc' } },
+    },
   });
   if (!batch) throw AppError.notFound('Partiya topilmadi');
 
@@ -305,7 +314,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
   const { rows } = calcBatch(batch.rate, batch.extra, batch.items);
   const { byBatch } = await companyShipments(companyId);
   return {
-    ...toSummary(batch, batch.items, byBatch.get(batch.id) ?? [], roadOf(batch.extras)),
+    ...toSummary(batch, batch.items, byBatch.get(batch.id) ?? [], roadOf(batch.extras), batch.payments),
     items: batch.items.map((it, i) => ({
       id: it.id,
       name: it.name,
@@ -325,6 +334,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       unitCostFull: rows[i].unitCostFull,
     })),
     extras: batch.extras.map((e) => ({ name: e.name, amount: e.amount, kind: batchExtraKind(e) })),
+    payments: batch.payments.map((p) => ({ date: isoDay(p.paidOn), amount: p.amount, cargoName: p.cargoName, note: p.note })),
     cargoNames: used.map((u) => u.cargoName).sort((a, b) => a.localeCompare(b)),
   };
 }
@@ -362,18 +372,30 @@ router.get(
           },
         },
         extras: { select: { name: true, amount: true, kind: true } },
+        payments: { select: { amount: true } },
       },
     });
     const ships = await prisma.purchaseBatchShipment.findMany({ where: { batch: { companyId: company.id } } });
     const { byBatch, stats } = buildShipments(rows, ships);
-    const items = rows.map((b) => toSummary(b, b.items, byBatch.get(b.id) ?? [], roadOf(b.extras)));
+    const items = rows.map((b) => toSummary(b, b.items, byBatch.get(b.id) ?? [], roadOf(b.extras), b.payments));
 
     /*
      * Barcha partiyalar bo'yicha jami — sahifa tepasidagi "Umumiy summa".
      * Unga tovar, cargo va YO'L KIRA kiradi (sotuvchi talabi): logistika, paket
      * kabi boshqa qo'shimcha xarajatlar kirmaydi — ular faqat tovar tannarxida.
      */
-    const grand = { qty: 0, priceCny: 0, goodsUzs: 0, cargoUzs: 0, extra: 0, roadExtra: 0, otherExtra: 0, total: 0 };
+    const grand = {
+      qty: 0,
+      priceCny: 0,
+      goodsUzs: 0,
+      cargoUzs: 0,
+      extra: 0,
+      roadExtra: 0,
+      otherExtra: 0,
+      total: 0,
+      cargoPaid: 0,
+      cargoDue: 0,
+    };
     for (const b of items) {
       grand.qty += b.totals.qty;
       grand.priceCny += b.totals.priceCny;
@@ -381,6 +403,8 @@ router.get(
       grand.cargoUzs += b.totals.cargoUzs;
       grand.extra += b.totals.extra;
       grand.roadExtra += b.roadExtra;
+      grand.cargoPaid += b.cargoPayment.paid;
+      grand.cargoDue += b.cargoPayment.due;
     }
     grand.priceCny = Math.round(grand.priceCny * 100) / 100;
     grand.otherExtra = Math.max(0, Math.round(grand.extra - grand.roadExtra));
@@ -497,6 +521,23 @@ router.put(
         await tx.purchaseBatchExtra.deleteMany({ where: { batchId: id } });
         await tx.purchaseBatchExtra.createMany({
           data: extras.map((e, position) => ({ ...e, batchId: id, position })),
+        });
+      }
+
+      // Cargo to'lovlari: berilsa to'liq almashtiriladi; summasi va izohi yo'q qator yozilmaydi
+      if (body.payments) {
+        await tx.purchaseBatchPayment.deleteMany({ where: { batchId: id } });
+        await tx.purchaseBatchPayment.createMany({
+          data: body.payments
+            .filter((p) => p.amount > 0 || p.note)
+            .map((p, position) => ({
+              batchId: id,
+              position,
+              paidOn: p.date ? dayDate(p.date) : null,
+              amount: p.amount,
+              cargoName: p.cargoName,
+              note: p.note,
+            })),
         });
       }
     });

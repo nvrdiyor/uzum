@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Boxes, ChevronDown, ChevronRight, ChevronUp, CircleCheck, GripVertical, Plus, Trash2, Truck, Warehouse, Wallet } from '@/components/icons';
-import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary, ShipmentStatus } from '@savdoiq/shared';
+import type { BatchDetail, BatchListResponse, BatchRate, BatchSummary, CargoPayment, ShipmentStatus } from '@savdoiq/shared';
 import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { useSession } from '@/store/session';
@@ -211,9 +211,10 @@ export default function Batches() {
           cny: a.cny + b.totals.priceCny,
           goods: a.goods + b.totals.goodsUzs,
           cargo: a.cargo + b.totals.cargoUzs,
+          cargoDue: a.cargoDue + (b.cargoPayment?.due ?? 0),
           total: a.total + listTotal(b),
         }),
-        { items: 0, cny: 0, goods: 0, cargo: 0, total: 0 },
+        { items: 0, cny: 0, goods: 0, cargo: 0, cargoDue: 0, total: 0 },
       ),
     [visible],
   );
@@ -313,6 +314,17 @@ export default function Batches() {
           </StatGrid>
         ) : null}
 
+        {/* Cargo qarzi: hamma partiyalar bo'yicha to'lanmagan qoldiq */}
+        {data && data.grand.cargoDue > 0 ? (
+          <p className="tnum mb-3 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/5 px-4 py-2.5 text-sm font-medium text-danger-ink">
+            <Wallet className="h-4 w-4 shrink-0" />
+            {t('sum.cargoDue', {
+              sum: f.money(data.grand.cargoDue),
+              n: rows.filter((b) => (b.cargoPayment?.due ?? 0) > 0).length,
+            })}
+          </p>
+        ) : null}
+
         {rows.length > 0 ? (
           <div className="mb-3">
             <Segmented<'all' | ShipmentStatus>
@@ -407,6 +419,7 @@ export default function Batches() {
                         </div>
                       ))}
                     </dl>
+                    <CargoPayNote pay={b.cargoPayment} className="mt-2 text-xs" />
                     {canEdit ? (
                       <div className="mt-2 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                         {canReorder ? (
@@ -523,7 +536,10 @@ export default function Batches() {
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{t('items', { n: b.totals.items })}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.priceCny, 2)}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.goodsUzs)}</td>
-                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">{f.num(b.totals.cargoUzs)}</td>
+                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right text-ink-soft">
+                        {f.num(b.totals.cargoUzs)}
+                        <CargoPayNote pay={b.cargoPayment} className="text-2xs" />
+                      </td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right font-bold text-ink">{f.num(listTotal(b))}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-1">
@@ -581,7 +597,14 @@ export default function Batches() {
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{t('items', { n: foot.items })}</td>
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.cny, 2)}</td>
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.goods)}</td>
-                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">{f.num(foot.cargo)}</td>
+                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-soft">
+                      {f.num(foot.cargo)}
+                      {foot.cargoDue > 0 ? (
+                        <span className="block whitespace-normal text-2xs font-semibold leading-tight text-danger">
+                          {t('list.cargoDue', { due: f.num(foot.cargoDue).replace(/ /g, '\u00A0') })}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-extrabold text-ink">{f.num(foot.total)}</td>
                     <td />
                   </tr>
@@ -603,4 +626,19 @@ export default function Batches() {
       <ShipmentModal batch={shipFor} onClose={() => setShipId(null)} />
     </>
   );
+}
+
+/** Ro'yxatda cargo ostida: qancha to'lanmagan, to'langan yoki ortiqcha to'langan */
+function CargoPayNote({ pay, className }: { pay: CargoPayment | undefined; className?: string }) {
+  const t = useT('batches');
+  const f = useFormat();
+  if (!pay || pay.status === 'none' || pay.status === 'untracked') return null;
+  // Raqam bo'linmaydi, so'z esa keyingi qatorga tushishi mumkin: ustun kengaymaydi
+  const num = (v: number) => f.num(v).replace(/ /g, '\u00A0');
+  const base = 'block whitespace-normal leading-tight';
+  if (pay.due > 0)
+    return <span className={cn(base, 'font-semibold text-danger', className)}>{t('list.cargoDue', { due: num(pay.due) })}</span>;
+  if (pay.over > 0 && pay.total > 0)
+    return <span className={cn(base, 'font-semibold text-info-ink', className)}>{t('list.cargoOver', { over: num(pay.over) })}</span>;
+  return <span className={cn(base, 'font-medium text-brand-ink', className)}>{t('list.cargoPaid')}</span>;
 }
