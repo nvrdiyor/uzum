@@ -15,6 +15,7 @@ import {
   batchShipmentSchema,
   batchUpdateSchema,
   calcBatch,
+  cargoPaidRows,
   cargoPayment,
   cargoPayTracked,
   toBusinessDate,
@@ -64,7 +65,10 @@ interface ItemRecord {
 
 const toDelivery = (v: string): BatchDelivery => (v === 'avia' ? 'avia' : 'avto');
 
-type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'>;
+type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightKg'> & {
+  extraExcluded?: boolean;
+  cargoPaid?: boolean;
+};
 
 // ─────────────────────────── Jo'natmalar va kargo muddati ───────────────────────────
 
@@ -289,7 +293,7 @@ function toSummary(
     status: batchStatus(shipments),
     shipments,
     roadExtra: Math.round(roadExtra),
-    cargoPayment: cargoPayment(totals.cargoUzs, payments, cargoPayTracked(b.createdAt)),
+    cargoPayment: cargoPayment(totals.cargoUzs, payments, cargoPayTracked(b.createdAt), cargoPaidRows(items)),
   };
 }
 
@@ -327,6 +331,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       weightKg: it.weightKg,
       cargoCost: it.cargoCost,
       extraExcluded: it.extraExcluded,
+      cargoPaid: it.cargoPaid,
       priceUzs: rows[i].priceUzs,
       total: rows[i].total,
       unitCost: rows[i].unitCost,
@@ -366,6 +371,7 @@ router.get(
             qty: true,
             weightKg: true,
             extraExcluded: true,
+            cargoPaid: true,
             cargoName: true,
             delivery: true,
             trip: true,
@@ -512,9 +518,30 @@ router.put(
       });
       if (updated.count === 0) throw AppError.conflict(STALE_BATCH);
 
+      /*
+       * Eski sahifa versiyasi "cargo to'langan" belgisini bilmaydi va yubormaydi —
+       * u saqlaganda belgilar o'chib ketmasin: nomi va trek kodi bir xil qatordan
+       * olinadi (qatorlar ko'chirilgan bo'lsa ham).
+       */
+      const carried = new Map<string, boolean[]>();
+      const rowKey = (it: { name: string; trackCode: string }) => JSON.stringify([it.name, it.trackCode]);
+      if (body.items.length > 0 && body.items.every((it) => it.cargoPaid === undefined)) {
+        const prev = await tx.purchaseBatchItem.findMany({
+          where: { batchId: id },
+          orderBy: { position: 'asc' },
+          select: { name: true, trackCode: true, cargoPaid: true },
+        });
+        for (const p of prev) carried.set(rowKey(p), [...(carried.get(rowKey(p)) ?? []), p.cargoPaid]);
+      }
+
       await tx.purchaseBatchItem.deleteMany({ where: { batchId: id } });
       await tx.purchaseBatchItem.createMany({
-        data: body.items.map((it, position) => ({ ...it, batchId: id, position })),
+        data: body.items.map((it, position) => ({
+          ...it,
+          cargoPaid: it.cargoPaid ?? carried.get(rowKey(it))?.shift() ?? false,
+          batchId: id,
+          position,
+        })),
       });
 
       if (extras) {

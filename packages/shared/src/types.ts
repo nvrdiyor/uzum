@@ -1942,6 +1942,8 @@ export interface BatchItemInput {
   cargoCost: number;
   /** Qo'shimcha xarajatdan chiqarilgan: ulush olmaydi (masalan shaxsiy yoki namuna tovar) */
   extraExcluded: boolean;
+  /** Shu tovarning cargo puli to'langan: cargosi "to'langan"ga qo'shiladi, qolgani — to'lash kerak */
+  cargoPaid: boolean;
 }
 
 /**
@@ -1978,7 +1980,7 @@ export interface BatchPaymentInput {
  */
 export type CargoPayStatus = 'none' | 'untracked' | 'unpaid' | 'partial' | 'paid' | 'over';
 
-/** Jadvaldagi cargo jami va yozilgan to'lovlar (`cargoPayment`) */
+/** Jadvaldagi cargo jami va to'langani: belgilangan tovarlar + yozilgan to'lovlar (`cargoPayment`) */
 export interface CargoPayment {
   total: number;
   paid: number;

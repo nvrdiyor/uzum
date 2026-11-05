@@ -136,6 +136,8 @@ export const batchItemSchema = z.object({
   weightKg: z.coerce.number().min(0).max(1_000_000).default(0),
   cargoCost: z.coerce.number().min(0).max(10_000_000_000).default(0),
   extraExcluded: z.boolean().default(false),
+  /** Cargo puli to'langan. Berilmasa (eski sahifa versiyasi) — qatorning oldingi belgisi saqlanadi */
+  cargoPaid: z.boolean().optional(),
 });
 
 /** Qo'shimcha xarajat tafsilotidagi qatorlar chegarasi */

@@ -340,22 +340,33 @@ export function batchExtraKind(e: { name: string; kind?: string | null }): 'road
 }
 
 /**
- * Cargo to'lovi: jadvaldagi cargo jami va yozilgan to'lovlar. Tannarxga ta'sir
- * qilmaydi — faqat qancha to'langan va qancha qolganini ko'rsatadi (2026-11-05).
+ * Cargo to'lovi: jadvaldagi cargo jami va to'langani. To'langan — jadvalda
+ * "to'langan" deb belgilangan tovarlarning cargosi (`paidRows`, `cargoPaidRows`)
+ * va qo'lda yozilgan to'lovlar (masalan oldindan). Tannarxga ta'sir qilmaydi —
+ * faqat qancha to'langan va qancha qolganini ko'rsatadi (2026-11-05).
  */
 export function cargoPayment(
   total: number,
   payments: ReadonlyArray<{ amount: number }>,
   tracked = true,
+  paidRows = 0,
 ): CargoPayment {
   const t = Math.round(Math.max(0, total || 0));
-  const paid = Math.round(payments.reduce((a, p) => a + Math.max(0, p.amount || 0), 0));
+  const paid =
+    Math.round(Math.max(0, paidRows || 0)) + Math.round(payments.reduce((a, p) => a + Math.max(0, p.amount || 0), 0));
   // Eski partiyaga hali hech narsa yozilmagan: qarz deb ko'rsatilmaydi
   if (!tracked && paid === 0 && t > 0) return { total: t, paid: 0, due: 0, over: 0, status: 'untracked' };
   const status: CargoPayStatus =
     t === 0 && paid === 0 ? 'none' : paid === 0 ? 'unpaid' : paid < t ? 'partial' : paid === t ? 'paid' : 'over';
   return { total: t, paid, due: Math.max(0, t - paid), over: Math.max(0, paid - t), status };
 }
+
+/**
+ * Jadvalda "cargo to'langan" deb belgilangan tovarlarning cargo summasi. Har qator
+ * cargo jamidagidek yaxlitlanadi — shuning uchun u hech qachon jamidan oshmaydi.
+ */
+export const cargoPaidRows = (items: ReadonlyArray<{ cargoCost: number; cargoPaid?: boolean }>): number =>
+  items.reduce((a, it) => a + (it.cargoPaid ? Math.round(Math.max(0, it.cargoCost || 0)) : 0), 0);
 
 /**
  * Cargo to'lovlari 2026-11-05 dan kuzatiladi. Undan oldin yaratilgan partiyalar
@@ -370,10 +381,11 @@ export const cargoKey = (name: string): string => name.trim().replace(/\s+/g, ' 
 
 /**
  * Partiyada bir nechta kargo bo'lsa — har biri bo'yicha: jadvaldagi cargo jami va
- * shu kargoga belgilangan to'lovlar. Kargosi ko'rsatilmagan to'lovlar alohida.
+ * to'langani (shu kargodagi belgilangan tovarlar + shu kargoga yozilgan to'lovlar).
+ * Kargosi ko'rsatilmagan to'lovlar alohida.
  */
 export function cargoPaymentsByCargo(
-  items: ReadonlyArray<{ cargoName: string; cargoCost: number }>,
+  items: ReadonlyArray<{ cargoName: string; cargoCost: number; cargoPaid?: boolean }>,
   payments: ReadonlyArray<{ cargoName: string; amount: number }>,
 ): { rows: { name: string; total: number; paid: number; due: number }[]; unassigned: number } {
   const rows = new Map<string, { name: string; total: number; paid: number; due: number }>();
@@ -381,7 +393,9 @@ export function cargoPaymentsByCargo(
     const key = cargoKey(it.cargoName || '');
     if (!key) continue;
     const row = rows.get(key) ?? { name: it.cargoName.trim().replace(/\s+/g, ' '), total: 0, paid: 0, due: 0 };
-    row.total += Math.round(Math.max(0, it.cargoCost || 0));
+    const cost = Math.round(Math.max(0, it.cargoCost || 0));
+    row.total += cost;
+    if (it.cargoPaid) row.paid += cost;
     rows.set(key, row);
   }
   let unassigned = 0;

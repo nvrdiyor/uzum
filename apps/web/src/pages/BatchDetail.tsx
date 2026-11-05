@@ -39,6 +39,7 @@ import {
   BATCH_MAX_PAYMENTS,
   calcBatch,
   cargoKey,
+  cargoPaidRows,
   cargoPayment,
   cargoPaymentsByCargo,
   cargoPayTracked,
@@ -123,6 +124,7 @@ function blankRow(prev?: Row): Row {
     weightKg: 0,
     cargoCost: 0,
     extraExcluded: false,
+    cargoPaid: false,
   };
 }
 
@@ -149,7 +151,7 @@ const isBlank = (r: Row) =>
   !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
 
 function toDraft(d: BatchDetailData): Draft {
-  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost, extraExcluded }) => ({
+  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost, extraExcluded, cargoPaid }) => ({
     key: id,
     name,
     trackCode,
@@ -161,6 +163,7 @@ function toDraft(d: BatchDetailData): Draft {
     weightKg,
     cargoCost,
     extraExcluded: extraExcluded ?? false,
+    cargoPaid: cargoPaid ?? false,
   }));
   return {
     id: d.id,
@@ -491,6 +494,8 @@ function PaymentsModal({
   onClose,
   payments,
   cargoTotal,
+  paidRows,
+  paidRowsCount,
   cargoByName,
   unassigned,
   readonly,
@@ -500,6 +505,9 @@ function PaymentsModal({
   onClose: () => void;
   payments: PaymentRow[];
   cargoTotal: number;
+  /** Jadvalda "to'langan" deb belgilangan tovarlarning cargosi va ularning soni */
+  paidRows: number;
+  paidRowsCount: number;
   /** Partiyadagi kargolar va ularning jami: ikkitadan ko'p bo'lsa to'lov kargoga bog'lanadi */
   cargoByName: { name: string; total: number; paid: number; due: number }[];
   unassigned: number;
@@ -511,7 +519,7 @@ function PaymentsModal({
   const listRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef<string | null>(null);
   const multi = cargoByName.length > 1;
-  const pay = cargoPayment(cargoTotal, payments);
+  const pay = cargoPayment(cargoTotal, payments, true, paidRows);
 
   const focusCell = (cell: string) =>
     listRef.current?.querySelector<HTMLInputElement>(`[data-cell="${cell}"]`)?.focus();
@@ -585,12 +593,22 @@ function PaymentsModal({
         </div>
       }
     >
-      <p className="tnum mb-3 text-sm text-muted">
-        {t('pay.total')}:{' '}
-        <b className="text-ink">
-          {f.num(cargoTotal)} {t('sum')}
-        </b>
-      </p>
+      <div className="mb-3">
+        <p className="tnum text-sm text-muted">
+          {t('pay.total')}:{' '}
+          <b className="text-ink">
+            {f.num(cargoTotal)} {t('sum')}
+          </b>
+        </p>
+        {/* Asosiy yo'l — jadvaldagi "To'langan" belgisi; bu ro'yxat boshqa to'lovlar uchun (masalan oldindan) */}
+        {paidRowsCount > 0 ? (
+          <p className="tnum mt-1 text-sm font-semibold text-brand-ink">
+            {t('pay.rows', { n: paidRowsCount, sum: f.num(paidRows) })}
+          </p>
+        ) : !readonly ? (
+          <p className="mt-1 text-xs leading-snug text-muted">{t('pay.rowsHint')}</p>
+        ) : null}
+      </div>
       <div ref={listRef} className="space-y-2">
         {payments.map((p, i) => (
           // Joy yetmasa izoh keyingi qatorga tushadi — siqilib, o'qib bo'lmaydigan bo'lmaydi
@@ -1026,6 +1044,14 @@ function BatchDetail({ id }: { id: string }) {
     edit((d) => ({ ...d, rows: d.rows.map((r) => (r.extraExcluded === want(r) ? r : { ...r, extraExcluded: want(r) })) }));
   };
 
+  /** Sarlavhadagi belgi: hamma tovarning cargo puli to'langan (true) yoki hech birining (false) */
+  const setAllPaid = (paid: boolean) => {
+    // Bo'sh qator belgilanmaydi: unga keyin yozilgan tovar jimgina "to'langan" bo'lib qolmasin
+    const want = (r: Row) => paid && !isBlank(r);
+    if (draftRef.current?.rows.every((r) => r.cargoPaid === want(r))) return;
+    edit((d) => ({ ...d, rows: d.rows.map((r) => (r.cargoPaid === want(r) ? r : { ...r, cargoPaid: want(r) })) }));
+  };
+
   const canAdd = (draft?.rows.length ?? 0) < BATCH_MAX_ITEMS;
   const addRow = () => {
     if (!canAdd) {
@@ -1166,9 +1192,15 @@ function BatchDetail({ id }: { id: string }) {
   const notFound = isError && error instanceof ApiError && error.status === 404;
   const readonly = !canEdit;
   const filledExtras = draft?.extras.filter((e) => !isBlankExtra(e)) ?? [];
-  // Cargo to'lovi: jadvaldagi cargo jami va yozilgan to'lovlar (bo'sh qatorlar hisobga kirmaydi)
+  // Cargo puli to'langan deb belgilangan tovarlar (bo'sh qatorlar hisobga olinmaydi, ularning cargosi 0)
+  const paidCount = draft?.rows.filter((r) => !isBlank(r) && r.cargoPaid).length ?? 0;
+  const allPaid = filledCount > 0 && paidCount === filledCount;
+  const paidRowsSum = draft ? cargoPaidRows(draft.rows) : 0;
+  // Cargo to'lovi: jadvaldagi cargo jami, belgilangan tovarlar va yozilgan to'lovlar
   const pay =
-    draft && calc ? cargoPayment(calc.totals.cargoUzs, draft.payments, data ? cargoPayTracked(data.createdAt) : true) : null;
+    draft && calc
+      ? cargoPayment(calc.totals.cargoUzs, draft.payments, data ? cargoPayTracked(data.createdAt) : true, paidRowsSum)
+      : null;
   // Bo'sh qator oldingi qatordan kargo nomini oladi — u "ikkinchi kargo" bo'lib ko'rinmasin
   const byCargo = useMemo(
     () => (draft ? cargoPaymentsByCargo(draft.rows.filter((r) => !isBlank(r)), draft.payments) : null),
@@ -1419,7 +1451,7 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1610px] border-collapse text-sm">
+              <table ref={tableRef} className="w-full min-w-[1730px] border-collapse text-sm">
                 <colgroup>
                   <col className="w-11" />
                   <col />
@@ -1432,6 +1464,7 @@ function BatchDetail({ id }: { id: string }) {
                   <col className="w-[80px]" />
                   <col className="w-[80px]" />
                   <col className="w-[112px]" />
+                  <col className="w-[120px]" />
                   <col className="w-[124px]" />
                   <col className="w-[116px]" />
                   <col className="w-[128px]" />
@@ -1454,6 +1487,25 @@ function BatchDetail({ id }: { id: string }) {
                     </th>
                     <th className={cn(th, 'text-right')}>{t('th.kg')}</th>
                     <th className={cn(th, 'text-right')}>{t('th.cargo')}</th>
+                    <th className={cn(th, 'text-center')} title={t('th.paidHint')}>
+                      <span className="inline-flex items-center gap-2">
+                        {canEdit ? (
+                          <input
+                            type="checkbox"
+                            checked={allPaid}
+                            // Bir qismi belgilangan — chiziqcha; bosilsa hammasi to'langan bo'ladi
+                            ref={(el) => {
+                              if (el) el.indeterminate = paidCount > 0 && !allPaid;
+                            }}
+                            onChange={() => setAllPaid(!allPaid)}
+                            title={t('paid.toggleAll')}
+                            aria-label={t('paid.toggleAll')}
+                            className="h-4 w-4 shrink-0 cursor-pointer rounded border-line bg-surface-2 accent-brand"
+                          />
+                        ) : null}
+                        {t('th.paid')}
+                      </span>
+                    </th>
                     <th className={cn(th, 'text-right')}>{t('th.total')}</th>
                     <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
                       {t('th.unit')}
@@ -1644,6 +1696,30 @@ function BatchDetail({ id }: { id: string }) {
                             onKeyDown={onCellKey(i, 'cargo')}
                           />
                         </td>
+                        <td
+                          className={cn(
+                            'border-l border-line/60 px-3 py-2.5 text-center',
+                            r.cargoPaid && !isBlank(r) && 'bg-brand/5',
+                          )}
+                        >
+                          {/* Belgilangan tovarning cargosi "to'langan"ga qo'shiladi, qolgani — to'lash kerak */}
+                          {isBlank(r) ? null : canEdit ? (
+                            <input
+                              type="checkbox"
+                              checked={r.cargoPaid}
+                              onChange={(e) => patchRow(r.key, { cargoPaid: e.target.checked })}
+                              title={t('row.paidToggle')}
+                              aria-label={t('row.paidToggle')}
+                              className="h-4 w-4 cursor-pointer rounded border-line bg-surface-2 align-middle accent-brand"
+                            />
+                          ) : r.cargoPaid ? (
+                            <span role="img" title={t('row.paidView')} aria-label={t('row.paidView')} className="inline-flex text-brand-ink">
+                              <Check className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
                         <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-bold text-ink">
                           {res.total ? f.num(res.total) : '—'}
                         </td>
@@ -1744,6 +1820,8 @@ function BatchDetail({ id }: { id: string }) {
                       {calc.totals.weightKg ? kgText(calc.totals.weightKg) : ''}
                     </td>
                     <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.cargoUzs)}</td>
+                    {/* Belgilangan tovarlar cargosining yig'indisi */}
+                    <td className="tnum px-3 py-3 text-center text-brand-ink">{paidRowsSum > 0 ? f.num(paidRowsSum) : ''}</td>
                     <td className="tnum px-3 py-3 text-right text-brand-ink">
                       {f.num(calc.totals.goodsUzs + calc.totals.cargoUzs)}
                     </td>
@@ -1821,6 +1899,8 @@ function BatchDetail({ id }: { id: string }) {
         onClose={closePayments}
         payments={draft.payments}
         cargoTotal={calc?.totals.cargoUzs ?? 0}
+        paidRows={paidRowsSum}
+        paidRowsCount={paidCount}
         cargoByName={byCargo?.rows ?? []}
         unassigned={byCargo?.unassigned ?? 0}
         readonly={readonly}

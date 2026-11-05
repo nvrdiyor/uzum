@@ -948,6 +948,9 @@ model PurchaseBatchItem {
   /// Qo'shimcha xarajatdan chiqarilgan: ulush olmaydi, 1 dona narxi faqat tovar va kargo.
   /// Sotuvchi tanlaydi — masalan shaxsiy yoki namuna tovar (2026-11-05)
   extraExcluded Boolean @default(false)
+  /// Shu tovarning cargo puli to'langan: uning cargosi partiyaning "to'langan" summasiga
+  /// qo'shiladi, qolgani — to'lash kerak. Tannarxga ta'sir qilmaydi (2026-11-05)
+  cargoPaid     Boolean @default(false)
 
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
