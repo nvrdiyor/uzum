@@ -1,5 +1,11 @@
 import { registerNamespace } from '@/i18n';
 
+/**
+ * Bo'linmas bo'shliq — manbada ko'rinmas belgi turmasin, kod bilan yasaladi (vgh/format.ts dagidek).
+ * Tor ustun sarlavhasi ikki qatorga bo'linganda "1" va "dona" ajralib qolmasin.
+ */
+const NBSP = String.fromCharCode(0xa0);
+
 /** Ikkala sahifa (ro'yxat va jadval) bitta nom maydonidan foydalanadi */
 registerNamespace('batches', {
   uz: {
@@ -128,9 +134,9 @@ registerNamespace('batches', {
     'th.total': 'Umumiy (so‘m)',
     'th.qty': 'Soni',
     'th.kg': 'Kg',
-    'th.unit': '1 dona (so‘m)',
+    'th.unit': `1${NBSP}dona (so‘m)`,
     'th.unitHint': 'Umumiy ÷ Soni — tovar va cargo bilan 1 donaning tannarxi (qo‘shimcha xarajat kirmaydi)',
-    'th.unitFull': 'Xarajat bilan 1 dona',
+    'th.unitFull': `Xarajat bilan 1${NBSP}dona`,
     'th.unitFullHint':
       '(Umumiy + qo‘shimcha xarajat ulushi) ÷ Soni. Qo‘shimcha xarajat soni va kg ni birga hisobga olib bo‘linadi (√(soni × kg) ga mutanosib): 4 barobar og‘ir dona 2 barobar ko‘p xarajat oladi. Hech bir qatorda soni va kg birga kiritilmagan bo‘lsa — soniga qarab. Belgisi olingan qatorga xarajat tushmaydi',
     'row.extraShare': 'Qo‘shimcha xarajatdan ulushi: {sum} so‘m',
@@ -342,9 +348,9 @@ registerNamespace('batches', {
     'th.total': 'Всего (сум)',
     'th.qty': 'Кол-во',
     'th.kg': 'Кг',
-    'th.unit': '1 шт (сум)',
+    'th.unit': `1${NBSP}шт (сум)`,
     'th.unitHint': 'Всего ÷ Кол-во — себестоимость 1 шт с карго (доп. расходы не входят)',
-    'th.unitFull': '1 шт с расходами',
+    'th.unitFull': `1${NBSP}шт с${NBSP}расходами`,
     'th.unitFullHint':
       '(Всего + доля доп. расходов) ÷ Кол-во. Доп. расходы делятся с учётом и количества, и веса (пропорционально √(кол-во × кг)): единица в 4 раза тяжелее несёт в 2 раза больше расходов. Если ни в одной строке нет и количества, и веса — по количеству. На строку без галочки расходы не делятся',
     'row.extraShare': 'Доля доп. расходов: {sum} сум',
@@ -547,7 +553,7 @@ registerNamespace('batches', {
     'kpi.cargoHintKg': 'Air {avia} · Road {avto} · {kg} kg',
     'th.no': '#',
     'th.name': 'Name',
-    'th.track': 'Tracking code',
+    'th.track': 'Track code',
     'th.cny': 'Price (¥)',
     'th.uzs': 'Price (UZS)',
     'th.cargoName': 'Cargo',
@@ -558,7 +564,7 @@ registerNamespace('batches', {
     'th.kg': 'Kg',
     'th.unit': 'Per unit (UZS)',
     'th.unitHint': 'Total ÷ Qty — landed cost of one unit incl. cargo (extra costs not included)',
-    'th.unitFull': 'Per unit incl. extra',
+    'th.unitFull': `Per unit incl.${NBSP}extra`,
     'th.unitFullHint':
       '(Total + share of extra costs) ÷ Qty. Extra costs are split by quantity and weight together (proportional to √(qty × kg)): a unit 4× heavier carries 2× more. If no row has both quantity and weight — by quantity. Unticked rows get no share',
     'row.extraShare': 'Extra cost share: {sum} UZS',
@@ -623,7 +629,7 @@ registerNamespace('batches', {
     'cargo.newHint': 'You can pick it later in other rows and batches',
     'cargo.add': 'Add',
     'ph.name': 'Product name',
-    'ph.track': 'Tracking code',
+    'ph.track': 'Track code',
     'row.add': 'Add row',
     'row.delete': 'Delete row',
     'order.error': 'Order was not saved',

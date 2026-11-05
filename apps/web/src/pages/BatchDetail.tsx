@@ -105,6 +105,8 @@ const UNDO_MS = 5_000;
 const SAVE_DELAY_MS = 700;
 const NEW_CARGO = '__new__';
 const DELIVERIES: BatchDelivery[] = ['avia', 'avto'];
+/** Bo'linmas bo'shliq — manbada ko'rinmas belgi turmasin, kod bilan yasaladi (vgh/format.ts dagidek) */
+const NBSP = String.fromCharCode(0xa0);
 
 let keySeq = 0;
 const newKey = () => `r${Date.now().toString(36)}${(keySeq++).toString(36)}`;
@@ -226,18 +228,20 @@ function PayLine({ pay, canEdit, onOpen }: { pay: CargoPayment; canEdit: boolean
   const t = useT('batches');
   const f = useFormat();
   if ((pay.status === 'none' || pay.status === 'untracked') && !canEdit) return null;
+  // Tor ekranda matn qatorga o'tsa ham raqam bo'linmasin ("481 / 057") — ro'yxatdagi CargoPayNote kabi
+  const num = (v: number) => f.num(v).replace(/ /g, NBSP);
   const [text, tone] =
     pay.status === 'none' || pay.status === 'untracked'
       ? [t('pay.open'), 'text-brand-ink']
       : pay.status === 'unpaid'
-        ? [t('pay.unpaid', { due: f.num(pay.due) }), 'text-danger']
+        ? [t('pay.unpaid', { due: num(pay.due) }), 'text-danger']
         : pay.status === 'partial'
-          ? [t('pay.partial', { paid: f.num(pay.paid), due: f.num(pay.due) }), 'text-warn-ink']
+          ? [t('pay.partial', { paid: num(pay.paid), due: num(pay.due) }), 'text-warn-ink']
           : pay.status === 'paid'
             ? [t('pay.paid'), 'text-brand-ink']
             : pay.total === 0
-              ? [t('pay.paidNoCargo', { paid: f.num(pay.paid) }), 'text-info-ink']
-              : [t('pay.over', { over: f.num(pay.over) }), 'text-info-ink'];
+              ? [t('pay.paidNoCargo', { paid: num(pay.paid) }), 'text-info-ink']
+              : [t('pay.over', { over: num(pay.over) }), 'text-info-ink'];
   return (
     <button
       type="button"
@@ -261,9 +265,12 @@ function SumOp({ children }: { children: string }) {
 
 // ─────────────────────────── Kataklar ───────────────────────────
 
-const CELL_INPUT =
-  'h-full w-full min-w-0 bg-transparent px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted/50 ' +
+const CELL_BASE =
+  'h-full w-full min-w-0 bg-transparent py-2.5 text-sm text-ink outline-none placeholder:text-muted/50 ' +
   'focus:bg-surface focus:ring-2 focus:ring-inset focus:ring-brand/40 disabled:cursor-default';
+const CELL_INPUT = `${CELL_BASE} px-3`;
+/** Tor raqam ustunlari (soni, narx, reys, kg, cargo): chekkasi kichikroq — jadval 1920 ekranga scrollsiz sig'adi */
+const CELL_INPUT_TIGHT = `${CELL_BASE} px-2`;
 
 /** Sariq katak — sotuvchi to'ldiradi (Excel'dagi odatiy belgi) */
 const EDITABLE_TD = 'border-l border-line/60 bg-warn/[0.06] p-0';
@@ -286,7 +293,7 @@ function NumCell({
   disabled?: boolean;
   cell: string;
   onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void;
-  /** Jadvaldan tashqarida — oddiy maydon ko'rinishi */
+  /** Standart — CELL_INPUT; jadvalning tor raqam ustunlarida CELL_INPUT_TIGHT, jadvaldan tashqarida 'input …' (oddiy maydon) */
   className?: string;
   /** Kasr qismi o'zgaruvchan bo'lsa (kg: "12" va "0,35") — `digits` o'rniga */
   format?: (v: number) => string;
@@ -1249,7 +1256,15 @@ function BatchDetail({ id }: { id: string }) {
     );
   }
 
-  const th = 'table-head border-b border-line px-3 py-3 whitespace-nowrap';
+  /*
+   * Ustunlar tor: uzun sarlavha joy yetmasa ikki qatorga o'tadi ("Umumiy / (so'm)"),
+   * raqamlar esa hech qachon bo'linmaydi (qatorlarda whitespace-nowrap). Shunda
+   * jadval 1920 ekranga (yon panel ochiq) gorizontal scrollsiz sig'adi (2026-11-05).
+   */
+  const th = 'table-head border-b border-line py-3';
+  const thWide = cn(th, 'px-3');
+  /** Tor raqam ustunlari — kataklari bilan bir xil chekka (px-2) */
+  const thTight = cn(th, 'px-2');
 
   return (
     <>
@@ -1451,44 +1466,51 @@ function BatchDetail({ id }: { id: string }) {
           {/* ── Jadval ── */}
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1730px] border-collapse text-sm">
+              {/*
+                Kengliklar Onest shriftida o'lchab tanlangan (2026-11-05): 7 xonali summa ("1 234 567"),
+                4 xonali reys va "123,45" kg sig'adi; Nomi qolgan joyni oladi. Jami qatoridagi katta
+                summa sig'masa, o'sha ustun o'zi kengayadi (whitespace-nowrap) — joyni Nomi beradi.
+              */}
+              <table ref={tableRef} className="w-full min-w-[1460px] border-collapse text-sm">
                 <colgroup>
-                  <col className="w-11" />
+                  <col className="w-10" />
                   <col />
-                  <col className="w-[112px]" />
-                  <col className="w-[72px]" />
                   <col className="w-[100px]" />
-                  <col className="w-[108px]" />
-                  <col className="w-[136px]" />
-                  <col className="w-[136px]" />
+                  <col className="w-[60px]" />
                   <col className="w-[80px]" />
-                  <col className="w-[80px]" />
-                  <col className="w-[112px]" />
-                  <col className="w-[120px]" />
-                  <col className="w-[124px]" />
-                  <col className="w-[116px]" />
-                  <col className="w-[128px]" />
                   <col className="w-[92px]" />
+                  <col className="w-[136px]" />
+                  <col className="w-[128px]" />
+                  <col className="w-[56px]" />
+                  <col className="w-[70px]" />
+                  <col className="w-[92px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[92px]" />
+                  <col className="w-[80px]" />
+                  <col className="w-[124px]" />
+                  <col className="w-20" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className={cn(th, 'text-center')}>{t('th.no')}</th>
-                    <th className={cn(th, 'text-left')}>{t('th.name')}</th>
-                    <th className={cn(th, 'text-left')}>{t('th.track')}</th>
-                    <th className={cn(th, 'text-right')}>{t('th.qty')}</th>
-                    <th className={cn(th, 'text-right')} title={t('th.cnyHint')}>
+                    <th className={cn(thTight, 'text-center')}>{t('th.no')}</th>
+                    <th className={cn(thWide, 'text-left')}>{t('th.name')}</th>
+                    <th className={cn(thWide, 'text-left')}>{t('th.track')}</th>
+                    <th className={cn(thTight, 'text-right')}>{t('th.qty')}</th>
+                    <th className={cn(thTight, 'text-right')} title={t('th.cnyHint')}>
                       {t('th.cny')}
                     </th>
-                    <th className={cn(th, 'text-right')}>{t('th.uzs')}</th>
-                    <th className={cn(th, 'text-left')}>{t('th.cargoName')}</th>
-                    <th className={cn(th, 'text-center')}>{t('th.delivery')}</th>
-                    <th className={cn(th, 'text-left')} title={t('th.tripHint')}>
+                    <th className={cn(thTight, 'text-right')}>{t('th.uzs')}</th>
+                    <th className={cn(thWide, 'text-left')}>{t('th.cargoName')}</th>
+                    <th className={cn(thWide, 'text-center')}>{t('th.delivery')}</th>
+                    <th className={cn(thTight, 'text-left')} title={t('th.tripHint')}>
                       {t('th.trip')}
                     </th>
-                    <th className={cn(th, 'text-right')}>{t('th.kg')}</th>
-                    <th className={cn(th, 'text-right')}>{t('th.cargo')}</th>
-                    <th className={cn(th, 'text-center')} title={t('th.paidHint')}>
-                      <span className="inline-flex items-center gap-2">
+                    <th className={cn(thTight, 'text-right')}>{t('th.kg')}</th>
+                    <th className={cn(thTight, 'text-right')}>{t('th.cargo')}</th>
+                    <th className={cn(thTight, 'text-center')} title={t('th.paidHint')}>
+                      {/* Tor ustun: belgi sarlavha ostida — qatorlardagi belgilar bilan bir chiziqda */}
+                      <span className="inline-flex flex-col items-center gap-1">
+                        {t('th.paid')}
                         {canEdit ? (
                           <input
                             type="checkbox"
@@ -1503,15 +1525,14 @@ function BatchDetail({ id }: { id: string }) {
                             className="h-4 w-4 shrink-0 cursor-pointer rounded border-line bg-surface-2 accent-brand"
                           />
                         ) : null}
-                        {t('th.paid')}
                       </span>
                     </th>
-                    <th className={cn(th, 'text-right')}>{t('th.total')}</th>
-                    <th className={cn(th, 'text-right')} title={t('th.unitHint')}>
+                    <th className={cn(thTight, 'text-right')}>{t('th.total')}</th>
+                    <th className={cn(thTight, 'text-right')} title={t('th.unitHint')}>
                       {t('th.unit')}
                     </th>
-                    <th className={cn(th, 'text-right')} title={t('th.unitFullHint')}>
-                      <span className="inline-flex items-center gap-2">
+                    <th className={cn(thTight, 'text-right')} title={t('th.unitFullHint')}>
+                      <span className="inline-flex items-center gap-1.5">
                         {canEdit ? (
                           <input
                             type="checkbox"
@@ -1526,10 +1547,11 @@ function BatchDetail({ id }: { id: string }) {
                             className="h-4 w-4 shrink-0 cursor-pointer rounded border-line bg-surface-2 accent-brand"
                           />
                         ) : null}
-                        {t('th.unitFull')}
+                        {/* Joy yetmasa ikki qator: "Xarajat bilan / 1 dona" */}
+                        <span className="text-right">{t('th.unitFull')}</span>
                       </span>
                     </th>
-                    <th className={th} />
+                    <th className={thTight} />
                   </tr>
                 </thead>
                 <tbody>
@@ -1540,7 +1562,8 @@ function BatchDetail({ id }: { id: string }) {
                         key={r.key}
                         {...(canEdit ? drag.rowProps(i) : {})}
                         className={cn(
-                          'group border-b border-line/70',
+                          // Raqam hech qachon ikki qatorga bo'linmaydi ("1 612 / 432") — ustun tor bo'lsa ham
+                          'group whitespace-nowrap border-b border-line/70',
                           drag.dragging === i && 'opacity-50',
                           dropLine(drag.dropPosition(i)),
                         )}
@@ -1593,6 +1616,7 @@ function BatchDetail({ id }: { id: string }) {
                             disabled={readonly}
                             onChange={(qty) => patchRow(r.key, { qty })}
                             onKeyDown={onCellKey(i, 'qty')}
+                            className={CELL_INPUT_TIGHT}
                           />
                         </td>
                         <td className={EDITABLE_TD}>
@@ -1603,15 +1627,18 @@ function BatchDetail({ id }: { id: string }) {
                             disabled={readonly}
                             onChange={(priceCny) => patchRow(r.key, { priceCny })}
                             onKeyDown={onCellKey(i, 'cny')}
+                            className={CELL_INPUT_TIGHT}
                           />
                         </td>
-                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right text-ink-soft">
+                        <td className="tnum border-l border-line/60 px-2 py-2.5 text-right text-ink-soft">
                           {res.priceUzs ? f.num(res.priceUzs) : '—'}
                         </td>
                         <td className={cn(EDITABLE_TD, 'relative')}>
                           <select
                             data-cell={`${i}:cargoName`}
                             value={r.cargoName}
+                            // Uzun kargo nomi katakka sig'masa — sichqoncha ustida to'liq ko'rinadi
+                            title={r.cargoName || undefined}
                             disabled={readonly}
                             onChange={(e) => {
                               if (e.target.value === NEW_CARGO) setCargoFor(r.key);
@@ -1634,7 +1661,7 @@ function BatchDetail({ id }: { id: string }) {
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                         </td>
-                        <td className={cn(EDITABLE_TD, 'px-2 text-center')}>
+                        <td className={cn(EDITABLE_TD, 'px-1 text-center')}>
                           <div className="inline-flex rounded-lg border border-line bg-surface p-0.5" role="radiogroup" aria-label={t('th.delivery')}>
                             {DELIVERIES.map((d) => {
                               const on = r.delivery === d;
@@ -1673,7 +1700,7 @@ function BatchDetail({ id }: { id: string }) {
                             title={t('th.tripHint')}
                             onChange={(e) => patchRow(r.key, { trip: e.target.value })}
                             onKeyDown={onCellKey(i, 'trip')}
-                            className={cn(CELL_INPUT, 'tnum')}
+                            className={cn(CELL_INPUT_TIGHT, 'tnum')}
                           />
                         </td>
                         <td className={EDITABLE_TD}>
@@ -1684,6 +1711,7 @@ function BatchDetail({ id }: { id: string }) {
                             disabled={readonly}
                             onChange={(weightKg) => patchRow(r.key, { weightKg })}
                             onKeyDown={onCellKey(i, 'kg')}
+                            className={CELL_INPUT_TIGHT}
                           />
                         </td>
                         <td className={EDITABLE_TD}>
@@ -1694,11 +1722,12 @@ function BatchDetail({ id }: { id: string }) {
                             disabled={readonly}
                             onChange={(cargoCost) => patchRow(r.key, { cargoCost })}
                             onKeyDown={onCellKey(i, 'cargo')}
+                            className={CELL_INPUT_TIGHT}
                           />
                         </td>
                         <td
                           className={cn(
-                            'border-l border-line/60 px-3 py-2.5 text-center',
+                            'border-l border-line/60 px-2 py-2.5 text-center',
                             r.cargoPaid && !isBlank(r) && 'bg-brand/5',
                           )}
                         >
@@ -1720,15 +1749,15 @@ function BatchDetail({ id }: { id: string }) {
                             <span className="text-muted">—</span>
                           )}
                         </td>
-                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-bold text-ink">
+                        <td className="tnum border-l border-line/60 px-2 py-2.5 text-right font-bold text-ink">
                           {res.total ? f.num(res.total) : '—'}
                         </td>
-                        <td className="tnum border-l border-line/60 px-3 py-2.5 text-right font-semibold text-ink">
+                        <td className="tnum border-l border-line/60 px-2 py-2.5 text-right font-semibold text-ink">
                           {res.unitCost !== null && res.total ? f.num(res.unitCost) : '—'}
                         </td>
                         <td
                           className={cn(
-                            'tnum border-l border-line/60 px-3 py-2.5 text-right font-bold',
+                            'tnum border-l border-line/60 px-2 py-2.5 text-right font-bold',
                             r.extraExcluded ? 'bg-surface-2/60 text-muted' : 'bg-brand/5 text-brand-ink',
                           )}
                           title={
@@ -1807,22 +1836,22 @@ function BatchDetail({ id }: { id: string }) {
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-surface-2/70 font-bold text-ink">
+                  <tr className="whitespace-nowrap bg-surface-2/70 font-bold text-ink">
                     <td />
                     <td className="px-3 py-3" colSpan={2}>
                       {t('total')}
                     </td>
-                    <td className="tnum px-3 py-3 text-right">{calc.totals.qty ? f.num(calc.totals.qty) : ''}</td>
-                    <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.priceCny, 2)}</td>
-                    <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.goodsUzs)}</td>
+                    <td className="tnum px-2 py-3 text-right">{calc.totals.qty ? f.num(calc.totals.qty) : ''}</td>
+                    <td className="tnum px-2 py-3 text-right">{f.num(calc.totals.priceCny, 2)}</td>
+                    <td className="tnum px-2 py-3 text-right">{f.num(calc.totals.goodsUzs)}</td>
                     <td colSpan={3} />
-                    <td className="tnum px-3 py-3 text-right">
+                    <td className="tnum px-2 py-3 text-right">
                       {calc.totals.weightKg ? kgText(calc.totals.weightKg) : ''}
                     </td>
-                    <td className="tnum px-3 py-3 text-right">{f.num(calc.totals.cargoUzs)}</td>
+                    <td className="tnum px-2 py-3 text-right">{f.num(calc.totals.cargoUzs)}</td>
                     {/* Belgilangan tovarlar cargosining yig'indisi */}
-                    <td className="tnum px-3 py-3 text-center text-brand-ink">{paidRowsSum > 0 ? f.num(paidRowsSum) : ''}</td>
-                    <td className="tnum px-3 py-3 text-right text-brand-ink">
+                    <td className="tnum px-2 py-3 text-center text-brand-ink">{paidRowsSum > 0 ? f.num(paidRowsSum) : ''}</td>
+                    <td className="tnum px-2 py-3 text-right text-brand-ink">
                       {f.num(calc.totals.goodsUzs + calc.totals.cargoUzs)}
                     </td>
                     <td colSpan={3} />
