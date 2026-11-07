@@ -15,16 +15,22 @@
  * vaqtida bo'lgan deb; sotuvchi bank ilovasi bilan solishtiradi.
  *
  * Shakl mantig'i (holat, tekshiruv, so'rov) — formModel.ts; bu yerda faqat oyna.
+ *
+ * Kredit kartada avval karta tanlanadi: TBC Osmon, Infin Black (bank shartlari
+ * kodda — sotuvchi faqat ilovadagi raqamlarni yozadi) yoki "Boshqa karta" (umumiy
+ * hisob, maydonlari avvalgidek). Tahrirda karta o'zgarmaydi (server ham rad etadi).
  */
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  CARD_PRODUCTS,
   DEBT_LIMITS,
   addMonthsAnchored,
   analyzeDebt,
   formatDebtMoney,
   type DebtAnalysis,
+  type DebtCardProduct,
   type DebtCurrency,
   type DebtDayCount,
   type DebtDetail,
@@ -38,16 +44,19 @@ import { NumberField } from '@/components/unit/NumberField';
 import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { KIND_ICON, KindTiles } from './kinds';
+import { CardProductTiles, KIND_ICON, KindTiles, productSub } from './kinds';
 import { MoneyField } from './MoneyField';
-import { Choice, CountField, DateField, TextField } from './fields';
-import { isIsoDay, minRuleText, pctNum, toLedger } from './format';
+import { Choice, CountField, DateField, FieldNote, PctField, TextField } from './fields';
+import { addDays, compactMoney, isIsoDay, minRuleText, parseDecimal, pctNum, toLedger } from './format';
 import {
+  LAST_DUE_WINDOW,
   MORE_FIELDS,
+  PRODUCT_MORE_FIELDS,
   blank,
   build,
   fromDebt,
   moneyKey,
+  productOf,
   round6,
   type FieldKey,
   type FormState,
@@ -166,11 +175,16 @@ function FormDialog({
     },
   });
 
+  const product = productOf(s);
+  // Yangi kredit karta: avval karta tanlanadi (hech biri oldindan tanlanmagan)
+  const pickingCard = s.kind === 'card' && s.cardProduct === null;
+
   const submit = () => {
     setTried(true);
     const keys = Object.keys(built.errors) as FieldKey[];
     if (keys.length) {
-      if (keys.some((k) => MORE_FIELDS.includes(k))) set('more', true);
+      const more = product ? PRODUCT_MORE_FIELDS : MORE_FIELDS;
+      if (keys.some((k) => more.includes(k))) set('more', true);
       return;
     }
     save.mutate(built.body);
@@ -186,6 +200,24 @@ function FormDialog({
       currency: p.currency,
       amount: p.amount,
       ownerOnly: p.ownerOnly,
+    }));
+
+  /**
+   * Karta tanlandi: limit, hozirgi qarz, nom va izoh saqlanadi; foiz, sanalar va ochiq ko'chirma — yangidan
+   * (boshqa kartaning foizi yoki to'lov sanasi jimgina o'tib ketmasin). Tayyor kartada so'm va bankning minimal %i
+   */
+  const pickProduct = (p: DebtCardProduct | 'other') =>
+    setS((prev) => ({
+      ...blank('card', today, isOwner),
+      cardProduct: p,
+      lender: prev.lender,
+      title: prev.title,
+      note: prev.note,
+      currency: p === 'other' ? prev.currency : CARD_PRODUCTS[p].currency,
+      amount: prev.amount,
+      cardDebt: prev.cardDebt,
+      ownerOnly: prev.ownerOnly,
+      minPct: p === 'other' ? String(DEBT_LIMITS.cardMinPct) : String(CARD_PRODUCTS[p].minPctDefault),
     }));
 
   const setStarted = (v: string) =>
@@ -231,7 +263,8 @@ function FormDialog({
       suffix="%"
       min={0}
       max={s.ratePer === 'month' ? DEBT_LIMITS.rateMax / 12 : DEBT_LIMITS.rateMax}
-      step={0.1}
+      // step 0.1 bo'lganda 28,25% yoki oylikka o'girilgan 2,3333% ni brauzer rad etib, forma jim yuborilmasdi
+      step="any"
       tone={err('rate') ? 'danger' : 'default'}
       hint={rateHint}
     />
@@ -385,7 +418,8 @@ function FormDialog({
           label={t('f.title')}
           value={s.title}
           onChange={(v) => set('title', v)}
-          placeholder={t('f.titlePh')}
+          // Tayyor kartada bo'sh qolsa — karta nomi (Osmon, Black)
+          placeholder={product ? CARD_PRODUCTS[product].name : t('f.titlePh')}
           maxLength={DEBT_LIMITS.titleMax}
         />
         <TextField
@@ -597,6 +631,198 @@ function FormDialog({
         {titleNoteOwner}
       </>
     );
+  } else if (kind === 'card' && product) {
+    const rules = CARD_PRODUCTS[product];
+    const isTbc = rules.statement === 'individual';
+    const [lo, hi] = rules.rateRange;
+    const rateRange = `${pctNum(lo, f.lang)}–${pctNum(hi, f.lang)}%`;
+    // Oraliqdan tashqari — xato emas (skoring bo'yicha har kimga alohida; eski shartnoma), faqat ogohlantirish
+    const rateOut = s.annual > 0 && (s.annual < lo || s.annual > hi);
+    const minPctNum = parseDecimal(s.minPct);
+    const um = (v: number) => formatDebtMoney(v, 'UZS', f.lang);
+    const stmt = built.stmt;
+    const tm = debt?.terms;
+    const opened = tm
+      ? [
+          t('open.debt', { sum: um(tm.openingBalance ?? 0) }),
+          // Ochiq ko'chirma raqamlari pastda so'ralayotgan bo'lsa — bu yerda takrorlanmaydi
+          tm.openingBilled != null && !stmt ? t('open.billed', { sum: um(tm.openingBilled) }) : '',
+          tm.openingMin != null ? t('open.min', { sum: um(tm.openingMin) }) : '',
+          tm.openingOverdue ? t('open.overdue', { sum: um(tm.openingOverdue) }) : '',
+        ].filter(Boolean)
+      : [];
+    // Saqlashga to'sqinlik qilmaydigan ogohlantirish (qarz limitdan katta — bo'sh limit 0): za'faron, xato emas
+    const warnHint = (text: string) => <span className="font-medium text-warn-ink">{text}</span>;
+    /** Ilovadagi ochiq ko'chirma: "to'lash kerak" va minimal to'lov (yangi kartada; tahrirda — yozilmagan bo'lsa) */
+    const stmtBlock = stmt ? (
+      <div className="rounded-xl border border-info/25 bg-info/5 p-4">
+        <p className="flex items-start gap-2 text-sm font-semibold text-info-ink">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          {t('f.stmtTitle')}
+        </p>
+        {tm ? <p className="mt-1 text-xs text-muted">{t('open.needMin')}</p> : null}
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <MoneyField
+            // TBC: sana yuqorida kiritilgan; dvigatel boshqa (yangiroq) ko'chirmani ochiq ko'rsa — uning sanasi
+            label={isTbc && stmt.due === s.lastDue ? t('f.billedTbc') : t('f.billedBy', { date: f.date(stmt.due) })}
+            value={stmt.billed}
+            onChange={(v) => set('billed', v)}
+            currency="UZS"
+            hint={t('f.billedHint')}
+            error={err('billed')}
+          />
+          <MoneyField
+            label={t('f.minLeft')}
+            value={stmt.min}
+            onChange={(v) => setS((p) => ({ ...p, minLeft: v, minTouched: true }))}
+            currency="UZS"
+            hint={t('f.minLeftHint')}
+            error={err('minLeft')}
+          />
+        </div>
+      </div>
+    ) : null;
+    fields = (
+      <>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MoneyField
+            label={t('f.limit')}
+            value={s.amount}
+            onChange={(v) => set('amount', v)}
+            currency="UZS"
+            hint={
+              built.hints.amount
+                ? warnHint(built.hints.amount)
+                : `${f.num(rules.limit[0])} – ${compactMoney(rules.limit[1], 'UZS', f.lang).text}`
+            }
+            error={err('amount')}
+          />
+          {debt ? null : (
+            <MoneyField
+              label={t('f.cardDebt')}
+              value={s.cardDebt}
+              onChange={(v) => set('cardDebt', v)}
+              currency="UZS"
+              hint={built.hints.cardDebt ? warnHint(built.hints.cardDebt) : t('f.cardDebtHint')}
+              error={err('cardDebt')}
+            />
+          )}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <NumberField
+            label={t(isTbc ? 'f.ratePurchase' : 'f.rateYearly')}
+            value={s.annual}
+            onChange={(v) => set('annual', v)}
+            suffix="%"
+            min={0}
+            max={DEBT_LIMITS.rateMax}
+            // Bank foizi kasrli (Infin 25,55–54,75): 0,1 qadamda brauzer 54,75 ni "noto'g'ri" deb shaklni jimgina yubormasdi
+            step="any"
+            tone={err('rate') ? 'danger' : 'default'}
+            hint={err('rate') ?? (rateOut ? t('f.rateOut') : t(isTbc ? 'f.rateTbcHint' : 'f.rateInfinHint', { range: rateRange }))}
+          />
+          {rules.separateCashRate ? (
+            <PctField
+              label={t('f.cashRate')}
+              value={s.cashRate}
+              onChange={(v) => set('cashRate', v)}
+              placeholder={t('f.cashRatePh')}
+              error={err('cashRate')}
+            />
+          ) : null}
+        </div>
+        {isTbc ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CountField
+              label={t('f.minPctTbc')}
+              value={s.minPct}
+              onChange={(v) => set('minPct', v)}
+              suffix="%"
+              decimal
+              hint={
+                minPctNum !== null && minPctNum > rules.minPctMax
+                  ? t('f.minPctOver', { max: rules.minPctMax })
+                  : t('f.minPctTbcHint', { max: rules.minPctMax })
+              }
+              error={err('minPct')}
+            />
+            <DateField
+              label={t('f.lastDue')}
+              value={s.lastDue}
+              onChange={(v) => set('lastDue', v)}
+              min={debt ? undefined : addDays(today, -LAST_DUE_WINDOW)}
+              max={debt ? undefined : addDays(today, LAST_DUE_WINDOW)}
+              hint={built.cardDueText ?? t('f.lastDueHint0')}
+              error={err('lastDue')}
+            />
+          </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted">
+            {t('f.infinRule', { pct: rules.minPctDefault, s: rules.statementDay ?? 1, d: (rules.statementDay ?? 1) + rules.dueDays })}
+            {built.cardDueText ? ` · ${built.cardDueText}` : ''}
+          </p>
+        )}
+        {built.stmtAmbiguous ? (
+          <div>
+            <Choice<string>
+              label={t('f.stmtDay')}
+              value={String(built.terms.statementDay)}
+              onChange={(v) => set('stmtDay', v)}
+              options={built.stmtDays.map((d) => ({ value: String(d), label: String(d) }))}
+            />
+            <FieldNote hint={t('f.stmtDayHint')} />
+          </div>
+        ) : null}
+        {tm ? (
+          // Boshlang'ich holat tahrirda o'zgarmaydi: bank ilovasidagi farq — «Qoldiqni tenglashtirish» bilan. Faqat
+          // ochiq ko'chirmaning ilovadagi minimal to'lovi yozilmagan bo'lsa (to'lov sanasi tuzatildi) — so'raladi
+          <>
+            <div className="rounded-xl border border-line bg-surface-2/60 p-4">
+              <p className="text-sm font-semibold text-ink">{t('run.storedTitle', { date: f.date(anchor) })}</p>
+              <p className="tnum mt-1 text-xs text-ink-soft">{opened.join(' · ')}</p>
+              <p className="mt-1 text-2xs leading-relaxed text-muted">{t('open.fixed')}</p>
+            </div>
+            {stmtBlock}
+          </>
+        ) : (
+          <>
+            {stmtBlock}
+            {s.cardDebt !== null && s.cardDebt > 0 ? (
+              <div>
+                <Choice<'full' | 'part'>
+                  label={t('f.revolving')}
+                  value={s.revolving ? 'part' : 'full'}
+                  onChange={(v) => set('revolving', v === 'part')}
+                  options={[
+                    { value: 'full', label: t('f.revolving.full') },
+                    { value: 'part', label: t('f.revolving.part') },
+                  ]}
+                />
+                {s.revolving ? <FieldNote hint={t('f.revolvingHint')} /> : null}
+              </div>
+            ) : null}
+          </>
+        )}
+        <ProductInfo product={product} />
+      </>
+    );
+    moreFields = (
+      <>
+        {debt ? null : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MoneyField
+              label={t('f.overdueNow')}
+              value={s.overdueNow}
+              onChange={(v) => set('overdueNow', v)}
+              currency="UZS"
+              hint={t('f.overdueNowHint')}
+              error={err('overdueNow')}
+            />
+          </div>
+        )}
+        {titleNoteOwner}
+      </>
+    );
   } else if (kind === 'card') {
     fields = (
       <>
@@ -685,15 +911,46 @@ function FormDialog({
     );
   }
 
+  /** Tanlangan tur (kartada — karta) qatori; yangi qarzda o'ng chetida qayta tanlash havolasi */
+  const kindHeader = (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2/60 px-3 py-2.5">
+      <span className="flex min-w-0 items-center gap-2.5">
+        {Icon ? (
+          <span className="icon-tile tone-muted h-8 w-8 rounded-lg [&_svg]:h-4 [&_svg]:w-4" aria-hidden>
+            <Icon />
+          </span>
+        ) : null}
+        {product ? (
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-ink">{t(`prod.${product}`)}</span>
+            <span className="block truncate text-2xs text-muted">{productSub(product)}</span>
+          </span>
+        ) : (
+          <span className="truncate text-sm font-semibold text-ink">{t(`kind.${kind}`)}</span>
+        )}
+      </span>
+      {debt ? null : (
+        <button
+          type="button"
+          // Kartada (tanlangandan keyin) — boshqa karta; karta tanlash qadamida va boshqa turlarda — boshqa tur
+          onClick={() => (kind === 'card' && !pickingCard ? set('cardProduct', null) : set('kind', null))}
+          className="focusable shrink-0 rounded-md text-xs font-medium text-brand-ink hover:underline"
+        >
+          {kind === 'card' && !pickingCard ? t('form.changeCard') : t('form.change')}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={debt ? t('form.editTitle') : t('form.addTitle')}
-      description={kind ? undefined : t('form.pickHint')}
+      description={!kind ? t('form.pickHint') : pickingCard ? t('form.pickCardHint') : undefined}
       size="md"
       footer={
-        kind ? (
+        kind && !pickingCard ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="min-w-0 text-xs font-medium text-danger-ink">{tried && hasErrors ? t('err.fix') : null}</p>
             <div className="ml-auto flex items-center gap-2">
@@ -719,6 +976,14 @@ function FormDialog({
           <p className="mb-3 font-semibold text-ink">{t('form.pick')}</p>
           <KindTiles onPick={pickKind} />
         </div>
+      ) : pickingCard ? (
+        <div className="space-y-4">
+          {kindHeader}
+          <div>
+            <p className="mb-3 font-semibold text-ink">{t('form.pickCard')}</p>
+            <CardProductTiles onPick={pickProduct} />
+          </div>
+        </div>
       ) : (
         <form
           id="debt-form"
@@ -728,25 +993,7 @@ function FormDialog({
             submit();
           }}
         >
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2/60 px-3 py-2.5">
-            <span className="flex min-w-0 items-center gap-2.5">
-              {Icon ? (
-                <span className="icon-tile tone-muted h-8 w-8 rounded-lg [&_svg]:h-4 [&_svg]:w-4" aria-hidden>
-                  <Icon />
-                </span>
-              ) : null}
-              <span className="truncate text-sm font-semibold text-ink">{t(`kind.${kind}`)}</span>
-            </span>
-            {debt ? null : (
-              <button
-                type="button"
-                onClick={() => set('kind', null)}
-                className="focusable shrink-0 rounded-md text-xs font-medium text-brand-ink hover:underline"
-              >
-                {t('form.change')}
-              </button>
-            )}
-          </div>
+          {kindHeader}
 
           {termsChanged ? (
             <p className="flex items-start gap-2 rounded-xl border border-warn/30 bg-warn/5 px-3 py-2.5 text-xs font-medium text-warn-ink">
@@ -798,7 +1045,18 @@ function Preview({
   const parts: string[] = [];
   let warn: string | null = null;
 
-  if (terms.kind === 'card') {
+  if (terms.kind === 'card' && terms.cardProduct) {
+    // Tayyor karta: ko'chirma bo'yicha minimal, foizsiz qolish summasi, bo'sh limit (aylanuvchi qarzda — oylik foiz)
+    const next = c.next;
+    const grace = c.card?.grace ?? null;
+    if (next && next.status === 'overdue') parts.push(t('pv.prodOverdue', { sum: m(next.remaining) }));
+    else if (next && next.remaining > 0)
+      parts.push(t('pv.prodNext', { date: f.date(next.date), sum: `${next.card?.estimate ? '≈ ' : ''}${m(next.remaining)}` }));
+    else parts.push(t('pv.cardNoDebt'));
+    if (grace && grace.state === 'open' && grace.left > 0) parts.push(t('pv.prodGrace', { sum: m(grace.left), date: f.date(grace.due) }));
+    parts.push(t('pv.freeLimit', { sum: m(c.freeLimit ?? 0) }));
+    if (terms.openingRevolving) parts.push(t('pv.prodMonthly', { sum: m(c.monthlyInterest) }));
+  } else if (terms.kind === 'card') {
     if (c.next && c.next.amount > 0) {
       parts.push(t('pv.cardMin', { sum: m(c.next.amount), rule: minRuleText(terms, t, f.lang) }));
       parts.push(t('pv.cardDate', { date: f.date(c.next.date) }));
@@ -853,6 +1111,54 @@ function Preview({
           {warn}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Tayyor kartaning bank shartlari — qisqa, raqamlar CARD_PRODUCTS dan (tarif va oferta, "holatiga" sanasi bilan).
+ * Bank shartlarni bir tomonlama o'zgartira oladi — shuning uchun sana va ogohlantirish
+ */
+function ProductInfo({ product }: { product: DebtCardProduct }) {
+  const t = useT('debts');
+  const f = useFormat();
+  const r = CARD_PRODUCTS[product];
+  const isTbc = r.statement === 'individual';
+  const pct = (v: number) => pctNum(v, f.lang);
+  const change = r.fees.transfer.changes?.[0];
+  const fees = isTbc
+    ? t('info.feesTbc', {
+        t: pct(r.fees.transfer.pct),
+        c: pct(r.fees.cash.pct),
+        min: f.num(r.fees.cash.min ?? 0),
+        o: pct(r.fees.other.pct),
+      })
+    : t(change ? 'info.feesInfin' : 'info.feesInfinFlat', {
+        t: pct(r.fees.transfer.pct),
+        t2: pct(change?.pct ?? r.fees.transfer.pct),
+        from: f.dateShort(change?.from ?? r.asOf),
+        c: pct(r.fees.cash.pct),
+        min: f.num(r.fees.cash.min ?? 0),
+        o: pct(r.fees.other.pct),
+      });
+  const lines = [
+    t('info.grace', { days: r.graceMaxDays }),
+    t('info.fees', { fees }),
+    isTbc ? t('info.minTbc', { max: pct(r.minPctMax) }) : t('info.minInfin', { pct: pct(r.minPctDefault) }),
+    isTbc
+      ? t('info.lateTbc', { first: pct(r.penalty.firstDayPct), daily: pct(r.penalty.dailyPct) })
+      : t('info.lateInfin', { daily: pct(r.penalty.dailyPct) }),
+    isTbc ? t('info.dayTbc') : t('info.dayInfin', { d: (r.statementDay ?? 1) + r.dueDays }),
+  ];
+  return (
+    <div className="well p-3.5 text-xs leading-relaxed text-ink-soft">
+      <p className="eyebrow-lg">{t('info.title')}</p>
+      <ul className="mt-1.5 space-y-1">
+        {lines.map((x) => (
+          <li key={x}>{x}</li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-2xs text-muted">{t('info.asOf', { date: f.date(r.asOf) })}</p>
     </div>
   );
 }

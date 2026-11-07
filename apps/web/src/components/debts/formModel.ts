@@ -3,12 +3,20 @@
  * tekshiruv va server so'rovi. Shartlar serverdagi termsData (apps/api
  * routes/debts.ts) kabi yig'iladi — shakldagi oldindan ko'rish saqlangandan
  * keyingi raqamlar bilan aynan bir xil chiqsin. Oyna — DebtFormModal.tsx.
+ *
+ * Tayyor kartalar (TBC Osmon, Infin Black) — alohida yo'l (buildProduct): bank
+ * qoidalari CARD_PRODUCTS da, sotuvchi faqat ilovadagi raqamlarni yozadi.
+ * "Boshqa karta" umumiy karta hisobida qoladi — o'sha yo'l o'zgarmagan.
  */
 import {
+  CARD_PRODUCTS,
   DEBT_KIND_DEFAULTS,
   DEBT_LIMITS,
   addMonthsAnchored,
+  dayDiff,
   estimateOldLoan,
+  isCardProduct,
+  type DebtCardProduct,
   type DebtCurrency,
   type DebtDayCount,
   type DebtDetail,
@@ -18,7 +26,17 @@ import {
   type DebtTerms,
 } from '@savdoiq/shared';
 import type { TFunc } from '@/i18n';
-import { isIsoDay, nextMonthDay, parseCount, parseDecimal } from './format';
+import {
+  addDays,
+  isIsoDay,
+  isMonthEnd,
+  nextMonthDay,
+  parseCount,
+  parseDecimal,
+  stmtAfter,
+  stmtDue,
+  stmtOnOrBefore,
+} from './format';
 
 export type MinMode = 'principal' | 'total' | 'interest';
 
@@ -64,6 +82,23 @@ export interface FormState {
   runRemaining?: string;
   runMonthly?: number | null;
   more: boolean;
+  /** Kredit karta: tayyor karta yoki 'other' (umumiy hisob); null — hali tanlanmagan (faqat yangi kartada) */
+  cardProduct: DebtCardProduct | 'other' | null;
+  /** TBC: ilovadagi oxirgi ko'chirmaning to'lov sanasi (o'tgan yoki kelgusi) — ko'chirma kuni shundan */
+  lastDue: string;
+  /** TBC: ko'chirma kuni (28–31) — to'lov sanasidan 24 kun oldin oy oxiriga tushsa; '' — o'sha kun */
+  stmtDay: string;
+  /** Ochiq ko'chirma: to'lov kunigacha to'lash kerak (null — hozirgi qarz) */
+  billed: number | null;
+  /** Ochiq ko'chirma: ilovadagi minimal to'lov; minTouched bo'lmaguncha ko'rinadigani — taxmin */
+  minLeft: number | null;
+  minTouched: boolean;
+  /** Qarz oyma-oy to'liq yopilmaydi — boshlang'ich qarz foizli */
+  revolving: boolean;
+  /** Ilovadagi muddati o'tgan summa */
+  overdueNow: number | null;
+  /** TBC: naqd va o'tkazma yillik foizi (null — xaridlar foizi bilan bir xil) */
+  cashRate: number | null;
 }
 
 export type FieldKey =
@@ -83,12 +118,23 @@ export type FieldKey =
   | 'runBalance'
   | 'runNext'
   | 'runRemaining'
-  | 'runMonthly';
+  | 'runMonthly'
+  | 'cashRate'
+  | 'lastDue'
+  | 'stmtDay'
+  | 'billed'
+  | 'minLeft'
+  | 'overdueNow';
 
 export type Errors = Partial<Record<FieldKey, string>>;
 
 /** Xatosi "Qo'shimcha" ichida turishi mumkin bo'lgan maydonlar — xato bo'lsa bo'lim ochiladi */
 export const MORE_FIELDS: FieldKey[] = ['grace', 'monthly', 'dueOn', 'rate'];
+/** Tayyor kartada "Qo'shimcha" ichida — faqat muddati o'tgan summa (foiz asosiy maydonlarda) */
+export const PRODUCT_MORE_FIELDS: FieldKey[] = ['overdueNow'];
+
+/** TBC: oxirgi ko'chirmaning to'lov sanasi bugundan shuncha kungacha (o'tgan yoki kelgusi) */
+export const LAST_DUE_WINDOW = 40;
 
 /**
  * plain — oddiy yangi qarz; reveal — birinchi to'lov o'tib ketgan (avvaldan bor qarz,
@@ -105,6 +151,11 @@ export interface Estimate {
 
 export interface Built {
   errors: Errors;
+  /**
+   * Saqlashga to'sqinlik qilmaydigan ogohlantirishlar (maydon izohi o'rnida). Tayyor karta: qarz limitdan katta —
+   * bank texnik overdraft beradi yoki limitni kamaytirgan, bo'sh limit 0 (ilgari xato edi, saqlab bo'lmasdi)
+   */
+  hints: Partial<Record<FieldKey, string>>;
   /** Hisobga xalal beradigan xato bor (nom xatosi oldindan ko'rishni to'xtatmaydi) */
   blocking: boolean;
   terms: DebtTerms;
@@ -116,7 +167,25 @@ export interface Built {
   cardFirstDue: string | null;
   /** Karta: bugundan keyingi eng yaqin to'lov sanasi — "Keyingisi" izohi uchun */
   cardNextDue: string | null;
+  /** Tayyor karta: kuzatuv boshida ko'chirma ochiq (to'lov kuni kelmagan) — "to'lash kerak" va minimal so'raladi */
+  pending: boolean;
+  /** Tayyor karta: izoh — keyingi to'lov sanasi va ko'chirma kuni */
+  cardDueText: string | null;
+  /** TBC: to'lov sanasidan 24 kun oldin oy oxiri (28–30) — ko'chirma kuni so'raladi */
+  stmtAmbiguous: boolean;
+  /** TBC: ko'chirma kuni variantlari (o'sha oy oxiridan 31 gacha) */
+  stmtDays: number[];
+  /** Ochiq ko'chirma maydonlarida ko'rinadigan qiymatlar (taxmin yoki qo'lda) va to'lov kuni */
+  stmt: { billed: number | null; min: number | null; due: string } | null;
 }
+
+/** Shakldagi tayyor karta (yoki null — umumiy karta, boshqa tur) */
+export const productOf = (s: Pick<FormState, 'kind' | 'cardProduct'>): DebtCardProduct | null =>
+  s.kind === 'card' && isCardProduct(s.cardProduct) ? s.cardProduct : null;
+
+/** TBC tahrirda: ochiq ko'chirmaning (bo'lmasa keyingisining) to'lov kuni */
+const productLastDue = (d: DebtDetail): string =>
+  d.calc.card?.grace?.due ?? d.calc.card?.nextStatement.due ?? d.terms.firstDueOn ?? '';
 
 export interface Ctx {
   today: string;
@@ -169,12 +238,22 @@ export function blank(kind: DebtKind | null, today: string, isOwner: boolean): F
     minPct: String(DEBT_LIMITS.cardMinPct),
     opening: null,
     more: false,
+    cardProduct: null,
+    lastDue: '',
+    stmtDay: '',
+    billed: null,
+    minLeft: null,
+    minTouched: false,
+    revolving: false,
+    overdueNow: null,
+    cashRate: null,
   };
 }
 
 export function fromDebt(d: DebtDetail): FormState {
   const tm = d.terms;
   const stored = d.kind !== 'card' && tm.repayment !== 'lump' && tm.openingBalance !== null;
+  const product = d.kind === 'card' && isCardProduct(tm.cardProduct) ? tm.cardProduct : null;
   return {
     kind: d.kind,
     lender: d.lender,
@@ -202,6 +281,18 @@ export function fromDebt(d: DebtDetail): FormState {
     minPct: String(tm.minPct > 0 ? tm.minPct : DEBT_LIMITS.cardMinPct),
     opening: stored ? tm.openingBalance : null,
     more: false,
+    // Tahrirda tur tanlanmaydi: saqlangan tayyor karta yoki boshqa karta
+    cardProduct: d.kind === 'card' ? (product ?? 'other') : null,
+    lastDue: product === 'tbc-osmon' ? productLastDue(d) : '',
+    // Saqlangan kun (31 — 30.11 ga tushgan ko'chirmada ham 31)
+    stmtDay: tm.statementDay != null ? String(tm.statementDay) : '',
+    // Boshlang'ich raqamlar tahrirda o'zgarmaydi — faqat ko'rsatish uchun
+    billed: tm.openingBilled ?? null,
+    minLeft: tm.openingMin ?? null,
+    minTouched: tm.openingMin != null,
+    revolving: tm.openingRevolving === true,
+    overdueNow: tm.openingOverdue ?? null,
+    cashRate: tm.cashRate ?? null,
   };
 }
 
@@ -218,6 +309,8 @@ function interestEstimate(firstDueOn: string, dueOn: string | null, amount: numb
 
 /** Shakl → server so'rovi va oldindan ko'rish shartlari (apps/api routes/debts.ts termsData bilan bir xil) */
 export function build(s: FormState, ctx: Ctx): Built {
+  const product = productOf(s);
+  if (product) return buildProduct(s, ctx, product);
   const { t } = ctx;
   const kind: DebtKind = s.kind ?? 'person';
   const isCard = kind === 'card';
@@ -500,7 +593,236 @@ export function build(s: FormState, ctx: Ctx): Built {
   if (ctx.isOwner) body.ownerOnly = s.ownerOnly;
 
   const blocking = (Object.keys(e) as FieldKey[]).some((k) => k !== 'lender');
-  return { errors: e, blocking, terms, body, mode, run, cardFirstDue, cardNextDue };
+  return {
+    errors: e,
+    hints: {},
+    blocking,
+    terms,
+    body,
+    mode,
+    run,
+    cardFirstDue,
+    cardNextDue,
+    pending: false,
+    cardDueText: null,
+    stmtAmbiguous: false,
+    stmtDays: [],
+    stmt: null,
+  };
+}
+
+/**
+ * Tayyor karta: serverdagi termsData kabi — so'm, kunlik/365, "har oy foiz", minimal "N% asosiy qarz + foiz";
+ * Infin'da ko'chirma 1-sanada va minimal 5% (hammaga bir xil), TBC'da ko'chirma kuni va minimal % — mijozniki.
+ * Hisob (analyzeProductCard) firstDueOn va payDay ni ishlatmaydi: firstDueOn faqat sxema uchun — keyingi to'lov kuni.
+ * Boshlang'ich holat (qarz, ochiq ko'chirma, muddati o'tgan) faqat yangi kartada so'raladi; tahrirda saqlangani
+ * o'zgarmay qaytadi — aks holda server null ni "o'zgarish" deb yozib, tarix boshqacha qayta hisoblanardi. Bitta
+ * istisno: to'lov sanasi tuzatilib kuzatuv boshidagi ko'chirma ochiq bo'lib qolsa va ilovadagi minimal yozilmagan
+ * bo'lsa — ochiq ko'chirma raqamlari yangi kartadagidek so'raladi (server ham shusiz rad etadi).
+ * Qarz limitdan katta bo'lishi mumkin (texnik overdraft, limit kamaytirilgan) — xato emas, `hints` da ogohlantirish
+ */
+function buildProduct(s: FormState, ctx: Ctx, p: DebtCardProduct): Built {
+  const { t, edit } = ctx;
+  const rules = CARD_PRODUCTS[p];
+  const isTbc = rules.statement === 'individual';
+  const e: Errors = {};
+
+  const amount = s.amount;
+  if (amount !== null && Number.isNaN(amount)) e.amount = t('err.number');
+  else if (amount === null || !(amount > 0)) e.amount = t('err.limit');
+  else if (amount > DEBT_LIMITS.amountMax) e.amount = t('err.amountMax');
+
+  // Foiz har mijozga skoring bo'yicha — oraliqdan tashqarisi xato emas (shartnoma eskiroq bo'lishi mumkin), faqat izoh
+  const annualRate = round6(s.annual);
+  if (!(annualRate >= 0) || annualRate > DEBT_LIMITS.rateMax) e.rate = t('err.number');
+  else if (!(annualRate > 0)) e.rate = t('err.rateApp');
+
+  let cashRate: number | null = null;
+  if (rules.separateCashRate && s.cashRate !== null) {
+    if (Number.isNaN(s.cashRate) || s.cashRate < 0 || s.cashRate > DEBT_LIMITS.rateMax) e.cashRate = t('err.number');
+    else cashRate = round6(s.cashRate);
+  }
+
+  let minPct = rules.minPctDefault;
+  if (rules.minPctEditable) {
+    const v = parseDecimal(s.minPct);
+    if (v === null || Number.isNaN(v) || !(v > 0) || v > 100) e.minPct = t('err.minPct');
+    else minPct = v;
+  }
+
+  // ── Ko'chirma kuni: TBC — ilovadagi to'lov sanasidan 24 kun oldin; Infin — har oy 1-sana ──
+  let statementDay = edit?.terms.statementDay ?? rules.statementDay ?? 1;
+  const stmtDays: number[] = [];
+  if (isTbc) {
+    // Tahrirda o'zgartirilmagan sana tekshirilmaydi: keyingi ko'chirmaning to'lov kuni bugundan 55 kungacha uzoq bo'ladi
+    const untouched = edit !== null && s.lastDue === productLastDue(edit);
+    if (!isIsoDay(s.lastDue)) e.lastDue = t('err.lastDue');
+    else if (!untouched && Math.abs(dayDiff(ctx.today, s.lastDue)) > LAST_DUE_WINDOW)
+      e.lastDue = t('err.lastDueRange', { n: LAST_DUE_WINDOW });
+    else {
+      const S0 = addDays(s.lastDue, -rules.dueDays);
+      statementDay = Number(S0.slice(8, 10));
+      // 30.11 — bankning kuni 30 ham, 31 ham bo'lishi mumkin (oy oxiri qoidasi e'lon qilinmagan): so'raladi.
+      // 30 deb olinsa, 31-kunli kartada keyingi to'lov 23.01 chiqadi (bankda 24.01) — 24.01 dagi to'lov "kechikkan" bo'lardi
+      if (isMonthEnd(S0) && statementDay < 31) {
+        for (let d = statementDay; d <= 31; d += 1) stmtDays.push(d);
+        const picked = parseCount(s.stmtDay);
+        if (picked !== null && !Number.isNaN(picked) && picked >= statementDay && picked <= 31) statementDay = picked;
+      }
+    }
+  }
+  const dayOk = !e.lastDue;
+
+  // ── Kuzatuv boshidagi ko'chirma — dvigatel kabi: shu kungi yoki undan oldingi oxirgisi, to'lov kuni kelmagan bo'lsa ochiq ──
+  const T0 = ctx.anchor;
+  const S0 = stmtOnOrBefore(T0, statementDay);
+  const D0 = stmtDue(p, S0);
+  const pending = dayOk && T0 <= D0;
+  // Bugun yoki undan keyingi eng yaqin to'lov kuni
+  const S1 = stmtOnOrBefore(ctx.today, statementDay);
+  const nextDue = stmtDue(p, S1) >= ctx.today ? stmtDue(p, S1) : stmtDue(p, stmtAfter(S1, statementDay));
+  // Tahrirda kun o'zgarmasa — saqlangan sana: hisobga ta'sir qilmaydi, "tarix qayta hisoblanadi" bekorga chiqmasin
+  const firstDueOn = edit && edit.terms.statementDay === statementDay && edit.terms.firstDueOn ? edit.terms.firstDueOn : nextDue;
+  const startedOn = edit ? edit.terms.startedOn : ctx.today;
+
+  // ── Boshlang'ich holat (bank ilovasidan) ──
+  let openingBalance = 0;
+  let openingBilled: number | null = null;
+  let openingMin: number | null = null;
+  let openingRevolving: boolean | null = s.revolving;
+  let openingOverdue: number | null = null;
+  let stmt: Built['stmt'] = null;
+  const h: Built['hints'] = {};
+  /**
+   * Ochiq ko'chirma: ilovadagi "to'lash kerak" (standart — butun qarz) va minimal to'lov. Minimal majburiy: taxmin
+   * (N% × to'lash kerak) foizni bilmaydi — aylanuvchi qarzda bank undan ko'p so'raydi va kam to'lagan kechikadi
+   */
+  const askStatement = (debt: number) => {
+    const billed = s.billed ?? debt;
+    const billedOk = !Number.isNaN(billed) && billed <= debt;
+    if (Number.isNaN(billed)) e.billed = t('err.number');
+    else if (!billedOk) e.billed = t('err.billed');
+    else openingBilled = billed;
+    const min = s.minTouched ? s.minLeft : billedOk ? Math.round((minPct * billed) / 100) : null;
+    if (min === null) {
+      // Tegilmagan minimal: "to'lash kerak" xato bo'lsa — faqat o'sha xato (ikkinchi "kiriting" chiqmasin)
+      if (s.minTouched || billedOk) e.minLeft = t('err.minLeft');
+    } else if (Number.isNaN(min)) e.minLeft = t('err.number');
+    else if (billedOk && min > billed) e.minLeft = t('err.minLeftMax');
+    else openingMin = min;
+    stmt = { billed: s.billed ?? debt, min, due: D0 };
+  };
+  if (edit) {
+    const tm = edit.terms;
+    openingBalance = tm.openingBalance ?? 0;
+    openingBilled = tm.openingBilled ?? null;
+    openingMin = tm.openingMin ?? null;
+    openingRevolving = tm.openingRevolving ?? null;
+    openingOverdue = tm.openingOverdue ?? null;
+    // Limit boshlang'ich qarzdan kam bo'lishi mumkin (bank limitni kamaytirdi) — xato emas; hozirgi qarz yangi
+    // limitdan katta bo'lsa, bo'sh limit 0 deb ogohlantiriladi (ilgari "Hozirgi qarz limitdan katta" deb saqlanmasdi)
+    if (!e.amount && amount !== null && amount > 0 && edit.calc.principal > amount + 0.5) h.amount = t('f.limitBelowDebt');
+    // To'lov sanasi tuzatilib kuzatuv boshidagi ko'chirma ochiq bo'lib qoldi, ilovadagi minimal esa yozilmagan —
+    // yangi kartadagidek so'raladi (server ham shusiz rad etadi): taxmin bankniki bo'lib ko'rsatilmasin (API-2)
+    if (pending && openingBalance > 0 && tm.openingMin == null) askStatement(openingBalance);
+  } else {
+    const debt = s.cardDebt ?? 0;
+    if (Number.isNaN(debt)) e.cardDebt = t('err.number');
+    else if (debt > DEBT_LIMITS.amountMax) e.cardDebt = t('err.amountMax');
+    else {
+      openingBalance = debt;
+      // Qarz limitdan katta bo'lishi mumkin (texnik overdraft: komissiya limitdan oshgan) — xato emas, bo'sh limit 0
+      if (amount !== null && amount > 0 && debt > amount) h.cardDebt = t('f.cardDebtOver');
+    }
+    if (pending && !e.cardDebt && openingBalance > 0) askStatement(openingBalance);
+    if (s.overdueNow !== null) {
+      if (Number.isNaN(s.overdueNow)) e.overdueNow = t('err.number');
+      else if (s.overdueNow > openingBalance) e.overdueNow = t('err.overdueNow');
+      else if (s.overdueNow > 0) openingOverdue = s.overdueNow;
+    }
+  }
+
+  const terms: DebtTerms = {
+    kind: 'card',
+    currency: rules.currency,
+    amount: amount !== null && amount > 0 ? amount : 0,
+    annualRate: e.rate ? 0 : annualRate,
+    dayCount: 'act365',
+    repayment: 'interest',
+    termMonths: null,
+    graceMonths: 0,
+    startedOn,
+    firstDueOn,
+    payDay: null,
+    dueOn: null,
+    minPct,
+    minBase: 'principal',
+    monthlyPayment: null,
+    openingBalance,
+    trackedFrom: ctx.anchor,
+    archivedAt: edit?.terms.archivedAt ?? null,
+    cardProduct: p,
+    statementDay,
+    cashRate,
+    openingBilled,
+    openingMin,
+    openingRevolving,
+    openingOverdue,
+  };
+
+  const body: Record<string, unknown> = {
+    kind: 'card',
+    // Bank — kartaning o'zidan; sotuvchi nomni o'zgartirsa ham (masalan "Asosiy karta") bank o'zgarmaydi
+    lender: rules.bank,
+    title: s.title.trim() || rules.name,
+    currency: terms.currency,
+    amount: terms.amount,
+    annualRate: terms.annualRate,
+    dayCount: terms.dayCount,
+    repayment: terms.repayment,
+    termMonths: null,
+    graceMonths: 0,
+    startedOn,
+    firstDueOn,
+    payDay: null,
+    dueOn: null,
+    minPct,
+    minBase: terms.minBase,
+    monthlyPayment: null,
+    openingBalance,
+    note: s.note.trim(),
+    cardProduct: p,
+    statementDay,
+    cashRate,
+    openingBilled,
+    openingMin,
+    openingRevolving,
+    openingOverdue,
+  };
+  if (ctx.isOwner) body.ownerOnly = s.ownerOnly;
+
+  const cardDueText = !dayOk
+    ? null
+    : isTbc
+      ? t('f.lastDueHint', { due: ctx.dateText(nextDue), day: statementDay })
+      : t('f.infinDueHint', { due: ctx.dateText(nextDue) });
+
+  return {
+    errors: e,
+    hints: h,
+    blocking: Object.keys(e).length > 0,
+    terms,
+    body,
+    mode: 'plain',
+    run: null,
+    cardFirstDue: firstDueOn,
+    cardNextDue: nextDue,
+    pending,
+    cardDueText,
+    stmtAmbiguous: stmtDays.length > 0,
+    stmtDays,
+    stmt,
+  };
 }
 
 /** Pul shartlari — tahrirda o'zgarsa "butun tarix qayta hisoblanadi" ogohlantirishi */
@@ -522,4 +844,12 @@ export const moneyKey = (x: DebtTerms): string =>
     x.minBase,
     x.monthlyPayment,
     x.openingBalance,
+    // Tayyor karta: hisob shu qoidalar bilan (berilmagani — null: umumiy kartada va boshqa turlarda o'zgarmaydi)
+    x.cardProduct ?? null,
+    x.statementDay ?? null,
+    x.cashRate != null ? round6(x.cashRate) : null,
+    x.openingBilled ?? null,
+    x.openingMin ?? null,
+    x.openingRevolving ?? null,
+    x.openingOverdue ?? null,
   ]);

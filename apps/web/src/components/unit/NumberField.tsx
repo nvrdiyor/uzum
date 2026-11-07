@@ -35,7 +35,8 @@ export function NumberField({
   suffix?: ReactNode;
   min?: number;
   max?: number;
-  step?: number;
+  /** 'any' — istalgan kasr (28,25% yoki 2,3333% oylik) brauzer tekshiruvida forma yuborilishini to'xtatmasin */
+  step?: number | 'any';
   icon?: ReactNode;
   tone?: 'default' | 'brand' | 'danger';
   className?: string;

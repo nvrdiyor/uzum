@@ -5,12 +5,18 @@
  * Hamma hisoblangan raqam "taxminiy" — banklar kunlarni va yaxlitlashni har xil
  * hisoblaydi. Bank ilovasidagi raqam boshqacha bo'lsa — "Qoldiqni tenglashtirish".
  * Yozish tugmalari faqat yozish huquqi borida.
+ *
+ * Tayyor kartada (TBC Osmon, Infin Black) kartochkalar boshqa: keyingi to'lov
+ * ko'chirma bo'yicha, foizsiz qolish uchun qancha, foiz xavfi, to'lanmagan foiz
+ * (taxminiy jarima bilan). Boshqa kartalar va qarzlar — avvalgidek.
  */
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CARD_PRODUCTS,
   formatDebtMoney,
+  isCardProduct,
   type DebtCurrency,
   type DebtDetail,
   type DebtDue,
@@ -19,6 +25,7 @@ import {
   type DebtTerms,
 } from '@savdoiq/shared';
 import {
+  AlertTriangle,
   Archive,
   ArrowLeft,
   Banknote,
@@ -27,12 +34,14 @@ import {
   CircleCheck,
   CreditCard,
   History,
+  Hourglass,
   Info,
   Lock,
   Pencil,
   Percent,
   PlusCircle,
   RefreshCw,
+  ShieldCheck,
   ShoppingBag,
   Trash2,
   Wallet,
@@ -66,8 +75,10 @@ import {
   ENTRY_TONE,
   categoryLabel,
   compactMoney,
+  dueShown,
   dueText,
   entryKindLabel,
+  graceView,
   minRuleText,
   monthsUntil,
   numText,
@@ -249,14 +260,33 @@ function DebtDetailPage({ id }: { id: string }) {
   const name = d.title ? `${d.lender} — ${d.title}` : d.lender;
   const pct = Math.round(calc.progressPct);
   const openEntry = (mode: EntryMode) => setEntry({ debt: d, mode });
+  // Tayyor karta: bank qoidalari (CARD_PRODUCTS) va hisobning karta qismi (foizsiz davr, jarima, blok)
+  const product = isCard && isCardProduct(terms.cardProduct) ? CARD_PRODUCTS[terms.cardProduct] : null;
+  const pc = product ? calc.card : undefined;
+  // "Foizsiz qolish uchun" va "Foiz xavfi" holati (arxivda — so'ralmaydi, 'none' — "bajarildi" emas; format.ts graceView)
+  const gv = pc ? graceView(calc) : null;
 
-  const meta: string[] = [rateText(terms, t, f.lang), repaymentText(terms, t, f.lang, calc)];
-  // Saqlangan to'lov kuni (31 — 30.11 ga tushsa ham "har oyning 31-sanasida"), bo'lmasa birinchi sananing kuni
-  if (terms.repayment !== 'lump' && terms.firstDueOn)
-    meta.push(t('rep.payDay', { d: terms.payDay ?? Number(terms.firstDueOn.slice(8, 10)) }));
-  if (terms.annualRate > 0) meta.push(t(terms.dayCount === 'act365' ? 'dc.act365' : 'dc.m30'));
-  // Kartada olingan kun so'ralmaydi: startedOn — joriy davr boshi (oxirgi to'lov kuni), "Olingan" emas
-  if (!isCard) meta.push(t('meta.started', { date: f.date(terms.startedOn) }));
+  const meta: string[] = product
+    ? [
+        // Tayyor karta: "har oyning N-sanasida" yo'q — TBC'da to'lov kuni har oy boshqa (3.11, 4.12, 3.01): ko'chirmadan 24 kun keyin
+        t('meta.prodRate', { v: pctNum(terms.annualRate, f.lang) }) +
+          (terms.cashRate != null && terms.cashRate !== terms.annualRate
+            ? ` · ${t('meta.prodCash', { v: pctNum(terms.cashRate, f.lang) })}`
+            : ''),
+        product.statement === 'individual'
+          ? t('meta.stmtTbc', { d: terms.statementDay ?? '…', n: product.dueDays })
+          : t('meta.stmtInfin', { s: product.statementDay ?? 1, d: (product.statementDay ?? 1) + product.dueDays }),
+        t('meta.prodMin', { pct: pctNum(terms.minPct, f.lang) }),
+      ]
+    : [rateText(terms, t, f.lang), repaymentText(terms, t, f.lang, calc)];
+  if (!product) {
+    // Saqlangan to'lov kuni (31 — 30.11 ga tushsa ham "har oyning 31-sanasida"), bo'lmasa birinchi sananing kuni
+    if (terms.repayment !== 'lump' && terms.firstDueOn)
+      meta.push(t('rep.payDay', { d: terms.payDay ?? Number(terms.firstDueOn.slice(8, 10)) }));
+    if (terms.annualRate > 0) meta.push(t(terms.dayCount === 'act365' ? 'dc.act365' : 'dc.m30'));
+    // Kartada olingan kun so'ralmaydi: startedOn — joriy davr boshi (oxirgi to'lov kuni), "Olingan" emas
+    if (!isCard) meta.push(t('meta.started', { date: f.date(terms.startedOn) }));
+  }
   if (terms.dueOn) meta.push(t(isCard ? 'meta.limitEnd' : 'meta.dueOn', { date: f.date(terms.dueOn) }));
 
   // Uchinchi kartochka: to'lov turiga qarab — oylik, shu oygi, minimal yoki qaytarishdagi summa.
@@ -304,6 +334,19 @@ function DebtDetailPage({ id }: { id: string }) {
     // — "oylik to'lov foizdan kam", "faqat foiz" qarzda — "faqat foiz to'lansa…"
     foot.push(t(terms.minPct > 0 ? 'pv.below' : 'sched.interestOnly'));
   else if (active && calc.belowInterest) foot.push(t('pv.below'));
+  // Tayyor karta: to'liq to'lasa nima bo'ladi — naqd/o'tkazma va yozilgan foiz bo'lsa "foiz yo'q" deb va'da qilinmaydi.
+  // TBC 5.7.3: kechikishdan keyin waiverFrom gacha ko'chirmalarda xarid foizi to'liq to'lansa ham kechirilmaydi (web-5)
+  if (pc && active && calc.payoff > 0) {
+    const free = pc.cashDebt <= 0 && calc.monthlyInterest <= 0;
+    const waiver = pc.waiverFrom
+      ? t('sched.waiver', { date: f.date(pc.waiverFrom) })
+      : gv?.kind === 'lost'
+        ? t('sched.waiverOpen')
+        : null;
+    if (!free) foot.push(t('sched.fullPaid'));
+    if (waiver) foot.push(waiver);
+    else if (free) foot.push(t('sched.fullFree'));
+  }
 
   const usageTotal = d.usage.reduce((a, u) => a + u.amount, 0);
   // Kartada calc.used avvaldan bor qarzni ham o'z ichiga oladi, ro'yxat esa faqat yozuvlar — sarlavha ro'yxat jami bilan
@@ -315,7 +358,14 @@ function DebtDetailPage({ id }: { id: string }) {
 
   const noteOf = (e: DebtEntryRow): string => {
     const spent = e.kind === 'use' || (isCard && e.kind === 'draw');
-    return [spent ? categoryLabel(e.category, t) : '', e.note].filter(Boolean).join(' — ');
+    // Tayyor kartadan ishlatish: qanday (xarid, o'tkazma, naqd…) va komissiya; eski xarid yozuvida kanal null — xarid
+    const how =
+      product && e.kind === 'draw'
+        ? [t(`ch.short.${e.channel ?? 'purchase'}`), e.fee != null && e.fee > 0 ? t('hist.fee', { sum: n(e.fee) }) : '']
+            .filter(Boolean)
+            .join(' · ')
+        : '';
+    return [how, spent ? categoryLabel(e.category, t) : '', e.note].filter(Boolean).join(' — ');
   };
 
   const columns: Column<DebtEntryRow>[] = [
@@ -406,7 +456,7 @@ function DebtDetailPage({ id }: { id: string }) {
       <PageHeader
         icon={<Icon className="h-5 w-5" />}
         title={name}
-        description={t(`kind.${d.kind}`)}
+        description={product ? `${product.bank} ${product.name} · ${product.network}` : t(`kind.${d.kind}`)}
         badge={
           <>
             {calc.state === 'paid' ? <Badge tone="brand">{t('status.closed')}</Badge> : null}
@@ -454,92 +504,222 @@ function DebtDetailPage({ id }: { id: string }) {
 
       <PlanGate feature="debts">
         <div className="space-y-5">
-          <StatGrid>
-            <StatCard
-              label={t('stat.left')}
-              value={m(calc.principal)}
-              hint={
-                isCard
-                  ? t('stat.leftHintCard', { sum: m(terms.amount), pct })
-                  : t('stat.leftHint', { sum: m(calc.received), pct })
-              }
-              icon={<Banknote />}
-              tone="warn"
-            />
-            <StatCard
-              label={t('stat.next')}
-              value={next ? m(next.remaining) : '—'}
-              // Arxivda — "To'lov sanasi yo'q" emas; qarzsiz karta yopilmaydi, lekin to'lanadigan narsa yo'q
-              hint={
-                next
-                  ? calc.paidDue
-                    ? t('stat.paidDue', { date: f.date(next.date) })
-                    : `${f.date(next.date)} · ${dueText(next, t)}`
-                  : t(
-                      calc.state === 'paid'
-                        ? 'sched.emptyPaid'
-                        : archived
-                          ? 'status.archived'
-                          : calc.payoff <= 0
-                            ? 'sched.empty'
-                            : 'stat.noNext',
-                    )
-              }
-              icon={<CalendarClock />}
-              // Qizil — faqat kechikkanda
-              tone={next && next.status === 'overdue' ? 'danger' : 'warn'}
-              footer={
-                next ? (
-                  <InfoPopover
-                    title={t('stat.how')}
-                    label={
-                      <>
-                        <Info className="h-3.5 w-3.5" />
-                        {t('stat.how')}
-                      </>
-                    }
-                    className="focusable inline-flex items-center gap-1 rounded text-xs font-medium text-brand-ink hover:underline"
-                  >
-                    <ExplainDue due={next} terms={terms} />
-                  </InfoPopover>
-                ) : undefined
-              }
-            />
-            <StatCard label={pay.label} value={pay.value} hint={pay.hint} icon={<CalendarDays />} tone="warn" />
-            <StatCard
-              label={t('stat.monthInterest')}
-              value={m(calc.monthlyInterest)}
-              hint={terms.annualRate > 0 ? t('stat.monthInterestHint') : t('rate.none')}
-              icon={<Percent />}
-              tone="warn"
-            />
-            <StatCard
-              label={t('stat.interestPaid')}
-              value={m(calc.interestPaid)}
-              hint={t('stat.interestPaidHint', { sum: m(calc.paid) })}
-              icon={<CircleCheck />}
-              tone="brand"
-            />
-            {isCard ? (
+          {/* Tayyor karta kechiksa bank limitni bloklaydi va jarima yozadi — taxminiy jarima bilan (qizil — faqat kechikkanda) */}
+          {pc && active && calc.overdue ? (
+            <p className="tnum flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-4 py-2.5 text-sm font-medium text-danger-ink">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                {pc.penalty > 0
+                  ? t('banner.cardOverduePen', { sum: m(calc.overdue.amount), pen: m(pc.penalty) })
+                  : t('banner.cardOverdue', { sum: m(calc.overdue.amount) })}
+              </span>
+            </p>
+          ) : null}
+          {/* Infin 3.5: 90 kundan ortiq kechikkan karta muddati tugaguncha bloklanadi — to'lovdan keyin ham */}
+          {pc && active && pc.blockedForGood ? (
+            <p className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-4 py-2.5 text-sm font-medium text-danger-ink">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0">{t('banner.blockedForGood')}</span>
+            </p>
+          ) : null}
+
+          {pc ? (
+            <StatGrid>
+              <StatCard
+                label={t('stat.left')}
+                value={m(calc.principal)}
+                hint={pc.blocked ? t('stat.blocked') : t('stat.leftHintCard', { sum: m(terms.amount), pct })}
+                icon={<Banknote />}
+                tone="warn"
+              />
+              <StatCard
+                label={t('stat.next')}
+                // Bugungi yopish summasidan oshmaydi (xavfsizlik to'ri, web-2)
+                value={next ? `${next.card?.estimate ? '≈ ' : ''}${m(dueShown(next.remaining, calc, true))}` : '—'}
+                hint={
+                  next
+                    ? next.status === 'overdue'
+                      ? `${f.date(next.date)} · ${dueText(next, t)}`
+                      : calc.paidDue
+                        ? t('stat.paidDue', { date: f.date(next.date) })
+                        : next.card?.estimate
+                          ? `${f.date(next.date)} · ${t('stat.nextEstimate', { date: f.date(next.card.statementDate) })}`
+                          : `${f.date(next.date)} · ${dueText(next, t)}`
+                    : t(archived ? 'status.archived' : calc.payoff <= 0 ? 'sched.empty' : 'stat.noNext')
+                }
+                icon={<CalendarClock />}
+                tone={next && next.status === 'overdue' ? 'danger' : 'warn'}
+                footer={
+                  next ? (
+                    <InfoPopover
+                      title={t('stat.how')}
+                      label={
+                        <>
+                          <Info className="h-3.5 w-3.5" />
+                          {t('stat.how')}
+                        </>
+                      }
+                      className="focusable inline-flex items-center gap-1 rounded text-xs font-medium text-brand-ink hover:underline"
+                    >
+                      <ExplainDue due={next} terms={terms} />
+                    </InfoPopover>
+                  ) : undefined
+                }
+              />
+              <StatCard
+                label={t('stat.grace')}
+                // 'none' — ko'chirmada foizsiz bo'ladigan narsa yo'q (faqat naqd/o'tkazma yoki foizli qarz): "bajarildi" EMAS.
+                // 'lost' (TBC 5.7.3) — to'liq to'lansa ham foiz kechirilmaydi: "foizsiz qolish uchun X" deb va'da qilinmaydi
+                value={gv && 'left' in gv && gv.kind !== 'lost' ? m(gv.left) : '—'}
+                hint={
+                  !gv || gv.kind === 'archived'
+                    ? t('status.archived')
+                    : gv.kind === 'noStatement'
+                      ? t('stat.graceNone', { date: f.date(pc.nextStatement.date) })
+                      : gv.kind === 'none'
+                        ? t('stat.graceNoPart')
+                        : gv.kind === 'lost'
+                          ? t('stat.graceLost')
+                          : gv.kind === 'done'
+                            ? t('stat.graceDone')
+                            : t('stat.graceBy', { date: f.date(gv.due) })
+                }
+                icon={<ShieldCheck />}
+                // To'lash kerak — za'faron, bajarilgan — brend; foizsiz davr yo'qolgani kechikish emas — qizil emas
+                tone={gv && 'left' in gv ? (gv.kind === 'done' ? 'brand' : 'warn') : 'muted'}
+              />
+              <StatCard
+                label={t('stat.risk')}
+                // Ochiq ko'chirma to'lov kunigacha to'liq to'lanmasa qo'shiladigan foiz (bugungacha yig'ilgani emas —
+                // ko'chirma kuni u hali kichik). To'liq to'langanda 0; ko'chirma yo'q bo'lsa — keyingisi qachon
+                value={gv && 'left' in gv ? (gv.kind === 'done' ? m(0) : `≈ ${m(gv.risk)}`) : '—'}
+                hint={
+                  !gv || gv.kind === 'archived'
+                    ? t('status.archived')
+                    : gv.kind === 'noStatement'
+                      ? t('stat.graceNone', { date: f.date(pc.nextStatement.date) })
+                      : gv.kind === 'none'
+                        ? t('stat.riskNone')
+                        : gv.kind === 'lost'
+                          ? t('stat.riskLost')
+                          : gv.kind === 'open'
+                            ? // Sana qo'shni "Foizsiz qolish uchun" kartasida — izoh 2 qatorga sig'sin
+                              t('stat.riskBy')
+                            : t('stat.riskPaid')
+                }
+                icon={<Percent />}
+                tone="warn"
+                footer={active && pc.graceMonthly > 0 ? t('stat.riskMonthly', { sum: m(pc.graceMonthly) }) : undefined}
+              />
+              <StatCard
+                label={t('stat.accrued')}
+                value={m(calc.accruedInterest)}
+                hint={pc.penalty > 0 ? t('stat.penaltyPart', { sum: m(pc.penalty) }) : t('stat.accruedHint')}
+                icon={<Hourglass />}
+                tone="warn"
+              />
               <StatCard
                 label={t('stat.freeLimit')}
                 value={m(calc.freeLimit ?? 0)}
-                hint={t('stat.freeLimitHint', { sum: m(terms.amount) })}
+                hint={
+                  pc.blockedForGood
+                    ? t('stat.blockedForGood')
+                    : pc.blocked
+                      ? t('stat.blocked')
+                      : t('stat.freeLimitHint', { sum: m(terms.amount) })
+                }
                 icon={<CreditCard />}
-                tone="info"
+                tone={pc.blocked ? 'danger' : 'info'}
               />
-            ) : calc.unused !== null ? (
+            </StatGrid>
+          ) : (
+            <StatGrid>
               <StatCard
-                label={t('stat.unused')}
-                value={m(calc.unused)}
-                hint={t('stat.unusedHint', { used: m(calc.used), received: m(calc.received) })}
-                icon={<Wallet />}
+                label={t('stat.left')}
+                value={m(calc.principal)}
+                hint={
+                  isCard
+                    ? t('stat.leftHintCard', { sum: m(terms.amount), pct })
+                    : t('stat.leftHint', { sum: m(calc.received), pct })
+                }
+                icon={<Banknote />}
+                tone="warn"
+              />
+              <StatCard
+                label={t('stat.next')}
+                value={next ? m(next.remaining) : '—'}
+                // Arxivda — "To'lov sanasi yo'q" emas; qarzsiz karta yopilmaydi, lekin to'lanadigan narsa yo'q
+                hint={
+                  next
+                    ? calc.paidDue
+                      ? t('stat.paidDue', { date: f.date(next.date) })
+                      : `${f.date(next.date)} · ${dueText(next, t)}`
+                    : t(
+                        calc.state === 'paid'
+                          ? 'sched.emptyPaid'
+                          : archived
+                            ? 'status.archived'
+                            : calc.payoff <= 0
+                              ? 'sched.empty'
+                              : 'stat.noNext',
+                      )
+                }
+                icon={<CalendarClock />}
+                // Qizil — faqat kechikkanda
+                tone={next && next.status === 'overdue' ? 'danger' : 'warn'}
+                footer={
+                  next ? (
+                    <InfoPopover
+                      title={t('stat.how')}
+                      label={
+                        <>
+                          <Info className="h-3.5 w-3.5" />
+                          {t('stat.how')}
+                        </>
+                      }
+                      className="focusable inline-flex items-center gap-1 rounded text-xs font-medium text-brand-ink hover:underline"
+                    >
+                      <ExplainDue due={next} terms={terms} />
+                    </InfoPopover>
+                  ) : undefined
+                }
+              />
+              <StatCard label={pay.label} value={pay.value} hint={pay.hint} icon={<CalendarDays />} tone="warn" />
+              <StatCard
+                label={t('stat.monthInterest')}
+                value={m(calc.monthlyInterest)}
+                hint={terms.annualRate > 0 ? t('stat.monthInterestHint') : t('rate.none')}
+                icon={<Percent />}
+                tone="warn"
+              />
+              <StatCard
+                label={t('stat.interestPaid')}
+                value={m(calc.interestPaid)}
+                hint={t('stat.interestPaidHint', { sum: m(calc.paid) })}
+                icon={<CircleCheck />}
                 tone="brand"
               />
-            ) : canUse ? (
-              <StatCard label={t('stat.used')} value={m(calc.used)} hint={t('stat.usedHint')} icon={<Wallet />} tone="muted" />
-            ) : null}
-          </StatGrid>
+              {isCard ? (
+                <StatCard
+                  label={t('stat.freeLimit')}
+                  value={m(calc.freeLimit ?? 0)}
+                  hint={t('stat.freeLimitHint', { sum: m(terms.amount) })}
+                  icon={<CreditCard />}
+                  tone="info"
+                />
+              ) : calc.unused !== null ? (
+                <StatCard
+                  label={t('stat.unused')}
+                  value={m(calc.unused)}
+                  hint={t('stat.unusedHint', { used: m(calc.used), received: m(calc.received) })}
+                  icon={<Wallet />}
+                  tone="brand"
+                />
+              ) : canUse ? (
+                <StatCard label={t('stat.used')} value={m(calc.used)} hint={t('stat.usedHint')} icon={<Wallet />} tone="muted" />
+              ) : null}
+            </StatGrid>
+          )}
 
           {canAct ? (
             <div className="flex flex-wrap gap-2">
@@ -655,10 +835,12 @@ function DebtDetailPage({ id }: { id: string }) {
           </Card>
 
           <p className="max-w-[90ch] text-xs leading-relaxed text-muted">
-            {t('foot.method', {
+            {/* Tayyor kartada to'lov bank tartibida (kechikkan, ko'chirma foizi, asosiy); TBC'da — muzlatish izohi */}
+            {t(product ? 'foot.methodCard' : 'foot.method', {
               method:
                 terms.annualRate > 0 ? t(terms.dayCount === 'act365' ? 'foot.daily' : 'foot.monthly') : t('foot.noRate'),
             })}{' '}
+            {product?.payOrder === 'purchaseFirst' ? `${t('foot.frozen')} ` : null}
             {t('foot.adjust')}
           </p>
         </div>
@@ -723,7 +905,11 @@ function DebtDetailPage({ id }: { id: string }) {
   );
 }
 
-/** "Kelgusi to'lovlar": jadval (md dan keng) yoki ro'yxat (telefon); kechikkan qator — och qizil */
+/**
+ * "Kelgusi to'lovlar": jadval (md dan keng) yoki ro'yxat (telefon); kechikkan qator — och qizil.
+ * Tayyor kartaning 'charge' qatori to'lov emas: foizsiz davr yo'qolib, qarzga foiz qo'shilgan kun (TBC: yozilgan
+ * to'lovlarning muzlatilgan puli xarid foizini yopgan) — to'lov va asosiy qarz "—", foiz "+", qoldiq oshadi
+ */
 function ScheduleTable({ rows, currency, desktop }: { rows: DebtScheduleRow[]; currency: DebtCurrency; desktop: boolean }) {
   const t = useT('debts');
   const f = useFormat();
@@ -734,6 +920,8 @@ function ScheduleTable({ rows, currency, desktop }: { rows: DebtScheduleRow[]; c
         {t('sched.overdue')}
       </Badge>
     ) : null;
+  const isCharge = (r: DebtScheduleRow) => r.kind === 'charge';
+  const chargeNote = <span className="ml-2 text-2xs font-normal text-muted">{t('sched.charge')}</span>;
 
   if (!desktop) {
     return (
@@ -741,15 +929,27 @@ function ScheduleTable({ rows, currency, desktop }: { rows: DebtScheduleRow[]; c
         {rows.map((r, i) => (
           <li key={`${r.date}-${i}`} className={cn('px-4 py-3', r.status === 'overdue' && 'bg-danger/5')}>
             <div className="flex items-baseline justify-between gap-3">
-              <span className="tnum flex min-w-0 items-center text-sm font-medium text-ink">
+              <span className={cn('tnum flex min-w-0 items-center text-sm font-medium text-ink', isCharge(r) && 'flex-wrap')}>
                 {f.date(r.date)}
                 {late(r)}
+                {isCharge(r) ? chargeNote : null}
               </span>
-              <span className="tnum shrink-0 font-semibold text-ink">{formatDebtMoney(r.payment, currency, f.lang)}</span>
+              <span className="tnum shrink-0 font-semibold text-ink">
+                {isCharge(r) ? '—' : formatDebtMoney(r.payment, currency, f.lang)}
+              </span>
             </div>
             <p className="tnum mt-0.5 text-xs text-muted">
-              {t('sched.col.interest')} {n(r.interest)} · {t('sched.col.principal')} {n(r.principal)} · {t('sched.col.balance')}{' '}
-              {n(r.balance)}
+              {isCharge(r) ? (
+                <>
+                  {t('sched.col.interest')} <span className="text-warn-ink">+{n(r.interest)}</span> · {t('sched.col.balance')}{' '}
+                  {n(r.balance)}
+                </>
+              ) : (
+                <>
+                  {t('sched.col.interest')} {n(r.interest)} · {t('sched.col.principal')} {n(r.principal)} ·{' '}
+                  {t('sched.col.balance')} {n(r.balance)}
+                </>
+              )}
             </p>
           </li>
         ))}
@@ -772,19 +972,33 @@ function ScheduleTable({ rows, currency, desktop }: { rows: DebtScheduleRow[]; c
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={`${r.date}-${i}`} className={cn('border-b border-line/60 last:border-0', r.status === 'overdue' && 'bg-danger/5')}>
-              <td className="tnum whitespace-nowrap px-5 py-2.5 text-ink">
-                {f.date(r.date)}
-                {late(r)}
-              </td>
-              <td className={cn(td, 'font-semibold text-ink')}>{n(r.payment)}</td>
-              {/* Foiz — za'faron (qarzning narxi) */}
-              <td className={cn(td, 'text-warn-ink')}>{n(r.interest)}</td>
-              <td className={cn(td, 'text-ink-soft')}>{n(r.principal)}</td>
-              <td className={cn(td, 'text-ink-soft')}>{n(r.balance)}</td>
-            </tr>
-          ))}
+          {rows.map((r, i) =>
+            isCharge(r) ? (
+              <tr key={`${r.date}-${i}`} className={cn('border-b border-line/60 last:border-0', r.status === 'overdue' && 'bg-danger/5')}>
+                <td className="tnum whitespace-nowrap px-5 py-2.5 text-ink">
+                  {f.date(r.date)}
+                  {late(r)}
+                  {chargeNote}
+                </td>
+                <td className={cn(td, 'text-muted')}>—</td>
+                <td className={cn(td, 'text-warn-ink')}>+{n(r.interest)}</td>
+                <td className={cn(td, 'text-muted')}>—</td>
+                <td className={cn(td, 'text-ink-soft')}>{n(r.balance)}</td>
+              </tr>
+            ) : (
+              <tr key={`${r.date}-${i}`} className={cn('border-b border-line/60 last:border-0', r.status === 'overdue' && 'bg-danger/5')}>
+                <td className="tnum whitespace-nowrap px-5 py-2.5 text-ink">
+                  {f.date(r.date)}
+                  {late(r)}
+                </td>
+                <td className={cn(td, 'font-semibold text-ink')}>{n(r.payment)}</td>
+                {/* Foiz — za'faron (qarzning narxi) */}
+                <td className={cn(td, 'text-warn-ink')}>{n(r.interest)}</td>
+                <td className={cn(td, 'text-ink-soft')}>{n(r.principal)}</td>
+                <td className={cn(td, 'text-ink-soft')}>{n(r.balance)}</td>
+              </tr>
+            ),
+          )}
         </tbody>
       </table>
     </div>
@@ -828,7 +1042,10 @@ function ExplainDue({ due, terms }: { due: DebtDue; terms: DebtTerms }) {
       {formula ? <p className="tnum rounded-lg bg-surface-2 px-2.5 py-1.5 font-medium text-ink">{formula}</p> : null}
       {annualRate > 0 ? <p>{t(dayCount === 'act365' ? 'how.daily' : 'how.monthly')}</p> : null}
       {terms.repayment === 'lump' && due.interest > 0 ? <p>{t('how.lump')}</p> : null}
-      {terms.kind === 'card' ? <p>{t('how.card', { rule: minRuleText(terms, t, f.lang) })}</p> : null}
+      {/* Tayyor kartada minimal ko'chirma kunidagi qarzdan (to'lov kunidagisidan emas) */}
+      {terms.kind === 'card' ? (
+        <p>{t(terms.cardProduct ? 'how.prodCard' : 'how.card', { rule: minRuleText(terms, t, f.lang) })}</p>
+      ) : null}
       {due.paid > 0 ? <p className="tnum">{t('how.paid', { paid: m(due.paid), left: m(due.remaining) })}</p> : null}
       <p className="text-muted">{t('how.estimate')}</p>
     </div>

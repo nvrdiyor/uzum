@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { UNIT_PLAN_MAX_ROWS } from './unit-plan.js';
 import {
+  DEBT_CARD_PRODUCTS,
   DEBT_CATEGORIES,
+  DEBT_CHANNELS,
   DEBT_CURRENCIES,
   DEBT_DAY_COUNTS,
   DEBT_ENTRY_KINDS,
@@ -305,6 +307,20 @@ const debtFields = {
   openingBalance: debtAmount.nullable().optional(),
   ownerOnly: z.boolean().optional(),
   note: z.string().trim().max(DEBT_LIMITS.noteMax).default(''),
+  /** Tayyor karta (TBC Osmon, Infin Black) — bank shartlari bilan hisob; null — boshqa karta */
+  cardProduct: z.enum(DEBT_CARD_PRODUCTS).nullable().optional(),
+  /** Tayyor karta: har oy hisobot kuni (TBC — mijozniki; Infin — 1) */
+  statementDay: z.coerce.number().int().min(1).max(31).nullable().optional(),
+  /** Tayyor karta: naqd va o'tkazma foizi (null — xaridlar foizi bilan bir xil) */
+  cashRate: z.coerce.number().min(0).max(DEBT_LIMITS.rateMax).nullable().optional(),
+  /** Tayyor karta: oxirgi hisobot bo'yicha to'lov kunigacha to'lash kerak qolgani (null — butun qarz) */
+  openingBilled: debtAmount.nullable().optional(),
+  /** Tayyor karta: ochiq hisobotning to'lanmagan minimal to'lovi (bank ilovasidan) */
+  openingMin: debtAmount.nullable().optional(),
+  /** Tayyor karta: qarz oyma-oy to'liq yopilmaydi (foizli aylanadi) */
+  openingRevolving: z.boolean().nullable().optional(),
+  /** Tayyor karta: muddati o'tgan summa (bank ilovasidan) */
+  openingOverdue: debtAmount.nullable().optional(),
 };
 
 /**
@@ -329,8 +345,21 @@ export const debtCreateSchema = z.object(debtFields).superRefine((v, ctx) => {
     if (d.getUTCDate() !== Math.min(v.payDay, last)) issue('payDay', 'To‘lov kuni birinchi to‘lov sanasiga mos emas');
   }
   if (v.dueOn && v.dueOn <= v.startedOn) issue('dueOn', 'Qaytarish sanasi qarz olingan kundan keyin bo‘lsin');
-  if (v.kind === 'card' && v.openingBalance != null && v.openingBalance > v.amount)
+  // Tayyor kartada qarz limitdan katta bo'lishi mumkin (texnik overdraft: komissiya limitdan oshadi; bank limitni
+  // kamaytirgan) — bo'sh limit 0. Tahrirda ham shu sxema: boshlang'ich qarzdan kam limit rad etilmaydi (API-1)
+  if (v.kind === 'card' && v.cardProduct == null && v.openingBalance != null && v.openingBalance > v.amount)
     issue('openingBalance', 'Hozirgi qarz limitdan katta');
+  if (v.cardProduct != null) {
+    if (v.kind !== 'card') issue('cardProduct', 'Tayyor karta faqat kredit karta uchun');
+    if (v.currency !== 'UZS') issue('currency', 'Bu karta faqat so‘mda');
+    if (v.cardProduct === 'tbc-osmon' && v.statementDay == null) issue('statementDay', 'Keyingi to‘lov sanasini kiriting');
+    if (v.openingBilled != null && v.openingBilled > (v.openingBalance ?? 0))
+      issue('openingBilled', 'To‘lash kerak summa hozirgi qarzdan katta bo‘lmaydi');
+    if (v.openingMin != null && v.openingMin > (v.openingBilled ?? v.openingBalance ?? 0))
+      issue('openingMin', 'Minimal to‘lov to‘lash kerak summadan katta bo‘lmaydi');
+    if (v.openingOverdue != null && v.openingOverdue > (v.openingBalance ?? 0))
+      issue('openingOverdue', 'Muddati o‘tgan summa hozirgi qarzdan katta bo‘lmaydi');
+  }
 });
 
 /** Tahrir: berilgan maydonlar almashadi (berilmagani — o'zgarmaydi; standart qiymat qo'yilmaydi) */
@@ -353,12 +382,17 @@ export const debtEntrySchema = z
     note: z.string().trim().max(DEBT_LIMITS.noteMax).default(''),
     /** To'lovda: shundan foiz (bank SMS'idan) */
     interest: debtAmount.nullable().optional(),
+    /** Tayyor kartadan ishlatish: xarid · o'tkazma · naqd */
+    channel: z.enum(DEBT_CHANNELS).nullable().optional(),
+    /** Tayyor karta: bank komissiyasi (qarzga qo'shiladi) */
+    fee: debtAmount.nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.kind !== 'adjust' && !(v.amount > 0))
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['amount'], message: 'Summani kiriting' });
     if (v.interest != null && v.interest > v.amount)
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['interest'], message: 'Foiz to‘lov summasidan katta bo‘lmaydi' });
+    // Komissiya summadan katta bo'lishi mumkin: TBC naqd — kamida 90 000 so'm (50 000 yechilsa ham)
   });
 
 export type DebtCreateInput = z.infer<typeof debtCreateSchema>;

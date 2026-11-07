@@ -186,6 +186,8 @@ export function DebtsHero({ data }: { data: DebtListResponse }) {
             <span className="min-w-0">
               <span className="eyebrow-lg block">{t('hero.next')}</span>
               <span className="tnum mt-0.5 block font-display text-xl font-bold leading-snug tracking-[-0.01em] text-ink">
+                {/* Tayyor karta: ko'chirma hali chiqmagan — minimal taxminiy (kartochka va qarz sahifasidagidek "≈") */}
+                {next.due.card?.estimate ? '≈ ' : ''}
                 <Amount value={formatDebtMoney(next.due.remaining, next.currency, f.lang)} />
               </span>
               <span className="tnum mt-0.5 block max-w-[18rem] truncate text-xs text-muted">

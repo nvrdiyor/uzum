@@ -4,24 +4,32 @@
  * maydon — summa; sana standart bugun (Toshkent savdo kuni, serverdan).
  *
  * Pastdagi "Qoldiq bo'ladi ≈" serverdagi bilan bir xil shared analyzeDebt'dan:
- * qarz daftariga shu yozuv qo'shilib qayta hisoblanadi. Ro'yxatdan ochilganda
- * daftar GET /debts/:id dan olinadi (o'sha ['debt', id] keshi).
+ * qarz daftariga shu yozuv qo'shilib qayta hisoblanadi (mantig'i — entryModel.ts).
+ * Ro'yxatdan ochilganda daftar GET /debts/:id dan olinadi (o'sha ['debt', id] keshi).
  *
  * Yozuv qarzning versiyasiga (updatedAt) tegmaydi — ochiq turgan tahrir shakli
  * "boshqa oynada o'zgargan" deb rad etilmaydi.
+ *
+ * Tayyor kartada (TBC Osmon, Infin Black) "Kartadan ishlatdim" — qanday: xarid
+ * (foizsiz davr bor) yoki o'tkazma / naqd / boshqa to'lov (foiz shu kundan va
+ * komissiya qarzga). Komissiya tarifdan taklif qilinadi, sotuvchi o'zgartira oladi.
+ * Tayyor kartada "Qoldiqni tenglashtirish" — bank ilovasidagi umumiy qarz (foizi bilan).
  */
 import { useId, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CARD_PRODUCTS,
   DEBT_CATEGORIES,
+  DEBT_CHANNELS,
   DEBT_LIMITS,
-  analyzeDebt,
+  cardFee,
   formatDebtMoney,
+  isCardProduct,
   type DebtCategory,
+  type DebtChannel,
   type DebtDetail,
   type DebtEntryKind,
   type DebtEntryRow,
-  type DebtLedgerEntry,
   type DebtSummary,
 } from '@savdoiq/shared';
 import { ChevronDown } from '@/components/icons';
@@ -30,8 +38,9 @@ import { api, ApiError } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { MoneyField } from './MoneyField';
-import { DateField, TextField } from './fields';
-import { asCategory, isIsoDay, toLedger } from './format';
+import { DateField, FieldNote, TextField } from './fields';
+import { asCategory, isIsoDay, pctNum, statementDayOf, stmtAfter, stmtDue } from './format';
+import { adjustBase, entryPreview, overLimitOf } from './entryModel';
 
 export type EntryMode = 'pay' | 'use' | 'draw' | 'adjust';
 
@@ -89,6 +98,9 @@ function EntryDialog({
   const currency = debt.terms.currency;
   const m = (v: number) => formatDebtMoney(v, currency, f.lang);
   const kind = kindOf(mode, isCard);
+  // Tayyor karta: kanal va komissiya faqat kartadan ishlatishda; to'lovda "shundan foiz" yo'q (server e'tiborsiz qoldiradi)
+  const product = isCard && isCardProduct(debt.terms.cardProduct) ? debt.terms.cardProduct : null;
+  const draws = product !== null && kind === 'draw';
 
   /*
    * Summa va sana: undefined — foydalanuvchi hali o'zgartirmagan, ko'rinadigani yangi olingan qarzdan (pastda).
@@ -103,6 +115,15 @@ function EntryDialog({
   const [more, setMore] = useState(() => Boolean(entry && (entry.note || entry.interest !== null)));
   const [tried, setTried] = useState(false);
   const forId = useId();
+  const howId = useId();
+  const [channel, setChannel] = useState<DebtChannel>(() => entry?.channel ?? 'purchase');
+  /*
+   * Komissiya: undefined — tarifdan (summa, sana va kanal o'zgarsa qayta hisoblanadi), qo'lda yozilgani — o'sha.
+   * Saqlangan o'tkazma/naqd yozuvining komissiyasi qo'lda deb olinadi: tahrirda tarixdagi summa jimgina o'zgarmasin
+   */
+  const [feeInput, setFee] = useState<number | null | undefined>(() =>
+    entry?.channel && entry.channel !== 'purchase' ? entry.fee : undefined,
+  );
 
   // Aniq oldindan ko'rish uchun daftar; qarz sahifasidan ochilganda keshda tayyor
   const detail = useQuery({
@@ -125,36 +146,40 @@ function EntryDialog({
   const amountOk = amount !== null && !Number.isNaN(amount) && (mode === 'adjust' ? amount >= 0 : amount > 0);
   const interestValue = kind === 'pay' && interest !== null && !Number.isNaN(interest) ? interest : null;
 
-  const preview = useMemo(() => {
-    if (!base || !amountOk || amount === null || !isIsoDay(date)) return null;
-    const ledger = toLedger(base.entries).filter((e) => e.id !== entry?.id);
-    const added: DebtLedgerEntry = {
-      id: entry?.id ?? 'new',
-      kind,
-      date,
-      amount,
-      category: kind === 'use' || kind === 'draw' ? category : '',
-      note,
-      interest: interestValue,
-      // Yangi yozuv o'sha kunning oxirgisi bo'ladi (serverda createdAt — hozir)
-      createdAt: entry?.createdAt ?? new Date().toISOString(),
-    };
-    const a = analyzeDebt(base.terms, [...ledger, added], base.today);
-    // Tahrirda "ortiqcha to'landi" shu yozuvsiz holatga nisbatan: server ma'lumoti tahrirlanayotgan yozuvni ham o'z
-    // ichiga oladi — ilgari 21 mln lik ortiqcha to'lov o'zgarmasa ham "ortiqcha yo'q", 21,5 mln da "500 000" chiqardi
-    const before = entry ? analyzeDebt(base.terms, ledger, base.today).calc.overpaid : base.calc.overpaid;
-    return { calc: a.calc, result: a.entries[a.entries.length - 1], overpaidBefore: before };
-  }, [base, amountOk, amount, date, entry, kind, category, note, interestValue]);
+  // Komissiya (xariddan boshqasida): tarif bo'yicha taklif — summa, sana yoki kanal o'zgarsa yangilanadi, qo'lda yozilmaguncha
+  const feeShown =
+    draws && product && channel !== 'purchase'
+      ? feeInput !== undefined
+        ? feeInput
+        : amount !== null && !Number.isNaN(amount) && isIsoDay(date)
+          ? cardFee(product, channel, amount, date)
+          : null
+      : null;
+  const feeValue = feeShown !== null && !Number.isNaN(feeShown) && feeShown > 0 ? feeShown : null;
 
-  // Limitdan oshish faqat qarzni OSHIRADIGAN yozuvda: limitdan oshib qolgan kartada (limit kamaytirilgan) izoh yoki
-  // turkumni tuzatish, summani kamaytirish mumkin bo'lsin (server ham shunday tekshiradi)
+  // Oldindan ko'rish (entryModel.ts): izoh va turkum hisobga ta'sir qilmaydi — ular o'zgarganda qayta hisoblanmaydi (F7)
+  const preview = useMemo(
+    () =>
+      !base || !amountOk || amount === null || !isIsoDay(date)
+        ? null
+        : entryPreview(base, {
+            id: entry?.id ?? null,
+            // Yangi yozuv o'sha kunning oxirgisi bo'ladi (serverda createdAt — hozir)
+            createdAt: entry?.createdAt ?? new Date().toISOString(),
+            kind,
+            date,
+            amount,
+            interest: interestValue,
+            // Tayyor karta: kanal va komissiya — "qarz bo'ladi" komissiya bilan
+            channel: draws ? channel : null,
+            fee: draws ? feeValue : null,
+          }),
+    [base, amountOk, amount, date, entry, kind, interestValue, draws, channel, feeValue],
+  );
+
+  // Limitdan oshish faqat qarzni OSHIRADIGAN yozuvda (server ham shunday tekshiradi)
   const limitEps = live.terms.currency === 'USD' ? 0.005 : 0.5;
-  const overLimit =
-    isCard &&
-    kind === 'draw' &&
-    preview !== null &&
-    preview.calc.principal > live.terms.amount + limitEps &&
-    preview.calc.principal > (base?.calc.principal ?? 0) + limitEps;
+  const overLimit = isCard && kind === 'draw' && preview !== null && overLimitOf(preview, live.terms.amount, limitEps);
   const errors = {
     amount:
       amount === null
@@ -183,6 +208,9 @@ function EntryDialog({
           : amount !== null && !Number.isNaN(amount) && interest > amount
             ? t('err.interestMax')
             : null,
+    // Komissiya summadan katta bo'lishi mumkin (TBC naqd — kamida 90 000), faqat raqam bo'lsin
+    fee:
+      feeShown === null ? null : Number.isNaN(feeShown) ? t('err.number') : feeShown > DEBT_LIMITS.amountMax ? t('err.amountMax') : null,
   };
   // Xato birinchi "Saqlash"dan keyin ko'rinadi; limitdan oshish — darhol (bu ma'lumot)
   const shownError = (key: keyof typeof errors) => (tried || (key === 'amount' && overLimit) ? errors[key] : null);
@@ -205,7 +233,7 @@ function EntryDialog({
     setTried(true);
     // Yig'ilgan bo'limdagi xato ko'rinmay qolmasin
     if (errors.interest) setMore(true);
-    if (errors.amount || errors.date || errors.interest || amount === null) return;
+    if (errors.amount || errors.date || errors.interest || errors.fee || amount === null) return;
     save.mutate({
       kind,
       date,
@@ -214,6 +242,7 @@ function EntryDialog({
       category: mode === 'use' ? category : '',
       note: note.trim(),
       ...(kind === 'pay' ? { interest: interestValue } : {}),
+      ...(draws ? { channel, fee: channel === 'purchase' ? null : feeValue } : {}),
     });
   };
 
@@ -226,8 +255,16 @@ function EntryDialog({
         : mode === 'draw'
           ? t('draw.title')
           : t('adjust.title');
+  // Tayyor kartada tenglashtirish — bank ilovasidagi UMUMIY qarz (adjustBase); boshqa qarzlarda — avvalgidek asosiy qarz
+  const adjustTotal = product !== null && mode === 'adjust';
   const amountLabel =
-    mode === 'pay' ? t('pay.amount') : mode === 'use' ? t('use.amount') : mode === 'draw' ? t('draw.amount') : t('adjust.amount');
+    mode === 'pay'
+      ? t('pay.amount')
+      : mode === 'use'
+        ? t('use.amount')
+        : mode === 'draw'
+          ? t('draw.amount')
+          : t(adjustTotal ? 'adjust.amountCard' : 'adjust.amount');
 
   // Oyna pastidagi natija: yozuvdan keyin qarz qanday bo'ladi
   let main: string | null = null;
@@ -243,9 +280,38 @@ function EntryDialog({
     } else if (mode === 'use') {
       if (isCard) main = t('use.afterCard', { sum: m(c.principal), free: m(c.freeLimit ?? 0) });
       else if (c.unused !== null) main = t('use.after', { sum: m(c.unused) });
+      if (draws && feeValue) sub = t('use.feeIncl', { sum: m(feeValue) });
     } else if (mode === 'draw') main = t('draw.after', { sum: m(c.principal) });
+    else if (adjustTotal) main = t('adjust.afterCard', { sum: m(adjustBase(c, true)) });
     else main = t('adjust.after', { sum: m(c.principal) });
   }
+
+  // Tayyor karta: kanal izohi — xarid qaysi ko'chirmaga tushadi va qachongacha to'lansa foizsiz; boshqasida foiz shu kundan
+  const productRules = product ? CARD_PRODUCTS[product] : null;
+  let channelHint: string | null = null;
+  if (draws && product) {
+    if (channel === 'purchase') {
+      const sDay = statementDayOf(live.terms, product);
+      const S = isIsoDay(date) ? stmtAfter(date, sDay) : (live.calc.card?.nextStatement.date ?? null);
+      // TBC 5.7.3: kechikishdan keyingi ko'chirmalarda (waiverFrom gacha) xarid foizi to'liq to'lansa ham kechirilmaydi
+      const waiverFrom = live.calc.card?.waiverFrom ?? null;
+      if (S && waiverFrom && S < waiverFrom) channelHint = t('use.graceLost', { s: f.date(S) });
+      else if (S) channelHint = t('use.gracePurchase', { s: f.date(S), d: f.date(stmtDue(product, S)) });
+    } else channelHint = t('use.graceNone', { v: pctNum(live.terms.cashRate ?? live.terms.annualRate, f.lang) });
+  }
+  // Komissiya izohi: TBC "boshqa to'lov" — karta tarmog'iga qarab; Infin — rekvizit/soliq 1%, o'z hisobi, hamyon va
+  // InfinBANK krediti bepul (taklif 1% bo'lib qoladi — sotuvchi o'zgartiradi)
+  const feeHint =
+    product === 'tbc-osmon' && channel === 'other'
+      ? t('use.feeTbcOther', { pct: pctNum(productRules?.fees.other.pct ?? 0, f.lang) })
+      : product === 'infin-black' && channel === 'cash'
+        ? t('use.feeInfinCash')
+        : product === 'infin-black' && channel === 'other'
+          ? t('use.feeInfinOther', { pct: pctNum(productRules?.fees.other.pct ?? 0, f.lang) })
+          : t('use.feeHint');
+  // To'lov tugmachalari (tayyor karta): minimal (taxmin emas yoki kechikkan), foizsiz qolish uchun, hammasi
+  const grace = product ? (live.calc.card?.grace ?? null) : null;
+  const payoff = live.calc.payoff;
 
   return (
     <Modal
@@ -292,27 +358,83 @@ function EntryDialog({
             hint={
               mode === 'use' && isCard
                 ? t('use.cardNote')
-                : mode === 'adjust'
-                  ? t('adjust.hint', { sum: m(live.calc.principal) })
-                  : undefined
+                : adjustTotal
+                  ? t('adjust.hintCard', { sum: m(adjustBase(live.calc, true)) })
+                  : mode === 'adjust'
+                    ? t('adjust.hint', { sum: m(live.calc.principal) })
+                    : undefined
             }
           />
+          {/*
+           * Tenglashtirish to'lov emas: ko'chirma minimali yozilmagan bo'lsa, qarzni kamaytirish uni yopmaydi va to'lov
+           * kunidan keyin kechikkan deb ko'rinadi. Bankda to'langan bo'lsa — "To'ladim" bilan yozish kerak
+           */}
+          {adjustTotal && !entry && next && next.remaining > 0 && !next.card?.estimate ? (
+            <p className="mt-2 text-xs leading-relaxed text-warn-ink">{t('adjust.payHint', { sum: m(next.remaining) })}</p>
+          ) : null}
           {mode === 'pay' && !entry ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {/* "Navbatdagi" faqat "Hammasi"dan kichik bo'lsa — aks holda u "hammasi"dan katta ko'rinardi */}
-              {next && next.remaining > 0 && next.remaining < live.calc.payoff ? (
+              {product ? (
+                <>
+                  {/* Minimal — ko'chirma chiqqan bo'lsa (taxmin emas) yoki kechikkan; "Hammasi"dan kichik bo'lsa */}
+                  {next && next.remaining > 0 && next.remaining < payoff && !next.card?.estimate ? (
+                    <button type="button" className={chipClass(amount === next.remaining)} onClick={() => setAmount(next.remaining)}>
+                      {t('pay.chipMin', { sum: m(next.remaining) })}
+                    </button>
+                  ) : null}
+                  {grace && grace.state === 'open' && grace.left > 0 && grace.left < payoff ? (
+                    <button type="button" className={chipClass(amount === grace.left)} onClick={() => setAmount(grace.left)}>
+                      {t('pay.chipGrace', { sum: m(grace.left) })}
+                    </button>
+                  ) : null}
+                </>
+              ) : next && next.remaining > 0 && next.remaining < payoff ? (
+                // "Navbatdagi" faqat "Hammasi"dan kichik bo'lsa — aks holda u "hammasi"dan katta ko'rinardi
                 <button type="button" className={chipClass(amount === next.remaining)} onClick={() => setAmount(next.remaining)}>
                   {t('pay.chipNext', { sum: m(next.remaining) })}
                 </button>
               ) : null}
-              {live.calc.payoff > 0 ? (
-                <button type="button" className={chipClass(amount === live.calc.payoff)} onClick={() => setAmount(live.calc.payoff)}>
-                  {t('pay.chipAll', { sum: m(live.calc.payoff) })}
+              {payoff > 0 ? (
+                <button type="button" className={chipClass(amount === payoff)} onClick={() => setAmount(payoff)}>
+                  {t('pay.chipAll', { sum: m(payoff) })}
                 </button>
               ) : null}
             </div>
           ) : null}
+          {mode === 'pay' && product && live.calc.card?.blocked ? (
+            // Infin 3.5: 90 kundan ortiq kechikkan karta to'lovdan keyin ham ochilmaydi — "to'lang" deyilmaydi
+            <p className="mt-2 text-xs font-medium text-danger-ink">
+              {t(live.calc.card.blockedForGood && !live.calc.overdue ? 'banner.blockedForGood' : 'pay.blocked')}
+            </p>
+          ) : null}
         </div>
+
+        {draws ? (
+          <div>
+            <p id={howId} className="label">
+              {t('use.how')}
+            </p>
+            <div role="group" aria-labelledby={howId} className="flex flex-wrap gap-1.5">
+              {DEBT_CHANNELS.map((c) => (
+                <button key={c} type="button" aria-pressed={channel === c} className={chipClass(channel === c)} onClick={() => setChannel(c)}>
+                  {t(`ch.${c}`)}
+                </button>
+              ))}
+            </div>
+            <FieldNote hint={channelHint} />
+          </div>
+        ) : null}
+
+        {draws && channel !== 'purchase' ? (
+          <MoneyField
+            label={t('use.fee')}
+            value={feeShown}
+            onChange={setFee}
+            currency={currency}
+            hint={feeHint}
+            error={shownError('fee')}
+          />
+        ) : null}
 
         {mode === 'use' ? (
           <div>
@@ -332,7 +454,8 @@ function EntryDialog({
 
         <DateField label={t('f.when')} value={date} onChange={setDate} min={startedOn} max={day} error={shownError('date')} />
 
-        {mode === 'pay' ? (
+        {/* Tayyor kartada "shundan foiz" so'ralmaydi: to'lov bank tartibida taqsimlanadi (server ham e'tiborsiz qoldiradi) */}
+        {mode === 'pay' && !product ? (
           <div>
             <button
               type="button"

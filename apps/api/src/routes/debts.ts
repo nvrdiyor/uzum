@@ -20,9 +20,12 @@
 import { Router, type Request, type RequestHandler } from 'express';
 import { prisma, type Debt, type DebtEntry } from '@savdoiq/db';
 import {
+  CARD_PRODUCTS,
   DEBT_KIND_DEFAULTS,
   DEBT_LIMITS,
   analyzeDebt,
+  cardOpeningStatement,
+  isCardProduct,
   compareDebts,
   debtCreateSchema,
   debtEntrySchema,
@@ -31,6 +34,7 @@ import {
   debtUsage,
   toBusinessDate,
   viewSeesMoney,
+  type DebtChannel,
   type DebtCreateInput,
   type DebtCurrency,
   type DebtDayCount,
@@ -106,8 +110,18 @@ function toTerms(d: Debt): DebtTerms {
     openingBalance: d.openingBalance,
     trackedFrom: isoDay(d.trackedFrom) as string,
     archivedAt: d.archivedAt ? d.archivedAt.toISOString() : null,
+    cardProduct: d.kind === 'card' && isCardProduct(d.cardProduct) ? d.cardProduct : null,
+    statementDay: d.statementDay,
+    cashRate: d.cashRate,
+    openingBilled: d.openingBilled,
+    openingMin: d.openingMin,
+    openingRevolving: d.openingRevolving,
+    openingOverdue: d.openingOverdue,
   };
 }
+
+const asChannel = (v: string | null): DebtChannel | null =>
+  v === 'purchase' || v === 'transfer' || v === 'cash' || v === 'other' ? v : null;
 
 const toLedger = (e: DebtEntry): DebtLedgerEntry => ({
   id: e.id,
@@ -118,6 +132,8 @@ const toLedger = (e: DebtEntry): DebtLedgerEntry => ({
   note: e.note,
   interest: e.interest,
   createdAt: e.createdAt.toISOString(),
+  channel: asChannel(e.channel),
+  fee: e.fee,
 });
 
 /** Yangisi birinchi: sana, keyin yozilgan payt */
@@ -175,6 +191,8 @@ async function loadDetail(req: Request, id: string): Promise<DebtDetail> {
       note: e.note,
       interest: e.interest,
       createdAt: e.createdAt.toISOString(),
+      channel: ledger[i].channel ?? null,
+      fee: e.fee,
       ...analysis.entries[i],
     }))
     .sort(newestFirst);
@@ -206,14 +224,26 @@ function termsData(v: DebtCreateInput, day: string, trackedFrom: string, isOwner
       throw AppError.badRequest('Birinchi to‘lov o‘tib ketgan — bank ilovasidagi hozirgi qoldiqni va keyingi to‘lov sanasini kiriting');
   }
   const termed = repayment === 'equal' || repayment === 'decreasing';
+  // Tayyor karta: bank qoidalari kodda (CARD_PRODUCTS) — foiz kunlik/365, minimal "N% asosiy qarz + foiz",
+  // Infin'da hisobot kuni 1 va minimal 5% (hammaga bir xil); TBC'da hisobot kuni va minimal % — mijozniki
+  const product = v.kind === 'card' && v.cardProduct ? CARD_PRODUCTS[v.cardProduct] : null;
+  const statementDay = product ? (product.statement === 'monthStart' ? (product.statementDay ?? 1) : (v.statementDay ?? null)) : null;
+  if (product && v.cardProduct) {
+    // Kuzatuv boshida ko'chirma ochiq (to'lov kuni kelmagan) va qarz bor: minimal to'lov bank ilovasidan bo'lsin.
+    // Aks holda hisob "N% × butun qarz"ni bankniki deb ko'rsatardi (aylanuvchi qarzda foizsiz) — tahrirda to'lov
+    // sanasi tuzatilib ko'chirma ochiq bo'lib qolsa ham shu (API-2). Dvigatel bilan bir xil qoida — cardOpeningStatement
+    const open0 = cardOpeningStatement({ cardProduct: v.cardProduct, statementDay, trackedFrom });
+    if (open0?.pending && (v.openingBalance ?? 0) > 0 && v.openingMin == null)
+      throw AppError.badRequest('Ilovadagi minimal to‘lovni kiriting');
+  }
   return {
     kind: v.kind,
     lender: v.lender,
     title: v.title,
-    currency: v.currency,
+    currency: product ? product.currency : v.currency,
     amount: v.amount,
     annualRate: v.annualRate,
-    dayCount: v.dayCount ?? def.dayCount,
+    dayCount: product ? 'act365' : (v.dayCount ?? def.dayCount),
     repayment,
     termMonths: termed ? (v.termMonths ?? null) : null,
     graceMonths: termed ? v.graceMonths : 0,
@@ -222,13 +252,25 @@ function termsData(v: DebtCreateInput, day: string, trackedFrom: string, isOwner
     // 29–31 tanlansa qisqa oyda oy oxiri, keyingi oyda yana o'sha kun (31.12, 31.01…)
     payDay: monthly && v.firstDueOn ? (v.payDay ?? null) : null,
     dueOn: (repayment === 'lump' || repayment === 'interest') && v.dueOn ? dayDate(v.dueOn) : null,
-    minPct: repayment === 'interest' ? (v.minPct ?? def.minPct) : 0,
-    minBase: v.minBase ?? def.minBase,
+    minPct:
+      repayment !== 'interest'
+        ? 0
+        : product && !product.minPctEditable
+          ? product.minPctDefault
+          : (v.minPct ?? product?.minPctDefault ?? def.minPct),
+    minBase: product ? 'principal' : (v.minBase ?? def.minBase),
     monthlyPayment: repayment === 'equal' ? (v.monthlyPayment ?? null) : null,
     openingBalance: v.openingBalance ?? null,
     // Menejer yozgan qarz jamoaga ochiq; egasi tanlaydi (standart — faqat o'zi)
     ownerOnly: isOwner ? (v.ownerOnly ?? prevOwnerOnly ?? true) : (prevOwnerOnly ?? false),
     note: v.note,
+    cardProduct: product ? v.cardProduct : null,
+    statementDay,
+    cashRate: product && product.separateCashRate ? (v.cashRate ?? null) : null,
+    openingBilled: product ? (v.openingBilled ?? null) : null,
+    openingMin: product ? (v.openingMin ?? null) : null,
+    openingRevolving: product ? (v.openingRevolving ?? null) : null,
+    openingOverdue: product ? (v.openingOverdue ?? null) : null,
   };
 }
 
@@ -254,6 +296,13 @@ const inputOf = (d: Debt) => ({
   openingBalance: d.openingBalance,
   ownerOnly: d.ownerOnly,
   note: d.note,
+  cardProduct: d.kind === 'card' && isCardProduct(d.cardProduct) ? d.cardProduct : null,
+  statementDay: d.statementDay,
+  cashRate: d.cashRate,
+  openingBilled: d.openingBilled,
+  openingMin: d.openingMin,
+  openingRevolving: d.openingRevolving,
+  openingOverdue: d.openingOverdue,
 });
 
 /** Yozuvni tekshirish; karta "ishlatildi"si qarzni oshiradi — "draw" bo'lib saqlanadi */
@@ -265,13 +314,18 @@ function entryData(d: DebtWithEntries, body: DebtEntryInput, day: string, replac
   const kind: DebtEntryKind = isCard && body.kind === 'use' ? 'draw' : body.kind;
   if (kind === 'draw' && !isCard && (d.repayment === 'equal' || d.repayment === 'decreasing') && d.kind === 'bank')
     throw AppError.badRequest('Bank kreditiga qo‘shimcha summa — alohida qarz sifatida yozing');
+  // Tayyor kartadan ishlatish: xarid (foizsiz davr) yoki o'tkazma/naqd (foiz darhol + komissiya qarzga)
+  const productCard = isCard && isCardProduct(d.cardProduct);
+  const channel: DebtChannel | null = productCard && kind === 'draw' ? (body.channel ?? 'purchase') : null;
   const data = {
     kind,
     date: dayDate(body.date),
     amount: body.amount,
     category: kind === 'use' || kind === 'draw' ? body.category : '',
     note: body.note,
-    interest: kind === 'pay' ? (body.interest ?? null) : null,
+    interest: kind === 'pay' && !productCard ? (body.interest ?? null) : null,
+    channel,
+    fee: channel && channel !== 'purchase' ? (body.fee ?? null) : null,
   };
   if (isCard && kind === 'draw') {
     // Limitdan oshmasin — faqat qarzni OSHIRADIGAN yozuvda. Limit kamaytirilib limitdan oshib qolgan kartada
@@ -283,9 +337,23 @@ function entryData(d: DebtWithEntries, body: DebtEntryInput, day: string, replac
     const orig = replacingId ? ledger.find((e) => e.id === replacingId) : undefined;
     const others = ledger.filter((e) => e.id !== replacingId);
     const eps = d.currency === 'USD' ? 0.005 : 0.5;
-    const before = analyzeDebt(terms, ledger, day).calc.principal;
+    // "Oldin" ham "keyin" bilan bir xil asosda: tahrirlanayotgan yozuvning eski komissiyasisiz. Aks holda summa
+    // eski komissiyagacha oshirilsa "qarz oshmadi" deb limitdan o'tib ketardi (API-3)
+    const before = analyzeDebt(
+      terms,
+      replacingId ? ledger.map((e) => (e.id === replacingId ? { ...e, fee: null } : e)) : ledger,
+      day,
+    ).calc.principal;
     // id ham asliniki: bir millisekunddagi yozuvlar id bo'yicha tartiblanadi (saqlangan tartib bilan bir xil)
-    const added = { id: orig?.id, kind, date: body.date, amount: body.amount, createdAt: orig?.createdAt ?? new Date().toISOString() };
+    // Limit — faqat operatsiya summasi bo'yicha: komissiya limitdan oshsa bank texnik overdraft beradi (TBC 5.3)
+    const added = {
+      id: orig?.id,
+      kind,
+      date: body.date,
+      amount: body.amount,
+      createdAt: orig?.createdAt ?? new Date().toISOString(),
+      channel: data.channel,
+    };
     const after = analyzeDebt(terms, [...others, added], day).calc.principal;
     if (after > d.amount + eps && after > before + eps) throw AppError.badRequest('Limitdan oshadi — limitni tahrirlang');
   }
@@ -380,6 +448,9 @@ router.patch(
       throw AppError.forbidden('«Faqat men ko‘raman»ni faqat kompaniya egasi o‘zgartiradi');
     if (patch.kind !== undefined && (patch.kind === 'card') !== (d.kind === 'card'))
       throw AppError.badRequest('Kartani boshqa turga (yoki aksincha) o‘zgartirib bo‘lmaydi — yangi qarz yozing');
+    // Tayyor karta hisobi boshqacha (hisobot kuni, foizsiz davr) — tarix boshqa qoidada qayta hisoblanmasin
+    if (patch.cardProduct !== undefined && (patch.cardProduct ?? null) !== (isCardProduct(d.cardProduct) ? d.cardProduct : null))
+      throw AppError.badRequest('Karta turini o‘zgartirib bo‘lmaydi — yangi qarz sifatida yozing');
 
     // Mavjud shartlar + o'zgarishlar yaratish sxemasi bilan qayta tekshiriladi
     const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));

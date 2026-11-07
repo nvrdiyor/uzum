@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  formatDebtMoney,
   toBusinessDate,
   type BatchListResponse,
   type DebtCalc,
@@ -90,6 +91,8 @@ export default function Debts() {
   const visible = items.filter((i) => i.calc.state === current);
   const allPrivate = isOwner && items.length > 0 && items.every((i) => i.ownerOnly);
   const overdueCount = data?.totals.byCurrency.reduce((a, x) => a + x.overdueCount, 0) ?? 0;
+  // Tayyor kartalarning taxminiy kechikish jarimasi — kechikkan summa ichida (bu kartalar faqat so'mda)
+  const penalty = items.reduce((a, i) => a + (i.calc.state === 'active' ? (i.calc.card?.penalty ?? 0) : 0), 0);
 
   const openEntry = (debt: DebtSummary, mode: EntryMode) => setEntry({ debt, mode });
   // Sahifa yarim tundan keyin ham ochiq turgan bo'lsa — yangi savdo kuni serverdan: eski kun shaklda kuzatuv
@@ -155,7 +158,10 @@ export default function Debts() {
             {overdueCount > 0 ? (
               <p className="tnum flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-4 py-2.5 text-sm font-medium text-danger-ink">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                {t('banner.overdue', { n: overdueCount, sum: uzsSumText(sumToUzs(data, (x) => x.overdue), f.lang) })}
+                <span className="min-w-0">
+                  {t('banner.overdue', { n: overdueCount, sum: uzsSumText(sumToUzs(data, (x) => x.overdue), f.lang) })}
+                  {penalty > 0 ? `. ${t('banner.penaltyAll', { sum: formatDebtMoney(penalty, 'UZS', f.lang) })}` : null}
+                </span>
               </p>
             ) : null}
 

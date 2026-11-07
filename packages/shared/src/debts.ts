@@ -97,6 +97,169 @@ export const DEBT_KIND_DEFAULTS: Record<
   installment: { repayment: 'equal', dayCount: 'm30', minPct: 0, minBase: 'principal' },
 };
 
+// ─────────────────────────── Tayyor kartalar ───────────────────────────
+
+/**
+ * Tayyor kredit kartalar — bank shartlari bo'yicha alohida hisob (hisobot kuni + foizsiz davr).
+ * Boshqa kartalar umumiy hisobda qoladi (to'lov kuni + minimal, foizsiz davrsiz).
+ */
+export const DEBT_CARD_PRODUCTS = ['tbc-osmon', 'infin-black'] as const;
+export type DebtCardProduct = (typeof DEBT_CARD_PRODUCTS)[number];
+
+/**
+ * Kartadan ishlatish turi: xarid (do'kon, onlayn, QR — foizsiz davr bor) · kartaga o'tkazma · naqd pul ·
+ * boshqa to'lov (soliq, rekvizit bo'yicha, kredit to'lovi, hamyon, valyuta — bank naqd deb hisoblaydi).
+ * Xariddan boshqasiga foizsiz davr yo'q: foiz shu kundan (naqd stavkasi) + komissiya
+ */
+export const DEBT_CHANNELS = ['purchase', 'transfer', 'cash', 'other'] as const;
+export type DebtChannel = (typeof DEBT_CHANNELS)[number];
+
+export interface CardFeeRule {
+  /** Summaning %i */
+  pct: number;
+  /** Kamida (so'm) */
+  min?: number;
+  /** Shu sanadan boshlab boshqa foiz (bank e'lon qilgan o'zgarish) */
+  changes?: ReadonlyArray<{ from: string; pct: number }>;
+}
+
+export interface CardProductRules {
+  bank: string;
+  name: string;
+  network: string;
+  currency: DebtCurrency;
+  /** individual — mijozning hisobot kuni (ilovadagi to'lov sanasidan); monthStart — har oy 1-sana */
+  statement: 'individual' | 'monthStart';
+  /** monthStart: hisobot kuni */
+  statementDay?: number;
+  /** To'lov kuni = hisobot kuni + shuncha kalendar kun */
+  dueDays: number;
+  /** To'lov kuni shanba/yakshanbaga tushsa — oldingi ish kuni (Infin oferta 2.8); bayramlar — faqat eslatma */
+  weekendBack: boolean;
+  /** Xaridlar uchun eng uzun foizsiz davr (kun) — ma'lumot uchun */
+  graceMaxDays: number;
+  /** Yillik foiz oralig'i (mijozga skoring bo'yicha) */
+  rateRange: readonly [number, number];
+  /** Naqd va o'tkazma foizi alohida bo'lishi mumkin (TBC: pos_rate va cash_rate) */
+  separateCashRate: boolean;
+  /** Minimal to'lov: asosiy qarzning N% + hisoblangan foiz */
+  minPctDefault: number;
+  minPctMax: number;
+  /** Mijoz o'zgartira oladimi (TBC — shartnomada har kimniki, Infin — hammaga 5%) */
+  minPctEditable: boolean;
+  /** Asosiy qarzni yopish tartibi: purchaseFirst — avval xaridlar (TBC 5.11), cashFirst — avval foizsiz davrsiz qarz (Infin 3.8) */
+  payOrder: 'purchaseFirst' | 'cashFirst';
+  /** Oldingi minimal to'lov kechikkan bo'lsa keyingi davrda foiz kechirilmaydi (TBC 5.7.3) */
+  noGraceAfterOverdue: boolean;
+  /** TBC 5.6: hisobot qarzi to'lov kunigacha to'liq to'lansa, hisobotdan keyingi xarid foizi ham kechiriladi */
+  waiveAfterStatement: boolean;
+  /** Komissiya (taklif; sotuvchi o'zgartira oladi) */
+  fees: { transfer: CardFeeRule; cash: CardFeeRule; other: CardFeeRule };
+  /**
+   * Kechikish jarimasi (taxminiy): TBC — 1-kun 10%, keyin har kuni 0,4% faqat kechikkan asosiy qarzdan,
+   * tarif bo'yicha hisobot sanasidan (backdate); Infin — har kuni 0,25% kechikkan summadan (asosiy + foiz)
+   */
+  penalty: { firstDayPct: number; dailyPct: number; base: 'principal' | 'amount'; fromStatement: boolean };
+  /** Kechikish shuncha kundan oshsa karta muddati tugaguncha bloklanadi (Infin oferta 3.5 — 90); null — qoida yo'q */
+  blockAfterOverdueDays: number | null;
+  limit: readonly [number, number];
+  /** Shartlar shu sanadagi bank hujjatlaridan */
+  asOf: string;
+  sources: readonly string[];
+}
+
+/**
+ * Bank hujjatlaridan (tadqiqot 2026-11-07; har qator rasmiy tarif/oferta bandi bilan tekshirilgan).
+ * Bank shartlarni bir tomonlama o'zgartira oladi (TBC — 10 kun, Infin — 30 kun oldin xabar bilan).
+ */
+export const CARD_PRODUCTS: Record<DebtCardProduct, CardProductRules> = {
+  'tbc-osmon': {
+    bank: 'TBC Bank',
+    name: 'Osmon',
+    network: 'Mastercard / Humo',
+    currency: 'UZS',
+    // Hisobot kuni har mijozda o'z kuni (shartnoma 3.6); to'lov — hisobot kunidan keyin 24-kun (3.7)
+    statement: 'individual',
+    dueDays: 24,
+    weekendBack: false,
+    graceMaxDays: 55,
+    // Tarif 14.09.2026: xaridlar (foizsiz davrdan tashqari) va naqd — 29–50%, har kimga alohida
+    rateRange: [29, 50],
+    separateCashRate: true,
+    // "Asosiy qarzning ko'pi bilan 8% + hisoblangan foizlar" — aniq foiz shartnomada
+    minPctDefault: 8,
+    minPctMax: 8,
+    minPctEditable: true,
+    payOrder: 'purchaseFirst',
+    noGraceAfterOverdue: true,
+    waiveAfterStatement: true,
+    // O'tkazma 3,9% (P2P tariflar 05.10.2026); naqd 3%, kamida 90 000 (+ bankomat egasi);
+    // boshqa (soliq, rekvizit, kredit...) — Mastercard'da kvazi-naqd 3%, Humo'da 0
+    fees: { transfer: { pct: 3.9 }, cash: { pct: 3, min: 90_000 }, other: { pct: 3 } },
+    // Kechiksa: 1-kun 10%, keyin kuniga 0,4% kechikkan asosiy qarzdan, hisobot sanasidan (tarif 03.07.2026 dan)
+    penalty: { firstDayPct: 10, dailyPct: 0.4, base: 'principal', fromStatement: true },
+    blockAfterOverdueDays: null,
+    limit: [300_000, 50_000_000],
+    asOf: '2026-11-07',
+    sources: [
+      'https://tbcbank.uz/ru/product/credit-card/',
+      'https://minio.tbcbank.uz/prod-tbcbankuz-new/uploads/tbc_credit_card_tariff_mastercard_ru_33e56c0b9c.pdf',
+      'https://minio.tbcbank.uz/prod-tbcbankuz-new/uploads/Shablon_dogovora_kreditnoj_karty_2_66cb553424.pdf',
+    ],
+  },
+  'infin-black': {
+    bank: 'InfinBANK',
+    name: 'Black',
+    network: 'Visa',
+    currency: 'UZS',
+    // Hisobot — har oy 1-sanada (kalendar oyi), to'lov — 20-sanagacha (oferta 2.8)
+    statement: 'monthStart',
+    statementDay: 1,
+    dueDays: 19,
+    weekendBack: true,
+    graceMaxDays: 50,
+    // Oferta 2.6: 25,55–54,75%, qat'iy, barcha operatsiyalarga bir xil
+    rateRange: [25.55, 54.75],
+    separateCashRate: false,
+    // Asosiy qarzning 5% + haqiqiy davr uchun foiz (info varaq 9)
+    minPctDefault: 5,
+    minPctMax: 5,
+    minPctEditable: false,
+    payOrder: 'cashFirst',
+    noGraceAfterOverdue: false,
+    waiveAfterStatement: false,
+    // Kartadan kartaga 1% (22.11.2026 dan 2%); naqd O'zbekiston bankomatlarida 0,5%, kamida 5 000 (+ bankomat);
+    // boshqa — rekvizit bo'yicha 1% (o'z hisobiga, hamyonga, valyuta — 0)
+    fees: {
+      transfer: { pct: 1, changes: [{ from: '2026-11-22', pct: 2 }] },
+      cash: { pct: 0.5, min: 5_000 },
+      other: { pct: 1 },
+    },
+    // Kuniga 0,25% kechikkan summadan (asosiy + foiz, jarimasiz; oferta 3.3)
+    penalty: { firstDayPct: 0, dailyPct: 0.25, base: 'amount', fromStatement: false },
+    // Oferta 3.5: minimal to'lov 90 kun va undan ko'p kechiksa — karta muddati tugaguncha bloklanadi (faqat to'ldirish)
+    blockAfterOverdueDays: 90,
+    limit: [500_000, 100_000_000],
+    asOf: '2026-11-07',
+    sources: [
+      'https://www.infinbank.com/ru/private/credits/overdraft/',
+      'https://www.infinbank.com/upload/contracts/infinblack_offert_ru_new.docx',
+    ],
+  },
+};
+
+export const isCardProduct = (v: unknown): v is DebtCardProduct =>
+  typeof v === 'string' && (DEBT_CARD_PRODUCTS as readonly string[]).includes(v);
+
+/** Kartadan o'tkazma yoki naqd pul komissiyasi (so'm, butun) — tayyor kartaning tarifi bo'yicha */
+export function cardFee(product: DebtCardProduct, channel: DebtChannel, amount: number, date: string): number {
+  if (channel === 'purchase' || !(amount > 0)) return 0;
+  const rule = CARD_PRODUCTS[product].fees[channel];
+  let pct = rule.pct;
+  for (const c of rule.changes ?? []) if (date >= c.from) pct = c.pct;
+  return Math.round(Math.max((amount * pct) / 100, rule.min ?? 0));
+}
+
 /**
  * Kartada kichik qoldiq to'liq yopiladi deb olinadi — "faqat minimal to'lasangiz
  * qachon tugaydi" jadvali cheksiz kamayib bormasin (taxmin; banklarda shunga yaqin).
@@ -137,6 +300,20 @@ export interface DebtTerms {
   /** Kuzatuv boshlangan savdo kuni: undan oldingi oylik to'lovlar kechikkan deb chiqmaydi */
   trackedFrom: string;
   archivedAt?: string | null;
+  /** Tayyor karta (CARD_PRODUCTS) — hisobot kuni va foizsiz davr bilan alohida hisob; null — umumiy karta */
+  cardProduct?: DebtCardProduct | null;
+  /** Tayyor karta: har oy hisobot kuni 1–31 (qisqa oyda — oy oxiri) */
+  statementDay?: number | null;
+  /** Tayyor karta: naqd va o'tkazma yillik foizi; null — annualRate */
+  cashRate?: number | null;
+  /** Tayyor karta: kuzatuv boshida oxirgi hisobot bo'yicha to'lov kunigacha to'lanishi kerak qolgani (null — butun qarz) */
+  openingBilled?: number | null;
+  /** Tayyor karta: kuzatuv boshida ochiq hisobotning to'lanmagan minimal to'lovi (bank ilovasidan) */
+  openingMin?: number | null;
+  /** Tayyor karta: qarz oyma-oy to'liq yopilmaydi — boshlang'ich qarz foizli (foizsiz davrsiz) */
+  openingRevolving?: boolean | null;
+  /** Tayyor karta: kuzatuv boshida muddati o'tgan summa */
+  openingOverdue?: number | null;
 }
 
 /** Daftar yozuvi — summa qarz valyutasida */
@@ -151,6 +328,10 @@ export interface DebtLedgerEntry {
   interest?: number | null;
   /** Bir kundagi yozuvlar tartibi uchun */
   createdAt?: string;
+  /** Tayyor karta, draw: xarid (null ham) · o'tkazma · naqd */
+  channel?: DebtChannel | null;
+  /** Tayyor karta, draw: bank komissiyasi — qarzga qo'shiladi */
+  fee?: number | null;
 }
 
 export type DebtDueStatus = 'overdue' | 'today' | 'soon' | 'upcoming';
@@ -175,6 +356,25 @@ export interface DebtDue {
   final: boolean;
   /** "Qanday hisoblandi?": foiz qaysi qoldiqdan, necha kunga */
   explain: { base: number; days: number; dayCount: DebtDayCount; annualRate: number };
+  /** Tayyor karta: hisobot va foizsiz davr */
+  card?: DebtCardDue;
+}
+
+/** Tayyor kartaning to'lovi: hisobot, foizsiz qolish summasi va xavf */
+export interface DebtCardDue {
+  /** Hisobot (vypiska) sanasi */
+  statementDate: string;
+  /** Hisobotdagi butun qarz — to'lov kunigacha to'liq to'lansa xaridlar foizsiz */
+  statementBalance: number;
+  /** Foizsiz qolish uchun yana to'lash kerak (0 — bajarildi) */
+  graceLeft: number;
+  /**
+   * To'liq to'lanmasa to'lov kunining yakunida qo'shiladigan foiz (bundan keyin to'lov bo'lmasa);
+   * to'liq to'langan ko'chirmada 0, TBC 5.7.3 da — baribir qo'shiladi
+   */
+  graceRisk: number;
+  /** Hisobot hali chiqmagan — minimal to'lov hozirgi qarzdan taxminan */
+  estimate: boolean;
 }
 
 export interface DebtScheduleRow {
@@ -182,9 +382,19 @@ export interface DebtScheduleRow {
   payment: number;
   interest: number;
   principal: number;
-  /** To'lovdan keyingi asosiy qarz */
+  /**
+   * To'lovdan keyingi asosiy qarz. TBC: muzlatilgan pul foizni yopsa (foizsiz davr yo'qolganda) — shu qatorning
+   * foiz qismi o'shancha ko'p, asosiy qismi kam: qatorlar ketma-ket qo'shiladi (oldingi qoldiq − asosiy = qoldiq)
+   */
   balance: number;
   status: 'overdue' | 'due' | 'future';
+  /**
+   * Faqat tayyor kartada: 'charge' — to'lov emas, qarzga foiz qo'shilgan qator (payment 0, interest > 0,
+   * principal = −interest, balance oshadi). TBC: foizsiz davr yo'qolganda bugungacha yozilgan to'lovlarning
+   * muzlatilgan puli xarid foizini yopadi — bugungi qoldiqdan qaraganda asosiy qarz shuncha oshadi (D+1 sanasi).
+   * Yo'q bo'lsa — oddiy to'lov qatori
+   */
+  kind?: 'charge';
 }
 
 export interface DebtEntryResult {
@@ -233,6 +443,38 @@ export interface DebtCalc {
   /** Oylik to'lov davr foizidan kam — qarz kamaymaydi */
   belowInterest: boolean;
   state: 'active' | 'paid' | 'archived';
+  /** Tayyor karta: foizsiz davr xavfi, kechikish jarimasi (taxminiy), qarz tarkibi */
+  card?: {
+    /** Hal bo'lmagan xaridlar foizi, bugungacha yig'ilgani — to'liq to'lansa kechiriladi (xavf: grace.risk) */
+    graceRisk: number;
+    /** Hisoblangan kechikish jarimasi (taxminiy; to'lanmagan foiz ichida) */
+    penalty: number;
+    /** Naqd va o'tkazmalardan qarz (foiz darhol) */
+    cashDebt: number;
+    /** Xaridlardan qarz */
+    purchaseDebt: number;
+    /**
+     * Ochiq hisobot: `left` ni `due` gacha to'lasangiz xaridlar foizsiz qoladi; `risk` — to'liq to'lanmasa
+     * to'lov kunining yakunida qo'shiladigan foiz (to'liq to'langanda 0). state 'lost' — TBC 5.7.3 (avvalgi
+     * kechikish) sababli baribir kechirilmaydi. state 'none' — bu ko'chirmada foizsiz bo'ladigan narsa yo'q
+     * (Infin: xarid yo'q — faqat naqd/o'tkazma yoki eski foizli qarz; TBC: xarid ham, 5.6 bo'yicha kechiriladigan
+     * foizli xarid qarzi ham yo'q); unda left 0, risk 0 — "bajarildi" degani EMAS
+     */
+    grace: { statementDate: string; due: string; balance: number; left: number; risk: number; state: 'open' | 'lost' | 'none' } | null;
+    /** Keyingi hisobot va uning to'lov kuni */
+    nextStatement: { date: string; due: string };
+    /** Faqat minimal to'lansa xaridlarga qo'shiladigan oylik foiz (foizsiz davr yo'qolsa) */
+    graceMonthly: number;
+    /** Kechikish sababli bank limitni bloklagan (bo'sh limit 0) */
+    blocked: boolean;
+    /**
+     * TBC 5.7.3: shu sanadagi ko'chirmadan boshlab foiz yana kechiriladi (undan oldingilari to'liq to'lansa ham
+     * kechirilmaydi) — hozirgi kechikish bugun yopilsa deb. null — cheklov yo'q (yoki Infin)
+     */
+    waiverFrom: string | null;
+    /** Infin oferta 3.5: kechikish 90 kundan oshgan — karta muddati tugaguncha bloklangan (faqat to'ldirish) */
+    blockedForGood: boolean;
+  };
 }
 
 export interface DebtAnalysis {
@@ -426,6 +668,8 @@ export function analyzeDebt(
   entries: ReadonlyArray<DebtLedgerEntry>,
   today: string,
 ): DebtAnalysis {
+  // Tayyor karta (TBC Osmon, Infin Black) — hisobot kuni va foizsiz davr bilan alohida hisob
+  if (terms.kind === 'card' && isCardProduct(terms.cardProduct)) return analyzeProductCard(terms, entries, today);
   const cur = terms.currency;
   const m = (v: number) => debtMoney(v, cur);
   const eps = epsOf(cur);
@@ -895,6 +1139,1112 @@ export function analyzeDebt(
   };
 }
 
+// ─────────────────────────── Tayyor karta: hisobot va foizsiz davr ───────────────────────────
+//
+// TBC Osmon va Infin Black (CARD_PRODUCTS) shartnomalari bo'yicha (tadqiqot va mustaqil tekshiruv 2026-11-07):
+//  • har oy hisobot (vypiska) kuni S; davr — [oldingi S, S): S kungi operatsiya keyingi davrga (TBC 1.3);
+//  • to'lov kuni D = S + dueDays (TBC 24; Infin 19 → 20-sana, shanba/yakshanba bo'lsa oldingi juma — oferta 2.8);
+//  • xaridlar foizi orqada yig'iladi (bg). Hisobotdagi qarz D gacha to'liq to'lansa kechiriladi, aks holda xarid
+//    kunidan boshlab to'lanadi (TBC 5.6–5.7, Infin 2.6–2.7). Infin'da sinov — o'tgan oy xaridlari yopilganmi (3.8);
+//  • TBC 5.6: to'liq to'lansa, hisobotdan keyin avvalgi foizli xarid qarzi foizi ham kechiriladi (wbg);
+//    5.7.3 — oldingi 2 hisobot davrida kechikish bo'lgan bo'lsa kechirilmaydi;
+//  • TBC: foizsiz davr yo'qolsa, oynadagi to'lovlarning asosiy qarzga ketgan qismi avval shu foizni yopadi (FAQ);
+//  • naqd, o'tkazma, boshqa to'lov — foiz shu kundan (naqd stavkasi) + komissiya qarzga;
+//  • to'lov tartibi: kechikkan (jarima → foiz → asosiy) → hisobotga tushgan foiz → asosiy qarz bank tartibida
+//    (TBC: xaridlar, keyin naqd; Infin: eski foizsiz-davrsiz → o'tgan oy xaridlari → joriy foizsiz-davrsiz →
+//    joriy xaridlar) → hisobotdan keyin yig'ilgan foiz. Shunda minimal to'langanda asosiy qarz aniq N% kamayadi;
+//  • minimal = N% × (asosiy − kechikkan asosiy) + kechikkan asosiy + hisobotdagi foiz + jarima (ikki marta emas);
+//  • kechiksa: TBC — kechikkan asosiy qarzdan 1-kun 10%, keyin kuniga 0,4%, tarif bo'yicha hisobot sanasidan;
+//    Infin — kuniga 0,25% kechikkan summadan; jami jarima birinchi kechikish kunidagi qarzning 50%idan oshmaydi;
+//    kechikish paytida bank limitni bloklaydi; Infin 3.5 — 90+ kun kechiksa karta muddati tugaguncha bloklanadi;
+//  • to'lanmagan minimal oynadagi to'lovlar haqiqatda nimaga ketgani bo'yicha bo'linadi (asosiy/foiz), ko'chirmadan
+//    keyin yig'ilgan jarima minimal ustiga; kechikkan qism qarzdan oshmaydi (tenglashtirishdan keyin ham);
+//  • ko'chirma 0 (davr xaridlari ko'chirmagacha to'langan) — foizsiz davr saqlanadi, yig'ilgan foiz kechiriladi
+//    (TBC 5.7.3 da kechirilmaydi — ko'chirmaga tushadi);
+//  • kartadagi o'z puli (ortiqcha to'lov) keyin paydo bo'lgan qarzni ham yopadi (ko'chirma foizi, yo'qolgan foiz).
+// Kunlik voqealar: kun boshida — kechagi to'lov kunining yakuni, keyin hisobot, keyin yozuvlar.
+
+const addDaysIso = (iso: string, n: number): string => toISODate(new Date(parseISODate(iso).getTime() + n * DAY_MS));
+
+/** Oydagi hisobot kuni (qisqa oyda — oy oxiri); m0 manfiy yoki 11 dan katta bo'lishi mumkin */
+function statementIn(y: number, m0: number, day: number): string {
+  const first = new Date(Date.UTC(y, m0, 1));
+  const yy = first.getUTCFullYear();
+  const mm = first.getUTCMonth();
+  return toISODate(new Date(Date.UTC(yy, mm, Math.min(day, lastDayOfMonth(yy, mm)))));
+}
+
+/** Shu kungi yoki undan oldingi oxirgi hisobot sanasi */
+function statementOnOrBefore(date: string, day: number): string {
+  const d = parseISODate(date);
+  const here = statementIn(d.getUTCFullYear(), d.getUTCMonth(), day);
+  return here <= date ? here : statementIn(d.getUTCFullYear(), d.getUTCMonth() - 1, day);
+}
+
+/** Shu kundan KEYINGI birinchi hisobot sanasi — shu kungi operatsiya qaysi davrga tushishi */
+function statementAfter(date: string, day: number): string {
+  const d = parseISODate(date);
+  const here = statementIn(d.getUTCFullYear(), d.getUTCMonth(), day);
+  return here > date ? here : statementIn(d.getUTCFullYear(), d.getUTCMonth() + 1, day);
+}
+
+/** Hisobot sanasidan k oy oldingi hisobot sanasi */
+function statementMonthsBefore(S: string, k: number, day: number): string {
+  const d = parseISODate(S);
+  return statementIn(d.getUTCFullYear(), d.getUTCMonth() - k, day);
+}
+
+/** Tayyor kartada hisobotning to'lov kuni: S + dueDays; Infin'da shanba/yakshanba bo'lsa oldingi juma (oferta 2.8) */
+function cardDueOf(rules: CardProductRules, S: string): string {
+  let d = addDaysIso(S, rules.dueDays);
+  if (rules.weekendBack) {
+    for (let i = 0; i < 3; i += 1) {
+      const wd = parseISODate(d).getUTCDay();
+      if (wd !== 0 && wd !== 6) break;
+      d = addDaysIso(d, -1);
+    }
+  }
+  return d;
+}
+
+/**
+ * Tayyor karta: kuzatuv boshidagi (trackedFrom) oxirgi ko'chirma va uning to'lov kuni. pending — to'lov kuni hali
+ * o'tmagan: ilovadagi "to'lash kerak" (openingBilled) va minimal to'lov (openingMin) shu ko'chirmaniki.
+ * Tayyor karta emas yoki trackedFrom yo'q — null. Hisob (analyzeProductCard) bilan bir xil qoida
+ */
+export function cardOpeningStatement(
+  terms: Pick<DebtTerms, 'cardProduct' | 'statementDay' | 'trackedFrom'>,
+): { statementDate: string; due: string; pending: boolean } | null {
+  if (!isCardProduct(terms.cardProduct) || !terms.trackedFrom) return null;
+  const rules = CARD_PRODUCTS[terms.cardProduct];
+  const sDay = Math.min(31, Math.max(1, terms.statementDay ?? rules.statementDay ?? 1));
+  const S0 = statementOnOrBefore(terms.trackedFrom, sDay);
+  const due = cardDueOf(rules, S0);
+  return { statementDate: S0, due, pending: terms.trackedFrom <= due };
+}
+
+interface CardBucket {
+  /** Davrni yopadigan hisobot sanasi */
+  period: string;
+  /** grace — xarid (foizsiz davr hal bo'lmagan) · lost — foizli xarid qarzi · cash — naqd/o'tkazma/boshqa */
+  kind: 'grace' | 'lost' | 'cash';
+  principal: number;
+  /** grace: orqada yig'ilgan foiz — to'liq to'lansa kechiriladi */
+  bg: number;
+  /** lost/cash: hisobotdan keyin yig'ilgan, hali hisobotga tushmagan foiz */
+  ub: number;
+  /** TBC 5.6: ochiq hisobot oynasida lost qarz foizi — hisobot to'liq to'lansa kechiriladi */
+  wbg: number;
+}
+
+interface CardStatement {
+  k: number;
+  date: string;
+  due: string;
+  /** Hisobot kunidagi butun qarz (asosiy + hisobotdagi foiz + jarima) */
+  balance: number;
+  minimum: number;
+  /** Minimal to'lovning foiz va jarima qismi */
+  minInterest: number;
+  /** Hisobotdagi asosiy qarz */
+  base: number;
+  paid: number;
+  /**
+   * TBC FAQ: oynadagi to'lovning xarid foizi uchun muzlatilgan qismi (to'lov paytigacha yig'ilgan foizdan oshmaydi):
+   * foizsiz davr yo'qolsa, shu pul foizni yopadi; saqlansa — bo'shaydi
+   */
+  frozen: number;
+  /**
+   * Muzlatilgan pul qaysi to'lovdan: ref ≥ 0 — yozuv (entries indeksi), ref < 0 — jadval qatori (-1 → 0-qator).
+   * Foizsiz davr yo'qolsa o'sha to'lovning shu qismi foiz bo'ladi (tarixda va jadvalda shunday ko'rsatiladi)
+   */
+  frozenBy: { ref: number; amount: number }[];
+  /** Infin 3.8.2: minimal to'lovning asosiy qismi shuncha yopildi (minimal avval — keyin eski qarz foizi) */
+  minPrincipalPaid: number;
+  /** Oynadagi to'lovlardan asosiy qarzga ketgani (kechikkan asosiy qarz ham) — to'lanmagan minimalni bo'lish uchun */
+  prinPaid: number;
+  /**
+   * Minimal to'lov ichidagi jarimaning (ko'chirma kunidagi) to'lanmagan qismi. Ko'chirmadan keyin yig'ilgan jarima
+   * minimal ustiga to'lanadi — oynaga hisoblanmaydi
+   */
+  minPenLeft: number;
+  resolved: boolean;
+  kept: boolean | null;
+  overdue: boolean;
+  /** TBC 5.7.3: oldingi ikki hisobot davrida kechikish — xarid foizi kechirilmaydi */
+  noWaiver: boolean;
+  /**
+   * Ko'chirmada foizsiz qolishi mumkin bo'lgan narsa bor: Infin — shu davr xaridi (2.7); TBC — xarid, foizli xarid
+   * qarzi (5.6: hisobotdan keyingi foizi kechiriladi) yoki ko'chirmagacha to'langan xaridning yig'ilgan foizi.
+   * Yo'q bo'lsa (faqat naqd/o'tkazma yoki eski foizli qarz) — grace.state 'none'
+   */
+  hadGrace: boolean;
+}
+
+interface CardState {
+  buckets: CardBucket[];
+  /** Hisobotga tushgan (yoki foizsiz davr yo'qolgani) to'lanmagan foiz */
+  billed: number;
+  /** To'lanmagan jarima */
+  pen: number;
+  /**
+   * Qarzdan ortiq to'langan (o'z puli) — keyingi ishlatishga ketadi; keyin paydo bo'lgan qarzni ham (ko'chirma
+   * foizi, foizsiz davr yo'qolgani) bank shu puldan yechadi
+   */
+  credit: number;
+  /** O'z pulidan (credit) yopilgan foiz — jami to'langan foizga qo'shiladi */
+  creditInterest: number;
+  statements: CardStatement[];
+  lastStmt: string;
+  cursor: string;
+  /** Kechikkan asosiy va foiz qismi (jarima — pen) */
+  ovP: number;
+  ovI: number;
+  /** Kechikkan summalar — eng eskisidan (kunlar va soni uchun) */
+  overdueRecs: { date: string; amount: number }[];
+  /** Kechikish davrlari (TBC 5.7.3) */
+  overdueSpans: { from: string; to: string | null }[];
+  /** Ko'rilgan eng uzun kechikish (kun) — Infin 3.5: 90 kundan keyin karta butunlay bloklanadi */
+  maxOd: number;
+  penaltyFrom: string | null;
+  penaltyTotal: number;
+  /** Qonuniy chegara: birinchi kechikish kunidagi asosiy qarzning yarmi */
+  penCap: number;
+  penSince: number;
+}
+
+const cloneCard = (s: CardState): CardState => ({
+  ...s,
+  buckets: s.buckets.map((b) => ({ ...b })),
+  statements: s.statements.map((x) => ({ ...x, frozenBy: x.frozenBy.map((r) => ({ ...r })) })),
+  overdueRecs: s.overdueRecs.map((x) => ({ ...x })),
+  overdueSpans: s.overdueSpans.map((x) => ({ ...x })),
+});
+
+function analyzeProductCard(
+  terms: DebtTerms,
+  entries: ReadonlyArray<DebtLedgerEntry>,
+  today: string,
+): DebtAnalysis {
+  const rules = CARD_PRODUCTS[terms.cardProduct as DebtCardProduct];
+  const cur = terms.currency;
+  const m = (v: number) => debtMoney(v, cur);
+  const eps = epsOf(cur);
+  const rate = Math.max(0, terms.annualRate || 0);
+  const cashRate = terms.cashRate != null && terms.cashRate >= 0 ? terms.cashRate : rate;
+  const sDay = Math.min(31, Math.max(1, terms.statementDay ?? rules.statementDay ?? 1));
+  const minPct = Math.min(1, Math.max(0, terms.minPct || 0) / 100);
+  const limit = Math.max(0, terms.amount || 0);
+  const T0 = terms.trackedFrom;
+  const isTbc = rules.payOrder === 'purchaseFirst';
+  /**
+   * TBC: foizsiz davr yo'qolganda muzlatilgan pul foizni yopadi — o'sha to'lovning (yozuv yoki jadval qatori)
+   * foiz qismi shuncha ko'payadi. Asosiy hisobda va jadvalda turlicha yangilanadi
+   */
+  let onReclass: ((ref: number | null, amount: number, st: CardStatement) => void) | null = null;
+
+  const dueOf = (S: string): string => cardDueOf(rules, S);
+  const principalOf = (s: CardState) => s.buckets.reduce((a, b) => a + b.principal, 0);
+  const ubOf = (s: CardState) => s.buckets.reduce((a, b) => a + b.ub, 0);
+  const debtOf = (s: CardState) => principalOf(s) + s.billed + ubOf(s) + s.pen;
+  const openOf = (s: CardState) => s.statements.find((x) => !x.resolved) ?? null;
+  const overdueOf = (s: CardState) => s.ovP + s.ovI + s.pen;
+  const bucketFor = (s: CardState, period: string, kind: CardBucket['kind']): CardBucket => {
+    let b = s.buckets.find((x) => x.period === period && x.kind === kind);
+    if (!b) {
+      b = { period, kind, principal: 0, bg: 0, ub: 0, wbg: 0 };
+      s.buckets.push(b);
+    }
+    return b;
+  };
+  const tidy = (s: CardState) => {
+    const merged: CardBucket[] = [];
+    for (const b of s.buckets) {
+      // TBC: foizli xarid qarzi bitta (bir stavka, xariddan oldin yopiladi) — eng eski davri bilan; har oy yangisi
+      // qo'shilib bormasin (faqat minimal to'lansa 600 ko'chirmalik jadval sekinlashardi)
+      const same = merged.find((x) => x.kind === b.kind && (x.period === b.period || (isTbc && b.kind === 'lost')));
+      if (same) {
+        if (b.period < same.period) same.period = b.period;
+        same.principal = m(same.principal + b.principal);
+        same.bg = m(same.bg + b.bg);
+        same.ub = m(same.ub + b.ub);
+        same.wbg = m(same.wbg + b.wbg);
+      } else merged.push(b);
+    }
+    s.buckets = merged.filter((b) => b.principal > eps || b.bg > eps || b.ub > eps || b.wbg > eps);
+  };
+  /** Eng eski to'lanmagan kechikish shu kungacha necha kun bo'ldi — eng uzuni saqlanadi */
+  const noteOverdueAge = (s: CardState, date: string) => {
+    if (s.overdueRecs.length) s.maxOd = Math.max(s.maxOd, dayDiff(s.overdueRecs[0].date, date));
+  };
+  const clearOverdue = (s: CardState, date: string) => {
+    noteOverdueAge(s, date);
+    s.ovP = 0;
+    s.ovI = 0;
+    s.overdueRecs = [];
+    for (const sp of s.overdueSpans) if (sp.to == null) sp.to = date;
+    s.penaltyFrom = null;
+    s.penSince = 0;
+  };
+  const addPen = (s: CardState, v: number) => {
+    const room = Math.max(0, s.penCap - s.penSince);
+    const pen = m(Math.min(v, room));
+    if (pen > 0) {
+      s.pen = m(s.pen + pen);
+      s.penSince = m(s.penSince + pen);
+      s.penaltyTotal = m(s.penaltyTotal + pen);
+    }
+  };
+
+  /** [cursor, date) foizi va jarimasi */
+  const accrueTo = (s: CardState, date: string) => {
+    if (!(date > s.cursor)) return;
+    const open = openOf(s);
+    for (const b of s.buckets) {
+      if (!(b.principal > eps)) continue;
+      const chunk = m(interestFor(b.principal, b.kind === 'cash' ? cashRate : rate, s.cursor, date, 'act365'));
+      if (b.kind === 'grace') b.bg = m(b.bg + chunk);
+      else if (
+        b.kind === 'lost' &&
+        rules.waiveAfterStatement &&
+        open &&
+        b.period <= open.date &&
+        s.cursor >= open.date &&
+        date <= addDaysIso(open.due, 1)
+      )
+        b.wbg = m(b.wbg + chunk);
+      else b.ub = m(b.ub + chunk);
+    }
+    if (s.penaltyFrom && s.ovP + s.ovI > eps) {
+      const from = maxIso(s.cursor, s.penaltyFrom);
+      const days = date > from ? dayDiff(from, date) : 0;
+      const base = rules.penalty.base === 'principal' ? s.ovP : s.ovP + s.ovI;
+      if (days > 0 && base > eps) addPen(s, (base * rules.penalty.dailyPct * days) / 100);
+    }
+    s.cursor = date;
+  };
+
+  const issueStatement = (s: CardState, S: string) => {
+    accrueTo(s, S);
+    // Hisobotdan keyin yig'ilgan foiz endi hisobotga tushadi
+    for (const b of s.buckets) {
+      s.billed = m(s.billed + b.ub);
+      b.ub = 0;
+    }
+    s.lastStmt = S;
+    // Kartadagi o'z puli yangi qarzni (ko'chirmaga tushgan foizni) darhol yopadi
+    useCredit(s, S);
+    const from2 = statementMonthsBefore(S, 2, sDay);
+    const noWaiver =
+      rules.noGraceAfterOverdue && s.overdueSpans.some((sp) => sp.from < S && (sp.to == null || sp.to > from2));
+    if (!(m(principalOf(s) + s.billed + s.pen) > eps)) {
+      // Ko'chirma 0: davr xaridlari ko'chirmagacha to'liq to'langan — foizsiz davr saqlanadi, yig'ilgan foiz
+      // kechiriladi (TBC 3.8/5.6, Infin 2.7). TBC 5.7.3 (oldingi kechikish) — kechirilmaydi, ko'chirmaga tushadi
+      let forfeit = 0;
+      for (const b of s.buckets) {
+        if (b.kind === 'grace' && b.period <= S) {
+          if (noWaiver) forfeit += b.bg;
+          b.bg = 0;
+        }
+        if (noWaiver) forfeit += b.wbg;
+        b.wbg = 0;
+      }
+      tidy(s);
+      s.billed = m(s.billed + forfeit);
+      useCredit(s, S);
+      if (!(m(principalOf(s) + s.billed + s.pen) > eps)) return;
+    }
+    const P = m(principalOf(s));
+    const balance = m(P + s.billed + s.pen);
+    const regular = m(minPct * Math.max(0, P - s.ovP));
+    const interestPart = m(s.billed + s.pen);
+    const minimum = Math.min(balance, m(regular + s.ovP + interestPart));
+    s.statements.push({
+      k: s.statements.length + 1,
+      date: S,
+      due: dueOf(S),
+      balance,
+      minimum,
+      minInterest: Math.min(interestPart, minimum),
+      base: P,
+      paid: 0,
+      frozen: 0,
+      frozenBy: [],
+      minPrincipalPaid: 0,
+      prinPaid: 0,
+      minPenLeft: m(s.pen),
+      resolved: false,
+      kept: null,
+      overdue: false,
+      noWaiver,
+      hadGrace: s.buckets.some(
+        (b) =>
+          b.period <= S &&
+          (b.kind === 'grace'
+            ? b.principal > eps || (isTbc && b.bg > eps)
+            : isTbc && b.kind === 'lost' && b.principal > eps),
+      ),
+    });
+  };
+
+  /** Asosiy qarzni bank tartibida yopish; Infin'da eski foizsiz-davrsiz qarzning yig'ilgan foizi ham shu yerda */
+  const payPrincipal = (s: CardState, amount: number, date: string, withUb = true): { principal: number; interest: number } => {
+    let left = amount;
+    let principal = 0;
+    let interest = 0;
+    const takeUb = (b: CardBucket) => {
+      if (!withUb) return;
+      const t = Math.min(left, b.ub);
+      b.ub = m(b.ub - t);
+      left = m(left - t);
+      interest += t;
+    };
+    const takeP = (b: CardBucket) => {
+      const t = Math.min(left, b.principal);
+      b.principal = m(b.principal - t);
+      left = m(left - t);
+      principal += t;
+    };
+    const asc = [...s.buckets].sort((a, b) => (a.period < b.period ? -1 : a.period > b.period ? 1 : 0));
+    if (isTbc) {
+      // TBC 5.10: avval xaridlar (eskisidan), keyin naqd
+      for (const b of asc.filter((x) => x.kind === 'lost')) if (left > eps) takeP(b);
+      for (const b of asc.filter((x) => x.kind === 'grace')) if (left > eps) takeP(b);
+      for (const b of asc.filter((x) => x.kind === 'cash')) if (left > eps) takeP(b);
+    } else {
+      // Infin 3.8.3–3.8.6: eski foizsiz-davrsiz → o'tgan oy xaridlari → joriy foizsiz-davrsiz → joriy xaridlar
+      const old = asc.filter((x) => x.period <= s.lastStmt);
+      const now = asc.filter((x) => x.period > s.lastStmt);
+      for (const b of old.filter((x) => x.kind !== 'grace')) {
+        if (left > eps) takeUb(b);
+        if (left > eps) takeP(b);
+      }
+      for (const b of old.filter((x) => x.kind === 'grace')) if (left > eps) takeP(b);
+      for (const b of now.filter((x) => x.kind !== 'grace')) {
+        if (left > eps) takeUb(b);
+        if (left > eps) takeP(b);
+      }
+      for (const b of now.filter((x) => x.kind === 'grace')) if (left > eps) takeP(b);
+    }
+    void date;
+    return { principal: m(principal), interest: m(interest) };
+  };
+
+  /**
+   * To'lov. countWindow — ochiq hisobotning oynasiga hisoblansinmi (tenglashtirishda yo'q);
+   * overdue — kechikkan qism avval yopilsinmi (tenglashtirishda yo'q)
+   */
+  const pay = (
+    s: CardState,
+    amount: number,
+    date: string,
+    opts: { countWindow?: boolean; overdue?: boolean; ref?: number } = {},
+  ) => {
+    const countWindow = opts.countWindow ?? true;
+    const withOverdue = opts.overdue ?? true;
+    const open = openOf(s);
+    const inWindow = open && open.date <= date && date <= open.due ? open : null;
+    let left = amount;
+    let interest = 0;
+    let principal = 0;
+    let towardOverdue = 0;
+    let p1 = 0;
+    if (withOverdue) {
+      // 1. Kechikkan: jarima → kechikkan foiz → kechikkan asosiy
+      p1 = Math.min(left, s.pen);
+      s.pen = m(s.pen - p1);
+      left = m(left - p1);
+      const p2 = Math.min(left, s.ovI, s.billed);
+      s.ovI = m(s.ovI - p2);
+      s.billed = m(s.billed - p2);
+      left = m(left - p2);
+      // Kechikkan asosiy qarz — faqat asosiy (hisobotdan keyingi foiz keyingi ko'chirmaga, Infin 3.8.1)
+      const p3 = payPrincipal(s, Math.min(left, s.ovP), date, false);
+      s.ovP = m(Math.max(0, s.ovP - p3.principal));
+      left = m(left - p3.principal);
+      // Infin: kechikib ko'chirmaga tushgan asosiy qarz shu ko'chirma minimalining asosiy qismida — ikki marta so'ralmaydi
+      if (!isTbc && open && p3.principal > 0) open.minPrincipalPaid = m(open.minPrincipalPaid + p3.principal);
+      interest += p1 + p2;
+      principal += p3.principal;
+      // Kechikish yozuvlarida faqat to'lanmagan minimal (jarimasiz) — jarima to'lovi ularni qisqartirmaydi
+      towardOverdue = p2 + p3.principal;
+    }
+    if (inWindow && countWindow) {
+      // Oynadagi to'lov: ko'chirma kunidagi jarima minimal ichida, undan keyin yig'ilgani minimal ustiga
+      const fromMin = Math.min(p1, inWindow.minPenLeft);
+      inWindow.minPenLeft = m(inWindow.minPenLeft - fromMin);
+      inWindow.paid = m(inWindow.paid + amount - (p1 - fromMin));
+    }
+    // 2. Hisobotga tushgan foiz
+    const p4 = Math.min(left, s.billed);
+    s.billed = m(s.billed - p4);
+    left = m(left - p4);
+    interest += p4;
+    // 3a. Infin 3.8.2: minimal to'lovning asosiy qismi (5%) — eski qarzning hisobotdan keyingi foizidan oldin
+    if (!isTbc && left > eps) {
+      const st0 = openOf(s);
+      const need = st0 ? Math.max(0, st0.minimum - st0.minInterest - st0.minPrincipalPaid) : 0;
+      if (st0 && need > eps) {
+        const pm = payPrincipal(s, Math.min(left, need), date, false);
+        st0.minPrincipalPaid = m(st0.minPrincipalPaid + pm.principal);
+        left = m(left - pm.principal);
+        principal += pm.principal;
+      }
+    }
+    // 3. Asosiy qarz bank tartibida
+    const p5 = payPrincipal(s, left, date);
+    left = m(left - p5.principal - p5.interest);
+    interest += p5.interest;
+    principal += p5.principal;
+    // 4. Hisobotdan keyin yig'ilgan foiz
+    for (const b of s.buckets) {
+      if (!(left > eps)) break;
+      const t = Math.min(left, b.ub);
+      b.ub = m(b.ub - t);
+      left = m(left - t);
+      interest += t;
+    }
+    if (!withOverdue && left > eps) {
+      const p6 = Math.min(left, s.pen);
+      s.pen = m(s.pen - p6);
+      left = m(left - p6);
+      interest += p6;
+    }
+    // 5. Ortiqchasi — kartadagi o'z puli
+    if (left > eps) s.credit = m(s.credit + left);
+    if (inWindow && countWindow) inWindow.prinPaid = m(inWindow.prinPaid + principal);
+    if (isTbc && inWindow && countWindow && principal > eps) {
+      const riskNow = s.buckets.reduce((a, b) => a + (b.kind === 'grace' && b.period <= inWindow.date ? b.bg : 0) + b.wbg, 0);
+      const inc = m(Math.min(principal, Math.max(0, riskNow - inWindow.frozen)));
+      if (inc > 0) {
+        inWindow.frozen = m(inWindow.frozen + inc);
+        if (opts.ref != null) inWindow.frozenBy.push({ ref: opts.ref, amount: inc });
+      }
+    }
+    // Kechikish yozuvlari eng eskisidan kamayadi (avval — shu kungacha kechikish necha kun bo'lgani)
+    noteOverdueAge(s, date);
+    let o = towardOverdue;
+    for (const r of s.overdueRecs) {
+      if (!(o > eps)) break;
+      const t = Math.min(o, r.amount);
+      r.amount = m(r.amount - t);
+      o -= t;
+    }
+    s.overdueRecs = s.overdueRecs.filter((r) => r.amount > eps);
+    // Kechikkan qism qarzdan oshmaydi (tenglashtirish qarzni kamaytirsa ham)
+    s.ovP = m(Math.min(s.ovP, principalOf(s)));
+    s.ovI = m(Math.min(s.ovI, s.billed));
+    if (s.overdueSpans.some((sp) => sp.to == null) && overdueOf(s) <= eps) clearOverdue(s, date);
+    tidy(s);
+    return { interest: m(interest), principal: m(principal) };
+  };
+
+  /**
+   * Kartadagi o'z puli (credit) qarzni yopadi — bank yangi qarzni o'z pulidan yechadi (oynaga hisoblanmaydi).
+   * Odatda o'z puli bor paytda qarz bo'lmaydi; ko'chirma foizi va 5.7.3 foizi uchun
+   */
+  const useCredit = (s: CardState, date: string) => {
+    const debt = m(debtOf(s));
+    if (!(s.credit > eps) || !(debt > eps)) return;
+    const x = m(Math.min(s.credit, debt));
+    s.credit = m(s.credit - x);
+    s.creditInterest = m(s.creditInterest + pay(s, x, date, { countWindow: false }).interest);
+  };
+
+  const draw = (s: CardState, amount: number, fee: number, channel: DebtChannel, date: string) => {
+    let rest = m(amount + fee);
+    const fromCredit = Math.min(s.credit, rest);
+    s.credit = m(s.credit - fromCredit);
+    rest = m(rest - fromCredit);
+    if (rest > eps) {
+      const b = bucketFor(s, statementAfter(date, sDay), channel === 'purchase' ? 'grace' : 'cash');
+      b.principal = m(b.principal + rest);
+    }
+  };
+
+  /** To'lov kunining yakuni (keyingi kun boshida) */
+  const resolve = (s: CardState, st: CardStatement) => {
+    // Kartada o'z puli bo'lsa — bank to'lov kunida shundan yechadi (oynadagi to'lov kabi)
+    if (s.credit > eps && debtOf(s) > eps) {
+      const x = m(Math.min(s.credit, debtOf(s)));
+      s.credit = m(s.credit - x);
+      s.creditInterest = m(s.creditInterest + pay(s, x, st.due, { countWindow: true }).interest);
+    }
+    // To'lanmagan minimal shu qarzdan (yo'qolgan foiz qo'shilishidan oldin) oshmaydi
+    const billedBefore = s.billed;
+    const debtBefore = m(debtOf(s));
+    // Foizsiz davr: TBC — hisobot summasi to'langanmi (3.8); Infin — o'tgan oy xaridlari yopilganmi (2.7, 3.8)
+    const kept = isTbc
+      ? st.paid >= st.balance - eps
+      : !s.buckets.some((b) => b.kind === 'grace' && b.period <= st.date && b.principal > eps);
+    const waived = kept && !st.noWaiver;
+    let lostInterest = 0;
+    for (const b of s.buckets) {
+      if (b.kind === 'grace' && b.period <= st.date) {
+        if (!waived) lostInterest += b.bg;
+        b.bg = 0;
+        // Kechirilganda ham yopilmay qolgan qism — endi foizli (qayta foizsiz davr yo'q)
+        if (!waived || b.principal > eps) b.kind = 'lost';
+      }
+      if (b.wbg > 0) {
+        if (!waived) lostInterest += b.wbg;
+        b.wbg = 0;
+      }
+    }
+    lostInterest = m(lostInterest);
+    // Kartada o'z puli qolgan bo'lsa (masalan, 5.7.3 da "Hammasi" to'langan) — yo'qolgan foiz avval shundan yechiladi
+    if (lostInterest > 0 && s.credit > eps) {
+      const c = m(Math.min(s.credit, lostInterest));
+      s.credit = m(s.credit - c);
+      s.creditInterest = m(s.creditInterest + c);
+      lostInterest = m(lostInterest - c);
+    }
+    if (lostInterest > 0) {
+      if (isTbc) {
+        // TBC FAQ: to'lovning bir qismi xarid foizi uchun muzlatiladi — oynada asosiy qarzga ketgan pul avval shu foizni yopadi
+        const x = Math.min(lostInterest, st.frozen);
+        if (x > 0) {
+          bucketFor(s, st.date, 'lost').principal = m(bucketFor(s, st.date, 'lost').principal + x);
+          // Shu pul qaysi to'lovdan muzlatilgan bo'lsa — o'sha to'lovning foiz qismi (eskisidan)
+          let rest = x;
+          for (const r of st.frozenBy) {
+            if (!(rest > eps)) break;
+            const t = m(Math.min(rest, r.amount));
+            if (t > 0 && onReclass) onReclass(r.ref, t, st);
+            rest = m(rest - t);
+          }
+          // Yozuvga bog'lanmagan qismi (to'lov kuni o'z pulidan yechilgani)
+          if (rest > eps && onReclass) onReclass(null, rest, st);
+        }
+        s.billed = m(s.billed + lostInterest - x);
+      } else s.billed = m(s.billed + lostInterest);
+    }
+    tidy(s);
+    st.kept = waived;
+    st.resolved = true;
+    if (st.paid < st.minimum - eps) {
+      // To'lanmagan minimal: asosiy qismi — minimalning asosiy qismidan oynada asosiy qarzga ketgani ayirilgani;
+      // foiz qismi — ko'chirmadagi foizdan to'lanmagani (ko'chirma kunidagi jarima pen da qoladi)
+      const unpaid = m(Math.min(st.minimum - st.paid, debtBefore));
+      const principalPart = m(Math.min(unpaid, Math.max(0, st.minimum - st.minInterest - st.prinPaid)));
+      const ovP = m(Math.min(principalPart, principalOf(s)));
+      const ovI = m(Math.min(billedBefore, s.billed, Math.max(0, unpaid - principalPart - st.minPenLeft)));
+      const prevOvP = s.ovP;
+      const hadOverdue = s.overdueSpans.some((sp) => sp.to == null);
+      s.ovP = ovP;
+      s.ovI = ovI;
+      // Qarzi qolmagan ko'chirma kechikmaydi
+      if (ovP + ovI > eps) {
+        st.overdue = true;
+        const known = s.overdueRecs.reduce((a, r) => a + r.amount, 0);
+        if (unpaid - known > eps) s.overdueRecs.push({ date: st.due, amount: m(unpaid - known) });
+        if (!hadOverdue) {
+          s.overdueSpans.push({ from: addDaysIso(st.due, 1), to: null });
+          s.penCap = m(0.5 * principalOf(s));
+          s.penSince = 0;
+        }
+        const newOvP = Math.max(0, s.ovP - prevOvP);
+        if (rules.penalty.fromStatement && newOvP > eps) {
+          // TBC tarif: hisobot sanasidan — 1-kun 10%, keyin har kuni 0,4% (S+1 … D)
+          addPen(s, (newOvP * rules.penalty.firstDayPct) / 100 + (newOvP * rules.penalty.dailyPct * dayDiff(st.date, st.due)) / 100);
+        }
+        if (!s.penaltyFrom) s.penaltyFrom = addDaysIso(st.due, 1);
+      } else if (hadOverdue && overdueOf(s) <= eps) clearOverdue(s, addDaysIso(st.due, 1));
+    }
+  };
+
+  /** Kun boshigacha: to'lov kunlari yakuni va hisobotlar (sana tartibida), keyin foiz */
+  const advanceTo = (s: CardState, date: string) => {
+    for (let guard = 0; guard < 10_000; guard += 1) {
+      const open = openOf(s);
+      const resolveAt = open ? addDaysIso(open.due, 1) : null;
+      const nextS = statementAfter(s.lastStmt, sDay);
+      const at = resolveAt && resolveAt <= nextS ? resolveAt : nextS;
+      if (at > date) break;
+      accrueTo(s, at);
+      if (open && resolveAt === at) resolve(s, open);
+      else issueStatement(s, nextS);
+    }
+    accrueTo(s, date);
+  };
+
+  // ── Boshlang'ich holat (bank ilovasidan) ──
+  const B0 = Math.max(0, terms.openingBalance ?? 0);
+  const revolving = terms.openingRevolving === true;
+  const S0 = statementOnOrBefore(T0, sDay);
+  const D0 = dueOf(S0);
+  const st: CardState = {
+    buckets: [],
+    billed: 0,
+    pen: 0,
+    credit: 0,
+    creditInterest: 0,
+    statements: [],
+    lastStmt: S0,
+    cursor: T0,
+    ovP: 0,
+    ovI: 0,
+    overdueRecs: [],
+    overdueSpans: [],
+    maxOd: 0,
+    penaltyFrom: null,
+    penaltyTotal: 0,
+    penCap: 0,
+    penSince: 0,
+  };
+  const curPeriod = statementAfter(T0, sDay);
+  const midOf = (a: string, b: string) => addDaysIso(a, Math.floor(Math.max(0, dayDiff(a, b)) / 2));
+  // Foizsiz davrdagi boshlang'ich xaridlar foizi: aniq xarid kunlari noma'lum — davr o'rtasidan (taxmin)
+  const openingBg = (amount: number, from: string) => (from < T0 ? m(interestFor(amount, rate, from, T0, 'act365')) : 0);
+  const odOpen = Math.max(0, terms.openingOverdue ?? 0);
+  if (T0 <= D0) {
+    // Oxirgi hisobot to'lovi kutilmoqda: ilovadagi "to'lash kerak" va "minimal to'lov" (qolgani)
+    const left = m(Math.min(B0, Math.max(0, terms.openingBilled ?? B0)));
+    const minLeft = m(Math.min(left, Math.max(0, terms.openingMin ?? minPct * left)));
+    let minInterest = 0;
+    let base = left;
+    if (left > eps) {
+      if (revolving) {
+        // Foizli aylanuvchi qarz: minimal = N% asosiy + foiz → asosiy va foiz qismi
+        const P0 = minPct < 1 ? Math.min(left, Math.max(0, (left - minLeft) / (1 - minPct))) : left;
+        bucketFor(st, S0, 'lost').principal = m(P0);
+        st.billed = m(left - P0);
+        minInterest = Math.min(minLeft, st.billed);
+        base = m(P0);
+      } else {
+        const b = bucketFor(st, S0, 'grace');
+        b.principal = left;
+        b.bg = openingBg(left, addDaysIso(S0, -15));
+      }
+    }
+    const rest = m(B0 - left);
+    if (rest > eps) {
+      const b = bucketFor(st, curPeriod, 'grace');
+      b.principal = rest;
+      b.bg = openingBg(rest, midOf(S0, T0));
+    }
+    if (left > eps)
+      st.statements.push({
+        k: 1,
+        date: S0,
+        due: D0,
+        balance: left,
+        minimum: minLeft,
+        minInterest,
+        base,
+        paid: 0,
+        frozen: 0,
+        frozenBy: [],
+        minPrincipalPaid: 0,
+        prinPaid: 0,
+        minPenLeft: 0,
+        resolved: false,
+        kept: null,
+        overdue: false,
+        noWaiver: rules.noGraceAfterOverdue && odOpen > eps,
+        // Infin: foizli aylanuvchi qarzda xarid yo'q; TBC: foizli xarid qarzining ham hisobotdan keyingi foizi kechiriladi
+        hadGrace: isTbc || !revolving,
+      });
+  } else if (B0 > eps) {
+    if (revolving) bucketFor(st, S0, 'lost').principal = m(B0);
+    else {
+      const b = bucketFor(st, curPeriod, 'grace');
+      b.principal = m(B0);
+      b.bg = openingBg(B0, midOf(S0, T0));
+    }
+  }
+  if (odOpen > eps) {
+    // Ilovadagi muddati o'tgan summa: asosiy qarz deb (taxmin); jarima kuzatuvdan boshlab
+    st.ovP = m(Math.min(odOpen, B0));
+    const lastDue = D0 < T0 ? D0 : dueOf(statementMonthsBefore(S0, 1, sDay));
+    st.overdueRecs.push({ date: lastDue, amount: st.ovP });
+    st.overdueSpans.push({ from: T0, to: null });
+    st.penaltyFrom = T0;
+    st.penCap = m(0.5 * B0);
+  }
+
+  // ── Yozuvlar ──
+  const order = entries
+    .map((e, idx) => ({ e, idx }))
+    .sort((a, b) =>
+      a.e.date !== b.e.date
+        ? a.e.date < b.e.date
+          ? -1
+          : 1
+        : (a.e.createdAt ?? '') !== (b.e.createdAt ?? '')
+          ? (a.e.createdAt ?? '') < (b.e.createdAt ?? '')
+            ? -1
+            : 1
+          : (a.e.id ?? '') !== (b.e.id ?? '')
+            ? (a.e.id ?? '') < (b.e.id ?? '')
+              ? -1
+              : 1
+            : a.idx - b.idx,
+    );
+  const results: DebtEntryResult[] = entries.map(() => ({ split: null, balanceAfter: 0, historical: false }));
+  let received = B0;
+  let used = B0;
+  let paidTotal = 0;
+  let interestPaid = 0;
+  // Muzlatilgan pul foizga o'tganda: to'lovning foiz qismi ko'payadi, undan keyingi qoldiqlar ham
+  // (to'lov kunining yakunigacha) shuncha ko'p bo'lgan. processed — order bo'yicha ishlangan yozuvlar soni
+  const posOf: number[] = [];
+  order.forEach(({ idx }, p) => {
+    posOf[idx] = p;
+  });
+  let processed = 0;
+  onReclass = (ref, t) => {
+    // Yozuvsiz qismi (o'z pulidan yechilgan) — faqat to'langan foizga
+    if (ref == null) {
+      interestPaid += t;
+      return;
+    }
+    if (!(ref >= 0) || !results[ref]) return;
+    const r = results[ref];
+    if (r.split) r.split = { interest: m(r.split.interest + t), principal: m(r.split.principal - t) };
+    interestPaid += t;
+    for (let p = posOf[ref]; p < processed; p += 1) {
+      const rr = results[order[p].idx];
+      if (!rr.historical) rr.balanceAfter = m(rr.balanceAfter + t);
+    }
+  };
+  for (let p = 0; p < order.length; p += 1) {
+    const { e, idx } = order[p];
+    processed = p;
+    const r = results[idx];
+    const amount = Math.max(0, e.amount || 0);
+    if (e.date < T0) {
+      // Kuzatuvdan oldingi yozuv: qarz bank ilovasidan olingan, unda bu bor
+      r.historical = true;
+      if (e.kind === 'pay') paidTotal += amount;
+      else if (e.kind === 'draw' || e.kind === 'use') used += amount;
+      r.balanceAfter = m(principalOf(st));
+      continue;
+    }
+    advanceTo(st, e.date);
+    if (e.kind === 'draw' || e.kind === 'use') {
+      const channel: DebtChannel = e.channel ?? 'purchase';
+      const fee = channel === 'purchase' ? 0 : Math.max(0, e.fee ?? 0);
+      draw(st, amount, fee, channel, e.date);
+      received += amount + fee;
+      used += amount;
+    } else if (e.kind === 'pay') {
+      r.split = pay(st, amount, e.date, { ref: idx });
+      paidTotal += amount;
+      interestPaid += r.split.interest;
+    } else if (e.kind === 'adjust') {
+      // Bank ilovasidagi qarz: faqat farq — ortig'i joriy davr xaridi, kami bank tartibida kamayadi;
+      // hisobotlar, foizli qarz va kechikish o'z joyida qoladi. Bank ko'rsatgan qarz o'z puli ayirilgani
+      if (amount > eps) st.credit = 0;
+      const T = debtOf(st);
+      if (amount > T + eps) {
+        const b = bucketFor(st, statementAfter(e.date, sDay), 'grace');
+        b.principal = m(b.principal + amount - T);
+      } else if (amount < T - eps) {
+        pay(st, m(T - amount), e.date, { countWindow: false, overdue: false });
+        // Ochiq ko'chirma qolgan qarzdan katta emas: summasi va minimali shu bilan cheklanadi
+        const o = openOf(st);
+        if (o) {
+          const cap = m(o.paid + debtOf(st));
+          o.balance = Math.min(o.balance, cap);
+          o.minimum = Math.min(o.minimum, cap);
+          o.minInterest = Math.min(o.minInterest, o.minimum);
+          o.minPenLeft = Math.min(o.minPenLeft, st.pen);
+        }
+      }
+    }
+    r.balanceAfter = m(principalOf(st));
+  }
+  processed = order.length;
+  advanceTo(st, today);
+  interestPaid += st.creditInterest;
+
+  // ── Bugungi holat ──
+  const P = m(principalOf(st));
+  const ubNow = m(ubOf(st));
+  const open = openOf(st);
+  const odTotal = m(overdueOf(st));
+  // Infin 3.5: 90 kundan ko'p kechikkan karta to'langandan keyin ham bloklangan qoladi (muddati tugaguncha)
+  const odAge = Math.max(st.maxOd, st.overdueRecs.length ? dayDiff(st.overdueRecs[0].date, today) : 0);
+  const blockedForGood = rules.blockAfterOverdueDays != null && odAge >= rules.blockAfterOverdueDays;
+  const blocked = odTotal > eps || blockedForGood;
+  const statusOf = (date: string): DebtDueStatus => {
+    const d = dayDiff(today, date);
+    return d < 0 ? 'overdue' : d === 0 ? 'today' : d <= DEBT_LIMITS.soonDays ? 'soon' : 'upcoming';
+  };
+  const riskFor = (s: CardState, S: string) =>
+    m(s.buckets.reduce((a, b) => a + (b.kind === 'grace' && b.period <= S ? b.bg : 0) + b.wbg, 0));
+  /**
+   * Foizsiz davr yo'qolsa to'lov kunining yakunida qo'shiladigan foiz — bundan keyin to'lov bo'lmasa.
+   * Bugungacha yig'ilgani emas: ko'chirma kuni u hali kichik, to'lov kunigacha o'sadi
+   */
+  const riskAtDue = (s: CardState, x: CardStatement) => {
+    const c = cloneCard(s);
+    accrueTo(c, addDaysIso(x.due, 1));
+    return riskFor(c, x.date);
+  };
+  /** Foizsiz qolish uchun hozir to'lash kerak qolgani */
+  const graceLeftFor = (s: CardState, x: CardStatement): number => {
+    if (isTbc) return m(Math.max(0, x.balance - x.paid));
+    // Infin: o'tgan oy xaridlarigacha bank tartibidagi hamma narsa (kechikkan, foiz, eski foizsiz-davrsiz qarz)
+    const old = s.buckets.filter((b) => b.period <= x.date);
+    const before = old.filter((b) => b.kind !== 'grace').reduce((a, b) => a + b.principal + b.ub, 0);
+    const purchases = old.filter((b) => b.kind === 'grace').reduce((a, b) => a + b.principal, 0);
+    return purchases > eps ? m(s.pen + s.billed + before + purchases) : 0;
+  };
+  const toDue = (x: CardStatement, remaining: number, estimate: boolean, s: CardState): DebtDue => {
+    // Ko'chirmada foizsiz qoladigan narsa yo'q (grace.state 'none') — "foizsiz qolish uchun" ham, xavf ham 0
+    const none = !x.noWaiver && !x.hadGrace;
+    const graceLeft = none ? 0 : graceLeftFor(s, x);
+    return {
+      k: x.k,
+      date: x.due,
+      amount: x.minimum,
+      interest: x.minInterest,
+      principal: m(x.minimum - x.minInterest),
+      paid: m(x.paid),
+      remaining,
+      daysLeft: dayDiff(today, x.due),
+      status: statusOf(x.due),
+      final: false,
+      // "(24 kun)" kabi noto'g'ri izoh chiqmasin: kartada foiz kunlik qoldiqdan
+      explain: { base: x.base, days: 0, dayCount: 'act365', annualRate: rate },
+      card: {
+        statementDate: x.date,
+        statementBalance: x.balance,
+        graceLeft,
+        // To'liq to'langan ko'chirmada xavf yo'q (yig'ilgani kechiriladi); 5.7.3 da — baribir qo'shiladi
+        graceRisk: !none && (graceLeft > eps || x.noWaiver) ? riskAtDue(s, x) : 0,
+        estimate,
+      },
+    };
+  };
+
+  // ── Kelgusi to'lovlar: har oy faqat minimal to'lanadi deb ──
+  const sim = cloneCard(st);
+  const rows: DebtScheduleRow[] = [];
+  /** Qator qaysi ko'chirmaniki (k); kechikkan qator — null */
+  const rowStmt: (number | null)[] = [];
+  let firstEstimate: DebtDue | null = null;
+  /**
+   * TBC: qator to'lovining muzlatilgan qismi foizga o'tdi — o'sha qatorning foiz qismi ko'payadi, asosiy qismi kamayadi
+   * (muzlatilgani shu to'lov asosiy qarzga ketganidan oshmaydi; baribir 0 dan pastga tushirilmaydi). Qaytaradi: o'tgani
+   */
+  const shift = (i: number, t: number): number => {
+    const row = rows[i];
+    const x = m(Math.min(t, Math.max(0, row.principal)));
+    if (!(x > 0)) return 0;
+    row.interest = m(row.interest + x);
+    row.principal = m(row.principal - x);
+    for (let j = i; j < rows.length; j += 1) rows[j].balance = m(rows[j].balance + x);
+    return x;
+  };
+  /**
+   * Bugungacha yozilgan to'lovning muzlatilgan puli foizni yopdi — bugungi qoldiqdan qaraganda asosiy qarz shuncha
+   * oshadi: alohida 'charge' qatori (D+1): to'lov 0, foiz t, asosiy −t, qoldiq t ga oshadi. Bir ko'chirmaga bitta
+   */
+  const charge = (t: number, x: CardStatement) => {
+    const i = rows.length - 1;
+    const last = i >= 0 ? rows[i] : null;
+    if (last && last.kind === 'charge' && rowStmt[i] === x.k) {
+      last.interest = m(last.interest + t);
+      last.principal = m(last.principal - t);
+      last.balance = m(last.balance + t);
+      return;
+    }
+    const date = addDaysIso(x.due, 1);
+    rows.push({
+      date,
+      payment: 0,
+      interest: m(t),
+      principal: m(-t),
+      balance: m((last ? last.balance : P) + t),
+      status: date < today ? 'overdue' : 'future',
+      kind: 'charge',
+    });
+    rowStmt.push(x.k);
+  };
+  onReclass = (ref, t, x) => {
+    if (ref != null && ref < 0 && rows[-ref - 1]) {
+      const used = shift(-ref - 1, t);
+      if (t - used > eps) charge(m(t - used), x);
+      return;
+    }
+    charge(t, x);
+  };
+  const pushRow = (row: DebtScheduleRow, k: number | null) => {
+    rows.push(row);
+    rowStmt.push(k);
+  };
+  if (odTotal > eps) {
+    const split = pay(sim, odTotal, today, { ref: -(rows.length + 1) });
+    const oldest = st.overdueRecs.length ? st.overdueRecs[0].date : today;
+    pushRow(
+      { date: oldest, payment: odTotal, interest: split.interest, principal: split.principal, balance: m(principalOf(sim)), status: 'overdue' },
+      null,
+    );
+  }
+  for (let guard = 0; guard < DEBT_LIMITS.projectionMonths; guard += 1) {
+    if (debtOf(sim) <= eps) break;
+    let pend = openOf(sim);
+    if (!pend) {
+      advanceTo(sim, statementAfter(sim.lastStmt, sDay));
+      pend = openOf(sim);
+      if (!pend) continue;
+    }
+    const at = pend.due < today ? today : pend.due;
+    advanceTo(sim, at);
+    const debtNow = m(debtOf(sim));
+    // Kichik qoldiq to'liq yopiladi (jadval cheksiz kamayib bormasin — taxmin)
+    const want = principalOf(sim) <= MIN_FLOOR[cur] ? debtNow : m(Math.max(0, pend.minimum - pend.paid));
+    const amount = Math.min(want, debtNow);
+    if (amount > eps) {
+      if (!firstEstimate && !(open && pend.k === open.k)) firstEstimate = { ...toDue(pend, amount, true, sim), remaining: amount };
+      const split = pay(sim, amount, at, { ref: -(rows.length + 1) });
+      pushRow(
+        {
+          date: pend.due,
+          payment: amount,
+          interest: split.interest,
+          principal: split.principal,
+          balance: m(principalOf(sim)),
+          status: pend.due < today ? 'overdue' : open && pend.k === open.k ? 'due' : 'future',
+        },
+        pend.k,
+      );
+    }
+    advanceTo(sim, addDaysIso(at, 1));
+  }
+  onReclass = null;
+
+  let next: DebtDue | null = null;
+  let paidDue: DebtDue | null = null;
+  if (odTotal > eps) {
+    // Kechikkan bor — birinchi navbatda shu (bank kartani bloklagan)
+    const oldest = st.overdueRecs.length ? st.overdueRecs[0].date : today;
+    next = {
+      k: open ? open.k : st.statements.length,
+      date: oldest,
+      amount: odTotal,
+      interest: m(st.ovI + st.pen),
+      principal: m(st.ovP),
+      paid: 0,
+      remaining: odTotal,
+      daysLeft: dayDiff(today, oldest),
+      status: 'overdue',
+      final: false,
+      explain: { base: m(st.ovP), days: 0, dayCount: 'act365', annualRate: rate },
+    };
+  } else if (open && open.minimum - open.paid > eps) next = toDue(open, m(open.minimum - open.paid), false, st);
+  else next = firstEstimate;
+  if (open && open.minimum > eps && open.paid >= open.minimum - eps) paidDue = toDue(open, 0, false, st);
+
+  const overdue =
+    odTotal > eps
+      ? {
+          count: Math.max(1, st.overdueRecs.length),
+          amount: odTotal,
+          days: Math.max(0, dayDiff(st.overdueRecs.length ? st.overdueRecs[0].date : today, today)),
+        }
+      : null;
+
+  const paidOff = debtOf(sim) <= eps;
+  const payoffDate = P + st.billed + ubNow + st.pen <= eps ? null : paidOff && rows.length ? maxIso(rows[rows.length - 1].date, today) : null;
+  const interestLeft = paidOff ? m(rows.reduce((a, r) => a + r.interest, 0)) : null;
+  const horizon = addDaysIso(today, DEBT_LIMITS.horizonDays);
+  const soonRows = rows.filter((r) => r.date <= horizon && r.payment > eps);
+  const sumKind = (k: CardBucket['kind']) => st.buckets.reduce((a, b) => a + (b.kind === k ? b.principal : 0), 0);
+  const graceDebt = sumKind('grace');
+  const lostDebt = sumKind('lost');
+  const cashDebt = m(sumKind('cash'));
+  const accrued = m(st.billed + ubNow + st.pen);
+  const nextStmt = open ? statementAfter(open.date, sDay) : statementAfter(st.lastStmt, sDay);
+  /**
+   * TBC 5.7.3: shu ko'chirmadan boshlab xarid foizi yana kechiriladi — kechikish tugagan kun (ochiq bo'lsa — bugun
+   * yopiladi deb) ko'chirmadan 2 davr oldingi sanadan oshmasa (hisobdagi noWaiver sinovi bilan bir xil)
+   */
+  const waiverStart = (() => {
+    if (!rules.noGraceAfterOverdue || !st.overdueSpans.length) return null;
+    const end = st.overdueSpans.some((sp) => sp.to == null)
+      ? today
+      : st.overdueSpans.reduce((a, sp) => (sp.to != null && sp.to > a ? sp.to : a), '');
+    let S = statementAfter(end, sDay);
+    for (let i = 0; i < 12 && statementMonthsBefore(S, 2, sDay) < end; i += 1) S = statementAfter(S, sDay);
+    return S;
+  })();
+  // Ochiq va keyingi ko'chirma ham undan keyin bo'lsa — cheklov yo'q
+  const waiverFrom = waiverStart != null && ((open != null && open.date < waiverStart) || nextStmt < waiverStart) ? waiverStart : null;
+  // Bugun to'liq yopilsa ham 5.7.3 bo'yicha qo'shiladigan xarid foizi: ochiq ko'chirmaniki (noWaiver) va
+  // waiverFrom gacha keladigan ko'chirmalarga tushadigan xaridlarniki (to'lov kuni / ko'chirma kuni bank yechadi)
+  const curEnd = open ? open.date : st.lastStmt;
+  const forfeited = m(
+    (open && open.noWaiver ? riskFor(st, open.date) : 0) +
+      (waiverStart
+        ? st.buckets.reduce((a, b) => a + (b.kind === 'grace' && b.period > curEnd && b.period < waiverStart ? b.bg : 0), 0)
+        : 0),
+  );
+  const graceInfo =
+    open && open.balance > eps
+      ? (() => {
+          const lost = open.noWaiver;
+          // Ko'chirmada foizsiz qoladigan narsa yo'q (faqat naqd/o'tkazma yoki eski foizli qarz) — "bajarildi" emas
+          const none = !lost && !open.hadGrace;
+          const left = none ? 0 : graceLeftFor(st, open);
+          return {
+            statementDate: open.date,
+            due: open.due,
+            balance: open.balance,
+            left,
+            // To'lov kunining yakunida qo'shiladigani (bugungacha yig'ilgani emas)
+            risk: !none && (left > eps || lost) ? riskAtDue(st, open) : 0,
+            state: lost ? ('lost' as const) : none ? ('none' as const) : ('open' as const),
+          };
+        })()
+      : null;
+
+  const calc: DebtCalc = {
+    principal: P,
+    accruedInterest: accrued,
+    // O'z puli 5.7.3 foizini ham yopadi (to'lov kuni bank yechadi)
+    payoff: m(Math.max(0, P + accrued + forfeited - st.credit)),
+    monthlyInterest: m((lostDebt * rate + cashDebt * cashRate) / 1200),
+    received: m(received),
+    used: m(used),
+    unused: null,
+    freeLimit: blocked ? 0 : m(Math.max(0, limit - P) + st.credit),
+    paid: m(paidTotal),
+    interestPaid: m(interestPaid),
+    overpaid: m(st.credit),
+    monthlyPayment: next ? { amount: next.remaining, source: 'calculated' } : null,
+    next,
+    paidDue,
+    overdue,
+    payoffDate,
+    interestLeft,
+    progressPct: limit > 0 ? round(Math.min(100, (P / limit) * 100), 1) : 0,
+    belowInterest: false,
+    state: terms.archivedAt ? 'archived' : 'active',
+    card: {
+      graceRisk: m(st.buckets.reduce((a, b) => a + (b.kind === 'grace' ? b.bg : 0) + b.wbg, 0)),
+      penalty: m(st.pen),
+      cashDebt,
+      purchaseDebt: m(P - cashDebt),
+      grace: graceInfo,
+      nextStatement: { date: nextStmt, due: dueOf(nextStmt) },
+      graceMonthly: m((graceDebt * rate) / 1200),
+      blocked,
+      waiverFrom,
+      blockedForGood,
+    },
+  };
+  return {
+    calc,
+    schedule: rows,
+    entries: results,
+    soon: { amount: m(soonRows.reduce((a, r) => a + r.payment, 0)), count: soonRows.length },
+  };
+}
+
 /** Faqat bugungi holat */
 export const computeDebt = (terms: DebtTerms, entries: ReadonlyArray<DebtLedgerEntry>, today: string): DebtCalc =>
   analyzeDebt(terms, entries, today).calc;
@@ -983,6 +2333,10 @@ export interface DebtEntryRow extends DebtEntryResult {
   note: string;
   interest: number | null;
   createdAt: string;
+  /** Tayyor karta, draw: xarid · o'tkazma · naqd (null — xarid yoki boshqa yozuv) */
+  channel: DebtChannel | null;
+  /** Tayyor karta, draw: bank komissiyasi */
+  fee: number | null;
 }
 
 export interface DebtDetail extends DebtSummary {

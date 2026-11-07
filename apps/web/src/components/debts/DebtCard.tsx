@@ -6,14 +6,17 @@
  * Chap tomonda — qancha qoldi va qanchasi to'landi, o'ngda — keyingi to'lov:
  * qachon, qancha va shundan foiz. Pastda — olingan pul nimaga ketgani
  * (kartada — limit va bo'sh qismi).
+ *
+ * Tayyor kartada (TBC Osmon, Infin Black) keyingi to'lov ostida — foizsiz qolish
+ * uchun qancha va qachongacha (bo'lmasa — keyingi ko'chirma sanasi).
  */
 import { useNavigate } from 'react-router-dom';
-import { formatDebtMoney, type DebtSummary } from '@savdoiq/shared';
+import { CARD_PRODUCTS, formatDebtMoney, isCardProduct, type DebtSummary } from '@savdoiq/shared';
 import { ArrowRight, CircleCheck, Lock, ShoppingBag } from '@/components/icons';
 import { Amount, Badge, Button, Card, ProgressBar } from '@/components/ui';
 import { useFormat, useT } from '@/i18n';
 import { KIND_ICON } from './kinds';
-import { categoryLabel, dueChip, interestFromDays, rateText, repaymentText } from './format';
+import { categoryLabel, dueChip, dueShown, graceView, interestFromDays, rateText, repaymentText } from './format';
 import type { EntryMode } from './EntryModal';
 
 export function DebtCard({
@@ -41,6 +44,14 @@ export function DebtCard({
   const open = () => navigate(`/debts/${debt.id}`);
   // Avvaldan bor kreditda ishlatish yozilmaguncha bu qator bo'sh qoladi
   const showUsage = isCard || calc.unused !== null || calc.used > 0 || debt.lastUse !== null;
+  const product = isCard && isCardProduct(terms.cardProduct) ? CARD_PRODUCTS[terms.cardProduct] : null;
+  const pc = product ? calc.card : undefined;
+  // Foizsiz qolish holati: summa bugungi yopish summasidan oshmaydi (xavfsizlik to'ri, web-2); 'none' — qator yo'q
+  const gv = pc ? graceView(calc) : null;
+  // Tayyor kartada nom bo'sh qolsa karta nomi yoziladi — u holda takrorlanmasin
+  const subtitle = product
+    ? [debt.title && debt.title !== product.name ? debt.title : '', `${product.bank} ${product.name}`].filter(Boolean).join(' · ')
+    : debt.title || t(`kind.${debt.kind}`);
 
   return (
     // Klaviatura uchun "Batafsil" tugmasi bor — kartochkaning o'zi fokuslanmaydi (ichida tugmalar bor)
@@ -53,8 +64,8 @@ export function DebtCard({
           <p className="truncate font-semibold text-ink" title={debt.lender}>
             {debt.lender}
           </p>
-          <p className="truncate text-xs text-muted" title={debt.title || undefined}>
-            {debt.title || t(`kind.${debt.kind}`)}
+          <p className="truncate text-xs text-muted" title={product ? subtitle : debt.title || undefined}>
+            {subtitle}
           </p>
         </div>
       </div>
@@ -90,13 +101,23 @@ export function DebtCard({
           {next ? (
             <>
               <p className="tnum mt-0.5 text-[15px] font-semibold leading-snug text-ink">
-                {f.dateShort(next.date)} — <Amount value={m(next.remaining)} nowrap />
+                {/* Ko'chirma hali chiqmagan — minimal taxminiy */}
+                {f.dateShort(next.date)} — {next.card?.estimate ? '≈ ' : ''}
+                <Amount value={m(dueShown(next.remaining, calc, pc !== undefined))} nowrap />
               </p>
               {/*
-               * Foiz — butun to'lovniki: qisman to'langanda qolgan summa yonida ko'rsatilmaydi (to'lov avval
+               * Tayyor kartada — foizsiz qolish uchun qancha (ochiq ko'chirma), bo'lmasa keyingi ko'chirma sanasi
+               * (ko'chirmada foizsiz qism yo'q — 'none', yoki 5.7.3 — 'lost': ham ko'chirma sanasi).
+               * Boshqasida foiz — butun to'lovniki: qisman to'langanda qolgan summa yonida ko'rsatilmaydi (to'lov avval
                * foizga tushadi, qolgani asosan asosiy qarz). Ilgari "825 299 · shundan foiz ≈ 1 150 685" chiqardi
                */}
-              {next.interest > 0 && next.remaining === next.amount ? (
+              {pc ? (
+                <p className="tnum mt-0.5 text-xs text-muted">
+                  {gv?.kind === 'open'
+                    ? t('card.grace', { sum: m(gv.left), date: f.dateShort(gv.due) })
+                    : t('card.stmt', { date: f.dateShort(pc.nextStatement.date) })}
+                </p>
+              ) : next.interest > 0 && next.remaining === next.amount ? (
                 <p className="tnum mt-0.5 text-xs text-muted">
                   {/* "(31 kun)" faqat foiz shu kunlardan chiqqanda: erta to'lov yoki xariddan keyin kunlar boshqa */}
                   {interestFromDays(next, terms.currency)
@@ -121,8 +142,12 @@ export function DebtCard({
           {isCard ? (
             <p>
               {t('card.limit', { limit: m(terms.amount) })} ·{' '}
-              {/* Bo'sh limit — ko'k (neytral), qarz emas */}
-              <span className="font-medium text-info-ink">{t('card.free', { sum: m(calc.freeLimit ?? 0) })}</span>
+              {/* Bo'sh limit — ko'k (neytral), qarz emas; kechikish sababli bank bloklagan bo'lsa — qizil */}
+              {pc?.blocked ? (
+                <span className="font-medium text-danger-ink">{t('stat.blocked')}</span>
+              ) : (
+                <span className="font-medium text-info-ink">{t('card.free', { sum: m(calc.freeLimit ?? 0) })}</span>
+              )}
             </p>
           ) : calc.unused !== null || calc.used > 0 ? (
             <p>

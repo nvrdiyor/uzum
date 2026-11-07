@@ -8,6 +8,7 @@
  * oddiy sikl bilan tekshiriladi.
  */
 import {
+  CARD_PRODUCTS,
   DEBT_CATEGORIES,
   dayDiff,
   formatDebtMoney,
@@ -16,6 +17,7 @@ import {
   parseISODate,
   toISODate,
   type DebtCalc,
+  type DebtCardProduct,
   type DebtCategory,
   type DebtCurrency,
   type DebtCurrencyTotals,
@@ -263,6 +265,37 @@ export function dueChip(calc: DebtCalc, t: TFunc): { tone: Tone; label: string }
   return { tone: 'muted', label: t('status.noDate') };
 }
 
+/**
+ * Tayyor karta: ko'rsatiladigan to'lov summasi bugungi yopish summasidan oshmaydi (xavfsizlik to'ri — qoldiq
+ * tenglashtirilib kamaytirilgan ochiq ko'chirmada eski minimal qarzdan katta chiqib qolmasin, web-2). Boshqa
+ * qarzlarda o'zgarmaydi: oxirgi to'lovda hali yig'ilmagan foiz bo'ladi (u bugungi yopishdan katta)
+ */
+export const dueShown = (remaining: number, calc: Pick<DebtCalc, 'payoff'>, productCard: boolean): number =>
+  productCard ? Math.min(remaining, calc.payoff) : remaining;
+
+/**
+ * Tayyor kartaning "Foizsiz qolish uchun" va "Foiz xavfi" holati:
+ *  • archived — arxivda so'ralmaydi ("Keyingi to'lov" kabi "—");
+ *  • noStatement — ochiq ko'chirma yo'q (keyingisi qachon);
+ *  • none — ko'chirmada foizsiz bo'ladigan narsa yo'q (faqat naqd/o'tkazma yoki foizli qarz): "bajarildi" EMAS;
+ *  • lost — TBC 5.7.3: kechikish sababli kechirilmaydi; done — to'liq to'langan; open — yana `left` to'lash kerak.
+ * `left` bugungi yopish summasidan oshmaydi (xavfsizlik to'ri, web-2)
+ */
+export type GraceView =
+  | { kind: 'archived' }
+  | { kind: 'noStatement' }
+  | { kind: 'none' }
+  | { kind: 'open' | 'done' | 'lost'; left: number; risk: number; due: string };
+
+export function graceView(calc: Pick<DebtCalc, 'state' | 'payoff' | 'card'>): GraceView {
+  if (calc.state !== 'active') return { kind: 'archived' };
+  const g = calc.card?.grace ?? null;
+  if (!g) return { kind: 'noStatement' };
+  if (g.state === 'none') return { kind: 'none' };
+  const left = Math.max(0, Math.min(g.left, calc.payoff));
+  return { kind: g.state === 'lost' ? 'lost' : left > 0 ? 'open' : 'done', left, risk: g.risk, due: g.due };
+}
+
 const isCategory = (v: string): v is DebtCategory => (DEBT_CATEGORIES as readonly string[]).includes(v);
 
 /** Bazadagi turkum ("" yoki eskisi) — ro'yxatdagi biriga */
@@ -297,9 +330,62 @@ export function nextMonthDay(from: string, day: number): string {
 /** Taxminiy oylar soni (o'rtacha oy ≈ 30,44 kun) — "~44 oy" uchun */
 export const monthsUntil = (from: string, to: string): number => Math.max(1, Math.round(dayDiff(from, to) / 30.4375));
 
+export const addDays = (iso: string, n: number): string => toISODate(new Date(parseISODate(iso).getTime() + n * 86_400_000));
+
+/** Oyning oxirgi kunimi (30.11, 28.02) — TBC'da ko'chirma kuni shundan noaniq bo'ladi */
+export const isMonthEnd = (iso: string): boolean => addDays(iso, 1).slice(8, 10) === '01';
+
+/*
+ * Tayyor kartaning kalendari — dvigateldagi (shared debts.ts) statementIn / statementOnOrBefore /
+ * statementAfter / dueOf bilan AYNAN bir xil: shakldagi "keyingi to'lov" va "ko'chirma ochiqmi"
+ * server hisobidagi bilan farq qilmasin. Ko'chirma kuni qisqa oyda oy oxiriga tushadi.
+ */
+function stmtIn(y: number, m0: number, day: number): string {
+  const first = new Date(Date.UTC(y, m0, 1));
+  const yy = first.getUTCFullYear();
+  const mm = first.getUTCMonth();
+  const last = new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
+  return toISODate(new Date(Date.UTC(yy, mm, Math.min(day, last))));
+}
+
+/** Shu kungi yoki undan oldingi oxirgi ko'chirma sanasi */
+export function stmtOnOrBefore(date: string, day: number): string {
+  const d = parseISODate(date);
+  const here = stmtIn(d.getUTCFullYear(), d.getUTCMonth(), day);
+  return here <= date ? here : stmtIn(d.getUTCFullYear(), d.getUTCMonth() - 1, day);
+}
+
+/** Shu kundan KEYINGI birinchi ko'chirma — shu kungi xarid qaysi ko'chirmaga tushadi */
+export function stmtAfter(date: string, day: number): string {
+  const d = parseISODate(date);
+  const here = stmtIn(d.getUTCFullYear(), d.getUTCMonth(), day);
+  return here > date ? here : stmtIn(d.getUTCFullYear(), d.getUTCMonth() + 1, day);
+}
+
+/** Ko'chirmaning to'lov kuni: TBC — 24 kundan keyin; Infin — 20-sana, shanba/yakshanba bo'lsa oldingi ish kuni (oferta 2.8) */
+export function stmtDue(product: DebtCardProduct, statement: string): string {
+  const rules = CARD_PRODUCTS[product];
+  let d = addDays(statement, rules.dueDays);
+  if (rules.weekendBack) {
+    for (let i = 0; i < 3; i += 1) {
+      const wd = parseISODate(d).getUTCDay();
+      if (wd !== 0 && wd !== 6) break;
+      d = addDays(d, -1);
+    }
+  }
+  return d;
+}
+
+/** Tayyor kartaning ko'chirma kuni: saqlangani (TBC), bo'lmasa bankniki (Infin — 1) */
+export const statementDayOf = (terms: Pick<DebtTerms, 'statementDay'>, product: DebtCardProduct): number =>
+  Math.min(31, Math.max(1, terms.statementDay ?? CARD_PRODUCTS[product].statementDay ?? 1));
+
 // ─────────────────────────── Daftar va jamlar ───────────────────────────
 
-/** Sahifadagi yozuvlar — shared hisobining kirishiga (oldindan ko'rish uchun) */
+/**
+ * Sahifadagi yozuvlar — shared hisobining kirishiga (oldindan ko'rish uchun). Tayyor kartada kanal va
+ * komissiya ham: ularsiz o'tkazma "xarid" bo'lib, foizsiz davr va komissiyasiz qarz chiqardi
+ */
 export const toLedger = (entries: ReadonlyArray<DebtEntryRow>): DebtLedgerEntry[] =>
   entries.map((e) => ({
     id: e.id,
@@ -310,6 +396,8 @@ export const toLedger = (entries: ReadonlyArray<DebtEntryRow>): DebtLedgerEntry[
     note: e.note,
     interest: e.interest,
     createdAt: e.createdAt,
+    channel: e.channel ?? null,
+    fee: e.fee ?? null,
   }));
 
 /** Jonli Markaziy bank kursi; zaxira (eskirgan) kurs bilan so'mga aylantirilmaydi */

@@ -2,9 +2,10 @@
  * Qarz shakli va yozuv oynasining kichik maydonlari. Ko'rinishi NumberField
  * (unit kalkulyator) bilan bir xil: yorliq — eyebrow-lg, ostida qisqa izoh yoki xato.
  */
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { parseDecimal } from './format';
 
 export function FieldNote({ error, hint }: { error?: string | null; hint?: ReactNode }) {
   if (error) return <p className="mt-1.5 text-2xs font-medium leading-snug text-danger-ink">{error}</p>;
@@ -111,6 +112,53 @@ export function CountField({
       </div>
       <FieldNote error={error} hint={hint} />
     </div>
+  );
+}
+
+/**
+ * Ixtiyoriy foiz maydoni (TBC naqd foizi): bo'sh — null, tushunib bo'lmaydigan matn — NaN. Matn ichkarida
+ * saqlanadi — "35," yozilayotganda vergul yo'qolmaydi (qiymatdan qayta yasalsa "35" bo'lib qolardi)
+ */
+export function PctField({
+  label,
+  value,
+  onChange,
+  hint,
+  error,
+  placeholder,
+  className,
+}: {
+  label: ReactNode;
+  value: number | null;
+  onChange: (v: number | null) => void;
+  hint?: ReactNode;
+  error?: string | null;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState(() => (value === null || Number.isNaN(value) ? '' : String(value)));
+  // Tashqaridan kelgan boshqa qiymat (shakl yangilandi) — yozilayotgani bilan bir xil bo'lsa matnga tegilmaydi
+  useEffect(() => {
+    const cur = parseDecimal(text);
+    const same = value === null ? cur === null : cur !== null && (cur === value || (Number.isNaN(cur) && Number.isNaN(value)));
+    if (!same) setText(value === null || Number.isNaN(value) ? '' : String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <CountField
+      label={label}
+      value={text}
+      onChange={(v) => {
+        setText(v);
+        onChange(parseDecimal(v));
+      }}
+      suffix="%"
+      decimal
+      placeholder={placeholder}
+      hint={hint}
+      error={error}
+      className={className}
+    />
   );
 }
 
