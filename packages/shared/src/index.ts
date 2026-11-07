@@ -10,6 +10,7 @@ export * from './unit-plan.js';
 export * from './search.js';
 export * from './views.js';
 export * from './competitors.js';
+export * from './debts.js';
 
 export const APP = {
   name: 'SavdoIQ',

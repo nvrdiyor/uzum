@@ -41,6 +41,8 @@ export const FEATURE_IDS = [
   'unit_calculator',
   'cost_price',
   'expenses',
+  /** Qarzlar va kreditlar (/debts): odamdan qarz, bank krediti, karta, nasiya — 2026-11-07 */
+  'debts',
   'promos',
   'sku_health',
   /** Kartochka SEO: audit bali, kalit so'zlar, bepul AI chatbot uchun so'rov */

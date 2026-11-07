@@ -56,6 +56,9 @@ const Finance = lazyPage(() => import('@/pages/Finance'), '/finance');
 const UnitEconomics = lazyPage(() => import('@/pages/UnitEconomics'), '/unit-economics');
 const ProductProfit = lazyPage(() => import('@/pages/ProductProfit'), '/product-profit');
 const Expenses = lazyPage(() => import('@/pages/Expenses'), '/expenses');
+// Yo'l NAV dagi `to` bilan bir xil — menyu ustiga kelinganda sahifa oldindan yuklansin
+const Debts = lazyPage(() => import('@/pages/Debts'), '/debts');
+const DebtDetail = lazyPage(() => import('@/pages/DebtDetail'));
 const Calculator = lazyPage(() => import('@/pages/Calculator'), '/calculator');
 const ImportCalculator = lazyPage(() => import('@/pages/ImportCalculator'), '/import-calculator');
 const Reviews = lazyPage(() => import('@/pages/Reviews'), '/reviews');
@@ -207,6 +210,8 @@ export default function App() {
               <Route path="/unit-economics" element={<UnitEconomics />} />
               <Route path="/product-profit" element={<ProductProfit />} />
               <Route path="/expenses" element={<Expenses />} />
+              <Route path="/debts" element={<Debts />} />
+              <Route path="/debts/:id" element={<DebtDetail />} />
               <Route path="/calculator" element={<Calculator />} />
               <Route path="/import-calculator" element={<ImportCalculator />} />
               <Route path="/reviews" element={<Reviews />} />

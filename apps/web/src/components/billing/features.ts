@@ -69,6 +69,7 @@ export const FEATURE_LABELS: Record<FeatureId, L10nText> = {
   },
   cost_price: { uz: 'Tannarx boshqaruvi', ru: 'Управление себестоимостью', en: 'Cost price management' },
   expenses: { uz: 'Qo‘shimcha xarajatlar', ru: 'Дополнительные расходы', en: 'Extra expenses' },
+  debts: { uz: 'Qarzlar va kreditlar', ru: 'Долги и кредиты', en: 'Debts and loans' },
   promos: {
     uz: 'Aksiyalar va ularning foydasi',
     ru: 'Акции и их прибыльность',
@@ -242,7 +243,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   {
     id: 'finance',
     label: { uz: 'Moliya', ru: 'Финансы', en: 'Finance' },
-    items: ['unit_economics', 'unit_calculator', 'litrovka', 'cost_price', 'expenses', 'losses_report', 'returns_report'],
+    items: ['unit_economics', 'unit_calculator', 'litrovka', 'cost_price', 'expenses', 'debts', 'losses_report', 'returns_report'],
   },
   {
     id: 'team',

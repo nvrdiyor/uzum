@@ -93,6 +93,8 @@ export type ViewApiArea =
   | 'payout'
   | 'reports'
   | 'batches'
+  /** Qarzlar — shaxsiy moliya: hech qaysi shablonga berilmagan (faqat ega va menejer) */
+  | 'debts'
   | 'mxik';
 
 export type ViewSettingsSection = 'profile' | 'company' | 'uzum' | 'notifications' | 'team' | 'appearance';
@@ -368,6 +370,8 @@ export const VIEW_API_RULES: readonly ApiRule[] = [
   ['*', '/reports/*', 'reports'],
   ['GET', '/export/monthly', 'reports', true],
   ['*', '/batches/*', 'batches'],
+  // Qarzlar hech qaysi shablonda yo'q: omborchi, buxgalter, marketolog — 403 (2026-11-07)
+  ['*', '/debts/*', 'debts', true],
   ['*', '/mxik/*', 'mxik'],
 ];
 

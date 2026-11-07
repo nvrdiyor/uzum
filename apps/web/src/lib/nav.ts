@@ -1,4 +1,5 @@
 import {
+  Banknote,
   HandCoins,
   LayoutDashboard,
   CalendarClock,
@@ -130,6 +131,8 @@ export const NAV: NavGroup[] = [
       { to: '/product-profit', labelKey: 'nav.productProfit', icon: HandCoins, feature: 'unit_economics' },
       { to: '/unit-economics', labelKey: 'nav.unitEconomics', icon: Scale, feature: 'unit_economics' },
       { to: '/expenses', labelKey: 'nav.expenses', icon: Receipt, feature: 'expenses' },
+      // Qarzlar va kreditlar (2026-11-07). Banknote boshqa joyda ishlatilmagan; Landmark — Uzum komissiyasi
+      { to: '/debts', labelKey: 'nav.debts', icon: Banknote, feature: 'debts' },
       { to: '/calculator', labelKey: 'nav.calculator', icon: Calculator, feature: 'unit_calculator' },
       {
         to: '/import-calculator',

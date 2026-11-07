@@ -33,6 +33,7 @@ import referralRoutes from './routes/referral.js';
 import notificationsRoutes from './routes/notifications.js';
 import exportRoutes from './routes/export.js';
 import batchesRoutes from './routes/batches.js';
+import debtsRoutes from './routes/debts.js';
 import cardsRoutes from './routes/cards.js';
 import adminRoutes from './routes/admin.js';
 import todayRoutes from './routes/today.js';
@@ -106,6 +107,7 @@ export function createApp() {
   api.use('/notifications', notificationsRoutes);
   api.use('/export', exportRoutes);
   api.use('/batches', batchesRoutes);
+  api.use('/debts', debtsRoutes);
   api.use('/cards', cardsRoutes);
   // Boshqaruv paneli bloklari — har biri o'z faylida
   api.use('/dashboard/today', todayRoutes);

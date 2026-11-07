@@ -112,6 +112,7 @@ model Company {
   purchaseBatches PurchaseBatch[]
   invites          Invite[]
   competitorPrices CompetitorPrice[]
+  debts            Debt[]
 }
 
 model Membership {
@@ -955,6 +956,88 @@ model PurchaseBatchItem {
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId, position])
+}
+
+// ─────────────────────────── Qarzlar va kreditlar (2026-11-07) ───────────────────────────
+
+/// Sotuvchining qarzi: odamdan qarz, bank krediti, kredit karta/limit yoki nasiya.
+/// QOLDIQ SAQLANMAYDI — shartlar va DebtEntry yozuvlaridan har safar hisoblanadi
+/// (packages/shared/src/debts.ts analyzeDebt). Sanalar — Toshkent savdo kuni, 00:00 UTC.
+model Debt {
+  id             String    @id @default(cuid())
+  companyId      String
+  /// person — odamdan qarz · bank — bank krediti · card — kredit karta/limit · installment — nasiya
+  kind           String    @default("person")
+  /// Kimdan: "Akmal aka", "Kapitalbank"
+  lender         String
+  title          String    @default("")
+  /// UZS | USD — qarz va uning barcha yozuvlari shu valyutada
+  currency       String    @default("UZS")
+  /// Olingan summa (startedOn kuni); kartada — limit
+  amount         Float     @default(0)
+  /// Yillik foiz, % (28 = 28%; "oyiga 3%" = 36); 0 — foizsiz
+  annualRate     Float     @default(0)
+  /// act365 — kunlik, yil 365 kun (bank, karta) · m30 — oylik, yillik ÷ 12 (odamdan qarz, nasiya)
+  dayCount       String    @default("m30")
+  /// lump — bir yo'la · equal — har oy teng (annuitet) · decreasing — kamayib boruvchi · interest — har oy foiz + qarzning minPct%
+  repayment      String    @default("lump")
+  /// equal/decreasing: to'lovlar soni (avvaldan bor qarzda — qolganlari)
+  termMonths     Int?
+  /// Imtiyozli davr: dastlabki N to'lov faqat foiz
+  graceMonths    Int       @default(0)
+  startedOn      DateTime
+  /// Birinchi (avvaldan bor qarzda — keyingi) to'lov kuni; keyingilari har oy shu kunda
+  firstDueOn     DateTime?
+  /// Har oy to'lov kuni (1–31); null — firstDueOn kuni. 31-kun qisqa oyda kesiladi (30.11),
+  /// keyingi oylar baribir 31-da bo'lishi uchun alohida saqlanadi
+  payDay         Int?
+  /// lump — qaytarish sanasi (null — muddatsiz) · interest — qarz/limit tugash sanasi
+  dueOn          DateTime?
+  /// interest: minimal to'lov — qarzning necha %i (karta 10, liniya 0)
+  minPct         Float     @default(0)
+  /// interest: principal — foiz + qarzning N% · total — qarz va foizning N%
+  minBase        String    @default("principal")
+  /// Shartnoma yoki bank ilovasidagi oylik to'lov; null — formula
+  monthlyPayment Float?
+  /// Avvaldan bor qarz va karta: kuzatuv boshidagi asosiy qarz (bank ilovasidan); null — yangi qarz
+  openingBalance Float?
+  /// Kuzatuv boshlangan savdo kuni: undan oldingi oylik to'lovlar kechikkan deb chiqmaydi
+  trackedFrom    DateTime
+  /// Faqat kompaniya egasi ko'radi ("Faqat men ko'raman"); menejer yozgan qarzda doim false
+  ownerOnly      Boolean   @default(true)
+  note           String    @default("")
+  archivedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries DebtEntry[]
+
+  @@index([companyId, createdAt])
+}
+
+/// Qarz daftari yozuvi; summa — qarz valyutasida. Yozuv Debt.updatedAt ga tegmaydi
+/// (tahrir versiyasi faqat shartlar uchun)
+model DebtEntry {
+  id          String   @id @default(cuid())
+  debtId      String
+  /// draw — yana olindi (kartada: kartadan ishlatildi) · use — olingan puldan ishlatildi (qarz o'zgarmaydi) · pay — to'landi · adjust — asosiy qarz bank ilovasidagiga tenglashtirildi
+  kind        String
+  /// Savdo kuni; bugundan kech emas
+  date        DateTime
+  amount      Float
+  /// draw/use: goods | cargo | ads | salary | rent | debt | personal | other
+  category    String   @default("")
+  note        String   @default("")
+  /// pay: shundan foiz (bank SMS'idan); null — hisoblanadi
+  interest    Float?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId, date])
 }
 
 model AuditLog {

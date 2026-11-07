@@ -1,5 +1,16 @@
 import { z } from 'zod';
 import { UNIT_PLAN_MAX_ROWS } from './unit-plan.js';
+import {
+  DEBT_CATEGORIES,
+  DEBT_CURRENCIES,
+  DEBT_DAY_COUNTS,
+  DEBT_ENTRY_KINDS,
+  DEBT_KIND_DEFAULTS,
+  DEBT_KINDS,
+  DEBT_LIMITS,
+  DEBT_MIN_BASES,
+  DEBT_REPAYMENTS,
+} from './debts.js';
 
 /** Umumiy davr/filtr query */
 export const rangeQuerySchema = z.object({
@@ -159,6 +170,12 @@ const isoDay = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana YYYY-MM-DD ko‘rinishida bo‘lsin');
 
+/** Kalendarda bor kun: 2026-02-30 ham Date.parse dan o'tib 2026-03-02 bo'lib qolardi — kun aynan o'zi bo'lishi shart */
+export const strictIsoDay = isoDay.refine((v) => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}, 'Sana noto‘g‘ri');
+
 /** Jo'natma holati va sanalari (kargo + yetkazish turi bo'yicha) */
 export const batchShipmentSchema = z.object({
   cargoName: z.string().trim().max(60).default(''),
@@ -173,14 +190,7 @@ export const batchShipmentSchema = z.object({
 export const BATCH_MAX_PAYMENTS = 50;
 
 export const batchPaymentSchema = z.object({
-  // 2026-02-30 ham Date.parse dan o'tib 2026-03-02 bo'lib qolardi — kun aynan o'zi bo'lishi shart
-  date: isoDay
-    .refine((v) => {
-      const d = new Date(`${v}T00:00:00Z`);
-      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
-    }, 'Sana noto‘g‘ri')
-    .nullable()
-    .default(null),
+  date: strictIsoDay.nullable().default(null),
   amount: z.coerce.number().min(0).max(10_000_000_000).default(0),
   cargoName: z.string().trim().max(60).default(''),
   note: z.string().trim().max(120).default(''),
@@ -266,3 +276,90 @@ export const unitPlanSaveSchema = z.object({
 });
 
 export type UnitPlanSaveInput = z.infer<typeof unitPlanSaveSchema>;
+
+// ─────────────────────────── Qarzlar va kreditlar (2026-11-07) ───────────────────────────
+
+const debtAmount = z.coerce.number().min(0).max(DEBT_LIMITS.amountMax);
+
+/** Qarz shartlari maydonlari — yaratishda to'liq, tahrirda qisman */
+const debtFields = {
+  kind: z.enum(DEBT_KINDS),
+  lender: z.string().trim().min(1, 'Kimdan olinganini yozing').max(DEBT_LIMITS.lenderMax),
+  title: z.string().trim().max(DEBT_LIMITS.titleMax).default(''),
+  currency: z.enum(DEBT_CURRENCIES).default('UZS'),
+  /** Olingan summa; kartada — limit */
+  amount: debtAmount,
+  annualRate: z.coerce.number().min(0).max(DEBT_LIMITS.rateMax).default(0),
+  dayCount: z.enum(DEBT_DAY_COUNTS).optional(),
+  repayment: z.enum(DEBT_REPAYMENTS).optional(),
+  termMonths: z.coerce.number().int().min(1).max(DEBT_LIMITS.termMax).nullable().optional(),
+  graceMonths: z.coerce.number().int().min(0).max(DEBT_LIMITS.graceMax).default(0),
+  startedOn: strictIsoDay,
+  firstDueOn: strictIsoDay.nullable().optional(),
+  /** Har oy to'lov kuni (1–31); qisqa oyda oy oxiri. Berilmasa — firstDueOn kuni */
+  payDay: z.coerce.number().int().min(1).max(31).nullable().optional(),
+  dueOn: strictIsoDay.nullable().optional(),
+  minPct: z.coerce.number().min(0).max(100).optional(),
+  minBase: z.enum(DEBT_MIN_BASES).optional(),
+  monthlyPayment: debtAmount.nullable().optional(),
+  openingBalance: debtAmount.nullable().optional(),
+  ownerOnly: z.boolean().optional(),
+  note: z.string().trim().max(DEBT_LIMITS.noteMax).default(''),
+};
+
+/**
+ * Yaratish. Tahrirda server mavjud qarz bilan birlashtirib, natijani shu sxema bilan
+ * qayta tekshiradi — maydonlar orasidagi qoidalar bitta joyda.
+ */
+export const debtCreateSchema = z.object(debtFields).superRefine((v, ctx) => {
+  const repayment = v.repayment ?? DEBT_KIND_DEFAULTS[v.kind].repayment;
+  const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (!(v.amount > 0)) issue('amount', v.kind === 'card' ? 'Limitni kiriting' : 'Summani kiriting');
+  if (v.kind === 'card' && repayment !== 'interest') issue('repayment', 'Kartada minimal to‘lov — foiz va qarzning ulushi');
+  if (repayment === 'equal' && v.termMonths == null && !(v.monthlyPayment && v.monthlyPayment > 0))
+    issue('termMonths', 'Necha oyga yoki oylik to‘lovni kiriting');
+  if (repayment === 'decreasing' && v.termMonths == null) issue('termMonths', 'Necha oyga olinganini kiriting');
+  if (v.termMonths != null && v.graceMonths >= v.termMonths) issue('graceMonths', 'Imtiyozli oylar muddatdan kam bo‘lsin');
+  if (repayment !== 'lump' && !v.firstDueOn) issue('firstDueOn', 'Birinchi to‘lov sanasini kiriting');
+  if (v.firstDueOn && v.firstDueOn < v.startedOn) issue('firstDueOn', 'To‘lov sanasi qarz olingan kundan oldin bo‘lmaydi');
+  if (v.payDay != null && v.firstDueOn) {
+    // Birinchi sana shu kunda bo'lsin; qisqa oyda — oy oxiri (31 → 30.11)
+    const d = new Date(`${v.firstDueOn}T00:00:00Z`);
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    if (d.getUTCDate() !== Math.min(v.payDay, last)) issue('payDay', 'To‘lov kuni birinchi to‘lov sanasiga mos emas');
+  }
+  if (v.dueOn && v.dueOn <= v.startedOn) issue('dueOn', 'Qaytarish sanasi qarz olingan kundan keyin bo‘lsin');
+  if (v.kind === 'card' && v.openingBalance != null && v.openingBalance > v.amount)
+    issue('openingBalance', 'Hozirgi qarz limitdan katta');
+});
+
+/** Tahrir: berilgan maydonlar almashadi (berilmagani — o'zgarmaydi; standart qiymat qo'yilmaydi) */
+export const debtUpdateSchema = z
+  .object(debtFields)
+  .partial()
+  .extend({
+    /** Tahrir boshlangan paytdagi `updatedAt` — boshqa oyna ustidan yozib yubormasin */
+    expectedUpdatedAt: z.string().min(1),
+    archived: z.boolean().optional(),
+  });
+export type DebtUpdateInput = z.infer<typeof debtUpdateSchema>;
+
+export const debtEntrySchema = z
+  .object({
+    kind: z.enum(DEBT_ENTRY_KINDS),
+    date: strictIsoDay,
+    amount: debtAmount,
+    category: z.union([z.enum(DEBT_CATEGORIES), z.literal('')]).default(''),
+    note: z.string().trim().max(DEBT_LIMITS.noteMax).default(''),
+    /** To'lovda: shundan foiz (bank SMS'idan) */
+    interest: debtAmount.nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.kind !== 'adjust' && !(v.amount > 0))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['amount'], message: 'Summani kiriting' });
+    if (v.interest != null && v.interest > v.amount)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['interest'], message: 'Foiz to‘lov summasidan katta bo‘lmaydi' });
+  });
+
+export type DebtCreateInput = z.infer<typeof debtCreateSchema>;
+export type DebtEntryInput = z.infer<typeof debtEntrySchema>;

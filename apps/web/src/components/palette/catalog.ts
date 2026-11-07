@@ -45,6 +45,7 @@ export const PAGE_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   '/product-profit': ['foyda', 'sof foyda', 'marja', 'rentabellik', 'прибыль', 'маржа', 'рентабельность', 'profit', 'margin', 'roi', 'pribyl'],
   '/unit-economics': ['unit', 'unit iqtisod', 'юнит', 'экономика', 'unit economics'],
   '/expenses': ['xarajat', 'chiqim', 'reklama', 'ish haqi', 'ijara', 'расходы', 'затраты', 'реклама', 'expenses', 'costs', 'ads', 'rasxod'],
+  '/debts': ['qarz', 'qarzlar', 'kredit', 'nasiya', 'bank', 'foiz', 'to‘lov sanasi', 'minimal to‘lov', 'karta', 'limit', 'долг', 'долги', 'кредит', 'займ', 'рассрочка', 'процент', 'debt', 'loan', 'credit', 'interest', 'installment'],
   '/calculator': ['kalkulyator', 'kalkulator', 'hisoblash', 'narx hisoblash', 'калькулятор', 'расчёт', 'calculator', 'calc'],
   '/import-calculator': ['import', 'xitoy', 'bojxona', 'kargo', 'импорт', 'китай', 'таможня', 'карго', 'china', 'customs', 'cargo'],
   '/reviews': ['sharh', 'otziv', 'baho', 'reyting', 'avto javob', 'отзывы', 'рейтинг', 'автоответ', 'reviews', 'rating', 'feedback'],

@@ -8,6 +8,8 @@
 const CBU_URL = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json';
 const CACHE_MS = 6 * 60 * 60 * 1000;
 const TIMEOUT_MS = 8_000;
+/** Xatodan keyin keyingi urinish — cbu.uz osilib qolsa har so'rov 8 soniya kutmasin */
+const RETRY_MS = 10 * 60 * 1000;
 
 /** Internet bo'lmagan holat uchun taxminiy qiymatlar (so'm) */
 const FALLBACK: Record<string, number> = {
@@ -89,14 +91,13 @@ export async function getRate(code = 'CNY'): Promise<CurrencyRate> {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(`[rates] ${key} kursini olishda xatolik:`, err instanceof Error ? err.message : err);
-      // Eski kesh bo'lsa — undan foydalanamiz (muddati o'tgan bo'lsa ham)
-      if (cached) return cached.value;
-      return {
-        code: key,
-        rate: FALLBACK[key] ?? 0,
-        source: 'fallback',
-        updatedAt: null,
-      };
+      // Eski kesh bo'lsa — undan foydalanamiz (muddati o'tgan bo'lsa ham). Natija RETRY_MS ga keshlanadi:
+      // ilgari zaxira hech keshlanmasdi va cbu.uz javob bermaganda har sahifa ochilishi 8 soniya kutardi
+      const value: CurrencyRate = cached
+        ? cached.value
+        : { code: key, rate: FALLBACK[key] ?? 0, source: 'fallback', updatedAt: null };
+      cache.set(key, { value, fetchedAt: Date.now() - CACHE_MS + RETRY_MS });
+      return value;
     } finally {
       inflight.delete(key);
     }
