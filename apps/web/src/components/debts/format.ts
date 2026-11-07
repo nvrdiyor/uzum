@@ -250,6 +250,15 @@ export function dueText(due: Pick<DebtDue, 'daysLeft'>, t: TFunc): string {
 }
 
 /**
+ * Qavs ichidagi qolgan kunlar — "keyingi to‘lov: 20.11.2026 (12 kun qoldi)", "(bugun)"; o'tgan sana — null.
+ * Egasi (2026-11-08): InfinBANK ilovasida "Шунча кун қолди" bor — shaklda ham ko'rinsin
+ */
+export function leftInline(daysLeft: number, t: TFunc): string | null {
+  if (daysLeft < 0) return null;
+  return daysLeft === 0 ? t('due.todayInline') : t('due.left', { n: daysLeft });
+}
+
+/**
  * Kartochkadagi holat belgisi. Qizil — FAQAT kechikkanda; to'lash kerak bo'lgani
  * za'faron; joriy oy to'langan — brend; sanasiz — kulrang.
  */

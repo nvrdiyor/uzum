@@ -18,7 +18,9 @@
  *
  * Kredit kartada avval karta tanlanadi: TBC Osmon, Infin Black (bank shartlari
  * kodda — sotuvchi faqat ilovadagi raqamlarni yozadi) yoki "Boshqa karta" (umumiy
- * hisob, maydonlari avvalgidek). Tahrirda karta o'zgarmaydi (server ham rad etadi).
+ * hisob, maydonlari avvalgidek). Tahrirda karta o'zgarmaydi (server ham rad etadi),
+ * boshlang'ich raqamlar esa (kuzatuv boshidagi qarz, ko'chirma, muddati o'tgan)
+ * yangi kartadagidek tuzatiladi (2026-11-08).
  */
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -28,6 +30,7 @@ import {
   DEBT_LIMITS,
   addMonthsAnchored,
   analyzeDebt,
+  dayDiff,
   formatDebtMoney,
   type DebtAnalysis,
   type DebtCardProduct,
@@ -47,7 +50,7 @@ import { cn } from '@/lib/utils';
 import { CardProductTiles, KIND_ICON, KindTiles, productSub } from './kinds';
 import { MoneyField } from './MoneyField';
 import { Choice, CountField, DateField, FieldNote, PctField, TextField } from './fields';
-import { addDays, compactMoney, isIsoDay, minRuleText, parseDecimal, pctNum, toLedger } from './format';
+import { addDays, compactMoney, isIsoDay, leftInline, minRuleText, parseDecimal, pctNum, toLedger } from './format';
 import {
   LAST_DUE_WINDOW,
   MORE_FIELDS,
@@ -639,47 +642,72 @@ function FormDialog({
     // Oraliqdan tashqari — xato emas (skoring bo'yicha har kimga alohida; eski shartnoma), faqat ogohlantirish
     const rateOut = s.annual > 0 && (s.annual < lo || s.annual > hi);
     const minPctNum = parseDecimal(s.minPct);
-    const um = (v: number) => formatDebtMoney(v, 'UZS', f.lang);
     const stmt = built.stmt;
-    const tm = debt?.terms;
-    const opened = tm
-      ? [
-          t('open.debt', { sum: um(tm.openingBalance ?? 0) }),
-          // Ochiq ko'chirma raqamlari pastda so'ralayotgan bo'lsa — bu yerda takrorlanmaydi
-          tm.openingBilled != null && !stmt ? t('open.billed', { sum: um(tm.openingBilled) }) : '',
-          tm.openingMin != null ? t('open.min', { sum: um(tm.openingMin) }) : '',
-          tm.openingOverdue ? t('open.overdue', { sum: um(tm.openingOverdue) }) : '',
-        ].filter(Boolean)
-      : [];
+    // Tahrirda boshlang'ich raqamlar kuzatuv boshidagi (trackedFrom o'zgarmaydi) — yorliqlarda shu sana. Ilgari ular
+    // faqat ko'rsatilardi: xato kiritilgan kartani (egasining Infin'i, 2026-11-08) o'chirib qayta qo'shish kerak edi
+    const asOf = debt ? f.date(anchor) : null;
     // Saqlashga to'sqinlik qilmaydigan ogohlantirish (qarz limitdan katta — bo'sh limit 0): za'faron, xato emas
     const warnHint = (text: string) => <span className="font-medium text-warn-ink">{text}</span>;
-    /** Ilovadagi ochiq ko'chirma: "to'lash kerak" va minimal to'lov (yangi kartada; tahrirda — yozilmagan bo'lsa) */
+    // "(12 kun qoldi)" — InfinBANK ilovasidagi "Шунча кун қолди" kabi, yangi kartada ham, tahrirda ham: to'lov kunigacha
+    // bugundan sanaladi (raqamlar qaysi kunniki — pastdagi "{sana} holatidagi raqamlar" qatorida); o'tgan sanada yo'q
+    const stmtLeft = stmt && !isTbc ? leftInline(dayDiff(today, stmt.due), t) : null;
+    /**
+     * Ilovadagi ochiq ko'chirma (yangi kartada ham, tahrirda ham): TBC — "to'lash kerak" va minimal to'lov; Infin —
+     * ilovaning o'z so'zlari bilan: «Foizsiz davr to‘lovi» (0 — foizsiz qism yo'q) va minimal to'lov. Ilgari Infin'da
+     * ham "to'lash kerak" va "to'liq yopib borasizmi?" so'ralardi — egasi ularni ilovadagi raqamlarga bog'lay olmadi
+     */
     const stmtBlock = stmt ? (
       <div className="rounded-xl border border-info/25 bg-info/5 p-4">
         <p className="flex items-start gap-2 text-sm font-semibold text-info-ink">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          {t('f.stmtTitle')}
+          {isTbc ? t('f.stmtTitle') : `${t('f.infinStmtTitle', { date: f.date(stmt.due) })}${stmtLeft ? ` (${stmtLeft})` : ''}`}
         </p>
-        {tm ? <p className="mt-1 text-xs text-muted">{t('open.needMin')}</p> : null}
+        {asOf ? (
+          <p className="mt-1 text-xs text-muted">
+            {t('run.storedTitle', { date: asOf })}
+            {debt?.terms.openingMin == null ? ` · ${t('open.needMin')}` : ''}
+          </p>
+        ) : null}
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <MoneyField
             // TBC: sana yuqorida kiritilgan; dvigatel boshqa (yangiroq) ko'chirmani ochiq ko'rsa — uning sanasi
-            label={isTbc && stmt.due === s.lastDue ? t('f.billedTbc') : t('f.billedBy', { date: f.date(stmt.due) })}
+            label={
+              !isTbc ? t('f.graceInfin') : stmt.due === s.lastDue ? t('f.billedTbc') : t('f.billedBy', { date: f.date(stmt.due) })
+            }
             value={stmt.billed}
             onChange={(v) => set('billed', v)}
             currency="UZS"
-            hint={t('f.billedHint')}
+            hint={t(isTbc ? 'f.billedHint' : 'f.graceInfinHint')}
             error={err('billed')}
           />
           <MoneyField
-            label={t('f.minLeft')}
+            label={t(isTbc ? 'f.minLeft' : 'f.min')}
             value={stmt.min}
             onChange={(v) => setS((p) => ({ ...p, minLeft: v, minTouched: true }))}
             currency="UZS"
-            hint={t('f.minLeftHint')}
+            hint={t(isTbc ? 'f.minLeftHint' : 'f.minInfinHint')}
             error={err('minLeft')}
           />
         </div>
+      </div>
+    ) : null;
+    /** TBC: "qarzni har oy to'liq yopib borasizmi?"; Infin — faqat ochiq ko'chirma maydoni yo'q bo'lsa, ilova so'zlari bilan */
+    const revolvingBlock = built.revolvingAsk ? (
+      <div>
+        <Choice<'full' | 'part'>
+          label={
+            built.revolvingAsk === 'infin'
+              ? t('f.revolvingInfin', { date: f.date(built.openingDue ?? anchor) })
+              : t('f.revolving')
+          }
+          value={s.revolving ? 'part' : 'full'}
+          onChange={(v) => set('revolving', v === 'part')}
+          options={[
+            { value: 'full', label: t('f.revolving.full') },
+            { value: 'part', label: t('f.revolving.part') },
+          ]}
+        />
+        {s.revolving ? <FieldNote hint={t('f.revolvingHint')} /> : null}
       </div>
     ) : null;
     fields = (
@@ -697,16 +725,16 @@ function FormDialog({
             }
             error={err('amount')}
           />
-          {debt ? null : (
-            <MoneyField
-              label={t('f.cardDebt')}
-              value={s.cardDebt}
-              onChange={(v) => set('cardDebt', v)}
-              currency="UZS"
-              hint={built.hints.cardDebt ? warnHint(built.hints.cardDebt) : t('f.cardDebtHint')}
-              error={err('cardDebt')}
-            />
-          )}
+          <MoneyField
+            // Tahrirda — kuzatuv boshidagi qarz (shu kundan keyingi to'lovlar yozuvlarda); Infin ilovasida bu summa
+            // «To‘liq so‘ndirish summasi» deb yozilgan
+            label={asOf ? t('f.cardDebtAt', { date: asOf }) : t('f.cardDebt')}
+            value={s.cardDebt}
+            onChange={(v) => set('cardDebt', v)}
+            currency="UZS"
+            hint={built.hints.cardDebt ? warnHint(built.hints.cardDebt) : t(isTbc ? 'f.cardDebtHint' : 'f.cardDebtHintInfin')}
+            error={err('cardDebt')}
+          />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberField
@@ -773,53 +801,24 @@ function FormDialog({
             <FieldNote hint={t('f.stmtDayHint')} />
           </div>
         ) : null}
-        {tm ? (
-          // Boshlang'ich holat tahrirda o'zgarmaydi: bank ilovasidagi farq — «Qoldiqni tenglashtirish» bilan. Faqat
-          // ochiq ko'chirmaning ilovadagi minimal to'lovi yozilmagan bo'lsa (to'lov sanasi tuzatildi) — so'raladi
-          <>
-            <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-              <p className="text-sm font-semibold text-ink">{t('run.storedTitle', { date: f.date(anchor) })}</p>
-              <p className="tnum mt-1 text-xs text-ink-soft">{opened.join(' · ')}</p>
-              <p className="mt-1 text-2xs leading-relaxed text-muted">{t('open.fixed')}</p>
-            </div>
-            {stmtBlock}
-          </>
-        ) : (
-          <>
-            {stmtBlock}
-            {s.cardDebt !== null && s.cardDebt > 0 ? (
-              <div>
-                <Choice<'full' | 'part'>
-                  label={t('f.revolving')}
-                  value={s.revolving ? 'part' : 'full'}
-                  onChange={(v) => set('revolving', v === 'part')}
-                  options={[
-                    { value: 'full', label: t('f.revolving.full') },
-                    { value: 'part', label: t('f.revolving.part') },
-                  ]}
-                />
-                {s.revolving ? <FieldNote hint={t('f.revolvingHint')} /> : null}
-              </div>
-            ) : null}
-          </>
-        )}
+        {/* Yangi kartada ham, tahrirda ham bir xil maydonlar (tahrirda — kuzatuv boshidagi raqamlar) */}
+        {stmtBlock}
+        {revolvingBlock}
         <ProductInfo product={product} />
       </>
     );
     moreFields = (
       <>
-        {debt ? null : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <MoneyField
-              label={t('f.overdueNow')}
-              value={s.overdueNow}
-              onChange={(v) => set('overdueNow', v)}
-              currency="UZS"
-              hint={t('f.overdueNowHint')}
-              error={err('overdueNow')}
-            />
-          </div>
-        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MoneyField
+            label={asOf ? t('f.overdueAt', { date: asOf }) : t('f.overdueNow')}
+            value={s.overdueNow}
+            onChange={(v) => set('overdueNow', v)}
+            currency="UZS"
+            hint={t('f.overdueNowHint')}
+            error={err('overdueNow')}
+          />
+        </div>
         {titleNoteOwner}
       </>
     );

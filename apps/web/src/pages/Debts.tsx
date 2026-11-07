@@ -5,11 +5,15 @@
  *
  * Qarzlar standart "Faqat men ko'raman" — server ularni egadan boshqaga
  * bermaydi. Yozish tugmalari faqat yozish huquqi borida (kuzatuvchiga yo'q).
+ *
+ * Bosh blok va kechikish banneridan keyin — tayyor kartalar bo'yicha "To'lov
+ * tavsiyasi" (2026-11-08): qaysi kartaga qancha va qachongacha to'lansa foiz ishlamaydi.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  debtPaymentAdvice,
   formatDebtMoney,
   toBusinessDate,
   type BatchListResponse,
@@ -30,6 +34,7 @@ import {
   Segmented,
   Skeleton,
 } from '@/components/ui';
+import { DebtAdvice } from '@/components/debts/DebtAdvice';
 import { DebtCard } from '@/components/debts/DebtCard';
 import { DebtFormModal } from '@/components/debts/DebtFormModal';
 import { DebtsHero } from '@/components/debts/DebtsHero';
@@ -93,6 +98,9 @@ export default function Debts() {
   const overdueCount = data?.totals.byCurrency.reduce((a, x) => a + x.overdueCount, 0) ?? 0;
   // Tayyor kartalarning taxminiy kechikish jarimasi — kechikkan summa ichida (bu kartalar faqat so'mda)
   const penalty = items.reduce((a, i) => a + (i.calc.state === 'active' ? (i.calc.card?.penalty ?? 0) : 0), 0);
+  // To'lov tavsiyasi (tayyor kartalar: qaysi kartaga qancha va qachongacha) — faqat "Faol" ko'rinishida, to'lanadigan
+  // narsa bo'lsa. Yangi hisob emas: kartochkalardagi calc dan, server savdo kuni bilan
+  const advice = data && current === 'active' ? debtPaymentAdvice(data.items, data.today) : null;
 
   const openEntry = (debt: DebtSummary, mode: EntryMode) => setEntry({ debt, mode });
   // Sahifa yarim tundan keyin ham ochiq turgan bo'lsa — yangi savdo kuni serverdan: eski kun shaklda kuzatuv
@@ -164,6 +172,8 @@ export default function Debts() {
                 </span>
               </p>
             ) : null}
+
+            {advice ? <DebtAdvice advice={advice} /> : null}
 
             {cargoDue > 0 ? (
               <Link

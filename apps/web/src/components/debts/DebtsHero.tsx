@@ -8,7 +8,11 @@
  *
  * Dollar qarzi so'mga faqat Markaziy bankning jonli kursi bilan qo'shiladi;
  * kurs olinmasa (zaxira 12 600 — eskirgan) dollar alohida ko'rsatiladi.
+ *
+ * Jami yonida "To'lash" (2026-11-08): summani hamma so'm qarzga bo'lish oynasi (PayPlanModal) —
+ * faqat yozish huquqi bo'lsa va to'lanadigan so'm qarzi bo'lsa.
  */
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDebtMoney, type DebtListResponse } from '@savdoiq/shared';
 import { Banknote, CalendarClock, Info } from '@/components/icons';
@@ -17,6 +21,7 @@ import { useCountUp } from '@/hooks/useCountUp';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { InfoPopover } from './InfoPopover';
+import { PayPlanButton, PayPlanModal } from './PayPlanModal';
 import { dueText, liveRate, sumToUzs, uzsSumText } from './format';
 
 /** Tailwind klasslari to'liq yozilgan — shablon qatoridan yasalsa CSS'ga chiqmaydi */
@@ -61,6 +66,9 @@ export function DebtsHero({ data }: { data: DebtListResponse }) {
 
   const active = data.items.filter((i) => i.calc.state === 'active');
   const hasCards = active.some((i) => i.kind === 'card');
+  // "To'lash": kuzatuvchiga yo'q; taqsimot faqat so'mda — to'lanadigan so'm qarzi bo'lmasa tugma ham yo'q
+  const [payOpen, setPayOpen] = useState(false);
+  const canPay = data.canEdit && active.some((i) => i.terms.currency === 'UZS' && i.calc.payoff > 0);
   // Avvaldan bor kreditda ishlatish yozilmaguncha "ishlatilmagan" hisoblanmaydi (null)
   const hasCash = active.some((i) => i.kind !== 'card' && i.calc.unused != null);
 
@@ -145,9 +153,12 @@ export function DebtsHero({ data }: { data: DebtListResponse }) {
               <MethodNote />
             </InfoPopover>
           </div>
-          <p className="tnum mt-4 font-title text-[32px] font-semibold leading-none tracking-[-0.03em] text-ink sm:text-[44px]">
-            <Amount value={formatDebtMoney(shown, headline.currency, f.lang)} />
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+            <p className="tnum font-title text-[32px] font-semibold leading-none tracking-[-0.03em] text-ink sm:text-[44px]">
+              <Amount value={formatDebtMoney(shown, headline.currency, f.lang)} />
+            </p>
+            {canPay ? <PayPlanButton onClick={() => setPayOpen(true)} /> : null}
+          </div>
           <div className="mt-2.5 space-y-0.5 text-xs text-muted">
             {usdIncluded ? (
               <p className="tnum">
@@ -233,6 +244,9 @@ export function DebtsHero({ data }: { data: DebtListResponse }) {
           </li>
         ))}
       </ul>
+
+      {/* Oyna yopilgandan keyin ham yopilish animatsiyasi uchun turadi (portal — body ichida) */}
+      {data.canEdit ? <PayPlanModal open={payOpen} data={data} onClose={() => setPayOpen(false)} /> : null}
     </HeroCard>
   );
 }
