@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Bell,
@@ -14,7 +16,7 @@ import {
   CheckCheck,
   XCircle,
 } from '@/components/icons';
-import type { NotificationRow } from '@savdoiq/shared';
+import type { NotificationRow, Paginated } from '@savdoiq/shared';
 import { APP } from '@savdoiq/shared';
 import {
   Badge,
@@ -68,6 +70,10 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; icon: typeof Bell 
   { key: 'notifyStock', label: 'notif.stock', hint: 'notif.stockHint', icon: PackageCheck },
 ];
 
+/** Ro'yxat: dastlab shuncha o'qilgan xabar, "Yana ko'rsatish" — yana shuncha */
+const PAGE = 12;
+const MORE = 20;
+
 /** 4-bo'lim: bildirishnomalar — Telegram sozlamalari va xabarlar tarixi */
 export function NotificationsSection() {
   const t = useT('settings');
@@ -95,9 +101,21 @@ export function NotificationsSection() {
     },
   });
 
+  /*
+   * Tepadagi qo'ng'iroqchadagi son — serverdagi BARCHA o'qilmaganlar. Ilgari ro'yxat faqat eng yangi 30 tasidan 12 tasini
+   * ko'rsatardi va "Hammasini o'qildi" shu 30 ta ichida o'qilmagan bo'lsagina chiqardi: eskiroq o'qilmagan xabarlar
+   * ko'rinmas, belgilab ham bo'lmasdi, son esa turaverardi. Endi o'qilmaganlar alohida yuklanadi va tepada turadi
+   */
+  const sessionUnread = useSession((s) => s.me?.unreadNotifications ?? 0);
+  const [limit, setLimit] = useState(PAGE);
+  const unreadList = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: async () => asItems<NotificationRow>(await api.get<Paginated<NotificationRow>>('/notifications?unread=1&pageSize=200')),
+  });
   const list = useQuery({
-    queryKey: ['notifications'],
-    queryFn: async () => asItems<NotificationRow>(await api.get<NotificationRow[]>('/notifications')),
+    queryKey: ['notifications', 'recent', limit],
+    queryFn: () => api.get<Paginated<NotificationRow>>(`/notifications?pageSize=${limit}`),
+    placeholderData: keepPreviousData,
   });
 
   /** Barcha o'qilmagan xabarlarni birdaniga o'qilgan deb belgilash */
@@ -121,11 +139,35 @@ export function NotificationsSection() {
     onError: (err) => toast.error(t('common.error'), errText(err)),
   });
 
+  // "Ochish" — xabar o'qilgan bo'ladi (ochib ko'rilgan xabar qo'ng'iroqchada sanalib qolmasin), keyin o'tiladi
+  const navigate = useNavigate();
+  const openNotification = async (n: NotificationRow) => {
+    if (!n.read) {
+      try {
+        await api.post<unknown>(`/notifications/${n.id}/read`);
+        void qc.invalidateQueries({ queryKey: ['notifications'] });
+        void reloadSession();
+      } catch {
+        // O'qilgan deb belgilanmasa ham xabar ochilaversin
+      }
+    }
+    if (!n.link) return;
+    if (n.link.startsWith('/')) navigate(n.link);
+    else window.location.assign(n.link);
+  };
+
   const data = settings.data;
   const botOn = data?.telegramConnected ?? false;
   const botLink = data?.botLink || BOT_URL;
-  const rows = (list.data ?? []).slice(0, 12);
-  const unread = (list.data ?? []).filter((n) => !n.read).length;
+  const unreadRows = unreadList.data ?? [];
+  const unreadIds = new Set(unreadRows.map((n) => n.id));
+  const recent = asItems<NotificationRow>(list.data);
+  // O'qilmaganlar (eskisi ham) tepada, keyin oxirgi o'qilganlar
+  const rows = [...unreadRows, ...recent.filter((n) => !unreadIds.has(n.id) && n.read)];
+  const recentTotal = list.data?.total ?? 0;
+  const unread = Math.max(unreadRows.length, sessionUnread);
+  const loading = list.isLoading || unreadList.isLoading;
+  const failed = list.isError ? list.error : unreadList.isError ? unreadList.error : null;
 
   return (
     <div className="space-y-4">
@@ -230,9 +272,15 @@ export function NotificationsSection() {
           }
         />
         <CardBody>
-          {list.isError ? (
-            <ErrorState message={errText(list.error)} onRetry={() => void list.refetch()} />
-          ) : list.isLoading ? (
+          {failed ? (
+            <ErrorState
+              message={errText(failed)}
+              onRetry={() => {
+                void list.refetch();
+                void unreadList.refetch();
+              }}
+            />
+          ) : loading ? (
             <div className="space-y-2.5">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
@@ -270,11 +318,9 @@ export function NotificationsSection() {
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {n.link ? (
-                        <a href={n.link}>
-                          <Button size="sm" variant="ghost">
-                            {t('notif.open')}
-                          </Button>
-                        </a>
+                        <Button size="sm" variant="ghost" onClick={() => void openNotification(n)}>
+                          {t('notif.open')}
+                        </Button>
                       ) : null}
                       {!n.read ? (
                         <Button
@@ -292,6 +338,14 @@ export function NotificationsSection() {
               })}
             </ul>
           )}
+          {/* Eski xabarlar ham ko'rinsin: yana 20 tadan */}
+          {!failed && !loading && recentTotal > limit ? (
+            <div className="mt-3 flex justify-center">
+              <Button size="sm" variant="outline" loading={list.isFetching} onClick={() => setLimit((v) => v + MORE)}>
+                {t('notif.more')}
+              </Button>
+            </div>
+          ) : null}
         </CardBody>
       </Card>
     </div>

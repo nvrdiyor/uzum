@@ -224,6 +224,7 @@ export const SETTINGS_I18N = {
     'notif.marked': 'O‘qilgan deb belgilandi',
     'notif.unread': 'Yangi',
     'notif.open': 'Ochish',
+    'notif.more': 'Yana ko‘rsatish',
 
     // ── Jamoa ──
     'team.title': 'Jamoa',
@@ -485,6 +486,7 @@ export const SETTINGS_I18N = {
     'notif.marked': 'Отмечено как прочитанное',
     'notif.unread': 'Новое',
     'notif.open': 'Открыть',
+    'notif.more': 'Показать ещё',
 
     'team.title': 'Команда',
     'team.subtitle': 'Пользователи с доступом к аккаунту',
@@ -743,6 +745,7 @@ export const SETTINGS_I18N = {
     'notif.marked': 'Marked as read',
     'notif.unread': 'New',
     'notif.open': 'Open',
+    'notif.more': 'Show more',
 
     'team.title': 'Team',
     'team.subtitle': 'People with access to this account',
