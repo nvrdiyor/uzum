@@ -174,3 +174,9 @@ Batafsil: [`docs/SIZ-TOLDIRASIZ.md`](docs/SIZ-TOLDIRASIZ.md) · [`docs/UZUM-API.
 2. `UZUM_MODE=live` va `docs/UZUM-API.md` bo'yicha endpointlarni tasdiqlash.
 3. To'lov tizimlari: `PAYME_*` / `CLICK_*` kalitlari (yoki qo'lda tasdiqlash rejimida qolish).
 4. PostgreSQL va domen: `npm run db:use-postgres`, `WEB_URL`/`API_URL` ni yangilash.
+
+---
+
+## Litsenziya
+
+Ochiq kodli loyiha — [MIT](LICENSE). Kodni bemalol ishlatish, o'zgartirish va tarqatish mumkin; mualliflik huquqi haqidagi yozuv saqlanishi kerak.

@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "SavdoIQ — Uzum Market sotuvchilari uchun analitika platformasi (Telegram login + Uzum API)",
+  "license": "MIT",
   "workspaces": [
     "packages/*",
     "apps/*"
