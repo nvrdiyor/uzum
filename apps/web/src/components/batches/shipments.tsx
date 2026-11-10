@@ -130,9 +130,17 @@ export function BatchEtaCell({ batch }: { batch: BatchSummary }) {
   );
 }
 
+type ShipFilter = 'all' | ShipmentStatus;
+
 /** Partiyaning jo'natmalari: har kargo + tur uchun holat va sanalar */
 export function ShipmentModal({ batch, onClose }: { batch: BatchSummary | null; onClose: () => void }) {
   const t = useT('batches');
+  // Jo'natma ko'p bo'lsa — holat bo'yicha saralash (omborda / yo'lda / keldi); boshqa partiya ochilsa — yana hammasi
+  const [filter, setFilter] = useState<ShipFilter>('all');
+  useEffect(() => setFilter('all'), [batch?.id]);
+  const all = batch?.shipments ?? [];
+  const count = (s: ShipmentStatus) => all.filter((g) => g.status === s).length;
+  const shown = filter === 'all' ? all : all.filter((g) => g.status === filter);
   return (
     <Modal
       open={batch !== null}
@@ -152,9 +160,22 @@ export function ShipmentModal({ batch, onClose }: { batch: BatchSummary | null; 
         <p className="text-sm text-muted">{t('ship.empty')}</p>
       ) : batch ? (
         <div className="space-y-3">
-          {batch.shipments.map((g) => (
-            <ShipmentEditor key={`${g.cargoName}|${g.delivery}|${g.trip}`} batchId={batch.id} shipment={g} />
-          ))}
+          {all.length > 2 ? (
+            <Segmented<ShipFilter>
+              size="sm"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'all', label: t('ship.filterAll'), count: all.length },
+                ...STATUSES.map((s) => ({ value: s, label: t(`status.${s}`), count: count(s) })),
+              ]}
+            />
+          ) : null}
+          {shown.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">{t('ship.filterEmpty')}</p>
+          ) : (
+            shown.map((g) => <ShipmentEditor key={`${g.cargoName}|${g.delivery}|${g.trip}`} batchId={batch.id} shipment={g} />)
+          )}
         </div>
       ) : null}
     </Modal>
