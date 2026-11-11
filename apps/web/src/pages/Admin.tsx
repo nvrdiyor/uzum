@@ -1607,7 +1607,10 @@ function BroadcastTab() {
         <CardBody>
           <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
             <div className="flex items-center gap-2.5">
-              <LogoMark size={32} className="rounded-full" />
+              {/* Bot avatari kabi: yumaloq oq doira ichida (belgining o'zi shaffof sumka) */}
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-line">
+                <LogoMark size={24} />
+              </span>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">SavdoIQ</p>
                 <p className="truncate text-xs text-muted">{targetLabel}</p>

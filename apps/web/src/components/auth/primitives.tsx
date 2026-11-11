@@ -284,8 +284,9 @@ export function BenefitRow({ icon, title, text }: { icon: ReactNode; title: stri
 export function PulseLogo({ size = 64 }: { size?: number }) {
   return (
     <span className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-[23%] bg-brand/40" />
-      <LogoMark size={size} className="relative shadow-[0_16px_40px_-16px_rgb(var(--c-brand)/0.95)]" />
+      <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-full bg-[#7B22D8]/30" />
+      {/* drop-shadow — sumka shaklini kuzatadi (box-shadow belgi atrofida to'rtburchak soya berardi) */}
+      <LogoMark size={size} className="relative drop-shadow-[0_14px_22px_rgba(98,23,187,0.45)]" />
     </span>
   );
 }

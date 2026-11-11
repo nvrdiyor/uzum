@@ -85,7 +85,8 @@ function FullPageLoader() {
     <div className="flex min-h-screen items-center justify-center bg-bg">
       <div className="flex flex-col items-center gap-3">
         <span className="relative flex h-12 w-12 items-center justify-center">
-          <span className="absolute inset-0 animate-pulse-ring rounded-[23%] bg-brand/40" />
+          {/* Halqa belgining binafsha rangida: belgi endi sumka shaklida, yumaloq kvadrat emas */}
+          <span className="absolute inset-0 animate-pulse-ring rounded-full bg-[#7B22D8]/30" />
           <LogoMark size={48} className="relative" />
         </span>
         <p className="text-sm text-muted">Yuklanmoqda...</p>

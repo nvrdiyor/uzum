@@ -79,7 +79,7 @@ export default function AdminLogin() {
     <div className="flex min-h-screen items-center justify-center bg-bg bg-aurora px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <LogoMark size={48} className="mb-3 shadow-[0_10px_30px_-12px_rgb(var(--c-brand)/0.9)]" />
+          <LogoMark size={48} className="mb-3 drop-shadow-[0_10px_18px_rgba(98,23,187,0.4)]" />
           <h1 className="font-display text-xl font-extrabold tracking-tight text-ink">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
         </div>
