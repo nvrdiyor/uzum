@@ -70,6 +70,7 @@ import {
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
+import { ProfitCard, ProfitStrip } from '@/components/batches/profit';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
 interface Row extends BatchItemInput {
@@ -127,6 +128,8 @@ function blankRow(prev?: Row): Row {
     cargoCost: 0,
     extraExcluded: false,
     cargoPaid: false,
+    // Uzum bog'lanishi meros olinmaydi: yangi qator — boshqa tovar (null — tegilmagan)
+    skuCodes: null,
   };
 }
 
@@ -150,10 +153,16 @@ const blankPayment = (amount = 0, note = '', cargoName = ''): PaymentRow => ({
 
 /** Hech narsa yozilmagan qator saqlanmaydi (kargo va yetkazish oldingi qatordan meros) */
 const isBlank = (r: Row) =>
-  !r.name.trim() && !r.trackCode.trim() && !r.qty && !r.priceCny && !r.weightKg && !r.cargoCost;
+  !r.name.trim() &&
+  !r.trackCode.trim() &&
+  !r.qty &&
+  !r.priceCny &&
+  !r.weightKg &&
+  !r.cargoCost &&
+  !(r.skuCodes && r.skuCodes.length);
 
 function toDraft(d: BatchDetailData): Draft {
-  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost, extraExcluded, cargoPaid }) => ({
+  const rows = d.items.map(({ id, name, trackCode, qty, priceCny, cargoName, delivery, trip, weightKg, cargoCost, extraExcluded, cargoPaid, skuCodes }) => ({
     key: id,
     name,
     trackCode,
@@ -166,6 +175,8 @@ function toDraft(d: BatchDetailData): Draft {
     cargoCost,
     extraExcluded: extraExcluded ?? false,
     cargoPaid: cargoPaid ?? false,
+    // Eski server javobida maydon yo'q — tegilmagan
+    skuCodes: skuCodes === undefined ? null : skuCodes,
   }));
   return {
     id: d.id,
@@ -1461,6 +1472,9 @@ function BatchDetail({ id }: { id: string }) {
                   ))}
               </div>
             ) : null}
+
+            {/* Tikilgan → qaytgan → foyda (saqlangan holat bo'yicha, server hisoblaydi) */}
+            <ProfitStrip batchId={draft.id} pending={saveState === 'pending' || saveState === 'saving'} />
           </Card>
 
           {/* ── Jadval ── */}
@@ -1879,6 +1893,18 @@ function BatchDetail({ id }: { id: string }) {
               </p>
             </div>
           </Card>
+
+          {/*
+            ── Sotuv va foyda ── jadvaldan PASTDA: tahrir qilinadigan jadval 1920 ga
+            scrollsiz sig'adi (2026-11-05), unga ustun qo'shilmaydi. Bog'lash shu yerda.
+          */}
+          <ProfitCard
+            batchId={draft.id}
+            rows={draft.rows.filter((r) => !isBlank(r))}
+            canEdit={canEdit}
+            pending={saveState === 'pending' || saveState === 'saving'}
+            onLink={(key, skuCodes) => patchRow(key, { skuCodes })}
+          />
         </div>
       </PlanGate>
 

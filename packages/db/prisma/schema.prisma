@@ -954,6 +954,10 @@ model PurchaseBatchItem {
   /// Shu tovarning cargo puli to'langan: uning cargosi partiyaning "to'langan" summasiga
   /// qo'shiladi, qolgani — to'lash kerak. Tannarxga ta'sir qilmaydi (2026-11-05)
   cargoPaid     Boolean @default(false)
+  /// Shu qator Uzum'dagi qaysi tovar(lar): sotuvchi SKU kodlari, har biri alohida qatorda
+  /// ("LB-SKATE-RED\nLB-SKATE-BLK"). Partiya foydasi shu bog'lanish bo'yicha hisoblanadi.
+  /// Bo'sh — bog'lanmagan (2026-11-12)
+  skuCodes      String  @default("")
 
   batch PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 

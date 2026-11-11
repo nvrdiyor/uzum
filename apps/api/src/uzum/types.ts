@@ -229,6 +229,12 @@ export interface UzumInvoice {
   /** Qabul ombori ("Fullfilment Markazi") */
   destination?: string;
   items: UzumInvoiceItem[];
+  /**
+   * Tarkibini olib bo'lmadi (tarmoq xatosi): `items` bo'sh, lekin nakladnoy bo'sh
+   * emas. Importer bunda bazadagi qatorlarga tegmaydi — aks holda bitta xato
+   * nakladnoyning qabul qilingan donalarini keyingi sinxrongacha o'chirib yuborardi.
+   */
+  itemsFailed?: boolean;
 }
 
 /** Marketpleys aybi bilan yo'qolgan/shikastlangan tovar */

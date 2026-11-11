@@ -1097,6 +1097,7 @@ export class LiveUzumClient implements UzumClient {
       const slot = asRecord(r.timeSlotReservation);
 
       let items: UzumInvoice['items'] = [];
+      let itemsFailed = false;
       try {
         const products = asArray(
           await this.http.request(uzumPath('shopInvoiceItems', { shopId }), { query: { invoiceId: id, shopId } }),
@@ -1117,11 +1118,13 @@ export class LiveUzumClient implements UzumClient {
           });
         }).filter((it) => it.skuCode);
       } catch (err) {
+        itemsFailed = true;
         this.warn(`nakladnoy tarkibi (${id})`, err);
       }
 
       out.push({
         id,
+        ...(itemsFailed ? { itemsFailed } : {}),
         number: cabinetInvoiceNumber(asString(r.invoiceNumber) || id),
         status: mapInvoiceStatus(statusValue),
         statusText: asString(statusRec.text) || asString(r.status) || undefined,

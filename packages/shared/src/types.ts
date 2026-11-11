@@ -1944,6 +1944,13 @@ export interface BatchItemInput {
   extraExcluded: boolean;
   /** Shu tovarning cargo puli to'langan: cargosi "to'langan"ga qo'shiladi, qolgani — to'lash kerak */
   cargoPaid: boolean;
+  /**
+   * Shu qator Uzum'dagi qaysi tovar(lar): sotuvchi SKU kodlari (bir tovarning
+   * ranglari, o'lchamlari...). Partiya foydasi shu bog'lanish bo'yicha hisoblanadi.
+   * null — sotuvchi tegmagan (nomi bo'yicha avtomatik bog'lanishi mumkin);
+   * [] — ataylab bog'lanmagan ("Uzumda yo'q")
+   */
+  skuCodes: string[] | null;
 }
 
 /**

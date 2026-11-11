@@ -137,6 +137,10 @@ export const shipmentSchema = z.object({
 
 /** Bitta partiyadagi qatorlar chegarasi */
 export const BATCH_MAX_ITEMS = 500;
+/** Bitta qatorga bog'lanadigan Uzum SKU kodlari chegarasi (variantlar: rang, o'lcham...) */
+export const BATCH_MAX_SKU_CODES = 50;
+/** Bitta SKU kodining uzunligi */
+export const BATCH_SKU_CODE_MAX = 100;
 
 export const batchItemSchema = z.object({
   name: z.string().trim().max(200).default(''),
@@ -151,6 +155,26 @@ export const batchItemSchema = z.object({
   extraExcluded: z.boolean().default(false),
   /** Cargo puli to'langan. Berilmasa (eski sahifa versiyasi) — qatorning oldingi belgisi saqlanadi */
   cargoPaid: z.boolean().optional(),
+  /**
+   * Shu qator Uzum'dagi qaysi tovar(lar): sotuvchi SKU kodlari. Berilmasa (eski
+   * sahifa versiyasi) — qatorning oldingi bog'lanishi saqlanadi; null — tegilmagan
+   * (nomi bo'yicha avtomatik); [] — ataylab bog'lanmagan. Boshqaruv belgisi (yangi
+   * qator, NUL...) taqiqlangan: kodlar bazada qator bilan ajratib yoziladi, Postgres
+   * esa NUL'ni qabul qilmaydi. "-" — bazadagi "ataylab yo'q" belgisi, kod bo'lolmaydi.
+   */
+  skuCodes: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(BATCH_SKU_CODE_MAX)
+        .refine((v) => ![...v].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127), 'SKU kodi noto‘g‘ri')
+        .refine((v) => v !== '-', 'SKU kodi noto‘g‘ri'),
+    )
+    .max(BATCH_MAX_SKU_CODES)
+    .nullable()
+    .optional(),
 });
 
 /** Qo'shimcha xarajat tafsilotidagi qatorlar chegarasi */

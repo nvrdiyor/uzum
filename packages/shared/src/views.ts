@@ -481,6 +481,19 @@ export const MONEY_KEYS: ReadonlySet<string> = new Set([
   // Soliq
   'tax',
   'taxAmount',
+  // Partiya foydasi (2026-11-12). `back` (holatlar bo'yicha pul) ATAYLAB yo'q — umumiy
+  // nom; partiyalar bo'limi baribir faqat pul ko'radigan shablonlarga ochiq
+  'invested',
+  'moneyBack',
+  'pendingBack',
+  'leftCost',
+  'toPayback',
+  'expectedProfit',
+  'personalCost',
+  'unlinkedCost',
+  'overhead',
+  'overheadNow',
+  'paybackPct',
 ]);
 
 /** Faqat shu ota-kalit ichida pul bo'lgan kalitlar */

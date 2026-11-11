@@ -18,6 +18,8 @@ import {
   cargoPaidRows,
   cargoPayment,
   cargoPayTracked,
+  parseSkuCodes,
+  serializeSkuCodes,
   toBusinessDate,
   type BatchDelivery,
   type BatchDetail,
@@ -31,6 +33,8 @@ import {
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
 import { getRate } from '../services/rates.js';
+import { cargoKeyOf, shipKeyOf, tripKeyOf } from '../services/batch-keys.js';
+import { getBatchProfit, invalidateBatchProfit, searchBatchSkus, toDetailResponse, toListResponse } from '../services/batch-profit.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany, requireFeature('cost_price'));
@@ -71,19 +75,6 @@ type TotalsFields = Pick<ItemRecord, 'priceCny' | 'cargoCost' | 'qty' | 'weightK
 };
 
 // ─────────────────────────── Jo'natmalar va kargo muddati ───────────────────────────
-
-/** Kargo nomi qanday yozilganidan qat'i nazar bitta kalit: "Tez-tez " va "TEZ-TEZ" — bitta kargo */
-const cargoKeyOf = (name: string): string => name.trim().replace(/\s+/g, ' ').toUpperCase();
-/** Reys raqami: "50", " 50 " va "50" — bitta reys */
-const tripKeyOf = (trip: string): string => trip.trim().replace(/\s+/g, ' ').toUpperCase();
-/**
- * Jo'natmaning saqlanadigan kaliti: kargo, reys bo'lsa unga qo'shilgan — "TEZ-TEZ#50".
- * Reyssiz jo'natma kaliti avvalgidek faqat kargo: oldin kiritilgan holatlar yo'qolmaydi.
- */
-const shipKeyOf = (cargoName: string, trip: string): string => {
-  const t = tripKeyOf(trip);
-  return t ? `${cargoKeyOf(cargoName)}#${t}` : cargoKeyOf(cargoName);
-};
 
 const DAY_MS = 86_400_000;
 const isoDay = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
@@ -332,6 +323,7 @@ async function loadDetail(companyId: string, id: string): Promise<BatchDetail> {
       cargoCost: it.cargoCost,
       extraExcluded: it.extraExcluded,
       cargoPaid: it.cargoPaid,
+      skuCodes: parseSkuCodes(it.skuCodes),
       priceUzs: rows[i].priceUzs,
       total: rows[i].total,
       unitCost: rows[i].unitCost,
@@ -439,7 +431,50 @@ router.post(
       data: { companyId: company.id, name: body.name, rate, position: (top._min.position ?? 0) - 1 },
     });
 
+    invalidateBatchProfit(company.id);
     res.status(201).json(await loadDetail(company.id, created.id));
+  }),
+);
+
+/**
+ * GET /profit — har partiyaga qancha tikilgan, qancha qaytgan va foyda (ro'yxat uchun).
+ * `/:id` dan OLDIN e'lon qilinishi shart, aks holda "profit" partiya id'si deb olinadi.
+ * Hisob butun kompaniya bo'yicha: FIFO barcha partiyalarga umumiy.
+ */
+router.get(
+  '/profit',
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    res.json(toListResponse(await getBatchProfit(company.id)));
+  }),
+);
+
+/**
+ * GET /skus?q= — partiya qatorini bog'lash uchun Uzum tovarlari (ikkala do'kon,
+ * bir xil kodlilar birlashtirilgan). So'rov bo'yicha topilmasa — so'zlarning
+ * biri mos kelganlari. `/:id` dan OLDIN e'lon qilinadi.
+ */
+router.get(
+  '/skus',
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const q = String(req.query.q ?? '').trim().slice(0, 100);
+    const take = Math.min(100, Math.max(1, Math.floor(Number(req.query.take) || 40)));
+    res.json(await searchBatchSkus(company.id, q, take));
+  }),
+);
+
+/** GET /:id/profit — bitta partiya foydasi qatorlari bilan */
+router.get(
+  '/:id/profit',
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const id = String(req.params.id);
+    const own = await prisma.purchaseBatch.findFirst({ where: { id, companyId: company.id }, select: { id: true } });
+    if (!own) throw AppError.notFound('Partiya topilmadi');
+    const detail = toDetailResponse(await getBatchProfit(company.id), id);
+    if (!detail) throw AppError.notFound('Partiya topilmadi');
+    res.json(detail);
   }),
 );
 
@@ -519,29 +554,49 @@ router.put(
       if (updated.count === 0) throw AppError.conflict(STALE_BATCH);
 
       /*
-       * Eski sahifa versiyasi "cargo to'langan" belgisini bilmaydi va yubormaydi —
-       * u saqlaganda belgilar o'chib ketmasin: nomi va trek kodi bir xil qatordan
-       * olinadi (qatorlar ko'chirilgan bo'lsa ham).
+       * Eski sahifa versiyasi yangi maydonlarni ("cargo to'langan" belgisi, Uzum
+       * tovariga bog'lanish) bilmaydi va yubormaydi — u saqlaganda ular o'chib
+       * ketmasin: nomi va trek kodi bir xil qatordan olinadi (qatorlar ko'chirilgan
+       * bo'lsa ham). Har maydon alohida tekshiriladi: sahifa birini bilib,
+       * ikkinchisini bilmasligi mumkin.
        */
-      const carried = new Map<string, boolean[]>();
       const rowKey = (it: { name: string; trackCode: string }) => JSON.stringify([it.name, it.trackCode]);
-      if (body.items.length > 0 && body.items.every((it) => it.cargoPaid === undefined)) {
+      const keepPaid = body.items.length > 0 && body.items.every((it) => it.cargoPaid === undefined);
+      const keepCodes = body.items.length > 0 && body.items.every((it) => it.skuCodes === undefined);
+      const carried = new Map<string, { cargoPaid: boolean; skuCodes: string }[]>();
+      if (keepPaid || keepCodes) {
         const prev = await tx.purchaseBatchItem.findMany({
           where: { batchId: id },
           orderBy: { position: 'asc' },
-          select: { name: true, trackCode: true, cargoPaid: true },
+          select: { name: true, trackCode: true, cargoPaid: true, skuCodes: true },
         });
-        for (const p of prev) carried.set(rowKey(p), [...(carried.get(rowKey(p)) ?? []), p.cargoPaid]);
+        for (const p of prev) carried.set(rowKey(p), [...(carried.get(rowKey(p)) ?? []), p]);
       }
 
       await tx.purchaseBatchItem.deleteMany({ where: { batchId: id } });
       await tx.purchaseBatchItem.createMany({
-        data: body.items.map((it, position) => ({
-          ...it,
-          cargoPaid: it.cargoPaid ?? carried.get(rowKey(it))?.shift() ?? false,
-          batchId: id,
-          position,
-        })),
+        // Maydonlar aniq sanab yoziladi: so'rovdagi ro'yxat (skuCodes) bazaga matn bo'lib tushadi
+        data: body.items.map((it, position) => {
+          // Nomi va trek kodi bir xil qatorlar navbat bilan — har biri o'zinikini oladi
+          const prev = keepPaid || keepCodes ? carried.get(rowKey(it))?.shift() : undefined;
+          return {
+            batchId: id,
+            position,
+            name: it.name,
+            trackCode: it.trackCode,
+            qty: it.qty,
+            priceCny: it.priceCny,
+            cargoName: it.cargoName,
+            delivery: it.delivery,
+            trip: it.trip,
+            weightKg: it.weightKg,
+            cargoCost: it.cargoCost,
+            extraExcluded: it.extraExcluded,
+            cargoPaid: it.cargoPaid ?? prev?.cargoPaid ?? false,
+            // undefined — eski sahifa (oldingisi qoladi); null — tegilmagan; [] — ataylab yo'q ('-')
+            skuCodes: it.skuCodes !== undefined ? serializeSkuCodes(it.skuCodes) : keepCodes ? (prev?.skuCodes ?? '') : '',
+          };
+        }),
       });
 
       if (extras) {
@@ -569,6 +624,8 @@ router.put(
       }
     });
 
+    // Foyda hisobi yangi qatorlar bilan qayta hisoblansin (yozuv tranzaksiyasi tugadi)
+    invalidateBatchProfit(company.id);
     res.json(await loadDetail(company.id, id));
   }),
 );
@@ -635,6 +692,7 @@ router.put(
       ),
     );
 
+    invalidateBatchProfit(company.id);
     const { byBatch, stats } = await companyShipments(company.id);
     const shipments = byBatch.get(id) ?? [];
     res.json({ shipments, status: batchStatus(shipments), cargoStats: stats });
@@ -650,6 +708,7 @@ router.delete(
     const id = String(req.params.id);
     const result = await prisma.purchaseBatch.deleteMany({ where: { id, companyId: company.id } });
     if (result.count === 0) throw AppError.notFound('Partiya topilmadi');
+    invalidateBatchProfit(company.id);
     res.json({ ok: true, id });
   }),
 );

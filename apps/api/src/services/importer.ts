@@ -1201,6 +1201,13 @@ export async function upsertInvoices(
       res.created += 1;
     }
 
+    /*
+     * Tarkibini olib bo'lmadi (tarmoq xatosi) — bazadagi qatorlar o'z holicha
+     * qoladi. Ilgari ular o'chirilib, nakladnoyning qabul qilingan donalari
+     * keyingi sinxrongacha tovar balansidan (va partiya foydasidan) yo'qolardi.
+     */
+    if (inv.itemsFailed) continue;
+
     // Bir xil SKU bir necha qatorda kelsa — birlashtiriladi; Uzum narxi — dona bo'yicha o'rtacha
     const bySku = new Map<string, { qty: number; accepted: number; priceSum: number; priceQty: number }>();
     for (const it of inv.items) {
