@@ -137,9 +137,10 @@ registerNamespace('shipments', {
     'detail.acceptedAt': 'Qabul sanasi',
     'detail.plan': 'Reja',
     'detail.fact': 'Haqiqatda',
-    'detail.uzumPrice': 'Uzum narxi',
-    'detail.uzumPriceHint': 'Nakladnoydagi sotib olish narxi, 1 dona',
-    'detail.cost': 'Tannarx',
+    'detail.uzumPrice': 'Uzumdagi tannarx',
+    'detail.uzumPriceHint': 'Nakladnoyga Uzumda kiritgan sotib olish narxingiz, 1 dona',
+    'detail.costHint': 'SavdoIQ’dagi tannarx: sotib olish narxi + qo‘shimcha xarajatlar, 1 dona',
+    'detail.cost': 'SavdoIQ tannarxi',
     'detail.sum': 'Summa',
     'detail.total': 'Jami',
     'detail.short': '{n} dona kam keldi',
@@ -244,9 +245,10 @@ registerNamespace('shipments', {
     'detail.acceptedAt': 'Дата приёмки',
     'detail.plan': 'План',
     'detail.fact': 'Факт',
-    'detail.uzumPrice': 'Цена Uzum',
-    'detail.uzumPriceHint': 'Закупочная цена из накладной, за 1 шт.',
-    'detail.cost': 'Себестоимость',
+    'detail.uzumPrice': 'Себестоимость в Uzum',
+    'detail.uzumPriceHint': 'Закупочная цена, которую вы указали в накладной Uzum, за 1 шт.',
+    'detail.costHint': 'Себестоимость в SavdoIQ: закупка + доп. расходы, за 1 шт.',
+    'detail.cost': 'Себестоимость SavdoIQ',
     'detail.sum': 'Сумма',
     'detail.total': 'Итого',
     'detail.short': 'не хватает {n} шт.',
@@ -351,9 +353,10 @@ registerNamespace('shipments', {
     'detail.acceptedAt': 'Accepted on',
     'detail.plan': 'Planned',
     'detail.fact': 'Actual',
-    'detail.uzumPrice': 'Uzum price',
-    'detail.uzumPriceHint': 'Purchase price from the invoice, per unit',
-    'detail.cost': 'Cost',
+    'detail.uzumPrice': 'Cost in Uzum',
+    'detail.uzumPriceHint': 'Purchase price you entered in the Uzum invoice, per unit',
+    'detail.costHint': 'Cost in SavdoIQ: purchase price + extra costs, per unit',
+    'detail.cost': 'SavdoIQ cost',
     'detail.sum': 'Total cost',
     'detail.total': 'Total',
     'detail.short': '{n} units short',
@@ -896,7 +899,7 @@ function ShipmentDetail({
           />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="w-full min-w-[640px] border-collapse text-sm [&_.tnum]:whitespace-nowrap">
               <thead>
                 <tr>
                   <th className="table-head px-3 py-2 text-left">{t('form.items')}</th>
@@ -908,7 +911,11 @@ function ShipmentDetail({
                       {t('detail.uzumPrice')}
                     </th>
                   ) : null}
-                  {money ? <th className="table-head px-3 py-2 text-right">{t('detail.cost')}</th> : null}
+                  {money ? (
+                    <th className="table-head px-3 py-2 text-right" title={t('detail.costHint')}>
+                      {t('detail.cost')}
+                    </th>
+                  ) : null}
                   {money ? <th className="table-head px-3 py-2 text-right">{t('detail.sum')}</th> : null}
                 </tr>
               </thead>
