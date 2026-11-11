@@ -1138,13 +1138,17 @@ const LOSS_STATUSES = new Set(['open', 'claimed', 'compensated', 'rejected']);
  * Tabiiy kalit: `Shipment(storeId, uzumInvoiceId)`. Pozitsiyalar har safar
  * qayta yoziladi — Uzum qabul qilingan miqdorni keyinroq yangilaydi.
  * Katalogda topilmagan SKU pozitsiyasi o'tkazib yuboriladi (ShipmentItem SKU'siz bo'lmaydi).
+ *
+ * Oxirida tannarxi bo'sh SKU'lar nakladnoydagi sotib olish narxi bilan
+ * to'ldiriladi (`fillCostFromInvoices`).
  */
 export async function upsertInvoices(
   companyId: string,
   storeId: string,
   invoices: UzumInvoice[],
-): Promise<ImportResult & { unlinkedItems: number }> {
-  const res = { ...emptyResult(), unlinkedItems: 0 };
+  options: { taxRate?: number } = {},
+): Promise<ImportResult & { unlinkedItems: number; costFilled: number }> {
+  const res = { ...emptyResult(), unlinkedItems: 0, costFilled: 0 };
   if (invoices.length === 0) return res;
 
   const refs = await getSkuRefs(storeId);
@@ -1233,7 +1237,64 @@ export async function upsertInvoices(
     }
   }
 
+  const filled = await fillCostFromInvoices(storeId);
+  res.costFilled = filled.length;
+  // Eski sotuvlar ham yangi tannarx bilan — upsertOrders'dagi Uzum tannarxi bilan bir xil yo'l
+  if (filled.length > 0) {
+    const taxRate = Number.isFinite(options.taxRate ?? NaN) ? (options.taxRate as number) : DEFAULTS.taxPct;
+    try {
+      await recalcSkuOrderItems(filled, taxRate);
+    } catch (err) {
+      console.warn('[import] nakladnoy tannarxidan keyin qayta hisoblash bajarilmadi:', err instanceof Error ? err.message : err);
+    }
+  }
+
   return res;
+}
+
+/**
+ * Nakladnoydagi "Sotib olish narxi" — sotuvchining o'zi Uzumga kiritgan
+ * tannarx (Uzum sotuv narxi emas). SavdoIQ'da tannarxi 0 bo'lgan SKU'ga eng
+ * so'nggi nakladnoydagi narx yoziladi; qo'lda kiritilgan tannarxga TEGILMAYDI.
+ * Shart `purchasePrice: 0` bilan yoziladi — shu payt sotuvchi saqlagan qiymat ustidan yozilmaydi.
+ * Tannarx tarixiga manbasi bilan yozuv qo'shiladi. Qaytaradi: to'ldirilgan SKU id'lari.
+ */
+export async function fillCostFromInvoices(storeId: string): Promise<string[]> {
+  const rows = await prisma.shipmentItem.findMany({
+    where: { purchasePrice: { gt: 0 }, sku: { storeId, purchasePrice: 0 }, shipment: { source: 'uzum' } },
+    select: {
+      skuId: true,
+      purchasePrice: true,
+      sku: { select: { extraCost: true } },
+      shipment: { select: { code: true, acceptedAt: true, createdAt: true } },
+    },
+  });
+  if (rows.length === 0) return [];
+
+  // SKU bo'yicha eng so'nggi nakladnoy: qabul sanasi, bo'lmasa yaratilgan sana
+  const latest = new Map<string, { value: number; at: number; code: string; extraCost: number }>();
+  for (const r of rows) {
+    const at = (r.shipment.acceptedAt ?? r.shipment.createdAt).getTime();
+    const cur = latest.get(r.skuId);
+    if (!cur || at > cur.at) {
+      latest.set(r.skuId, { value: round(r.purchasePrice ?? 0), at, code: r.shipment.code, extraCost: r.sku.extraCost });
+    }
+  }
+
+  const filled: string[] = [];
+  for (const [skuId, v] of latest) {
+    if (!(v.value > 0)) continue;
+    const { count } = await prisma.sku.updateMany({
+      where: { id: skuId, purchasePrice: 0 },
+      data: { purchasePrice: v.value },
+    });
+    if (count === 0) continue;
+    filled.push(skuId);
+    await prisma.costPrice.create({
+      data: { skuId, value: v.value, extraCost: v.extraCost, note: `Uzum nakladnoyi ${v.code}` },
+    });
+  }
+  return filled;
 }
 
 export async function upsertLosses(storeId: string, losses: UzumLoss[]): Promise<ImportResult> {

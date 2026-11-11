@@ -58,7 +58,7 @@ registerNamespace('costPrice', {
     subtitle: 'Har bir SKU tannarxini kiriting — foyda, marja va ROI shundan hisoblanadi',
 
     'warn.title': 'Tannarx kiritilmagan: {n} ta SKU',
-    'warn.body': 'Tannarxsiz SKU bo‘yicha foyda, marja va ROI noto‘g‘ri hisoblanadi.',
+    'warn.body': 'Tannarxsiz SKU bo‘yicha foyda, marja va ROI noto‘g‘ri hisoblanadi. Uzum nakladnoyiga sotib olish narxini kiritgan bo‘lsangiz, bo‘sh tannarx sinxronda o‘zi to‘ldiriladi.',
     'warn.action': 'Faqat shularini ko‘rsatish',
     'warn.ok': 'Barcha SKU tannarxi kiritilgan',
     'warn.okBody': 'Hisobotlardagi foyda va marja to‘liq ishonchli.',
@@ -130,7 +130,7 @@ registerNamespace('costPrice', {
     subtitle: 'Укажите себестоимость каждого SKU — от неё считаются прибыль, маржа и ROI',
 
     'warn.title': 'Себестоимость не указана: {n} SKU',
-    'warn.body': 'Без себестоимости прибыль, маржа и ROI считаются неверно.',
+    'warn.body': 'Без себестоимости прибыль, маржа и ROI считаются неверно. Если вы указали закупочную цену в накладной Uzum, пустая себестоимость заполнится при синхронизации.',
     'warn.action': 'Показать только их',
     'warn.ok': 'Себестоимость указана у всех SKU',
     'warn.okBody': 'Прибыль и маржа в отчётах полностью достоверны.',
@@ -202,7 +202,7 @@ registerNamespace('costPrice', {
     subtitle: 'Set the cost of every SKU — profit, margin and ROI are derived from it',
 
     'warn.title': 'Cost price missing: {n} SKUs',
-    'warn.body': 'Without a cost price, profit, margin and ROI are calculated incorrectly.',
+    'warn.body': 'Without a cost price, profit, margin and ROI are calculated incorrectly. If you entered a purchase price in an Uzum invoice, an empty cost is filled in on sync.',
     'warn.action': 'Show only these',
     'warn.ok': 'Every SKU has a cost price',
     'warn.okBody': 'Profit and margin across the reports are fully reliable.',

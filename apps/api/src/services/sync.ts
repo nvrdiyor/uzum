@@ -1152,10 +1152,13 @@ async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise
 
     // Nakladnoy SKU'larni katalogga bog'laydi — mahsulotlar bosqichidan keyin turishi shart
     const invoices = await client.getInvoices(store.uzumShopId);
-    const invRes = await upsertInvoices(run.companyId, store.id, invoices);
+    const invRes = await upsertInvoices(run.companyId, store.id, invoices, { taxRate: run.taxRate });
     run.totals.shipments += countOf(invRes);
     if (invRes.unlinkedItems > 0) {
       log(`job ${run.jobId}: ${invRes.unlinkedItems} ta nakladnoy pozitsiyasi katalogda topilmadi`);
+    }
+    if (invRes.costFilled > 0) {
+      log(`job ${run.jobId}: ${invRes.costFilled} ta SKU tannarxi Uzum nakladnoyidan to'ldirildi`);
     }
   }
 }
