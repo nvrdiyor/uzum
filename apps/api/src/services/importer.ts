@@ -1197,17 +1197,23 @@ export async function upsertInvoices(
       res.created += 1;
     }
 
-    // Bir xil SKU bir necha qatorda kelsa — birlashtiriladi
-    const bySku = new Map<string, { qty: number; accepted: number }>();
+    // Bir xil SKU bir necha qatorda kelsa — birlashtiriladi; Uzum narxi — dona bo'yicha o'rtacha
+    const bySku = new Map<string, { qty: number; accepted: number; priceSum: number; priceQty: number }>();
     for (const it of inv.items) {
       const ref = refs.get(it.skuCode);
       if (!ref) {
         res.unlinkedItems += 1;
         continue;
       }
-      const cur = bySku.get(ref.id) ?? { qty: 0, accepted: 0 };
-      cur.qty += Math.max(0, int(it.qty, 0));
+      const cur = bySku.get(ref.id) ?? { qty: 0, accepted: 0, priceSum: 0, priceQty: 0 };
+      const qty = Math.max(0, int(it.qty, 0));
+      cur.qty += qty;
       cur.accepted += Math.max(0, int(it.accepted, 0));
+      if (it.purchasePrice != null && it.purchasePrice > 0) {
+        const w = Math.max(1, qty);
+        cur.priceSum += it.purchasePrice * w;
+        cur.priceQty += w;
+      }
       bySku.set(ref.id, cur);
     }
 
@@ -1221,6 +1227,7 @@ export async function upsertInvoices(
           qty: v.qty,
           accepted: v.accepted,
           boxes: 0,
+          purchasePrice: v.priceQty > 0 ? Math.round((v.priceSum / v.priceQty) * 100) / 100 : null,
         })),
       });
     }

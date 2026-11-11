@@ -135,6 +135,18 @@ registerNamespace('shipments', {
     'detail.noItemsHint': 'Pozitsiyalar ro‘yxati mavjud emas',
     'detail.plannedAt': 'Rejalashtirilgan',
     'detail.acceptedAt': 'Qabul sanasi',
+    'detail.plan': 'Reja',
+    'detail.fact': 'Haqiqatda',
+    'detail.uzumPrice': 'Uzum narxi',
+    'detail.uzumPriceHint': 'Nakladnoydagi sotib olish narxi, 1 dona',
+    'detail.cost': 'Tannarx',
+    'detail.sum': 'Summa',
+    'detail.total': 'Jami',
+    'detail.short': '{n} dona kam keldi',
+    'detail.priceSoon': 'Keyingi sinxronda keladi',
+    'detail.noCost': 'Tannarx kiritilmagan',
+    'detail.noCostNote': 'Ba’zi tovarlarning tannarxi kiritilmagan — summa to‘liq emas.',
+    'detail.noCostLink': 'Tannarxni kiritish',
 
     'del.title': 'Yetkazmani o‘chirish',
     'del.body': '{code} yetkazmasi butunlay o‘chiriladi. Bu amalni qaytarib bo‘lmaydi.',
@@ -230,6 +242,18 @@ registerNamespace('shipments', {
     'detail.noItemsHint': 'Список позиций недоступен',
     'detail.plannedAt': 'Запланировано',
     'detail.acceptedAt': 'Дата приёмки',
+    'detail.plan': 'План',
+    'detail.fact': 'Факт',
+    'detail.uzumPrice': 'Цена Uzum',
+    'detail.uzumPriceHint': 'Закупочная цена из накладной, за 1 шт.',
+    'detail.cost': 'Себестоимость',
+    'detail.sum': 'Сумма',
+    'detail.total': 'Итого',
+    'detail.short': 'не хватает {n} шт.',
+    'detail.priceSoon': 'Появится после следующей синхронизации',
+    'detail.noCost': 'Себестоимость не указана',
+    'detail.noCostNote': 'У некоторых товаров не указана себестоимость — сумма неполная.',
+    'detail.noCostLink': 'Указать себестоимость',
 
     'del.title': 'Удалить поставку',
     'del.body': 'Поставка {code} будет удалена безвозвратно.',
@@ -325,6 +349,18 @@ registerNamespace('shipments', {
     'detail.noItemsHint': 'The item list is not available',
     'detail.plannedAt': 'Planned',
     'detail.acceptedAt': 'Accepted on',
+    'detail.plan': 'Planned',
+    'detail.fact': 'Actual',
+    'detail.uzumPrice': 'Uzum price',
+    'detail.uzumPriceHint': 'Purchase price from the invoice, per unit',
+    'detail.cost': 'Cost',
+    'detail.sum': 'Total cost',
+    'detail.total': 'Total',
+    'detail.short': '{n} units short',
+    'detail.priceSoon': 'Arrives with the next sync',
+    'detail.noCost': 'No cost price',
+    'detail.noCostNote': 'Some items have no cost price — the total is incomplete.',
+    'detail.noCostLink': 'Set cost prices',
 
     'del.title': 'Delete shipment',
     'del.body': 'Shipment {code} will be removed permanently. This cannot be undone.',
@@ -430,7 +466,19 @@ export default function Shipments() {
   const detail = useMemo(() => rows.find((r) => r.id === detailId) ?? null, [rows, detailId]);
   const toDelete = useMemo(() => rows.find((r) => r.id === deleteId) ?? null, [rows, deleteId]);
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['shipments'] });
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ['shipments'] });
+    void qc.invalidateQueries({ queryKey: ['shipment'] });
+  };
+  /*
+   * Ro'yxat yengil: pozitsiyalarsiz keladi. Tafsilot ochilganda yetkazma pozitsiyalari bilan alohida yuklanadi —
+   * ilgari panel ro'yxat qatoridan o'qib, Uzum nakladnoyida tovarlar bo'lsa ham "pozitsiya yo'q" deb ko'rsatardi
+   */
+  const detailFull = useQuery({
+    queryKey: ['shipment', detailId],
+    queryFn: () => api.get<ShipmentRow>(`/warehouse/shipments/${detailId}`),
+    enabled: detailId !== null,
+  });
 
   const changeStatus = useMutation({
     mutationFn: (vars: { id: string; status: ShipmentStatus }) =>
@@ -683,6 +731,7 @@ export default function Shipments() {
       <Drawer
         open={detail !== null}
         onClose={() => setDetailId(null)}
+        size="lg"
         title={detail ? t('detail.title', { code: detail.code }) : ''}
         footer={
           detail?.source === 'uzum' ? (
@@ -722,7 +771,15 @@ export default function Shipments() {
           ) : null
         }
       >
-        {detail ? <ShipmentDetail row={detail} /> : null}
+        {detail ? (
+          <ShipmentDetail
+            row={detail}
+            items={detailFull.data?.id === detail.id ? (detailFull.data.items ?? []) : null}
+            failed={detailFull.isError}
+            onRetry={() => void detailFull.refetch()}
+            money={money}
+          />
+        ) : null}
       </Drawer>
 
       {/* ── O'chirishni tasdiqlash ── */}
@@ -755,10 +812,32 @@ export default function Shipments() {
 
 // ─────────────────────────── Tafsilot paneli ───────────────────────────
 
-function ShipmentDetail({ row }: { row: ShipmentRow }) {
+function ShipmentDetail({
+  row,
+  items: loaded,
+  failed,
+  onRetry,
+  money,
+}: {
+  row: ShipmentRow;
+  /** null — hali yuklanmoqda */
+  items: ShipmentItemRow[] | null;
+  failed: boolean;
+  onRetry: () => void;
+  money: boolean;
+}) {
   const t = useT('shipments');
   const f = useFormat();
-  const items = row.items ?? [];
+  const items = loaded ?? [];
+  const uzum = row.source === 'uzum';
+  // Uzum kabinetidagi "Hamma tovarlarning qiymati" — reja × nakladnoydagi narx
+  const priced = items.filter((it) => it.invoicePrice != null);
+  const uzumValue = priced.reduce((s, it) => s + it.qty * (it.invoicePrice ?? 0), 0);
+  const planUnits = items.reduce((s, it) => s + it.qty, 0);
+  const factUnits = items.reduce((s, it) => s + it.accepted, 0);
+  const costSum = items.reduce((s, it) => s + it.qty * it.costPrice, 0);
+  // Qabul qilingan yetkazmada kam kelgan pozitsiya — qizil (Uzum "Farq dalolatnomasi" shu)
+  const done = row.status === 'accepted';
 
   const info: { label: string; value: ReactNode }[] = [
     {
@@ -774,7 +853,8 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
     { label: t('detail.acceptedAt'), value: row.acceptedAt ? f.date(row.acceptedAt) : '—' },
     { label: t('col.items'), value: <span className="tnum">{f.num(row.itemsCount)}</span> },
     { label: t('col.units'), value: <span className="tnum">{f.num(row.unitsCount)}</span> },
-    { label: t('col.value'), value: <span className="tnum">{f.money(row.costValue)}</span> },
+    // Pul ko'rmaydigan rolga tannarx qiymati ko'rsatilmaydi (ro'yxatdagi ustun kabi)
+    ...(money ? [{ label: t('col.value'), value: <span className="tnum">{f.money(row.costValue)}</span> }] : []),
   ];
 
   return (
@@ -800,7 +880,15 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
 
       <div>
         <p className="mb-3 eyebrow-lg">{t('detail.items')}</p>
-        {items.length === 0 ? (
+        {failed ? (
+          <ErrorState onRetry={onRetry} />
+        ) : loaded === null ? (
+          <div className="space-y-2">
+            {Array.from({ length: Math.min(5, Math.max(1, row.itemsCount)) }).map((_, i) => (
+              <div key={i} className="h-14 animate-pulse rounded-xl bg-surface-2" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
           <EmptyState
             icon={<Package className="h-6 w-6" />}
             title={t('detail.noItems')}
@@ -808,38 +896,86 @@ function ShipmentDetail({ row }: { row: ShipmentRow }) {
           />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full min-w-[420px] border-collapse text-sm">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr>
                   <th className="table-head px-3 py-2 text-left">{t('form.items')}</th>
-                  <th className="table-head px-3 py-2 text-right">{t('form.qty')}</th>
-                  <th className="table-head px-3 py-2 text-right">{t('detail.accepted')}</th>
-                  <th className="table-head px-3 py-2 text-right">{t('form.boxes')}</th>
+                  <th className="table-head px-3 py-2 text-right">{t('detail.plan')}</th>
+                  <th className="table-head px-3 py-2 text-right">{t('detail.fact')}</th>
+                  {uzum ? null : <th className="table-head px-3 py-2 text-right">{t('form.boxes')}</th>}
+                  {money && uzum ? (
+                    <th className="table-head px-3 py-2 text-right" title={t('detail.uzumPriceHint')}>
+                      {t('detail.uzumPrice')}
+                    </th>
+                  ) : null}
+                  {money ? <th className="table-head px-3 py-2 text-right">{t('detail.cost')}</th> : null}
+                  {money ? <th className="table-head px-3 py-2 text-right">{t('detail.sum')}</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: ShipmentItemRow) => (
-                  <tr key={item.id} className="border-t border-line/60">
-                    <td className="px-3 py-2.5">
-                      <p className="truncate font-medium text-ink">{item.title}</p>
-                      <p className="text-xs text-muted">{item.sku}</p>
-                    </td>
-                    <td className="tnum px-3 py-2.5 text-right text-ink">{f.num(item.qty)}</td>
-                    <td
-                      className={cn(
-                        'tnum px-3 py-2.5 text-right',
-                        item.accepted >= item.qty ? 'text-brand-ink' : 'text-muted',
-                      )}
-                    >
-                      {f.num(item.accepted)}
-                    </td>
-                    <td className="tnum px-3 py-2.5 text-right text-ink-soft">{f.num(item.boxes)}</td>
-                  </tr>
-                ))}
+                {items.map((item: ShipmentItemRow) => {
+                  const short = done && item.accepted < item.qty;
+                  return (
+                    <tr key={item.id} className="border-t border-line/60">
+                      <td className="max-w-[300px] px-3 py-2.5">
+                        <ProductCell title={item.title} subtitle={item.sku} imageUrl={item.imageUrl} size={40} lines={2} />
+                      </td>
+                      <td className="tnum px-3 py-2.5 text-right text-ink">{f.num(item.qty)}</td>
+                      <td
+                        className={cn(
+                          'tnum px-3 py-2.5 text-right font-medium',
+                          short ? 'text-danger-ink' : item.accepted >= item.qty ? 'text-brand-ink' : 'text-muted',
+                        )}
+                        title={short ? t('detail.short', { n: f.num(item.qty - item.accepted) }) : undefined}
+                      >
+                        {f.num(item.accepted)}
+                      </td>
+                      {uzum ? null : <td className="tnum px-3 py-2.5 text-right text-ink-soft">{f.num(item.boxes)}</td>}
+                      {money && uzum ? (
+                        <td className="tnum px-3 py-2.5 text-right text-ink-soft" title={item.invoicePrice == null ? t('detail.priceSoon') : undefined}>
+                          {item.invoicePrice == null ? '—' : f.num(item.invoicePrice)}
+                        </td>
+                      ) : null}
+                      {money ? (
+                        <td className="tnum px-3 py-2.5 text-right text-ink" title={item.costPrice > 0 ? undefined : t('detail.noCost')}>
+                          {item.costPrice > 0 ? f.num(item.costPrice) : <span className="text-warn-ink">—</span>}
+                        </td>
+                      ) : null}
+                      {money ? (
+                        <td className="tnum px-3 py-2.5 text-right font-semibold text-ink">
+                          {item.costPrice > 0 ? f.num(item.qty * item.costPrice) : '—'}
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
+              <tfoot>
+                <tr className="border-t border-line bg-surface-2/60 font-semibold">
+                  <td className="px-3 py-2.5 text-ink">{t('detail.total')}</td>
+                  <td className="tnum px-3 py-2.5 text-right text-ink">{f.num(planUnits)}</td>
+                  <td className={cn('tnum px-3 py-2.5 text-right', done && factUnits < planUnits ? 'text-danger-ink' : 'text-ink')}>
+                    {f.num(factUnits)}
+                  </td>
+                  {uzum ? null : <td className="px-3 py-2.5" />}
+                  {money && uzum ? (
+                    <td className="tnum px-3 py-2.5 text-right text-ink-soft">{priced.length ? f.num(uzumValue) : '—'}</td>
+                  ) : null}
+                  {money ? <td className="px-3 py-2.5" /> : null}
+                  {money ? <td className="tnum px-3 py-2.5 text-right text-ink">{f.num(costSum)}</td> : null}
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
+        {money && items.some((it) => it.costPrice <= 0) ? (
+          <p className="mt-2 text-xs text-warn-ink">
+            {t('detail.noCostNote')}{' '}
+            <Link to="/cost-price" className="font-medium underline">
+              {t('detail.noCostLink')}
+            </Link>
+          </p>
+        ) : null}
       </div>
     </div>
   );

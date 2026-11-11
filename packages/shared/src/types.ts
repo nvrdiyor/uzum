@@ -2502,6 +2502,11 @@ export interface ShipmentItemRow {
   qty: number;
   accepted: number;
   boxes: number;
+  /** SavdoIQ'dagi tannarx (1 dona): xarid narxi + qo'shimcha xarajat */
+  costPrice: number;
+  /** Uzum nakladnoyidagi "Sotib olish narxi" (1 dona); qo'lda yaratilgan yoki hali sinxronlanmagan — null */
+  invoicePrice: number | null;
+  imageUrl: string | null;
 }
 
 export interface ShipmentRow {

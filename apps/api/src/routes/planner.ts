@@ -351,6 +351,9 @@ router.post(
         qty: it.qty,
         accepted: it.accepted,
         boxes: it.boxes,
+        costPrice: Math.round((d?.info?.purchasePrice ?? 0) + (d?.info?.extraCost ?? 0)),
+        invoicePrice: null,
+        imageUrl: null,
       } satisfies ShipmentItemRow;
     });
 

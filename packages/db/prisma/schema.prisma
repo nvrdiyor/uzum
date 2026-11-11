@@ -594,6 +594,8 @@ model ShipmentItem {
   qty        Int    @default(0)
   accepted   Int    @default(0)
   boxes      Int    @default(0)
+  /// Uzum nakladnoyidagi "Sotib olish narxi" (1 dona, so'm); qo'lda yaratilgan yetkazmada null
+  purchasePrice Float?
 
   shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   sku      Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)

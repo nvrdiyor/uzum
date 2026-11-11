@@ -297,6 +297,19 @@ function orderStatusFromItems(items: UzumOrderItem[], fallback: string): string 
 }
 
 /**
+ * `invoiceNumber` — nakladnoy shtrix-kodi (EAN-13): kabinetdagi 12 raqam + tekshiruv raqami
+ * ("110004028104" → "1100040281045"). Sotuvchi kabinetda 12 raqamlisini ko'radi — shuni saqlaymiz.
+ * Faqat oxirgi raqam haqiqatan EAN-13 tekshiruv raqami bo'lsa kesiladi
+ */
+export function cabinetInvoiceNumber(raw: string): string {
+  const s = raw.trim();
+  if (!/^[0-9]{13}$/.test(s)) return s;
+  let sum = 0;
+  for (let i = 0; i < 12; i += 1) sum += Number(s[i]) * (i % 2 ? 3 : 1);
+  return (10 - (sum % 10)) % 10 === Number(s[12]) ? s.slice(0, 12) : s;
+}
+
+/**
  * Nakladnoy holati → bizdagi yetkazma holati. Aniq tekshirilgani faqat
  * `ACCEPTED` ("Stokda qabul qilingan"); qolganlari nomiga qarab.
  * "ACCEPTANCE_IN_PROGRESS" ham ACCEPT so'zini o'z ichiga oladi — shuning
@@ -1109,7 +1122,7 @@ export class LiveUzumClient implements UzumClient {
 
       out.push({
         id,
-        number: asString(r.invoiceNumber) || id,
+        number: cabinetInvoiceNumber(asString(r.invoiceNumber) || id),
         status: mapInvoiceStatus(statusValue),
         statusText: asString(statusRec.text) || asString(r.status) || undefined,
         createdAt,

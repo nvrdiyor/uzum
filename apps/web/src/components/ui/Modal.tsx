@@ -169,12 +169,15 @@ export function Drawer({
   title,
   children,
   footer,
+  size = 'md',
 }: {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  /** md — 576 px (standart); lg — 768 px (keng jadval uchun) */
+  size?: 'md' | 'lg';
 }) {
   const t = useT('common');
   const panel = useRef<HTMLElement>(null);
@@ -202,7 +205,10 @@ export function Drawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-pop focus:outline-none"
+            className={cn(
+              'absolute right-0 top-0 flex h-full w-full flex-col border-l border-line bg-surface shadow-pop focus:outline-none',
+              size === 'lg' ? 'max-w-3xl' : 'max-w-xl',
+            )}
           >
             <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
               <h3 id={titleId} className="min-w-0 font-display text-lg font-bold text-ink">

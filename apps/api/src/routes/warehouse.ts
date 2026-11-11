@@ -134,7 +134,9 @@ interface ShipmentItemWithSku {
   qty: number;
   accepted: number;
   boxes: number;
-  sku: { sku: string; title: string; purchasePrice: number; extraCost: number };
+  /** Uzum nakladnoyidagi narx (1 dona) */
+  purchasePrice: number | null;
+  sku: { sku: string; title: string; purchasePrice: number; extraCost: number; imageUrl: string | null };
 }
 
 interface ShipmentWithItems {
@@ -155,7 +157,7 @@ const UZUM_SHIPMENT_READONLY =
 /** Prisma so'rovi uchun umumiy `include` (pozitsiya + SKU ma'lumoti) */
 const SHIPMENT_INCLUDE = {
   items: {
-    include: { sku: { select: { sku: true, title: true, purchasePrice: true, extraCost: true } } },
+    include: { sku: { select: { sku: true, title: true, purchasePrice: true, extraCost: true, imageUrl: true } } },
     orderBy: { id: 'asc' },
   },
 } as const;
@@ -175,6 +177,9 @@ function toShipmentRow(s: ShipmentWithItems, withItems: boolean): ShipmentRow {
       qty: it.qty,
       accepted: it.accepted,
       boxes: it.boxes,
+      costPrice: round(it.sku.purchasePrice + it.sku.extraCost),
+      invoicePrice: it.purchasePrice ?? null,
+      imageUrl: it.sku.imageUrl ?? null,
     };
   });
 
