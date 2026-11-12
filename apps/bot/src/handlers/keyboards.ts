@@ -14,21 +14,30 @@ export const CB = {
   settingsHome: 'set:home',
   support: 'sup:', // sup:more | sup:close:<id> | sup:to:<id> | sup:cancel
   report: 'rep:', // rep:today | rep:yesterday | rep:month | rep:year
+  sync: 'sync:', // sync:menu | sync:rep:<davr> | sync:noop:<davr> (handlers/sync.ts)
 } as const;
 
 /**
- * Doimiy menyu (7 ta tugma).
+ * Doimiy menyu (8 ta tugma).
  *
  * «Yordam» oxirgi qatorda yolg'iz va butun kenglikda: bu favqulodda tugma,
- * u boshqa oltitasiga o'xshab ketmasligi kerak. Mavjud oltita yorliqning
+ * u boshqa oltitasiga o'xshab ketmasligi kerak. Mavjud yorliqlarning
  * matni HECH QACHON o'zgartirilmaydi — reply-klaviatura klientda saqlanadi
  * va `matchButton` qat'iy tenglik bilan solishtiradi, ya'ni nomni o'zgartirish
  * eski klaviaturaga ega barcha foydalanuvchini buzardi.
+ *
+ * «🔄 Sinxronlash» (2026-11-12) hisobot qatorining tagida, o'zi bir qatorda:
+ * qolgan juftliklar o'z joyida qoldi — tugmalarning o'rnini o'zgartirish
+ * odatlangan qo'lni chalg'itardi. Eski klaviaturasi bor foydalanuvchi uni
+ * /start, /menu yoki /help dan keyin ko'radi; ungacha «📊 Bugungi hisobot»
+ * ostidagi tugma va /sync buyrug'i bor.
  */
 export function mainMenu(lang: BotLang): Keyboard {
   return new Keyboard()
     .text(tr(lang, 'btn_today'))
     .text(tr(lang, 'btn_stocks'))
+    .row()
+    .text(tr(lang, 'btn_sync'))
     .row()
     .text(tr(lang, 'btn_login'))
     .text(tr(lang, 'btn_billing'))
@@ -68,27 +77,52 @@ const REPORT_BUTTON: Record<ReportPeriod, TKey> = {
   year: 'btn_rep_year',
 };
 
+export interface ReportKeyboardOptions {
+  /** «🔄 Sinxronlash» tugmasi — faqat sinxronni boshlay oladigan a'zoga (ega, menejer) */
+  canSync?: boolean;
+  /** Shu xabar uchun sinxron ketyapti — tugma o'rnida foiz turadi */
+  syncProgress?: number | null;
+}
+
 /**
- * Hisobot ostidagi davr tugmalari (2×2) va saytga o'tish.
+ * Hisobot ostidagi davr tugmalari (2×2), sinxron va saytga o'tish.
  *
- * Davrlar asosiy (reply) menyuga qo'shilmadi: u yerda yettita tugma bor va
- * yorliqlar o'zgarmasligi kerak (mainMenu izohi). Hisobot xabarining
- * o'zida almashtirish — bitta xabar, chat to'lib ketmaydi (2026-10-27).
- * Tanlangan davr «✓» bilan; uni qayta bossa — raqamlar yangilanadi.
+ * Davrlar asosiy (reply) menyuga qo'shilmadi: yorliqlar o'zgarmasligi
+ * kerak (mainMenu izohi). Hisobot xabarining o'zida almashtirish — bitta
+ * xabar, chat to'lib ketmaydi (2026-10-27). Tanlangan davr «✓» bilan; uni
+ * qayta bossa — raqamlar yangilanadi (bazadagidan, Uzum'ga bormasdan).
+ * «🔄 Sinxronlash» esa Uzum'dan yangisini oladi va tugagach shu xabarni
+ * o'sha davr bilan qayta chizadi (handlers/sync.ts).
  */
-export function reportKeyboard(lang: BotLang, active: ReportPeriod): InlineKeyboard {
+export function reportKeyboard(lang: BotLang, active: ReportPeriod, opts: ReportKeyboardOptions = {}): InlineKeyboard {
   const btn = (p: ReportPeriod): [string, string] => {
     const label = tr(lang, REPORT_BUTTON[p]);
     return [p === active ? `✓ ${label}` : label, `${CB.report}${p}`];
   };
-  return new InlineKeyboard()
+  const kb = new InlineKeyboard()
     .text(...btn('today'))
     .text(...btn('yesterday'))
     .row()
     .text(...btn('month'))
     .text(...btn('year'))
-    .row()
-    .url(tr(lang, 'btn_open_site'), webLink('/dashboard'));
+    .row();
+  if (opts.syncProgress !== null && opts.syncProgress !== undefined) {
+    // Davr ham yoziladi: kuzatuv yo'qolgan bo'lsa, bosilganda hisobot o'sha davr bilan qayta chiziladi
+    kb.text(tr(lang, 'btn_sync_progress', { progress: opts.syncProgress }), `${CB.sync}noop:${active}`).row();
+  } else if (opts.canSync) {
+    kb.text(tr(lang, 'btn_sync'), `${CB.sync}rep:${active}`).row();
+  }
+  return kb.url(tr(lang, 'btn_open_site'), webLink('/dashboard'));
+}
+
+/** Sinxron bajarilmagan holat xabari ostida: qayta urinish */
+export function syncRetryKeyboard(lang: BotLang): InlineKeyboard {
+  return new InlineKeyboard().text(tr(lang, 'btn_sync_retry'), `${CB.sync}menu`);
+}
+
+/** API kalit ishlamay qolganda: kalitni yangilash (Sozlamalardagi o'sha tugma — faqat egaga ochiladi) */
+export function syncKeyKeyboard(lang: BotLang): InlineKeyboard {
+  return new InlineKeyboard().text(tr(lang, 'set_api'), `${CB.settings}api`);
 }
 
 /** Kirish havolasi (bir martalik kod bilan) */

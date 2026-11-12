@@ -28,6 +28,7 @@ import {
   onTickets,
 } from './support.js';
 import { onSettingsAction } from './settings.js';
+import { onSyncAction, onSyncCommand } from './sync.js';
 import { onBroadcast, onGrant, onStats } from './admin.js';
 import { isAdmin } from '../lib/env.js';
 
@@ -61,6 +62,10 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   });
   bot.command('id', async (ctx) => {
     await showId(ctx);
+  });
+  // Qo'lda sinxron — «🔄 Sinxronlash» menyu tugmasi bilan bir xil (handlers/sync.ts)
+  bot.command('sync', async (ctx) => {
+    await onSyncCommand(ctx);
   });
   // /support savol — ro'yxatdan o'tish o'rtasida ham darhol operatorga ketadi
   bot.command('support', async (ctx) => {
@@ -102,6 +107,10 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   // Hisobot ostidagi davr tugmalari: rep:today | rep:yesterday | rep:month | rep:year
   bot.callbackQuery(/^rep:(\w+)$/, async (ctx) => {
     await onReportAction(ctx, group(ctx.match));
+  });
+  // Sinxron tugmalari: sync:rep:<davr> | sync:menu | sync:noop
+  bot.callbackQuery(/^sync:([a-z]+)(?::([a-z]+))?$/, async (ctx) => {
+    await onSyncAction(ctx, group(ctx.match), group(ctx.match, 2));
   });
   // Qo'llab-quvvatlash tugmalari. Pastdagi catch-all `next()` chaqirmaydi,
   // shuning uchun bu ro'yxat undan OLDIN turishi shart — aks holda o'lik kod.

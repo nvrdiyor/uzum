@@ -1,20 +1,18 @@
 /**
- * Doimiy menyu tugmalari: hisobot (bugun / kecha / shu oy / shu yil), qoldiqlar,
- * saytga kirish, tarif, referal. Sozlamalar alohida faylda (handlers/settings.ts).
+ * Doimiy menyu tugmalari: hisobot (bugun / kecha / shu oy / shu yil), sinxron,
+ * qoldiqlar, saytga kirish, tarif, referal. Sozlamalar alohida faylda
+ * (handlers/settings.ts), qo'lda sinxron — handlers/sync.ts, hisobot ko'rinishi
+ * va kirish sharti — handlers/report-view.ts.
  */
-import { GrammyError, type InlineKeyboard } from 'grammy';
-import { formatDate, formatMoney, formatNumber, hasFeature } from '@savdoiq/shared';
+import { GrammyError } from 'grammy';
+import { formatDate, formatMoney, formatNumber } from '@savdoiq/shared';
 import { escapeHtml, t, type BotContext } from './context.js';
 import { loginKeyboard, mainMenu, pricingKeyboard, reportKeyboard, siteKeyboard } from './keyboards.js';
-import {
-  buildCriticalStocks,
-  buildPeriodReport,
-  createLoginCode,
-  loadBilling,
-  loadReferral,
-} from './data.js';
-import { periodReportText, stocksText } from './reports.js';
-import { isReportPeriod, resolveReportPeriod, type ReportPeriod } from '../lib/dashboard-kpi.js';
+import { buildCriticalStocks, createLoginCode, loadBilling, loadReferral } from './data.js';
+import { stocksText } from './reports.js';
+import { isReportPeriod, type ReportPeriod } from '../lib/dashboard-kpi.js';
+import { buildReportView, canStartSync, requireCompany } from './report-view.js';
+import { isSyncWaiting, noteReportPeriod, onSyncCommand } from './sync.js';
 import { showSettings } from './settings.js';
 // Yordam kartochkasi endi support.ts da — u yerda ro'yxatdan o'tish bosqichini
 // ham hisobga oladi. Menyu tugmasi shu yerdan chaqiradi.
@@ -22,73 +20,15 @@ import { showSupport } from './support.js';
 import { env } from '../lib/env.js';
 import type { TKey } from '../i18n.js';
 
-/**
- * Kompaniya bor-yo'qligini tekshiradi. Bo'lmasa — foydalanuvchini ro'yxatdan o'tishga yo'naltiradi.
- * Ma'lumot hali yig'ilmagan bo'lsa ham xato emas: shunchaki holat haqida xabar beriladi.
- */
-async function requireCompany(ctx: BotContext): Promise<string | null> {
-  const { user, company } = ctx.sp;
-  if (!user) {
-    await ctx.reply(t(ctx, 'need_start'));
-    return null;
-  }
-  if (!company) {
-    await ctx.reply(t(ctx, 'need_company'), { reply_markup: mainMenu(ctx.sp.lang) });
-    return null;
-  }
-  /*
-   * Obuna tugagan (yoki bekor qilingan) kompaniya — sayt va API bilan bir xil
-   * qoida: hisobotlar o'rniga tarifni yangilash taklifi. Ilgari bot tarifni
-   * umuman tekshirmasdi va to'lovni to'xtatgan mijoz raqamlarni shu yerdan
-   * olishda davom etardi.
-   */
-  if (!hasFeature(company.plan, 'telegram_notifications')) {
-    await ctx.reply(t(ctx, 'plan_locked_reports'), {
-      parse_mode: 'HTML',
-      reply_markup: pricingKeyboard(ctx.sp.lang),
-    });
-    return null;
-  }
-  if (!company.hasApiKey) {
-    // A'zo kalitni o'zi ulay olmaydi — /start ga yuborish uni aylanib qaytarardi
-    await ctx.reply(t(ctx, company.role === 'owner' ? 'need_api_key' : 'set_api_owner_only'));
-    return null;
-  }
-  return company.id;
-}
-
 // ─────────────────────────── 📊 Hisobot (bugun / kecha / shu oy / shu yil) ───────────────────────────
 
-/**
- * Hisobot matni va davr tugmalari. Davr va raqamlar saytdagi Boshqaruv
- * paneli bilan bir ta'rifda (lib/dashboard-kpi.ts): o'sha tarif chegarasi,
- * o'sha sof foyda (davr xarajatlaridan keyin). `null` — sinxronizatsiya hali
- * tugamagan va ko'rsatadigan raqam yo'q.
- */
-async function renderReport(
-  ctx: BotContext,
-  companyId: string,
-  kind: ReportPeriod,
-): Promise<{ text: string; markup: InlineKeyboard } | null> {
-  const company = ctx.sp.company;
-  const range = resolveReportPeriod(kind, company?.plan);
-  const report = await buildPeriodReport(companyId, range);
-
-  // Sinxronizatsiya tugamagan bo'lsa — bo'sh hisobot sababini tushuntiramiz
-  if (report.orders === 0 && company?.onboardStep === 'syncing') return null;
-
-  return {
-    text: periodReportText(ctx.sp.lang, range, report, company?.seesMoney ?? true),
-    markup: reportKeyboard(ctx.sp.lang, kind),
-  };
-}
-
-/** «📊 Bugungi hisobot» tugmasi — bugungi hisobot, ostida boshqa davrlar */
+/** «📊 Bugungi hisobot» tugmasi — bugungi hisobot, ostida boshqa davrlar va «🔄 Sinxronlash» */
 export async function showReport(ctx: BotContext, kind: ReportPeriod = 'today'): Promise<void> {
   const companyId = await requireCompany(ctx);
-  if (!companyId) return;
+  const company = ctx.sp.company;
+  if (!companyId || !company) return;
 
-  const view = await renderReport(ctx, companyId, kind);
+  const view = await buildReportView(ctx.sp.lang, company, kind);
   if (!view) {
     await ctx.reply(t(ctx, 'sync_running'), { parse_mode: 'HTML' });
     return;
@@ -113,20 +53,34 @@ export async function onReportAction(ctx: BotContext, value: string): Promise<vo
   try {
     if (!isReportPeriod(value)) return;
     const companyId = await requireCompany(ctx);
-    if (!companyId) return;
+    const company = ctx.sp.company;
+    if (!companyId || !company) return;
 
-    const view = await renderReport(ctx, companyId, value);
+    // Shu xabar sinxronni kutayotgan bo'lsa — tugma o'rnida foiz qoladi, tugagach yangi davr chiziladi
+    const message = ctx.callbackQuery?.message;
+    const syncProgress = message ? noteReportPeriod(message.chat.id, message.message_id, value) : null;
+
+    const view = await buildReportView(ctx.sp.lang, company, value, { syncProgress });
     if (!view) {
       await ctx.reply(t(ctx, 'sync_running'), { parse_mode: 'HTML' });
       return;
     }
+    /*
+     * Hisob paytida (yil hisoboti sekin) sinxron tugagan bo'lishi mumkin. Unda
+     * xabarni kuzatuvchi yakunlaydi — yangi tanlangan davr bilan (noteReportPeriod
+     * uni yozib qo'ygan) va «✅» qatori bilan; bu yerdagi sinxrondan oldingi
+     * raqamlar uni bosib ketmasin (2026-11-12 tekshiruvi).
+     */
+    if (syncProgress !== null && message && !isSyncWaiting(message.chat.id, message.message_id)) return;
+    const plain = reportKeyboard(ctx.sp.lang, value, { canSync: canStartSync(company) });
     try {
       await ctx.editMessageText(view.text, { parse_mode: 'HTML', reply_markup: view.markup });
     } catch (err) {
       // O'sha davr qayta bosildi va raqamlar o'zgarmagan
       if (isNotModified(err)) return;
-      // Xabarni tahrirlab bo'lmadi (o'chirilgan va h.k.) — yangisi yuboriladi
-      await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.markup });
+      // Xabarni tahrirlab bo'lmadi (o'chirilgan va h.k.) — yangisi yuboriladi; uni hech kim
+      // kuzatmaydi, shuning uchun foiz tugmasisiz
+      await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: plain });
     }
   } finally {
     await ctx.answerCallbackQuery().catch(() => undefined);
@@ -269,6 +223,9 @@ export async function onMenuButton(ctx: BotContext, key: TKey): Promise<void> {
   switch (key) {
     case 'btn_today':
       await showReport(ctx, 'today');
+      return;
+    case 'btn_sync':
+      await onSyncCommand(ctx);
       return;
     case 'btn_stocks':
       await showStocks(ctx);

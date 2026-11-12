@@ -171,7 +171,32 @@ export interface Messages {
 
   // ── Sinxronizatsiya ─────────────────────────────────
   sync_done: string;
-  sync_failed: string;
+
+  // ── 🔄 Qo'lda sinxron (handlers/sync.ts) ─────────────
+  /** Doimiy menyu tugmasi — chiqqandan keyin matnini O'ZGARTIRMANG (mainMenu izohi) */
+  btn_sync: string;
+  btn_sync_progress: string;
+  btn_sync_retry: string;
+  sync_started: string;
+  sync_eta: string;
+  sync_progress: string;
+  sync_retrying: string;
+  sync_banner_done: string;
+  sync_banner_fresh: string;
+  sync_toast_fresh: string;
+  sync_toast_started: string;
+  sync_toast_running: string;
+  sync_toast_finishing: string;
+  sync_fail_key: string;
+  sync_fail_key_site: string;
+  sync_fail_key_member: string;
+  sync_fail_temp: string;
+  sync_fail_recent: string;
+  sync_canceled: string;
+  sync_slow: string;
+  sync_owner_only: string;
+  sync_as_of: string;
+  sync_as_of_next: string;
 
   // ── Kunlik hisobot ──────────────────────────────────
   daily_title: string;
@@ -384,6 +409,7 @@ const uz: Messages = {
   help:
     '<b>SavdoIQ bot</b>\n\n'
     + '📊 Bugungi hisobot — bugun, kecha, shu oy va shu yil\n'
+    + '🔄 Sinxronlash — ma’lumotni hozir Uzum’dan yangilash\n'
     + '📦 Qoldiqlar — kritik SKU’lar\n'
     + '🔑 Saytga kirish — bir martalik kod\n'
     + '💳 Tarif — tarif va muddat\n'
@@ -391,7 +417,7 @@ const uz: Messages = {
     + '⚙️ Sozlamalar — til va bildirishnomalar\n'
     + '🆘 Yordam — operatorga savol\n\n'
     + 'Savolingizni shu chatga yozsangiz ham bo‘ladi — operatorga yetib boradi.\n\n'
-    + 'Buyruqlar: /start /help /id /support /cancel',
+    + 'Buyruqlar: /start /help /sync /id /support /cancel',
   id_text: 'Sizning Telegram ID: <code>{id}</code>',
   support:
     '🆘 <b>Yordam</b>\n\n'
@@ -412,8 +438,37 @@ const uz: Messages = {
 
   sync_done:
     '🎉 <b>Ma’lumotlar tayyor!</b>\n\nSotuv, foyda va qoldiqlar hisoblab chiqildi.\nEndi saytga kirib to‘liq analitikani ko‘rishingiz mumkin.',
-  sync_failed:
-    '⚠️ Ma’lumotlarni yig‘ishda muammo bo‘ldi.\nAPI kalitni tekshirib, «⚙️ Sozlamalar → 🔑 API kalitni yangilash» orqali qayta ulang.',
+  btn_sync: '🔄 Sinxronlash',
+  btn_sync_progress: '⏳ Sinxronlanmoqda… {progress}%',
+  btn_sync_retry: '🔄 Qayta urinish',
+  sync_started:
+    '⏳ <b>Sinxronlanmoqda…</b>\nUzum’dan yangi ma’lumot olinmoqda{eta}.\nTayyor bo‘lganda shu xabar yangilanadi.',
+  sync_eta: ' — taxminan {duration}',
+  sync_progress: '⏳ <b>Sinxronlanmoqda… {progress}%</b>\n{step}\nTayyor bo‘lganda shu xabar yangilanadi.',
+  sync_retrying:
+    '⏳ <b>Uzum javob bermadi — qayta urinilmoqda ({n}/{max})</b>\nTayyor bo‘lganda shu xabar yangilanadi.',
+  sync_banner_done: '✅ <b>Ma’lumot yangilandi</b>',
+  sync_banner_fresh: '✅ Ma’lumot {ago} oldin yangilangan. Uzum’dan qayta olish {retry} dan keyin mumkin.',
+  sync_toast_fresh: '✅ Ma’lumot {ago} oldin yangilangan. Uzum’dan qayta olish {retry} dan keyin mumkin',
+  sync_toast_started: '⏳ Sinxron boshlandi',
+  sync_toast_running: '⏳ Sinxron ketyapti — {progress}%',
+  sync_toast_finishing: '✅ Sinxron tugadi — xabar birozdan so‘ng yangilanadi',
+  sync_fail_key:
+    '⚠️ <b>Sinxron bajarilmadi</b>\n🔑 Uzum API kaliti ishlamayapti. «⚙️ Sozlamalar → 🔑 API kalitni yangilash» orqali yangisini ulang.',
+  sync_fail_key_site:
+    '⚠️ <b>Sinxron bajarilmadi</b>\n🔑 Kabinetlaringizdan birining Uzum API kaliti ishlamayapti{cabinet}. Saytdagi «Sozlamalar → Uzum kabinetlar» bo‘limida o‘sha kabinetni yangi kalit bilan qayta ulang.',
+  sync_fail_key_member:
+    '⚠️ <b>Sinxron bajarilmadi</b>\n🔑 Uzum API kaliti ishlamayapti. Yangi kalitni kompaniya egasi ulaydi — unga ayting.',
+  sync_fail_temp:
+    '⚠️ <b>Sinxron bajarilmadi</b>\nUzum hozir javob bermadi — odatda bu vaqtinchalik. Birozdan so‘ng qayta urinib ko‘ring.',
+  sync_fail_recent:
+    '⏳ Oxirgi urinish {time} da bajarilmadi. Uzum’ni ortiqcha yuklamaslik uchun qayta sinxronlash {retry} dan keyin mumkin.',
+  sync_canceled: '⏹ Sinxron bekor qilindi.',
+  sync_slow:
+    '⏳ Sinxron odatdagidan uzoq davom etyapti. Tugagach yangi raqamlar «📊 Bugungi hisobot»da va saytda ko‘rinadi.',
+  sync_owner_only: '🔒 Sinxronni do‘kon egasi yoki menejer boshlay oladi.',
+  sync_as_of: '🕒 Ma’lumot {time} holatiga',
+  sync_as_of_next: '🕒 Ma’lumot {time} holatiga · keyingi sinxron {next}',
 
   daily_title: '☀️ <b>Kechagi natijalar</b> ({date})',
   daily_top: '\n🏆 <b>Top 3 mahsulot</b>',
@@ -507,7 +562,8 @@ const uz: Messages = {
   faq_sync:
     '🔄 <b>Ma’lumot qachon yangilanadi</b>\n\n'
     + 'Tarifga qarab har 30–60 daqiqada avtomatik. Birinchi ulanishda tarifingizdagi tarix (1 yilgacha) yig‘iladi — bu odatda bir necha daqiqa oladi.\n\n'
-    + 'Oxirgi yangilanish vaqti saytdagi boshqaruv panelida ko‘rinadi. Ma’lumot eskirgandek tuyulsa, avval sahifani yangilang.',
+    + 'Oxirgi yangilanish vaqti saytdagi boshqaruv panelida va «📊 Bugungi hisobot» ostida ko‘rinadi. Ma’lumot eskirgandek tuyulsa, avval sahifani yangilang.\n\n'
+    + 'Kutib o‘tirmasdan yangilash uchun «🔄 Sinxronlash» tugmasini bosing (yoki /sync).',
   faq_billing:
     '💳 <b>Tarif va to‘lov</b>\n\n'
     + 'Joriy tarifingizni «💳 Tarif» tugmasi ko‘rsatadi.\n'
@@ -661,6 +717,7 @@ const ru: Messages = {
   help:
     '<b>Бот SavdoIQ</b>\n\n'
     + '📊 Отчёт за сегодня — сегодня, вчера, месяц и год\n'
+    + '🔄 Синхронизировать — обновить данные из Uzum прямо сейчас\n'
     + '📦 Остатки — критические SKU\n'
     + '🔑 Вход на сайт — одноразовый код\n'
     + '💳 Тариф — тариф и срок\n'
@@ -668,7 +725,7 @@ const ru: Messages = {
     + '⚙️ Настройки — язык и уведомления\n'
     + '🆘 Поддержка — вопрос оператору\n\n'
     + 'Можно просто написать вопрос в этот чат — он дойдёт до оператора.\n\n'
-    + 'Команды: /start /help /id /support /cancel',
+    + 'Команды: /start /help /sync /id /support /cancel',
   id_text: 'Ваш Telegram ID: <code>{id}</code>',
   support:
     '🆘 <b>Поддержка</b>\n\n'
@@ -687,8 +744,37 @@ const ru: Messages = {
 
   sync_done:
     '🎉 <b>Данные готовы!</b>\n\nПродажи, прибыль и остатки посчитаны.\nЗаходите на сайт — вся аналитика уже там.',
-  sync_failed:
-    '⚠️ При сборе данных возникла проблема.\nПроверьте API-ключ и подключите заново: «⚙️ Настройки → 🔑 Обновить API-ключ».',
+  btn_sync: '🔄 Синхронизировать',
+  btn_sync_progress: '⏳ Синхронизация… {progress}%',
+  btn_sync_retry: '🔄 Повторить',
+  sync_started:
+    '⏳ <b>Синхронизация…</b>\nПолучаем свежие данные из Uzum{eta}.\nКогда всё будет готово, это сообщение обновится.',
+  sync_eta: ' — примерно {duration}',
+  sync_progress: '⏳ <b>Синхронизация… {progress}%</b>\n{step}\nКогда всё будет готово, это сообщение обновится.',
+  sync_retrying:
+    '⏳ <b>Uzum не ответил — пробуем ещё раз ({n}/{max})</b>\nКогда всё будет готово, это сообщение обновится.',
+  sync_banner_done: '✅ <b>Данные обновлены</b>',
+  sync_banner_fresh: '✅ Данные обновлены {ago} назад. Снова запросить Uzum можно после {retry}.',
+  sync_toast_fresh: '✅ Данные обновлены {ago} назад. Снова запросить Uzum можно после {retry}',
+  sync_toast_started: '⏳ Синхронизация запущена',
+  sync_toast_running: '⏳ Идёт синхронизация — {progress}%',
+  sync_toast_finishing: '✅ Синхронизация завершена — сообщение скоро обновится',
+  sync_fail_key:
+    '⚠️ <b>Синхронизация не удалась</b>\n🔑 API-ключ Uzum не работает. Подключите новый через «⚙️ Настройки → 🔑 Обновить API-ключ».',
+  sync_fail_key_site:
+    '⚠️ <b>Синхронизация не удалась</b>\n🔑 Не работает API-ключ Uzum одного из ваших кабинетов{cabinet}. Подключите этот кабинет заново с новым ключом на сайте: «Настройки → Кабинеты Uzum».',
+  sync_fail_key_member:
+    '⚠️ <b>Синхронизация не удалась</b>\n🔑 API-ключ Uzum не работает. Новый ключ подключает владелец компании — сообщите ему.',
+  sync_fail_temp:
+    '⚠️ <b>Синхронизация не удалась</b>\nUzum сейчас не ответил — обычно это временно. Попробуйте чуть позже.',
+  sync_fail_recent:
+    '⏳ Последняя попытка в {time} не удалась. Чтобы не перегружать Uzum, повторить можно после {retry}.',
+  sync_canceled: '⏹ Синхронизация отменена.',
+  sync_slow:
+    '⏳ Синхронизация идёт дольше обычного. Когда она завершится, свежие цифры появятся в «📊 Отчёт за сегодня» и на сайте.',
+  sync_owner_only: '🔒 Запустить синхронизацию может владелец магазина или менеджер.',
+  sync_as_of: '🕒 Данные на {time}',
+  sync_as_of_next: '🕒 Данные на {time} · следующая синхронизация в {next}',
 
   daily_title: '☀️ <b>Итоги вчерашнего дня</b> ({date})',
   daily_top: '\n🏆 <b>Топ-3 товара</b>',
@@ -782,7 +868,8 @@ const ru: Messages = {
   faq_sync:
     '🔄 <b>Когда обновляются данные</b>\n\n'
     + 'Автоматически каждые 30–60 минут в зависимости от тарифа. При первом подключении собирается история по вашему тарифу (до 1 года) — обычно это несколько минут.\n\n'
-    + 'Время последнего обновления видно в панели на сайте. Если данные кажутся устаревшими — сначала обновите страницу.',
+    + 'Время последнего обновления видно в панели на сайте и под «📊 Отчёт за сегодня». Если данные кажутся устаревшими — сначала обновите страницу.\n\n'
+    + 'Чтобы обновить без ожидания, нажмите «🔄 Синхронизировать» (или /sync).',
   faq_billing:
     '💳 <b>Тариф и оплата</b>\n\n'
     + 'Текущий тариф показывает кнопка «💳 Тариф».\n'
@@ -940,6 +1027,7 @@ const en: Messages = {
   help:
     '<b>SavdoIQ bot</b>\n\n'
     + '📊 Today’s report — today, yesterday, this month and this year\n'
+    + '🔄 Sync now — fetch fresh data from Uzum right away\n'
     + '📦 Stock — critical SKUs\n'
     + '🔑 Sign in to website — one-time code\n'
     + '💳 Plan — plan and expiry date\n'
@@ -947,7 +1035,7 @@ const en: Messages = {
     + '⚙️ Settings — language and notifications\n'
     + '🆘 Support — ask an operator\n\n'
     + 'You can also just type your question in this chat — it will reach an operator.\n\n'
-    + 'Commands: /start /help /id /support /cancel',
+    + 'Commands: /start /help /sync /id /support /cancel',
   id_text: 'Your Telegram ID: <code>{id}</code>',
   support:
     '🆘 <b>Support</b>\n\n'
@@ -966,8 +1054,33 @@ const en: Messages = {
 
   sync_done:
     '🎉 <b>Your data is ready!</b>\n\nSales, profit and stock have been calculated.\nOpen the website to see the full analytics.',
-  sync_failed:
-    '⚠️ There was a problem collecting your data.\nCheck your API key and reconnect it via “⚙️ Settings → 🔑 Update API key”.',
+  btn_sync: '🔄 Sync now',
+  btn_sync_progress: '⏳ Syncing… {progress}%',
+  btn_sync_retry: '🔄 Try again',
+  sync_started: '⏳ <b>Syncing…</b>\nFetching fresh data from Uzum{eta}.\nThis message will update when it is done.',
+  sync_eta: ' — about {duration}',
+  sync_progress: '⏳ <b>Syncing… {progress}%</b>\n{step}\nThis message will update when it is done.',
+  sync_retrying: '⏳ <b>Uzum did not respond — retrying ({n}/{max})</b>\nThis message will update when it is done.',
+  sync_banner_done: '✅ <b>Data updated</b>',
+  sync_banner_fresh: '✅ Data was updated {ago} ago. You can fetch from Uzum again after {retry}.',
+  sync_toast_fresh: '✅ Data was updated {ago} ago. You can fetch from Uzum again after {retry}',
+  sync_toast_started: '⏳ Sync started',
+  sync_toast_running: '⏳ Sync in progress — {progress}%',
+  sync_toast_finishing: '✅ Sync finished — this message will update shortly',
+  sync_fail_key:
+    '⚠️ <b>Sync failed</b>\n🔑 Your Uzum API key is not working. Connect a new one via “⚙️ Settings → 🔑 Update API key”.',
+  sync_fail_key_site:
+    '⚠️ <b>Sync failed</b>\n🔑 The Uzum API key of one of your cabinets is not working{cabinet}. Reconnect that cabinet with a new key on the website: “Settings → Uzum cabinets”.',
+  sync_fail_key_member:
+    '⚠️ <b>Sync failed</b>\n🔑 The Uzum API key is not working. Only the company owner can connect a new one — please let them know.',
+  sync_fail_temp: '⚠️ <b>Sync failed</b>\nUzum did not respond — this is usually temporary. Please try again a bit later.',
+  sync_fail_recent: '⏳ The last attempt at {time} failed. To avoid overloading Uzum, you can retry after {retry}.',
+  sync_canceled: '⏹ The sync was canceled.',
+  sync_slow:
+    '⏳ The sync is taking longer than usual. When it finishes, fresh numbers will appear in “📊 Today’s report” and on the website.',
+  sync_owner_only: '🔒 Only the shop owner or a manager can start a sync.',
+  sync_as_of: '🕒 Data as of {time}',
+  sync_as_of_next: '🕒 Data as of {time} · next sync at {next}',
 
   daily_title: '☀️ <b>Yesterday’s results</b> ({date})',
   daily_top: '\n🏆 <b>Top 3 products</b>',
@@ -1061,7 +1174,8 @@ const en: Messages = {
   faq_sync:
     '🔄 <b>When data is updated</b>\n\n'
     + 'Automatically every 30–60 minutes, depending on your plan. On first connection, the history included in your plan (up to 1 year) is collected — this usually takes a few minutes.\n\n'
-    + 'The last update time is shown on the website dashboard. If the data looks out of date, refresh the page first.',
+    + 'The last update time is shown on the website dashboard and under “📊 Today’s report”. If the data looks out of date, refresh the page first.\n\n'
+    + 'To update without waiting, tap “🔄 Sync now” (or /sync).',
   faq_billing:
     '💳 <b>Plans and payment</b>\n\n'
     + 'The “💳 Plan” button shows your current plan.\n'
@@ -1110,6 +1224,7 @@ export function tr(lang: BotLang, key: TKey, vars?: Record<string, string | numb
 export function matchButton(text: string): TKey | null {
   const keys: TKey[] = [
     'btn_today',
+    'btn_sync',
     'btn_stocks',
     'btn_login',
     'btn_billing',

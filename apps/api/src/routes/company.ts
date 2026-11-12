@@ -121,6 +121,33 @@ const SETTING_KEY_RE = /^[A-Za-z0-9_.:-]{1,60}$/;
 const MAX_SETTINGS = 60;
 
 /**
+ * Server o'zi yuritadigan yozuvlar umumiy PUT/GET /settings orqali o'qilmaydi
+ * va yozilmaydi (2026-11-12 tekshiruvi; sayt bu umumiy marshrutni ishlatmaydi):
+ *  • `bot:` — botning ichki holati. Ilgari istalgan ega yoki menejer
+ *    `bot:syncWait:<chat>:<xabar>` yozuvini qo'yib, bot qayta ishga tushganda
+ *    uni BEGONA foydalanuvchi chatiga xabar yozishga majburlay olardi, GET esa
+ *    egasining Telegram chat raqamini a'zolarga ko'rsatardi;
+ *  • `sync.` — sinxron bosqichlari davomiyligi. Kabinetning o'z o'lchovi
+ *    bo'lmasa BOSHQA kompaniyaniki olinadi (services/sync.ts loadTimings), ya'ni
+ *    bitta soxta qiymat ("Infinity") hamma yangi sotuvchining birinchi
+ *    sinxronini yiqitardi;
+ *  • `history.` — tarix qamrovi, `billing:` — obuna ogohlantirishi belgisi;
+ *  • qolganlari o'z marshrutlarida tekshirilib yoziladi (maqsadlar, unit reja,
+ *    sharh shablonlari, vazifalar holati).
+ * Kalit katta-kichik harfdan qat'i nazar solishtiriladi: dev SQLite'da
+ * `startsWith` ham shunday ishlaydi.
+ */
+const RESERVED_SETTING_PREFIXES = ['bot:', 'sync.', 'history.', 'billing:', 'goals:', 'unit:', 'review_templates', 'todo_state'];
+const isReservedSetting = (key: string): boolean => {
+  const k = key.toLowerCase();
+  return RESERVED_SETTING_PREFIXES.some((p) => k.startsWith(p));
+};
+const publicSettingsWhere = (companyId: string) => ({
+  companyId,
+  NOT: RESERVED_SETTING_PREFIXES.map((p) => ({ key: { startsWith: p } })),
+});
+
+/**
  * Bir foydalanuvchi nechta kompaniya ocha oladi — egasi bo'lgan kompaniyalari orasidagi
  * eng yuqori aktiv tarif bo'yicha. Tariflarda alohida "kompaniya" limiti yo'q, shuning
  * uchun chegara shu yerda belgilangan.
@@ -235,7 +262,7 @@ function normalizeSettings(body: unknown): Record<string, string | null> {
 
   const out: Record<string, string | null> = {};
   for (const [key, value] of entries) {
-    if (!SETTING_KEY_RE.test(key)) {
+    if (!SETTING_KEY_RE.test(key) || isReservedSetting(key)) {
       throw AppError.badRequest(`Sozlama kaliti noto‘g‘ri: “${key.slice(0, 40)}”`);
     }
     out[key] = value === null ? null : String(value).slice(0, 2000);
@@ -670,7 +697,7 @@ router.get(
   ah(async (req, res) => {
     const { company } = companyCtx(req);
     const rows = await prisma.companySetting.findMany({
-      where: { companyId: company.id },
+      where: publicSettingsWhere(company.id),
       orderBy: { key: 'asc' },
     });
 
@@ -709,7 +736,7 @@ router.put(
     }
 
     const rows = await prisma.companySetting.findMany({
-      where: { companyId: company.id },
+      where: publicSettingsWhere(company.id),
       orderBy: { key: 'asc' },
     });
 

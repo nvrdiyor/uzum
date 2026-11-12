@@ -6,7 +6,8 @@
  *  • TELEGRAM_BOT_TOKEN bo'lmasa — aniq xabar chiqarib, xatosiz tugaydi (exit 0).
  *  • TELEGRAM_WEBHOOK_URL berilgan bo'lsa webhook rejimi, aks holda long polling.
  *  • Fon jarayonlari: kunlik hisobot (09:00), qoldiq va pullik saqlash
- *    ogohlantirishi (10:00) va kuzatuvchi (har 30 soniya).
+ *    ogohlantirishi (10:00), kuzatuvchi (har 30 soniya) va qo'lda boshlangan
+ *    sinxronni kutayotgan xabarlar (har 3 soniya, faqat shunday xabar bo'lsa).
  */
 import http from 'node:http';
 import { Bot, GrammyError, HttpError, webhookCallback } from 'grammy';
@@ -16,6 +17,7 @@ import { registerHandlers } from './handlers/index.js';
 import { startDailyJob } from './jobs/daily.js';
 import { startStockAlertJob } from './jobs/stock-alert.js';
 import { startWatcherJob } from './jobs/watcher.js';
+import { startSyncTracker } from './handlers/sync.js';
 import type { BotContext } from './handlers/context.js';
 
 /* eslint-disable no-console */
@@ -24,6 +26,7 @@ import type { BotContext } from './handlers/context.js';
 const COMMANDS_UZ = [
   { command: 'start', description: 'Boshlash / ro‘yxatdan o‘tish' },
   { command: 'help', description: 'Yordam va imkoniyatlar' },
+  { command: 'sync', description: 'Ma’lumotni hozir sinxronlash' },
   { command: 'id', description: 'Telegram ID' },
   { command: 'support', description: 'Qo‘llab-quvvatlash' },
   { command: 'cancel', description: 'Amaldagi amalni bekor qilish' },
@@ -32,6 +35,7 @@ const COMMANDS_UZ = [
 const COMMANDS_RU = [
   { command: 'start', description: 'Начать / регистрация' },
   { command: 'help', description: 'Помощь и возможности' },
+  { command: 'sync', description: 'Синхронизировать данные сейчас' },
   { command: 'id', description: 'Telegram ID' },
   { command: 'support', description: 'Поддержка' },
   { command: 'cancel', description: 'Отменить текущее действие' },
@@ -41,6 +45,7 @@ const COMMANDS_RU = [
 const COMMANDS_EN = [
   { command: 'start', description: 'Start / sign up' },
   { command: 'help', description: 'Help and features' },
+  { command: 'sync', description: 'Sync data now' },
   { command: 'id', description: 'Telegram ID' },
   { command: 'support', description: 'Support' },
   { command: 'cancel', description: 'Cancel the current action' },
@@ -105,7 +110,7 @@ async function main(): Promise<void> {
     // Buyruqlar ro'yxatini o'rnatib bo'lmasa ham bot ishlayveradi
   }
 
-  const timers = [startDailyJob(bot), startStockAlertJob(bot), startWatcherJob(bot)];
+  const timers = [startDailyJob(bot), startStockAlertJob(bot), startWatcherJob(bot), startSyncTracker(bot)];
   let server: http.Server | null = null;
 
   if (env.telegram.webhookUrl) {

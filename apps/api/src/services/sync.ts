@@ -219,12 +219,26 @@ const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
 /** O'lchangan bosqich davomiyliklari saqlanadigan sozlama kaliti */
 const timingKey = (type: SyncJobType, accountId: string): string => `sync.timing.${type}.${accountId}`;
 
+/** Bitta bosqichning ishonchli davomiyligi chegarasi (ms) — undan kattasi o'lchov emas, xato */
+const MAX_STEP_MS = 3_600_000;
+
+/**
+ * Saqlangan davomiyliklar. Faqat chekli sonlar qabul qilinadi: ilgari
+ * "Infinity" ham o'tardi va progress hisobi NaN bo'lib, sinxron bazaga
+ * yozolmay yiqilardi — bu qiymat esa boshqa kompaniyaning birinchi sinxroniga
+ * ham olinadi (loadTimings). Sayt bu kalitlarga endi yozolmaydi (routes/company.ts).
+ */
 function parseTimings(value: string | null | undefined): number[] | null {
   if (!value) return null;
   try {
     const arr: unknown = JSON.parse(value);
     if (!Array.isArray(arr) || arr.length !== SYNC_STEPS.length) return null;
-    const out = arr.map((x) => Math.max(0, Number(x) || 0));
+    const out: number[] = [];
+    for (const x of arr) {
+      const n = Number(x);
+      if (!Number.isFinite(n)) return null;
+      out.push(Math.min(MAX_STEP_MS, Math.max(0, n)));
+    }
     return sum(out) > 0 ? out : null;
   } catch {
     return null;
