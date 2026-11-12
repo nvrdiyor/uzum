@@ -17,7 +17,7 @@
 import { prisma } from '@savdoiq/db';
 import {
   allocateBatchSales,
-  matchBatchSupplies,
+  matchBatchSuppliesDetailed,
   shiftIsoDay,
   SUPPLY_MATCH_DAYS,
   spreadAdFees,
@@ -70,6 +70,8 @@ const ORDERS_PER_ROW = 50;
 const HISTORY_GAP_MIN = 1;
 /** Kelgan sana taklifi: «Keldi» kunidan shuncha kun oldingacha bo'lgan Uzum qabuli */
 const FIX_LOOKBACK_DAYS = 120;
+/** Reklama qatorlari bazadan partiyadagi mahsulot ID'lari bo'yicha olinadi (undan ko'p bo'lsa — hammasi) */
+const AD_NOTE_FILTER_MAX = 300;
 
 const chunk = <T>(items: readonly T[], size = IN_CHUNK): T[][] => {
   const out: T[][] = [];
@@ -337,16 +339,51 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
    * rangga yig'ilib, partiya foydasi kam chiqardi. Ularning ulushi partiyalarga
    * kirmaydi. Hali topshirilmagan (yo'ldagi) sotuvdan reklama yechilmagan.
    */
+  const productOfSku = new Map<string, string>();
+  const productsOfCode = new Map<string, Set<string>>();
+  for (const s of skuRecs) {
+    const pid = s.product.uzumProductId;
+    if (!pid) continue;
+    productOfSku.set(s.id, pid);
+    const code = normSkuCode(s.sku);
+    const set = productsOfCode.get(code);
+    if (set) set.add(pid);
+    else productsOfCode.set(code, new Set([pid]));
+  }
+  /** Katalogsiz pozitsiya — kodi faqat bitta mahsulotda bo'lsa o'sha */
+  const productOfCode = (code: string): string | undefined => {
+    const set = productsOfCode.get(code);
+    return set && set.size === 1 ? [...set][0] : undefined;
+  };
+  /*
+   * Faqat partiyadagi mahsulotlar reklamasi: boshqa mahsulot reklamasi partiyalarga
+   * tushmaydi, uning sotuvlarini o'qish esa katta do'konda hisobni o'n barobar
+   * sekinlashtirardi (300 ta reklamali mahsulot: 0,15 s → 4 s).
+   */
+  const batchProducts = new Set<string>();
+  lines.forEach((ln, k) => {
+    const sku = lineSku[k];
+    const pid = sku ? productOfSku.get(sku) : productOfCode(ln.code);
+    if (pid) batchProducts.add(pid);
+  });
+  for (const id of relevantSkuIds) {
+    const pid = productOfSku.get(id);
+    if (pid) batchProducts.add(pid);
+  }
   let adUnplaced = 0;
+  const batchPids = [...batchProducts];
   const adRecs =
-    storeIds.length && codes.size
+    storeIds.length && batchPids.length
       ? await prisma.expense.findMany({
-          // Doira — Mahsulot foydasidagi getAdFeesBySku (pnl.ts) bilan bir xil
+          // Doira — Mahsulot foydasidagi getAdFeesBySku (pnl.ts) bilan bir xil; izohida partiyadagi mahsulot ID'si
           where: {
             companyId,
             category: 'marketing',
             source: { not: 'uzum-payout' },
-            OR: [{ storeId: { in: storeIds } }, { storeId: null }],
+            AND: [
+              { OR: [{ storeId: { in: storeIds } }, { storeId: null }] },
+              ...(batchPids.length <= AD_NOTE_FILTER_MAX ? [{ OR: batchPids.map((pid) => ({ note: { contains: pid } })) }] : []),
+            ],
           },
           select: { date: true, amount: true, note: true },
         })
@@ -355,27 +392,17 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
   for (const r of adRecs) {
     const product = adProductId(r.note);
     // Xarajat kuni bazada "kun 00:00Z" bo'lib yozilgan (importer.ts dayStart) — sana qismi o'sha kun
-    if (product && r.amount) adFees.push({ product, day: r.date.toISOString().slice(0, 10), amount: r.amount });
+    if (product && r.amount && batchProducts.has(product)) adFees.push({ product, day: r.date.toISOString().slice(0, 10), amount: r.amount });
   }
   if (adFees.length) {
     const adProducts = new Set(adFees.map((f) => f.product));
-    const productOfSku = new Map<string, string>();
-    const productsOfCode = new Map<string, Set<string>>();
-    for (const s of skuRecs) {
-      const pid = s.product.uzumProductId;
-      if (!pid) continue;
-      productOfSku.set(s.id, pid);
-      const code = normSkuCode(s.sku);
-      const set = productsOfCode.get(code);
-      if (set) set.add(pid);
-      else productsOfCode.set(code, new Set([pid]));
-    }
-    /** Katalogsiz pozitsiya — kodi faqat bitta mahsulotda bo'lsa o'sha */
-    const productOfCode = (code: string): string | undefined => {
-      const set = productsOfCode.get(code);
-      return set && set.size === 1 ? [...set][0] : undefined;
-    };
-    const deliveredDay = (d: Date | null): string | null => (d && d.getTime() <= nowMs ? toBusinessDate(d) : null);
+    /*
+     * Topshirilgan kun — reklama yozuvi bilan BIR XIL hisobda: Uzum to'lov vaqtini
+     * (dateService) bazaga UTC sanasi bilan yozadi (importer.ts dayStart). Toshkent kuni
+     * olinsa, kechasi (00:00–05:00) topshirilgan sotuv boshqa kunga o'tib, o'sha kungi
+     * reklama boshqa sotuvga tushardi.
+     */
+    const deliveredDay = (d: Date | null): string | null => (d && d.getTime() <= nowMs ? isoDay(d) : null);
 
     const base: AdBaseLine[] = [];
     const baseRef: number[] = [];
@@ -409,9 +436,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       const k = baseRef[i];
       if (k >= 0 && v !== 0) lines[k].adFee = (lines[k].adFee ?? 0) + v;
     });
-    // Ko'rsatiladi faqat partiyadagi tovarlarniki: boshqa mahsulot reklamasi partiyalarga aloqasiz
-    const batchProducts = new Set(relevantSkuIds.map((id) => productOfSku.get(id)).filter((p): p is string => Boolean(p)));
-    for (const [product, v] of spread.unplaced) if (batchProducts.has(product)) adUnplaced += v;
+    for (const v of spread.unplaced.values()) adUnplaced += v;
   }
 
   /*
@@ -503,7 +528,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
   const minDay = (days: readonly (string | null)[]): string | null => days.filter((d): d is string => Boolean(d)).sort()[0] ?? null;
   const batchCodes = batches.map((b) => new Set(b.rows.filter((r) => r.lot >= 0).flatMap((r) => lots[r.lot].codes)));
   const batchShipped = batches.map((b) => minDay(b.rows.filter((r) => r.qty > 0).map((r) => r.shippedAt)));
-  const owner = matchBatchSupplies(
+  const { owner, extra } = matchBatchSuppliesDetailed(
     batches.map((b, bi) => ({
       codes: batchCodes[bi],
       anchor:
@@ -521,10 +546,15 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       units: s.status === 'accepted' ? s.acceptedBy : s.plannedBy,
     })),
   );
-  /** Partiya → uning ta'minlashlari (kun tartibida) */
+  /** Partiya → uning ta'minlashlari (kun tartibida): asosiylari va kodi bo'yicha qo'shilganlari */
   const suppliesOfBatch: LoadedSupply[][] = batches.map(() => []);
-  owner.forEach((bi, s) => {
-    if (bi !== null) suppliesOfBatch[bi].push(supplies[s]);
+  /** Ta'minlash ↔ partiya bog'langanmi (asosiy yoki kodi bo'yicha) */
+  const claimed = supplies.map((_, si) => owner[si] !== null || extra[si].size > 0);
+  supplies.forEach((sup, si) => {
+    const bis = new Set<number>();
+    if (owner[si] !== null) bis.add(owner[si] as number);
+    for (const bi of extra[si].values()) bis.add(bi);
+    for (const bi of bis) suppliesOfBatch[bi].push(sup);
   });
   for (const list of suppliesOfBatch) list.sort((a, b) => a.day.localeCompare(b.day) || a.code.localeCompare(b.code));
   /*
@@ -543,14 +573,37 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
    */
   const firstAfter = (list: readonly LoadedSupply[], arrivedAt: string | null): LoadedSupply | undefined =>
     (arrivedAt ? list.find((s) => s.day >= shiftIsoDay(arrivedAt, -SUPPLY_MATCH_DAYS)) : undefined) ?? list[0];
+  /*
+   * Qator kodi qatnashgan partiya ta'minlashlari: qabul qilinganlari va hali kutilayotganlari.
+   * O'z tovari kutilayotgan ta'minlashda bo'lsa — qator o'shani kutadi (avia qabul qilingan,
+   * avto hali qabulda; yoki bir qator qabul qilingan, boshqasi hali qabulda).
+   */
+  const ownSupplies = (bi: number, lot: ProfitLotInput) => {
+    const mine = suppliesOfBatch[bi].filter((s) => lot.codes.some((c) => s.codes.has(c)));
+    return { acc: mine.filter((s) => s.status === 'accepted'), pend: mine.filter((s) => s.status !== 'accepted') };
+  };
+  const availableOf = (bi: number, r: LoadedRow): string | null => {
+    if (r.lot < 0 || r.legStatus !== 'arrived') return null;
+    const { acc, pend } = ownSupplies(bi, lots[r.lot]);
+    const after = r.arrivedAt ? acc.find((s) => s.day >= shiftIsoDay(r.arrivedAt as string, -SUPPLY_MATCH_DAYS)) : acc[0];
+    if (after) return after.day;
+    if (pend.length) return null;
+    if (acc.length) return acc[0].day;
+    // Kodi partiyaning hech bir ta'minlashida yo'q: partiyaning qabuli, partiyada kutilayotgani bo'lmasa
+    const batchAcc = suppliesOfBatch[bi].filter((s) => s.status === 'accepted');
+    if (suppliesOfBatch[bi].some((s) => s.status !== 'accepted')) return null;
+    return firstAfter(batchAcc, r.arrivedAt)?.day ?? null;
+  };
   batches.forEach((b, bi) => {
-    if (!supplyMode[bi]) return;
-    const accepted = suppliesOfBatch[bi].filter((s) => s.status === 'accepted');
     for (const r of b.rows) {
       if (r.lot < 0) continue;
       const lot = lots[r.lot];
-      const own = accepted.filter((s) => lot.codes.some((c) => s.codes.has(c)));
-      lot.availableFrom = r.legStatus === 'arrived' ? (firstAfter(own.length ? own : accepted, r.arrivedAt)?.day ?? null) : null;
+      if (!supplyMode[bi]) {
+        // Nakladnoysiz: Xitoy omboridagi tovarga sotuv "ayblanmaydi" — u hali yo'lga ham chiqmagan
+        if (r.legStatus === 'warehouse') lot.blame = false;
+        continue;
+      }
+      lot.availableFrom = availableOf(bi, r);
       // Qabul kuni aniq: undan oldingi sotuv bu partiyadan bo'lolmaydi — "ayblanmaydi"
       lot.blame = false;
       lot.notBefore = null;
@@ -571,7 +624,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     const bi = owner[si];
     for (const [code, units] of s.acceptedBy) {
       if (!codes.has(code)) continue;
-      if (bi !== null && batchCodes[bi].has(code)) continue;
+      if ((bi !== null && batchCodes[bi].has(code)) || extra[si].has(code)) continue;
       const list = openRaw.get(code);
       if (list) list.push({ day: s.day, units });
       else openRaw.set(code, [{ day: s.day, units }]);
@@ -604,7 +657,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       .filter(
         (s, si) =>
           s.status === 'accepted' &&
-          owner[si] === null &&
+          !claimed[si] &&
           lot.codes.some((c) => s.codes.has(c)) &&
           (!r.shippedAt || s.day >= r.shippedAt),
       )
@@ -655,18 +708,19 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       if (!supplyMode[bi]) {
         // «Keldi» kunidan (nakladnoysiz sotuvchi); sanasiz eski «Keldi» — sana noma'lum
         const onSale = r.legStatus === 'arrived';
-        return { onSale, from: onSale ? r.arrivedAt : null, supply: null as BatchSupplyRef | null };
+        return { onSale, from: onSale ? r.arrivedAt : null, supply: null as BatchSupplyRef | null, pend: null as BatchStage | null };
       }
       const mine = (s: LoadedSupply) => (lot ? lot.codes.some((c) => s.codes.has(c)) : false);
       const arrived = r.legStatus === 'arrived';
       // Bog'lanmagan qator — partiyaning qabuli (o'z jo'natmasi kelgan bo'lsa)
       const from = lot ? lot.availableFrom : arrived ? (firstAfter(acceptedOwn, r.arrivedAt)?.day ?? null) : null;
+      const waitFor = arrived && !from ? (pendingOwn.find(mine) ?? pendingOwn[0]) : undefined;
       const supply = from
         ? refOf(acceptedOwn.find((s) => s.day === from && mine(s)) ?? acceptedOwn.find((s) => s.day === from))
-        : arrived
-          ? refOf(pendingOwn.find(mine) ?? pendingOwn[0])
-          : null;
-      return { onSale: from !== null, from, supply };
+        : refOf(waitFor);
+      // Qatorning o'z kutilayotgan ta'minlashi bo'yicha: qabul boshlangan — "qabul qilinmoqda"
+      const pend: BatchStage | null = waitFor ? (waitFor.status === 'accepting' ? 'accepting' : 'toUzum') : null;
+      return { onSale: from !== null, from, supply, pend };
     });
 
     const inputs: ProfitRowInput[] = b.rows.map((r, ri) => {
@@ -677,8 +731,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
         ? soldAll
           ? 'soldOut'
           : 'selling'
-        : supplyMode[bi] && pendingStage && r.legStatus === 'arrived'
-          ? pendingStage
+        : supplyMode[bi] && r.legStatus === 'arrived' && (sale[ri].pend ?? pendingStage)
+          ? ((sale[ri].pend ?? pendingStage) as BatchStage)
           : r.legStatus;
       return {
         name: r.name,
@@ -785,7 +839,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
  * Kelgan sana jo'natilgandan oldin bo'lolmaydi (server ham rad etadi).
  */
 function fixOf(row: LoadedRow, take: ProfitTake): BatchProfitFix | null {
-  if (row.legStatus === 'arrived') return null;
+  // Faqat yo'ldagi jo'natma: Xitoy omboridagi tovar sotilgan bo'lolmaydi — sotuv eski tovardan
+  if (row.legStatus !== 'shipped') return null;
   const sale = take.notMarked > 0 ? take.firstBlameDay : null;
   if (!sale) return null;
   return {

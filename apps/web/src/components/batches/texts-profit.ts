@@ -50,7 +50,6 @@ registerNamespace('batches', {
     'profit.line.accepting': 'Hali sotuvda emas — Uzum qabul qilmoqda (ta’minlash №{code}, {n} dona)',
     'profit.line.selling': 'Sotuvda {date} dan · Uzum ta’minlashi №{code}',
     'profit.line.sellingNoCode': 'Sotuvda {date} dan',
-    'profit.line.sellingPart': 'Qolgani: {rest}',
     'profit.line.soldOut': 'Hammasi sotildi: {date}',
     'profit.line.unlinked': 'Tovarlar Uzum’dagi tovarga bog‘lanmagan — pastda «Bog‘lash» tugmasini bosing',
 
@@ -186,7 +185,6 @@ registerNamespace('batches', {
     'profit.line.accepting': 'Ещё не в продаже — Uzum принимает (поставка №{code}, {n} шт.)',
     'profit.line.selling': 'В продаже с {date} · поставка Uzum №{code}',
     'profit.line.sellingNoCode': 'В продаже с {date}',
-    'profit.line.sellingPart': 'Остальное: {rest}',
     'profit.line.soldOut': 'Всё продано: {date}',
     'profit.line.unlinked': 'Товары не связаны с товарами в Uzum — нажмите «Связать» ниже',
 
@@ -317,7 +315,6 @@ registerNamespace('batches', {
     'profit.line.accepting': 'Not on sale yet — Uzum is accepting it (supply #{code}, {n} pcs)',
     'profit.line.selling': 'On sale since {date} · Uzum supply #{code}',
     'profit.line.sellingNoCode': 'On sale since {date}',
-    'profit.line.sellingPart': 'The rest: {rest}',
     'profit.line.soldOut': 'Sold out: {date}',
     'profit.line.unlinked': 'The goods are not linked to Uzum products — press “Link” below',
 

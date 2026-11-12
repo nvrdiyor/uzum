@@ -303,10 +303,27 @@ export function spreadAdFees(fees: readonly AdFeeInput[], base: readonly AdBaseL
   for (const [product, byDay] of sums) {
     const days = daysOf.get(product) ?? [];
     const lineDays = linesOf.get(product);
-    for (const [day, raw] of byDay) {
-      const amount = Math.round(raw);
+    const entries = [...byDay]
+      .map(([day, raw]) => ({ day, amount: Math.round(raw), target: nearestDay(days, day, maxGapDays) }))
+      .sort((a, b) => cmpStr(a.day, b.day));
+    /*
+     * Qaytarilgan to'lov (xaridor tovarni qaytardi) avval o'sha tovar uchun yechilgan,
+     * hech bir tirik sotuvga tushmagan to'lovni yopadi (eng yaqin oldingisidan): qaytgan
+     * sotuv tirik pozitsiyalarda yo'q, ikkalasi birga nol. Ilgari yechilgani "hech qaysi
+     * sotuvga tushmadi", qaytarilgani esa boshqa sotuvning foydasiga qo'shilib ketardi.
+     */
+    for (const refund of entries) {
+      if (refund.amount >= 0) continue;
+      for (let j = entries.length - 1; j >= 0 && refund.amount < 0; j -= 1) {
+        const charge = entries[j];
+        if (charge.amount <= 0 || charge.target !== null || charge.day > refund.day) continue;
+        const k = Math.min(charge.amount, -refund.amount);
+        charge.amount -= k;
+        refund.amount += k;
+      }
+    }
+    for (const { amount, target } of entries) {
       if (amount === 0) continue;
-      const target = nearestDay(days, day, maxGapDays);
       const idx = target !== null ? lineDays?.get(target) : undefined;
       if (!idx || idx.length === 0) {
         unplaced.set(product, (unplaced.get(product) ?? 0) + amount);
@@ -370,22 +387,48 @@ export interface SupplyMatchSupply {
  * Uzum buni aytmaydi — tovar kodlari, sanalar va partiya sig'imi bo'yicha topiladi.
  *
  * Ta'minlashlar kun tartibida ko'riladi; har biri unga mos partiyalardan (partiyalar
- * Xitoydan jo'natilgan tartibda — FIFO) birinchisiga beriladi:
+ * Xitoydan jo'natilgan tartibda — FIFO) biriga beriladi:
  *  • mos — umumiy kodlar ta'minlashning yoki partiyaning yarmidan ko'pi
  *    (`SUPPLY_MATCH_SHARE`); partiya «Keldi»; qabul jo'natilgan kundan oldin emas va
  *    «Keldi» kunidan `SUPPLY_LATE_DAYS` dan ko'p oldin emas (kech belgilangan sana);
- *  • avval o'sha kunga kelib bo'lgan partiyalar, keyin «Keldi» kechroq yozilganlari;
- *  • to'lgan partiya (sig'imicha qabul qilingan) o'tkaziladi — bir xil tovar qayta
- *    olinganda keyingi ta'minlash keyingi partiyaniki;
- *  • ta'minlashi bor partiya undan yangi partiya kelgach yopiladi: dona birligi mos
- *    kelmasa ham (bog'lam ↔ dona) yangi partiya o'z ta'minlashini oladi.
- * Hech biriga to'g'ri kelmagan qabul — partiyalarga kiritilmagan tovar (eski qoldiq).
+ *  • donasi partiyaning qolgan sig'imiga aynan mos kelgani birinchi (egasining odati:
+ *    bitta partiya — bitta ta'minlash, 129 dona ↔ 129 dona);
+ *  • bo'lmasa — avval o'sha kunga kelib bo'lgan partiyalar, keyin «Keldi» kechroq
+ *    yozilganlari; to'lgan partiya o'tkaziladi (bir xil tovar qayta olinganda keyingi
+ *    ta'minlash keyingi partiyaniki); ta'minlashi bor partiya undan yangi partiya
+ *    kelgach yopiladi (dona birligi mos kelmasa ham yangi partiya o'zinikini oladi).
+ * Asosiy partiyada yo'q kodning donasi shu kodli boshqa partiyaga yoziladi (`extra`:
+ * eski partiya qoldig'i keyingi ta'minlashda birga ketgan). Hech biriga to'g'ri
+ * kelmagan qabul — partiyalarga kiritilmagan tovar (eski qoldiq).
  */
 export function matchBatchSupplies(
   batches: readonly SupplyMatchBatch[],
   supplies: readonly SupplyMatchSupply[],
 ): (number | null)[] {
+  return matchBatchSuppliesDetailed(batches, supplies).owner;
+}
+
+/** Ta'minlash ↔ partiya, kod bo'yicha qo'shimchalari bilan */
+export interface SupplyMatch {
+  /** Ta'minlash → asosiy partiya (yoki null) */
+  owner: (number | null)[];
+  /**
+   * Ta'minlash → kod → boshqa partiya: asosiy partiyada yo'q kodning donasi (masalan,
+   * eski partiya qoldig'i yangi partiya ta'minlashida birga yuborilgan). Bunday dona
+   * "eski qoldiq" emas — o'sha partiyaniki.
+   */
+  extra: Map<string, number>[];
+}
+
+/** Dona soni partiyaning qolgan sig'imiga mos (Uzum bir-ikki donani kam qabul qilishi mumkin) */
+const fitsExactly = (units: number, rem: number): boolean => rem > 0 && Math.abs(units - rem) <= Math.max(1, Math.round(rem * 0.03));
+
+export function matchBatchSuppliesDetailed(
+  batches: readonly SupplyMatchBatch[],
+  supplies: readonly SupplyMatchSupply[],
+): SupplyMatch {
   const owner: (number | null)[] = supplies.map(() => null);
+  const extra: Map<string, number>[] = supplies.map(() => new Map());
   const order = supplies.map((_, i) => i).sort((a, b) => cmpStr(supplies[a].day, supplies[b].day) || a - b);
   const fifo = batches
     .map((_, i) => i)
@@ -393,38 +436,81 @@ export function matchBatchSupplies(
   const rank = new Map(fifo.map((b, i) => [b, i]));
   const assigned = batches.map(() => 0);
   const hasSupply = batches.map(() => false);
+  const rem = (b: number) => batches[b].capacity - assigned[b];
 
+  /** Sana shartlari: «Keldi», Xitoydan chiqqandan keyin, «Keldi» kunidan juda oldin emas */
+  const datesFit = (b: number, s: number): boolean => {
+    const B = batches[b];
+    const S = supplies[s];
+    if (!B.canBeAtUzum) return false;
+    if (S.accepted && B.shippedFrom && S.day < B.shippedFrom) return false;
+    return S.day >= shiftIsoDay(B.anchor, -(S.accepted ? SUPPLY_LATE_DAYS : SUPPLY_PENDING_DAYS));
+  };
   const fits = (b: number, s: number): boolean => {
     const B = batches[b];
     const S = supplies[s];
-    if (!B.canBeAtUzum || B.codes.size === 0 || S.codes.size === 0) return false;
+    if (B.codes.size === 0 || S.codes.size === 0 || !datesFit(b, s)) return false;
     let ov = 0;
     for (const c of S.codes) if (B.codes.has(c)) ov += 1;
-    if (ov === 0 || (ov / S.codes.size < SUPPLY_MATCH_SHARE && ov / B.codes.size < SUPPLY_MATCH_SHARE)) return false;
-    if (S.accepted && B.shippedFrom && S.day < B.shippedFrom) return false;
-    return S.day >= shiftIsoDay(B.anchor, -(S.accepted ? SUPPLY_LATE_DAYS : SUPPLY_PENDING_DAYS));
+    return ov > 0 && (ov / S.codes.size >= SUPPLY_MATCH_SHARE || ov / B.codes.size >= SUPPLY_MATCH_SHARE);
   };
   /** Partiya shu ta'minlash kuniga kelib bo'lgan (kutilayotgani oldindan yaratiladi) */
   const arrivedBy = (b: number, s: number): boolean =>
     batches[b].anchor <= shiftIsoDay(supplies[s].day, supplies[s].accepted ? SUPPLY_MATCH_DAYS : SUPPLY_PENDING_DAYS);
+  /** Shu partiya kodlari bo'yicha ta'minlashdagi dona */
+  const unitsFor = (b: number, s: number, codes: ReadonlySet<string> = batches[b].codes): number => {
+    let n = 0;
+    for (const [code, units] of supplies[s].units) if (codes.has(code)) n += Math.max(0, units);
+    return n;
+  };
+  const take = (b: number, s: number, units: number) => {
+    hasSupply[b] = true;
+    assigned[b] += units;
+  };
 
   for (const s of order) {
-    const cands = fifo.filter((b) => fits(b, s));
-    if (cands.length === 0) continue;
-    const ready = cands.filter((b) => arrivedBy(b, s));
-    const late = cands.filter((b) => !arrivedBy(b, s));
-    const pick = [...ready, ...late].find(
-      (b) =>
-        assigned[b] < batches[b].capacity &&
-        // Ta'minlashi bor eski partiya — undan yangi partiya kelib bo'lgach yopiq
-        !(hasSupply[b] && ready.some((n) => (rank.get(n) as number) > (rank.get(b) as number))),
-    );
-    if (pick === undefined) continue;
-    owner[s] = pick;
-    hasSupply[pick] = true;
-    for (const [code, units] of supplies[s].units) if (batches[pick].codes.has(code)) assigned[pick] += Math.max(0, units);
+    const cands = fifo.filter((b) => fits(b, s) && rem(b) > 0);
+    let pick: number | undefined;
+    if (cands.length) {
+      /*
+       * 1) Donasi partiyaning qolgan sig'imiga aynan mos keladigani (129 dona ↔ 129 donali
+       *    partiya): «Keldi» kech yozilgan yoki eski partiya qoldig'i keyinroq topshirilgan
+       *    bo'lsa ham to'g'ri partiya topiladi.
+       */
+      // Bir nechtasiga aynan mos kelsa — hali birinchi ta'minlashini kutayotgani, keyin kelib bo'lgani
+      const exact = cands.filter((b) => fitsExactly(unitsFor(b, s), rem(b)));
+      pick =
+        exact.find((b) => !hasSupply[b] && arrivedBy(b, s)) ??
+        exact.find((b) => !hasSupply[b]) ??
+        exact.find((b) => arrivedBy(b, s)) ??
+        exact[0];
+      if (pick === undefined) {
+        // 2) Avval o'sha kunga kelib bo'lganlar; ta'minlashi bor eski partiya yangisi kelgach yopiq
+        const ready = cands.filter((b) => arrivedBy(b, s));
+        const late = cands.filter((b) => !arrivedBy(b, s));
+        pick = [...ready, ...late].find((b) => !(hasSupply[b] && ready.some((n) => (rank.get(n) as number) > (rank.get(b) as number))));
+      }
+    }
+    if (pick !== undefined) {
+      owner[s] = pick;
+      take(pick, s, unitsFor(pick, s));
+    }
+    /*
+     * Asosiy partiyada yo'q kodlar — shu kodli boshqa partiyaga (FIFO, sig'imi bo'lsa,
+     * sanasi to'g'ri kelsa; yangi partiya kelib bo'lgan bo'lsa ta'minlashi bor eskisi yopiq).
+     * Aks holda u partiyalarga kiritilmagan tovar — eski qoldiq.
+     */
+    for (const [code, units] of supplies[s].units) {
+      if (units <= 0 || (pick !== undefined && batches[pick].codes.has(code))) continue;
+      const withCode = fifo.filter((b) => b !== pick && batches[b].codes.has(code) && datesFit(b, s) && rem(b) > 0);
+      const ready = withCode.filter((b) => arrivedBy(b, s));
+      const b2 = withCode.find((b) => !(hasSupply[b] && ready.some((n) => (rank.get(n) as number) > (rank.get(b) as number))));
+      if (b2 === undefined) continue;
+      extra[s].set(code, b2);
+      take(b2, s, units);
+    }
   }
-  return owner;
+  return { owner, extra };
 }
 
 // ─────────────────────────── Taqsimlash ───────────────────────────
@@ -1227,9 +1313,15 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
           : 'selling';
 
   const soldOutAt = allSold && soldOutDays.length ? soldOutDays[soldOutDays.length - 1] : null;
-  // Partiya bosqichi — sotiladigan qatorlarning eng ilgari ketgani (bittasi sotuvda bo'lsa — "sotuvda")
-  const stageRows = rows.map((_, i) => i).filter((i) => sellable(i) && wholeUnits(rows[i].qty) > 0);
-  const stages = new Set(stageRows.map((i) => rowStage(rows[i])));
+  /*
+   * Partiya bosqichi — sotiladigan qatorlarning eng ilgari ketgani: bittasi sotuvda (yoki
+   * sotib bo'lingan) bo'lsa — "sotuvda". Donali qator bo'lmasa — puli bor qatorlardan.
+   */
+  const withQty = rows.map((_, i) => i).filter((i) => sellable(i) && wholeUnits(rows[i].qty) > 0);
+  const stageRows = withQty.length
+    ? withQty
+    : rows.map((_, i) => i).filter((i) => sellable(i) && Math.round(rows[i].cost || 0) !== 0);
+  const stages = new Set(stageRows.map((i) => (rowStage(rows[i]) === 'soldOut' ? 'selling' : rowStage(rows[i]))));
   const stage: BatchStage = soldOutAt
     ? 'soldOut'
     : (STAGE_ORDER.find((s) => stages.has(s)) ?? (stages.has('soldOut') ? 'soldOut' : 'warehouse'));
