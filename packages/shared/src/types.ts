@@ -2520,7 +2520,8 @@ export interface ShipmentRow {
   id: string;
   code: string;
   destination: string | null;
-  status: 'draft' | 'planned' | 'in_transit' | 'accepted' | 'canceled';
+  /** accepting — Uzum ombori qabul qilmoqda ("Qabul qilish jarayonida"), faqat Uzum nakladnoyida */
+  status: 'draft' | 'planned' | 'in_transit' | 'accepting' | 'accepted' | 'canceled';
   plannedAt: string | null;
   acceptedAt: string | null;
   itemsCount: number;

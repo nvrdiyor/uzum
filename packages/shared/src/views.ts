@@ -494,6 +494,9 @@ export const MONEY_KEYS: ReadonlySet<string> = new Set([
   'overhead',
   'overheadNow',
   'paybackPct',
+  // Mahsulot reklamasi (Uzum "Buyurtmalarni ko'paytirish" to'lovi)
+  'adFee',
+  'adUnplaced',
 ]);
 
 /** Faqat shu ota-kalit ichida pul bo'lgan kalitlar */

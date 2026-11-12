@@ -1,7 +1,9 @@
 /**
  * Partiya foydasi (2026-11-12): har partiyaga qancha pul tikilgan, Uzum'dan
- * qancha qaytgan va qancha foyda — sotuvlardan avtomatik (server:
- * services/batch-profit.ts, hisob: shared batch-profit.ts).
+ * qancha qaytgan (reklama va soliq ayrilgan) va qancha sof foyda — sotuvlardan
+ * avtomatik (server: services/batch-profit.ts, hisob: shared batch-profit.ts).
+ * Partiya Uzum qabul qilgan kundan sotuvda; undan oldin — qayerdaligi
+ * ("Qabul qilinmoqda, ta'minlash №…").
  *
  * Raqamlar doim SAQLANGAN holatdan (server hisoblaydi): partiya jadvali
  * avtomatik saqlangach `['batches']` yangilanadi va shu so'rovlar ham qayta
@@ -33,11 +35,12 @@ import {
   type BatchProfitUnattributed,
   type BatchSkuOption,
   type BatchSkuSearchResponse,
+  type BatchStage,
 } from '@savdoiq/shared';
 import { api } from '@/lib/api';
 import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { Badge, Button, Card, Input, Modal, ProductThumb, ProgressBar, Skeleton, toast } from '@/components/ui';
+import { Badge, Button, Card, Input, Modal, ProductThumb, ProgressBar, Skeleton, toast, type Tone } from '@/components/ui';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
 import './texts-profit';
 
@@ -86,24 +89,102 @@ function useDayText() {
 /** Foiz: kichigi bir kasr bilan ("4,5%"), kattasi butun ("72%") */
 const pctText = (f: ReturnType<typeof useFormat>, v: number) => f.num(v, Math.abs(v) < 10 ? 1 : 0);
 
+// ─────────────────────────── Bosqich ───────────────────────────
+
+/*
+ * Partiya qayerda: Xitoyda → yo'lda → keldi → Uzumga yo'lda → qabul qilinmoqda →
+ * sotuvda. Sotuv faqat "sotuvda" dan boshlab (Uzum qabul qilgan kundan) yoziladi.
+ * Ranglar Yetkazmalar sahifasidagi holatlar bilan bir xil: qabul — binafsha, sotuvda — brend.
+ */
+const STAGE_TONE: Record<BatchStage, Tone> = {
+  warehouse: 'muted',
+  shipped: 'warn',
+  arrived: 'info',
+  toUzum: 'info',
+  accepting: 'violet',
+  selling: 'brand',
+  soldOut: 'brand',
+};
+
+const isOnSale = (stage: BatchStage) => stage === 'selling' || stage === 'soldOut';
+
+/** Bosqich nishoni; sotuvda bo'lsa — qaysi kundan */
+function StageBadge({ stage, since }: { stage: BatchStage; since?: string | null }) {
+  const t = useT('batches');
+  const dayText = useDayText();
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      <Badge tone={STAGE_TONE[stage]} dot>
+        {t(`profit.stage.${stage}`)}
+      </Badge>
+      {since && stage === 'selling' ? (
+        <span className="tnum text-2xs text-muted">{t('profit.stage.since', { date: dayText(since) })}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Partiya bosqichi bitta jumlada — Uzum ta'minlashi raqami bilan */
+function useStageLine() {
+  const t = useT('batches');
+  const f = useFormat();
+  const dayText = useDayText();
+  return (p: Pick<BatchProfitSummary, 'stage' | 'onSaleFrom' | 'supplies' | 'soldOutAt'>): string => {
+    const pending = p.supplies.filter((s) => s.status !== 'accepted');
+    const accepted = p.supplies.filter((s) => s.status === 'accepted');
+    switch (p.stage) {
+      case 'accepting': {
+        const s = pending.find((x) => x.status === 'accepting') ?? pending[0];
+        return s ? t('profit.line.accepting', { code: s.code, n: f.num(s.planned) }) : t('profit.stage.accepting');
+      }
+      case 'toUzum': {
+        const s = pending[0];
+        return s ? t('profit.line.toUzum', { code: s.code }) : t('profit.stage.toUzum');
+      }
+      case 'selling': {
+        if (!p.onSaleFrom) return t('profit.stage.selling');
+        const s = accepted.find((x) => x.day === p.onSaleFrom) ?? accepted[0];
+        return s
+          ? t('profit.line.selling', { date: dayText(p.onSaleFrom), code: s.code })
+          : t('profit.line.sellingNoCode', { date: dayText(p.onSaleFrom) });
+      }
+      case 'soldOut':
+        return p.soldOutAt ? t('profit.line.soldOut', { date: dayText(p.soldOutAt) }) : t('profit.stage.soldOut');
+      default:
+        return t(`profit.line.${p.stage}`);
+    }
+  };
+}
+
 // ─────────────────────────── Ro'yxat sahifasi ───────────────────────────
 
-/** "Qaytgan pul" katagi: summa va tikilganning necha foizi qaytgani */
+/** "Qaytgan pul" katagi: summa va tikilganning necha foizi qaytgani; hali sotuvda emas — Uzum bosqichi */
 export function ProfitBackCell({ p, loading }: { p: BatchProfitSummary | undefined; loading: boolean }) {
   const t = useT('batches');
   const f = useFormat();
   if (!p) return loading ? <Skeleton className="ml-auto h-4 w-20" /> : <span className="text-muted">—</span>;
   if (p.state === 'empty') return <span className="text-muted">—</span>;
   if (p.moneyBack === 0 && p.soldQty === 0) {
-    if (p.state === 'waiting') return <span className="text-xs text-muted">{t('profit.state.waiting')}</span>;
     if (p.state === 'unlinked') return <span className="text-xs font-semibold text-warn-ink">{t('profit.state.unlinked')}</span>;
+    if (!isOnSale(p.stage)) {
+      // Xitoyda / cargo yo'lda — "Holat" ustunida bor; Uzum bosqichi (topshirilmagan, qabul qilinmoqda) — yangi ma'lumot
+      if (p.stage === 'warehouse' || p.stage === 'shipped') return <span className="text-muted">—</span>;
+      return (
+        <Badge tone={STAGE_TONE[p.stage]} dot>
+          {t(`profit.stage.${p.stage}`)}
+        </Badge>
+      );
+    }
   }
   const pct = p.paybackPct ?? 0;
+  const title = [
+    t('profit.cellTitle', { invested: f.num(p.invested), back: f.num(p.moneyBack), pct: pctText(f, pct) }),
+    p.adFee !== 0 ? t('profit.backAds', { sum: f.num(p.adFee) }) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
-    <div
-      className="inline-flex flex-col items-end"
-      title={t('profit.cellTitle', { invested: f.num(p.invested), back: f.num(p.moneyBack), pct: pctText(f, pct) })}
-    >
+    <div className="inline-flex flex-col items-end" title={title}>
       <span className="font-semibold text-ink">{f.num(p.moneyBack)}</span>
       <span className="mt-1 flex items-center gap-1.5">
         <ProgressBar value={pct} tone={pct >= 100 ? 'brand' : 'info'} className="w-12" />
@@ -113,45 +194,47 @@ export function ProfitBackCell({ p, loading }: { p: BatchProfitSummary | undefin
   );
 }
 
-/** "Foyda" katagi: sotilgan donadan foyda va ROI */
+/** "Sof foyda" katagi: sotilgan donalardan */
 export function ProfitCell({ p, loading }: { p: BatchProfitSummary | undefined; loading: boolean }) {
   const t = useT('batches');
   const f = useFormat();
   if (!p) return loading ? <Skeleton className="ml-auto h-4 w-16" /> : <span className="text-muted">—</span>;
-  if (p.state === 'empty' || p.state === 'waiting' || p.state === 'unlinked') {
-    if (p.soldQty === 0) return <span className="text-muted">—</span>;
+  if (p.soldQty === 0) {
+    return p.state === 'selling' || p.state === 'paidBack' ? (
+      <span className="text-xs text-muted">{t('profit.state.noSales')}</span>
+    ) : (
+      <span className="text-muted">—</span>
+    );
   }
-  if (p.soldQty === 0) return <span className="text-xs text-muted">{t('profit.state.noSales')}</span>;
-  return (
-    <div className="inline-flex flex-col items-end">
-      <span className={cn('font-bold', p.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(p.profit)}</span>
-      {p.roi !== null ? <span className="text-2xs text-muted">{t('profit.roi', { pct: f.num(p.roi, 1) })}</span> : null}
-    </div>
-  );
+  return <span className={cn('font-bold', p.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(p.profit)}</span>;
 }
 
-/** Hech qaysi partiyaga tushmagan sotuv — ro'yxat ostida bitta qator */
+/** Hech qaysi partiyaga tushmagan sotuv va reklama — ro'yxat ostida qisqa qator(lar) */
 export function UnattributedNote({ un, className }: { un: BatchProfitUnattributed | undefined; className?: string }) {
   const t = useT('batches');
   const f = useFormat();
-  if (!un || un.units <= 0) return null;
-  const parts = [
-    un.opening > 0 ? t('profit.un.opening', { n: f.num(un.opening) }) : null,
-    un.beforeArrival > 0 ? t('profit.un.before', { n: f.num(un.beforeArrival) }) : null,
-    un.notMarked > 0 ? t('profit.un.notMarked', { n: f.num(un.notMarked) }) : null,
-    un.overTracked > 0 ? t('profit.un.over', { n: f.num(un.overTracked) }) : null,
-  ].filter(Boolean);
+  if (!un) return null;
+  const sales = un.units > 0;
+  const ads = un.adUnplaced !== 0;
+  if (!sales && !ads) return null;
   const top = un.top.length
     ? t('profit.un.top', { list: un.top.map((x) => `${x.title || x.code} (${f.num(x.units)})`).join(', ') })
     : undefined;
   return (
-    <p className={cn('tnum flex items-start gap-2 text-xs leading-relaxed text-muted', className)} title={top}>
-      <Coins className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span>
-        {t('profit.unattributed', { n: f.num(un.units), sum: f.money(un.moneyBack) })}
-        {parts.length ? ` — ${parts.join(' · ')}` : ''}
-      </span>
-    </p>
+    <div className={cn('space-y-1', className)}>
+      {sales ? (
+        <p className="tnum flex items-start gap-2 text-xs leading-relaxed text-muted" title={top}>
+          <Coins className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t('profit.unattributed', { n: f.num(un.units), sum: f.money(un.moneyBack) })}</span>
+        </p>
+      ) : null}
+      {ads ? (
+        <p className="tnum flex items-start gap-2 text-xs leading-relaxed text-muted">
+          <Coins className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t('profit.un.adsUnplaced', { sum: f.money(un.adUnplaced) })}</span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -163,6 +246,7 @@ function Term({
   dot,
   strong,
   tone,
+  title,
   children,
 }: {
   label: string;
@@ -170,10 +254,11 @@ function Term({
   dot: string;
   strong?: boolean;
   tone?: 'loss';
+  title?: string;
   children?: ReactNode;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" title={title}>
       <div className="flex items-center gap-2 text-[13px] font-medium text-muted">
         <span className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />
         <span className="truncate">{label}</span>
@@ -192,14 +277,30 @@ function Term({
   );
 }
 
+/** Qaytgan pul qayerdan: Uzum to'lovi − reklama − soliq; kutilayotgani */
+function useBackTitle() {
+  const t = useT('batches');
+  const f = useFormat();
+  return (x: { payout: number; adFee: number; tax: number; pending: number }) =>
+    [
+      t('profit.backBreakdown', { payout: f.num(x.payout), ads: f.num(x.adFee), tax: f.num(x.tax) }),
+      x.pending > 0 ? t('profit.backPending', { sum: f.num(x.pending) }) : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+}
+
 /**
- * Tannarx tenglamasi kartochkasining pastki qismi: tikilgan → qaytgan → foyda.
- * Jadvalni pastga deyarli surmaydi (bitta qator), batafsili jadval ostidagi
+ * Tannarx tenglamasi kartochkasining pastki qismi: tikilgan → qaytgan → sof foyda.
+ * Hali sotuvda bo'lmagan partiya — bitta qator: qancha tikilgan va qayerda
+ * (masalan, "Uzum qabul qilmoqda, ta'minlash №…"). Batafsili jadval ostidagi
  * "Sotuv va foyda" kartochkasida.
  */
 export function ProfitStrip({ batchId, pending }: { batchId: string; pending: boolean }) {
   const t = useT('batches');
   const f = useFormat();
+  const stageLine = useStageLine();
+  const backTitle = useBackTitle();
   const { data, isLoading, isError, refetch } = useBatchProfit(batchId);
   const num = (v: number) => f.num(v).replace(/ /g, NBSP);
 
@@ -217,17 +318,38 @@ export function ProfitStrip({ batchId, pending }: { batchId: string; pending: bo
   }
   if (data.state === 'empty') return null;
 
-  const pct = data.paybackPct ?? 0;
-  const pendingBack = data.back.held + data.back.transit;
+  const wrap = cn('mt-6 border-t border-line pt-5 transition-opacity duration-200', pending && 'opacity-60');
+  const wrapTitle = pending ? t('profit.updating') : undefined;
   const nothingYet = data.soldQty === 0 && data.moneyBack === 0;
+  const onSale = isOnSale(data.stage);
 
+  // Hali sotuvda emas (yoki sotuvda, lekin bog'lanmagan) va hech narsa sotilmagan — bitta qator
+  if (nothingYet && (!onSale || data.state === 'unlinked')) {
+    return (
+      <div className={wrap} title={wrapTitle}>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
+          <Coins className="h-4 w-4 shrink-0" />
+          <span className="font-semibold text-ink">{t('profit.invested')}:</span>
+          <span className="tnum font-semibold text-ink">{f.money(data.invested)}</span>
+          <span aria-hidden>·</span>
+          {!onSale ? (
+            <Badge tone={STAGE_TONE[data.stage]} dot>
+              {t(`profit.stage.${data.stage}`)}
+            </Badge>
+          ) : null}
+          <span>{onSale ? t('profit.line.unlinked') : stageLine(data)}</span>
+        </p>
+      </div>
+    );
+  }
+
+  const pct = data.paybackPct ?? 0;
   const facts = [
     data.qty > 0 ? t('profit.sold', { sold: num(data.soldQty), qty: num(data.qty) }) : null,
-    data.leftQty > 0 ? t('profit.left', { n: num(data.leftQty), sum: num(data.leftCost) }) : null,
-    data.transitQty > 0 ? t('profit.transit', { n: num(data.transitQty) }) : null,
+    data.leftQty > 0 ? t('profit.left', { n: num(data.leftQty) }) : null,
+    data.transitQty > 0 ? t('profit.notOnSale', { n: num(data.transitQty) }) : null,
     data.unlinkedQty > 0 ? t('profit.unlinkedQty', { n: num(data.unlinkedQty) }) : null,
-    data.soldOutAt ? t('profit.soldOut', { date: f.dateShort(data.soldOutAt) }) : null,
-  ].filter(Boolean);
+  ].filter((x): x is string => Boolean(x));
   const outcome =
     data.state === 'paidBack'
       ? { text: t('profit.paidBack', { sum: num(data.moneyBack - data.invested) }), tone: 'text-brand-ink font-semibold' }
@@ -240,59 +362,43 @@ export function ProfitStrip({ batchId, pending }: { batchId: string; pending: bo
             tone: 'text-ink-soft',
           }
         : null;
-  const forecast =
-    data.expectedProfit !== null && !data.soldOutAt
-      ? data.expectedProfit >= 0
-        ? t('profit.forecast', { sum: num(data.expectedProfit) })
-        : t('profit.forecastLoss', { sum: num(-data.expectedProfit) })
-      : null;
 
   return (
-    <div className={cn('mt-6 border-t border-line pt-5 transition-opacity duration-200', pending && 'opacity-60')} title={pending ? t('profit.updating') : undefined}>
-      {nothingYet && (data.state === 'waiting' || data.state === 'unlinked') ? (
-        <p className="flex items-start gap-2 text-sm text-muted">
-          <Coins className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            <span className="font-semibold text-ink">{t('profit.invested')}: </span>
-            <span className="tnum font-semibold text-ink">{f.money(data.invested)}</span>
-            {' · '}
-            {data.state === 'waiting' ? t('profit.waitingLine') : t('profit.unlinkedLine')}
-          </span>
-        </p>
-      ) : (
-        <div className="grid gap-x-5 gap-y-5 sm:grid-cols-3">
-          <Term label={t('profit.invested')} value={f.money(data.invested)} dot="bg-[rgb(var(--c-slate))]">
-            <p className="mt-2 text-xs leading-snug text-muted">
-              {t('profit.investedHint')}
-              {data.personalCost > 0 ? ` · ${t('profit.investedPersonal', { sum: num(data.personalCost) })}` : ''}
-            </p>
-          </Term>
-          <Term label={t('profit.back')} value={f.money(data.moneyBack)} dot="bg-info">
-            <ProgressBar value={pct} tone={pct >= 100 ? 'brand' : 'info'} className="mt-2.5 max-w-[220px]" />
-            <p className="tnum mt-1.5 text-xs leading-snug text-muted">
-              {t('profit.payback', { pct: pctText(f, pct) })}
-              {pendingBack > 0 ? ` · ${t('profit.backPending', { sum: num(pendingBack) })}` : ''}
-            </p>
-          </Term>
-          <Term label={t('profit.profit')} value={f.money(data.profit)} dot="bg-brand" strong tone={data.profit < 0 ? 'loss' : undefined}>
-            <p className="tnum mt-2 text-xs leading-snug text-muted">
-              {data.roi !== null ? `${t('profit.roi', { pct: f.num(data.roi, 1) })} · ` : ''}
-              {data.overheadNow > 0
-                ? t('profit.profitHintOverhead', { cogs: num(data.cogs), over: num(data.overheadNow) })
-                : t('profit.profitHint', { cogs: num(data.cogs) })}
-            </p>
-          </Term>
-        </div>
-      )}
-      {facts.length || outcome || forecast ? (
-        <p className="tnum mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          {facts.map((x) => (
-            <span key={x as string}>{x}</span>
-          ))}
-          {outcome ? <span className={outcome.tone}>{outcome.text}</span> : null}
-          {forecast ? <span>{forecast}</span> : null}
-        </p>
-      ) : null}
+    <div className={wrap} title={wrapTitle}>
+      <div className="grid gap-x-5 gap-y-5 sm:grid-cols-3">
+        <Term label={t('profit.invested')} value={f.money(data.invested)} dot="bg-[rgb(var(--c-slate))]">
+          <p className="mt-2 text-xs leading-snug text-muted">
+            {t('profit.investedHint')}
+            {data.personalCost > 0 ? ` · ${t('profit.investedPersonal', { sum: num(data.personalCost) })}` : ''}
+          </p>
+        </Term>
+        <Term
+          label={t('profit.back')}
+          value={f.money(data.moneyBack)}
+          dot="bg-info"
+          title={backTitle({ payout: data.payout, adFee: data.adFee, tax: data.tax, pending: data.back.held + data.back.transit })}
+        >
+          <ProgressBar value={pct} tone={pct >= 100 ? 'brand' : 'info'} className="mt-2.5 max-w-[220px]" />
+          <p className="tnum mt-1.5 text-xs leading-snug text-muted">
+            {t('profit.payback', { pct: pctText(f, pct) })}
+            {data.adFee !== 0 ? ` · ${t('profit.backAds', { sum: num(data.adFee) })}` : ''}
+          </p>
+        </Term>
+        <Term label={t('profit.profit')} value={f.money(data.profit)} dot="bg-brand" strong tone={data.profit < 0 ? 'loss' : undefined}>
+          <p className="tnum mt-2 text-xs leading-snug text-muted">
+            {data.overheadNow > 0
+              ? t('profit.profitHintOverhead', { cogs: num(data.cogs), over: num(data.overheadNow) })
+              : t('profit.profitHint', { cogs: num(data.cogs) })}
+          </p>
+        </Term>
+      </div>
+      <p className="tnum mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <span className="font-medium text-ink-soft">{stageLine(data)}</span>
+        {facts.map((x) => (
+          <span key={x}>{x}</span>
+        ))}
+        {outcome ? <span className={outcome.tone}>{outcome.text}</span> : null}
+      </p>
     </div>
   );
 }
@@ -327,11 +433,12 @@ export function ProfitCard({
   const t = useT('batches');
   const f = useFormat();
   const dayText = useDayText();
+  const stageLine = useStageLine();
   const { data, isLoading } = useBatchProfit(batchId);
   const [open, setOpen] = useState<number | null>(null);
   const [linkFor, setLinkFor] = useState<number | null>(null);
   const [fixFor, setFixFor] = useState<BatchProfitFix | null>(null);
-  // Telefonda 8 ustunli jadval o'rniga har qator — kartochka (ro'yxat sahifasidagidek)
+  // Telefonda jadval o'rniga har qator — kartochka (ro'yxat sahifasidagidek)
   const isDesktop = useIsDesktop();
 
   if (isLoading) {
@@ -350,8 +457,8 @@ export function ProfitCard({
   };
   const mismatched = data.rows.filter((r) => !draftOf(r)).length + Math.max(0, rows.length - data.rows.length);
 
-  // Ogohlantirishlar: sana tuzatish — har jo'natmaga bitta
-  const fixes = new Map<string, { fix: BatchProfitFix; units: number; firstSale: string | null }>();
+  // Sana tuzatish — faqat Uzum ta'minlashisiz («Keldi» bo'yicha) partiyada; har jo'natmaga bitta
+  const fixes = new Map<string, { fix: BatchProfitFix; units: number }>();
   for (const r of data.rows) {
     if (!r.fix) continue;
     const k = `${r.fix.kind}|${legKey(r.fix)}`;
@@ -360,7 +467,7 @@ export function ProfitCard({
     if (cur) {
       cur.units += units;
       if (r.fix.date < cur.fix.date) cur.fix = r.fix;
-    } else fixes.set(k, { fix: r.fix, units, firstSale: r.firstSaleAt });
+    } else fixes.set(k, { fix: r.fix, units });
   }
   const beforeNoFix = data.rows.reduce((a, r) => a + (r.fix?.kind === 'earlier' ? 0 : r.beforeArrival), 0);
   // Ataylab "Uzumda yo'q" deb belgilanganlar haqida qayta-qayta eslatilmaydi
@@ -390,7 +497,12 @@ export function ProfitCard({
             <Coins className="h-4 w-4 text-brand-ink" />
             {t('profit.card')}
           </h3>
-          <p className="mt-1 text-xs text-muted">{t('profit.cardHint')}</p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <Badge tone={STAGE_TONE[data.stage]} dot>
+              {t(`profit.stage.${data.stage}`)}
+            </Badge>
+            <span>{stageLine(data)}</span>
+          </p>
         </div>
         {data.syncedAt ? <p className="text-2xs text-muted">{t('profit.synced', { date: f.dateTime(data.syncedAt) })}</p> : null}
       </div>
@@ -472,109 +584,104 @@ export function ProfitCard({
               );
             })}
           </ul>
-          {/* Ikkala qatorda bir xil ustunlar: tikilgan · qaytgan · foyda (yuqoridagi kartochkalardagidek) */}
+          {/* Ikkala qatorda bir xil ustunlar: tikilgan · qaytgan · sof foyda (yuqoridagi kartochkalardagidek) */}
           <div className="border-t border-line bg-surface-2/60 px-4 py-3 text-sm">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 gap-y-1.5">
+            {/* Ustun nomlari ikki qatorga bo'linadi — 375 px da "Jami" raqamlar ostida qolmasin */}
+            <div className="grid grid-cols-[minmax(2.75rem,1fr)_auto_auto_auto] items-baseline gap-x-3 gap-y-1.5">
               <span />
-              <span className="text-right text-2xs font-medium text-muted">{t('profit.th.invested')}</span>
-              <span className="text-right text-2xs font-medium text-muted">{t('profit.th.back')}</span>
-              <span className="text-right text-2xs font-medium text-muted">{t('profit.th.profit')}</span>
+              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.invested')}</span>
+              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.back')}</span>
+              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.profit')}</span>
               {showOverhead ? (
                 <>
                   <span className="truncate text-ink-soft" title={t('profit.overheadHint')}>
                     {t('profit.overhead')}
                   </span>
-                  <span className="tnum text-right text-ink-soft">{overheadRow.invested ? f.num(overheadRow.invested) : '—'}</span>
-                  <span className="tnum text-right text-muted">—</span>
-                  <span className="tnum text-right text-ink-soft">{overheadRow.profit ? f.num(overheadRow.profit) : '—'}</span>
+                  <span className="tnum whitespace-nowrap text-right text-ink-soft">{overheadRow.invested ? f.num(overheadRow.invested) : '—'}</span>
+                  <span className="tnum whitespace-nowrap text-right text-muted">—</span>
+                  <span className="tnum whitespace-nowrap text-right text-ink-soft">{overheadRow.profit ? f.num(overheadRow.profit) : '—'}</span>
                 </>
               ) : null}
               <span className="font-semibold text-ink">{t('profit.footTotal')}</span>
-              <span className="tnum text-right font-semibold text-ink-soft">{f.num(foot.invested)}</span>
-              <span className="tnum text-right font-semibold text-ink">{f.num(foot.back)}</span>
-              <span className={cn('tnum text-right font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
+              <span className="tnum whitespace-nowrap text-right font-semibold text-ink-soft">{f.num(foot.invested)}</span>
+              <span className="tnum whitespace-nowrap text-right font-semibold text-ink">{f.num(foot.back)}</span>
+              <span className={cn('tnum whitespace-nowrap text-right font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
                 {f.num(foot.profit)}
               </span>
             </div>
           </div>
         </>
       ) : (
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-sm">
-          <colgroup>
-            <col className="w-10" />
-            <col />
-            <col className="w-[110px]" />
-            <col className="w-[120px]" />
-            <col className="w-[130px]" />
-            <col className="w-[130px]" />
-            <col className="w-[130px]" />
-            <col className="w-[120px]" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className={cn(th, 'text-center')}>{t('th.no')}</th>
-              <th className={cn(th, 'text-left')}>{t('profit.th.item')}</th>
-              <th className={cn(th, 'text-left')}>{t('profit.th.arrived')}</th>
-              <th className={cn(th, 'text-right')}>{t('profit.th.sold')}</th>
-              <th className={cn(th, 'text-right')}>{t('profit.th.invested')}</th>
-              <th className={cn(th, 'text-right')}>{t('profit.th.back')}</th>
-              <th className={cn(th, 'text-right')}>{t('profit.th.profit')}</th>
-              <th className={cn(th, 'text-right')}>{t('profit.th.left')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((r) => {
-              const draft = draftOf(r);
-              const expanded = open === r.index;
-              const isLot = r.link === 'explicit' || r.link === 'name';
-              return (
-                <ProfitRowView
-                  key={r.index}
-                  r={r}
-                  skus={data.skus}
-                  expanded={expanded}
-                  onToggle={() => setOpen(expanded ? null : r.index)}
-                  onLink={canEdit && draft && r.link !== 'personal' ? () => setLinkFor(r.index) : undefined}
-                  isLot={isLot}
-                />
-              );
-            })}
-          </tbody>
-          <tfoot>
-            {showOverhead ? (
-              <tr className="border-t border-line">
-                <td />
-                <td className="px-3 py-2.5 text-ink-soft" title={t('profit.overheadHint')}>
-                  {t('profit.overhead')}
-                </td>
-                <td />
-                <td />
-                <td className="tnum whitespace-nowrap px-3 py-2.5 text-right text-ink-soft">
-                  {overheadRow.invested ? f.num(overheadRow.invested) : '—'}
-                </td>
-                <td />
-                <td className="tnum whitespace-nowrap px-3 py-2.5 text-right text-ink-soft">
-                  {overheadRow.profit ? f.num(overheadRow.profit) : '—'}
-                </td>
-                <td />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] border-collapse text-sm">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-[150px]" />
+              <col className="w-[120px]" />
+              <col className="w-[130px]" />
+              <col className="w-[150px]" />
+              <col className="w-[140px]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={cn(th, 'text-center')}>{t('th.no')}</th>
+                <th className={cn(th, 'text-left')}>{t('profit.th.item')}</th>
+                <th className={cn(th, 'text-left')}>{t('profit.th.stage')}</th>
+                <th className={cn(th, 'text-right')}>{t('profit.th.sold')}</th>
+                <th className={cn(th, 'text-right')}>{t('profit.th.invested')}</th>
+                <th className={cn(th, 'text-right')}>{t('profit.th.back')}</th>
+                <th className={cn(th, 'text-right')}>{t('profit.th.profit')}</th>
               </tr>
-            ) : null}
-            <tr className="border-t border-line bg-surface-2/60">
-              <td />
-              <td className="px-3 py-3 font-semibold text-ink">{t('profit.footTotal')}</td>
-              <td />
-              <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink-soft">{f.num(foot.sold)}</td>
-              <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink-soft">{f.num(foot.invested)}</td>
-              <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink">{f.num(foot.back)}</td>
-              <td className={cn('tnum whitespace-nowrap px-3 py-3 text-right font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
-                {f.num(foot.profit)}
-              </td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.rows.map((r) => {
+                const draft = draftOf(r);
+                const expanded = open === r.index;
+                return (
+                  <ProfitRowView
+                    key={r.index}
+                    r={r}
+                    skus={data.skus}
+                    expanded={expanded}
+                    onToggle={() => setOpen(expanded ? null : r.index)}
+                    onLink={canEdit && draft && r.link !== 'personal' ? () => setLinkFor(r.index) : undefined}
+                  />
+                );
+              })}
+            </tbody>
+            <tfoot>
+              {showOverhead ? (
+                <tr className="border-t border-line">
+                  <td />
+                  <td className="px-3 py-2.5 text-ink-soft" title={t('profit.overheadHint')}>
+                    {t('profit.overhead')}
+                  </td>
+                  <td />
+                  <td />
+                  <td className="tnum whitespace-nowrap px-3 py-2.5 text-right text-ink-soft">
+                    {overheadRow.invested ? f.num(overheadRow.invested) : '—'}
+                  </td>
+                  <td />
+                  <td className="tnum whitespace-nowrap px-3 py-2.5 text-right text-ink-soft">
+                    {overheadRow.profit ? f.num(overheadRow.profit) : '—'}
+                  </td>
+                </tr>
+              ) : null}
+              <tr className="border-t border-line bg-surface-2/60">
+                <td />
+                <td className="px-3 py-3 font-semibold text-ink">{t('profit.footTotal')}</td>
+                <td />
+                <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink-soft">{f.num(foot.sold)}</td>
+                <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink-soft">{f.num(foot.invested)}</td>
+                <td className="tnum whitespace-nowrap px-3 py-3 text-right font-semibold text-ink">{f.num(foot.back)}</td>
+                <td className={cn('tnum whitespace-nowrap px-3 py-3 text-right font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
+                  {f.num(foot.profit)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
 
       <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">{t('profit.note', { rate: f.num(data.taxRate, 1) })}</p>
@@ -681,11 +788,13 @@ function OrdersList({ r, className }: { r: BatchProfitRow; className?: string })
           <li key={`${o.orderNo ?? 'x'}-${o.day}-${i}`} className="tnum flex items-center justify-between gap-3 border-b border-line/40 py-1">
             <span className="min-w-0 truncate text-ink-soft">
               {f.dateShort(o.day)} · {o.orderNo ? t('profit.row.order', { no: o.orderNo }) : t('profit.row.noOrder')} ·{' '}
-              {t('profit.row.left', { n: f.num(o.units) })}
+              {t('profit.row.units', { n: f.num(o.units) })}
             </span>
             <span
               className={cn('whitespace-nowrap font-medium', o.state === 'unlocked' ? 'text-ink' : 'text-muted')}
-              title={t(`profit.row.state.${o.state}`)}
+              title={[t(`profit.row.state.${o.state}`), o.adFee ? t('profit.row.orderAds', { sum: f.num(o.adFee) }) : null]
+                .filter(Boolean)
+                .join(' · ')}
             >
               {f.num(o.moneyBack)}
             </span>
@@ -694,6 +803,16 @@ function OrdersList({ r, className }: { r: BatchProfitRow; className?: string })
       </ul>
     </div>
   );
+}
+
+/** Qaytgan pul katagi to'ladimi: bog'langan qator sotuvda yoki puli bor (hali sotuvda emas — "—", 0 emas) */
+const hasMoney = (r: BatchProfitRow) =>
+  (r.link === 'explicit' || r.link === 'name') && (isOnSale(r.stage) || r.sold > 0 || r.moneyBack !== 0);
+
+/** Qator bosqichi — shaxsiy va "Uzumda yo'q" qatorda yo'q */
+function RowStage({ r }: { r: BatchProfitRow }) {
+  if (r.link === 'personal' || r.optedOut) return <span className="text-muted">—</span>;
+  return <StageBadge stage={r.stage} since={r.onSaleFrom} />;
 }
 
 /** Telefonda bitta qator — kartochka */
@@ -712,12 +831,21 @@ function ProfitRowCard({
 }) {
   const t = useT('batches');
   const f = useFormat();
+  const backTitle = useBackTitle();
   const isLot = r.link === 'explicit' || r.link === 'name';
   const cells: [string, ReactNode][] = [
+    [t('profit.th.stage'), <RowStage key="s" r={r} />],
     // Sotilmaydigan (bog'lanmagan, shaxsiy, "Uzumda yo'q") qatorda sotildi — yo'q
     [t('profit.th.sold'), isLot ? `${f.num(r.sold)} / ${f.num(r.qty)}` : '—'],
     [t('profit.th.invested'), r.link === 'personal' ? '—' : f.num(r.invested)],
-    [t('profit.th.back'), isLot ? f.num(r.moneyBack) : '—'],
+    [
+      t('profit.th.back'),
+      hasMoney(r) ? (
+        <span title={backTitle({ payout: r.payout, adFee: r.adFee, tax: r.tax, pending: r.pendingBack })}>{f.num(r.moneyBack)}</span>
+      ) : (
+        '—'
+      ),
+    ],
     [
       t('profit.th.profit'),
       r.profit !== null && r.sold > 0 ? (
@@ -726,17 +854,6 @@ function ProfitRowCard({
         '—'
       ),
     ],
-    [
-      t('profit.th.left'),
-      isLot
-        ? r.legStatus === 'arrived'
-          ? t('profit.row.left', { n: f.num(r.left) })
-          : t('profit.transit', { n: f.num(r.left) })
-        : r.link === 'personal' || r.optedOut
-          ? '—'
-          : t('profit.row.unknown'),
-    ],
-    [t('profit.th.arrived'), r.arrivedAt ? f.dateShort(r.arrivedAt) : t(`status.${r.legStatus}`)],
   ];
   return (
     <li className="px-4 py-3.5">
@@ -775,19 +892,19 @@ function ProfitRowView({
   expanded,
   onToggle,
   onLink,
-  isLot,
 }: {
   r: BatchProfitRow;
   skus: BatchProfitDetail['skus'];
   expanded: boolean;
   onToggle: () => void;
   onLink?: () => void;
-  isLot: boolean;
 }) {
   const t = useT('batches');
   const f = useFormat();
+  const backTitle = useBackTitle();
   const td = 'px-3 py-3 align-top';
   const num = 'tnum whitespace-nowrap text-right';
+  const isLot = r.link === 'explicit' || r.link === 'name';
 
   return (
     <>
@@ -816,12 +933,8 @@ function ProfitRowView({
             </div>
           </div>
         </td>
-        <td className={cn(td, 'whitespace-nowrap text-xs')}>
-          {r.arrivedAt ? (
-            <span className="tnum text-ink-soft">{f.dateShort(r.arrivedAt)}</span>
-          ) : (
-            <span className="text-muted">{t(`status.${r.legStatus}`)}</span>
-          )}
+        <td className={cn(td, 'text-xs')}>
+          <RowStage r={r} />
         </td>
         <td className={cn(td, num)}>
           {isLot ? (
@@ -837,46 +950,29 @@ function ProfitRowView({
         </td>
         <td className={cn(td, num, 'text-ink-soft')}>{r.link === 'personal' ? <span className="text-muted">—</span> : f.num(r.invested)}</td>
         <td className={cn(td, num)}>
-          {isLot ? (
-            <div className="inline-flex flex-col items-end">
-              <span className="font-semibold text-ink">{f.num(r.moneyBack)}</span>
-              {r.pendingBack > 0 ? <span className="text-2xs text-muted">{t('profit.backPending', { sum: f.num(r.pendingBack) })}</span> : null}
-            </div>
+          {hasMoney(r) ? (
+            <span
+              className="font-semibold text-ink"
+              title={backTitle({ payout: r.payout, adFee: r.adFee, tax: r.tax, pending: r.pendingBack })}
+            >
+              {f.num(r.moneyBack)}
+            </span>
           ) : (
             <span className="text-muted">—</span>
           )}
         </td>
         <td className={cn(td, num)}>
           {r.profit !== null && r.sold > 0 ? (
-            <div className="inline-flex flex-col items-end">
-              <span className={cn('font-bold', r.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(r.profit)}</span>
-              {r.roi !== null ? <span className="text-2xs text-muted">{t('profit.roi', { pct: f.num(r.roi, 1) })}</span> : null}
-            </div>
+            <span className={cn('font-bold', r.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(r.profit)}</span>
           ) : (
             <span className="text-muted">—</span>
-          )}
-        </td>
-        <td className={cn(td, num)}>
-          {isLot ? (
-            r.legStatus === 'arrived' ? (
-              <div className="inline-flex flex-col items-end">
-                <span className="text-ink-soft">{t('profit.row.left', { n: f.num(r.left) })}</span>
-                {r.left > 0 ? <span className="text-2xs text-muted">{t('profit.row.leftCost', { sum: f.num(r.leftCost) })}</span> : null}
-              </div>
-            ) : (
-              <span className="text-xs text-muted">{t('profit.transit', { n: f.num(r.left) })}</span>
-            )
-          ) : r.link === 'personal' || r.optedOut ? (
-            <span className="text-muted">—</span>
-          ) : (
-            <span className="text-xs text-muted">{t('profit.row.unknown')}</span>
           )}
         </td>
       </tr>
       {expanded ? (
         <tr className="border-b border-line/70 bg-surface-2/40">
           <td />
-          <td colSpan={7} className="px-3 pb-3 pt-1">
+          <td colSpan={6} className="px-3 pb-3 pt-1">
             <OrdersList r={r} />
           </td>
         </tr>

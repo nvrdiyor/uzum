@@ -85,7 +85,7 @@ router.use(requireAuth, requireCompany);
 
 type ShipmentStatus = ShipmentRow['status'];
 
-const SHIPMENT_STATUSES: ShipmentStatus[] = ['draft', 'planned', 'in_transit', 'accepted', 'canceled'];
+const SHIPMENT_STATUSES: ShipmentStatus[] = ['draft', 'planned', 'in_transit', 'accepting', 'accepted', 'canceled'];
 
 /** Bazadagi eski/boshqacha nomlar → shartnomadagi holatlar */
 const STATUS_ALIASES: Record<string, ShipmentStatus> = {
@@ -111,11 +111,16 @@ function statusDbValues(status: ShipmentStatus): string[] {
   return [status, ...aliases];
 }
 
-/** Ruxsat etilgan holat o'tishlari: draft → planned → in_transit → accepted */
+/**
+ * Ruxsat etilgan holat o'tishlari: draft → planned → in_transit → accepted.
+ * `accepting` (Uzum ombori qabul qilmoqda) — faqat Uzum nakladnoyida, sinxron
+ * yozadi; qo'lda yuritiladigan yetkazma zanjiriga kirmaydi.
+ */
 const NEXT_STATUS: Record<ShipmentStatus, ShipmentStatus[]> = {
   draft: ['planned', 'canceled'],
   planned: ['draft', 'in_transit', 'canceled'],
   in_transit: ['planned', 'accepted', 'canceled'],
+  accepting: ['accepted', 'canceled'],
   accepted: [],
   canceled: [],
 };
@@ -124,6 +129,7 @@ const STATUS_LABEL: Record<ShipmentStatus, string> = {
   draft: 'Qoralama',
   planned: 'Rejalashtirilgan',
   in_transit: 'Yo‘lda',
+  accepting: 'Qabul qilish jarayonida',
   accepted: 'Qabul qilingan',
   canceled: 'Bekor qilingan',
 };
@@ -398,7 +404,7 @@ router.post(
 // ─────────────────────────── PATCH /shipments/:id ───────────────────────────
 
 const shipmentPatchSchema = z.object({
-  status: z.enum(['draft', 'planned', 'in_transit', 'accepted', 'canceled']).optional(),
+  status: z.enum(['draft', 'planned', 'in_transit', 'accepting', 'accepted', 'canceled']).optional(),
   code: z.string().trim().min(1).max(60).optional(),
   storeId: z.string().nullable().optional(),
   destination: z.string().max(120).nullable().optional(),

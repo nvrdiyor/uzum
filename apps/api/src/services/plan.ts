@@ -196,7 +196,8 @@ export async function getInbound(companyId: string, storeIds: string[]): Promise
   const out = new Map<string, number>();
   if (storeIds.length === 0) return out;
   const items = await prisma.shipmentItem.findMany({
-    where: { shipment: { companyId, status: 'in_transit' }, sku: { storeId: { in: storeIds } } },
+    // Uzum ombori qabul qilayotgani ham hali sotuvda emas — kelayotgan tovar
+    where: { shipment: { companyId, status: { in: ['in_transit', 'accepting'] } }, sku: { storeId: { in: storeIds } } },
     select: { skuId: true, qty: true, accepted: true, shipment: { select: { source: true } } },
   });
   const bySource = new Map<string, { uzum: number; manual: number }>();

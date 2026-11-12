@@ -70,12 +70,14 @@ registerNamespace('shipments', {
     'filter.draft': 'Qoralama',
     'filter.planned': 'Rejalashtirilgan',
     'filter.in_transit': 'Yo‘lda',
+    'filter.accepting': 'Qabul qilish jarayonida',
     'filter.accepted': 'Qabul qilingan',
     'filter.canceled': 'Bekor qilingan',
 
     'status.draft': 'Qoralama',
     'status.planned': 'Rejalashtirilgan',
     'status.in_transit': 'Yo‘lda',
+    'status.accepting': 'Qabul qilish jarayonida',
     'status.accepted': 'Qabul qilingan',
     'source.uzum': 'Uzum',
     'source.uzumTitle': 'Uzum nakladnoyidan avtomatik olingan',
@@ -178,12 +180,14 @@ registerNamespace('shipments', {
     'filter.draft': 'Черновик',
     'filter.planned': 'Запланировано',
     'filter.in_transit': 'В пути',
+    'filter.accepting': 'Идёт приёмка',
     'filter.accepted': 'Принято',
     'filter.canceled': 'Отменено',
 
     'status.draft': 'Черновик',
     'status.planned': 'Запланировано',
     'status.in_transit': 'В пути',
+    'status.accepting': 'Идёт приёмка',
     'status.accepted': 'Принято',
     'source.uzum': 'Uzum',
     'source.uzumTitle': 'Загружено автоматически из накладной Uzum',
@@ -286,12 +290,14 @@ registerNamespace('shipments', {
     'filter.draft': 'Draft',
     'filter.planned': 'Planned',
     'filter.in_transit': 'In transit',
+    'filter.accepting': 'Being accepted',
     'filter.accepted': 'Accepted',
     'filter.canceled': 'Canceled',
 
     'status.draft': 'Draft',
     'status.planned': 'Planned',
     'status.in_transit': 'In transit',
+    'status.accepting': 'Being accepted',
     'status.accepted': 'Accepted',
     'source.uzum': 'Uzum',
     'source.uzumTitle': 'Imported automatically from an Uzum invoice',
@@ -399,6 +405,8 @@ const STATUS_TONE: Record<ShipmentStatus, Tone> = {
   draft: 'muted',
   planned: 'info',
   in_transit: 'warn',
+  // Uzum ombori qabul qilmoqda — yo'ldan farqli, hali sotuvda emas
+  accepting: 'violet',
   accepted: 'brand',
   canceled: 'muted',
 };
@@ -410,7 +418,7 @@ const NEXT_STATUS: Partial<Record<ShipmentStatus, ShipmentStatus>> = {
   in_transit: 'accepted',
 };
 
-const FILTERS: FilterKey[] = ['all', 'draft', 'planned', 'in_transit', 'accepted', 'canceled'];
+const FILTERS: FilterKey[] = ['all', 'draft', 'planned', 'in_transit', 'accepting', 'accepted', 'canceled'];
 
 interface DraftItem {
   skuId: string;

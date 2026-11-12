@@ -299,7 +299,8 @@ export async function buildStockAlert(
     // Rejalashtiruvchi getInbound: jo'natilgan, hali qabul qilinmagan dona
     sections.stock
       ? prisma.shipmentItem.findMany({
-          where: { shipment: { companyId, status: 'in_transit' }, sku: { storeId: { in: storeIds } } },
+          // Uzum ombori qabul qilayotgani ham kelayotgan tovar (api plan.ts getInbound bilan bir xil)
+          where: { shipment: { companyId, status: { in: ['in_transit', 'accepting'] } }, sku: { storeId: { in: storeIds } } },
           select: { skuId: true, qty: true, accepted: true, shipment: { select: { source: true } } },
         })
       : Promise.resolve([]),

@@ -321,16 +321,19 @@ export default function Batches() {
               icon={<CircleCheck className="h-5 w-5" />}
               tone="brand"
             />
-            {/* Partiyalardan foyda: sotilgan donalardan, tikilgan pul qaytgani bilan */}
+            {/* Partiyalardan sof foyda: sotilgan donalardan (Uzum reklamasi va soliq ayrilgan), tikilgan pul qaytgani bilan */}
             {profitQ.data && profitQ.data.grand.invested > 0 ? (
               <StatCard
                 label={t('profit.stat')}
                 value={f.money(profitQ.data.grand.profit)}
-                hint={
+                hint={[
                   profitQ.data.grand.paidBack > 0
                     ? t('profit.statHint', { back: f.money(profitQ.data.grand.moneyBack), n: profitQ.data.grand.paidBack })
-                    : t('profit.statHintNone', { back: f.money(profitQ.data.grand.moneyBack), invested: f.money(profitQ.data.grand.invested) })
-                }
+                    : t('profit.statHintNone', { back: f.money(profitQ.data.grand.moneyBack), invested: f.money(profitQ.data.grand.invested) }),
+                  profitQ.data.grand.adFee !== 0 ? t('profit.statAds', { sum: f.money(profitQ.data.grand.adFee) }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
                 icon={<Coins className="h-5 w-5" />}
                 tone={profitQ.data.grand.profit < 0 ? 'danger' : 'brand'}
               />
@@ -676,7 +679,7 @@ export default function Batches() {
           )}
         </Card>
 
-        {/* Hech qaysi partiyaga tushmagan sotuv — sababi bilan (partiyasiz qoldiq, «Keldi» belgilanmagan...) */}
+        {/* Hech qaysi partiyaga tushmagan sotuv (eski qoldiq, partiyaga kiritilmagan tovar) va reklama */}
         {rows.length > 0 ? <UnattributedNote un={profitQ.data?.unattributed} className="mt-3 px-1" /> : null}
 
         {rows.length > 0 && data ? (

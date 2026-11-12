@@ -219,8 +219,8 @@ export interface UzumInvoice {
   id: string;
   /** Kabinetda ko'rinadigan raqam */
   number: string;
-  /** draft | planned | in_transit | accepted | canceled */
-  status: 'draft' | 'planned' | 'in_transit' | 'accepted' | 'canceled';
+  /** draft | planned | in_transit | accepting (Uzum ombori qabul qilmoqda) | accepted | canceled */
+  status: 'draft' | 'planned' | 'in_transit' | 'accepting' | 'accepted' | 'canceled';
   /** Uzum holat matni ("Stokda qabul qilingan") */
   statusText?: string;
   createdAt: string;

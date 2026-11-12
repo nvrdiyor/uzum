@@ -80,6 +80,7 @@ import {
   upsertStocks,
   upsertStorageFees,
   type ImportResult,
+  type InvoiceTransition,
   type OrderImportOptions,
   type OrdersImportResult,
 } from './importer.js';
@@ -128,6 +129,8 @@ const SALE_NOTIFY_LIMIT = 8;
 const CHANGE_NOTIFY_LIMIT = 8;
 /** "Xaridor qabul qilib oldi" xabarlari uchun ham */
 const ACCEPT_NOTIFY_LIMIT = 8;
+/** Uzum ta'minlashi (nakladnoy) holati haqidagi xabarlar — bitta sinxronda ko'pi bilan */
+const SUPPLY_NOTIFY_LIMIT = 5;
 /**
  * Faqat shu vaqt ichida topshirilgan buyurtma haqida xabar beriladi.
  *
@@ -1144,6 +1147,12 @@ async function stepProducts(run: SyncRun, setDetail: (t: string) => void): Promi
 /** 4. Qoldiqlar va Uzum omboriga yetkazmalar (nakladnoylar) */
 async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
+  /*
+   * Ta'minlash holati xabari faqat oddiy (inkremental) sinxronda: to'liq sinxron
+   * tarixni qayta tortadi, u "yangilik" emas. Telegram xabarlari tarifda bo'lsa.
+   */
+  const supplyNotices = run.type === 'incremental' && hasFeature(run.planId, 'telegram_notifications');
+  let supplyBudget = SUPPLY_NOTIFY_LIMIT;
   for (const store of run.stores) {
     const stocks = await client.getStocks(store.uzumShopId);
     const res = await upsertStocks(store.id, stocks);
@@ -1160,7 +1169,65 @@ async function stepStocks(run: SyncRun, setDetail: (t: string) => void): Promise
     if (invRes.costFilled > 0) {
       log(`job ${run.jobId}: ${invRes.costFilled} ta SKU tannarxi Uzum nakladnoyidan to'ldirildi`);
     }
+    if (supplyNotices && invRes.transitions.length > 0) {
+      // Xabar sinxron natijasiga ta'sir qilmaydi (sotuv xabarlari kabi)
+      try {
+        supplyBudget = await notifySupplyChanges(run, store.title, invRes.transitions, supplyBudget);
+      } catch (err) {
+        log(`job ${run.jobId}: ta'minlash xabari yuborilmadi — ${errorMessage(err)}`);
+      }
+    }
   }
+}
+
+/**
+ * Uzum ta'minlashi (FBO nakladnoy) holati oldinga siljidi — sotuvchiga xabar
+ * (2026-11-12, egasi: "qabul qilingan bo'lsa telegram botga xabar borsin —
+ * shu raqamli ta'minlash qabul qilindi, sotuvga chiqdi"):
+ *  • accepting — tovar Uzum omboriga yetkazildi, qabul boshlandi;
+ *  • accepted — qabul qilindi, tovar sotuvda; kam qabul qilingan bo'lsa — farqi.
+ * Qoldiq va zaxira xabarlari bilan bir xil sozlamaga (`notifyStock`) bo'ysunadi.
+ * `budget` — qolgan xabarlar soni; yangilangan qiymat qaytariladi.
+ */
+export async function notifySupplyChanges(
+  run: Pick<SyncRun, 'companyId'>,
+  storeTitle: string,
+  changes: InvoiceTransition[],
+  budget: number,
+): Promise<number> {
+  let left = budget;
+  for (const c of changes) {
+    if (left <= 0) break;
+    const kinds = c.positions !== null ? ` (${c.positions} xil tovar)` : '';
+    if (c.to === 'accepted') {
+      const units = c.accepted ?? c.planned;
+      const short =
+        c.planned !== null && c.accepted !== null && c.accepted < c.planned
+          ? `\nRejada ${c.planned} dona edi — ${c.planned - c.accepted} dona kam qabul qilindi`
+          : '';
+      await notifyCompanyOwners(run.companyId, {
+        type: short ? 'warning' : 'success',
+        requireFlag: 'notifyStock',
+        title: `Tovarlar qabul qilindi: №${c.code}`,
+        body: `Ta’minlash qabul qilindi va sotuvga chiqdi${units !== null ? `: ${units} dona${kinds}` : ''}${short}
+Do‘kon: ${storeTitle}`,
+        link: '/shipments',
+        buttonText: 'Yetkazmalarni ko‘rish',
+      });
+    } else {
+      await notifyCompanyOwners(run.companyId, {
+        type: 'info',
+        requireFlag: 'notifyStock',
+        title: `Ta’minlash omborga yetkazildi: №${c.code}`,
+        body: `Uzum qabul qilmoqda${c.planned !== null ? ` — ${c.planned} dona${kinds}` : ''}. Qabul tugagach xabar beramiz
+Do‘kon: ${storeTitle}`,
+        link: '/shipments',
+        buttonText: 'Yetkazmalarni ko‘rish',
+      });
+    }
+    left -= 1;
+  }
+  return left;
 }
 
 /**

@@ -1133,6 +1133,24 @@ const LOSS_STATUSES = new Set(['open', 'claimed', 'compensated', 'rejected']);
  */
 // ─────────────────────────── Yetkazmalar (Uzum nakladnoylari) ───────────────────────────
 
+/** Nakladnoy holatining oldinga siljishi (xabar uchun) */
+export interface InvoiceTransition {
+  /** Kabinetdagi raqam */
+  code: string;
+  /** Avvalgi holat (bazadagi) */
+  from: string;
+  to: 'accepting' | 'accepted';
+  /** Rejadagi dona; tarkibi o'qilmagan bo'lsa null */
+  planned: number | null;
+  /** Uzum qabul qilgan dona */
+  accepted: number | null;
+  /** Necha xil tovar (SKU) */
+  positions: number | null;
+}
+
+/** Nakladnoy holatlari tartibi: faqat oldinga siljish xabar beradi (bekor/qoralama — 0) */
+const INVOICE_RANK: Record<string, number> = { planned: 1, in_transit: 2, accepting: 3, accepted: 4 };
+
 /**
  * Uzum omboriga yuborilgan nakladnoylar → `Shipment` (`source: 'uzum'`).
  * Tabiiy kalit: `Shipment(storeId, uzumInvoiceId)`. Pozitsiyalar har safar
@@ -1147,8 +1165,8 @@ export async function upsertInvoices(
   storeId: string,
   invoices: UzumInvoice[],
   options: { taxRate?: number } = {},
-): Promise<ImportResult & { unlinkedItems: number; costFilled: number }> {
-  const res = { ...emptyResult(), unlinkedItems: 0, costFilled: 0 };
+): Promise<ImportResult & { unlinkedItems: number; costFilled: number; transitions: InvoiceTransition[] }> {
+  const res = { ...emptyResult(), unlinkedItems: 0, costFilled: 0, transitions: [] as InvoiceTransition[] };
   if (invoices.length === 0) return res;
 
   const refs = await getSkuRefs(storeId);
@@ -1178,17 +1196,34 @@ export async function upsertInvoices(
     const existing =
       (await prisma.shipment.findUnique({
         where: { storeId_uzumInvoiceId: { storeId, uzumInvoiceId } },
-        select: { id: true },
+        select: { id: true, status: true },
       })) ??
       (await prisma.shipment.findFirst({
         where: { id: stable, companyId, storeId: null },
-        select: { id: true },
+        select: { id: true, status: true },
       }));
 
     const shipmentId = existing?.id ?? stable;
     if (existing) {
       await prisma.shipment.update({ where: { id: shipmentId }, data });
       res.updated += 1;
+      /*
+       * Holat oldinga siljidi: omborga yetkazildi (qabul boshlandi) yoki qabul
+       * qilindi — sotuvchiga xabar uchun (sync.ts). Faqat MAVJUD nakladnoy: yangi
+       * ulangan do'konning eski nakladnoylari "yangilik" emas.
+       */
+      const to = inv.status;
+      if ((to === 'accepting' || to === 'accepted') && INVOICE_RANK[to] > (INVOICE_RANK[existing.status] ?? 0)) {
+        const items = inv.itemsFailed ? null : inv.items;
+        res.transitions.push({
+          code: inv.number,
+          from: existing.status,
+          to,
+          planned: items ? items.reduce((a, it) => a + Math.max(0, int(it.qty, 0)), 0) : null,
+          accepted: items ? items.reduce((a, it) => a + Math.max(0, int(it.accepted, 0)), 0) : null,
+          positions: items ? new Set(items.map((it) => it.skuCode)).size : null,
+        });
+      }
     } else {
       await prisma.shipment.create({
         data: {

@@ -16,10 +16,17 @@
  * qaysi partiyaga yozilmaydi. Hech qaysi partiyaga tushmagan sotuv sababi bilan
  * alohida ko'rsatiladi — hech narsa taxmin qilinmaydi.
  *
- * PUL. Pozitsiya puli (Uzum to'laydigani va soliq) bo'laklarga dona bo'yicha
- * butun so'mlarda bo'linadi (eng katta qoldiq usuli) — bo'laklar yig'indisi
- * pozitsiya summasiga aynan teng. Tannarx: qatorning tovar + cargo + qo'shimcha
- * xarajat ulushi (`calcBatch`), sotilgan donaga mutanosib.
+ * PUL. Pozitsiya puli (Uzum to'laydigani, reklamasi va soliq) bo'laklarga dona
+ * bo'yicha butun so'mlarda bo'linadi (eng katta qoldiq usuli) — bo'laklar
+ * yig'indisi pozitsiya summasiga aynan teng. Tannarx: qatorning tovar + cargo +
+ * qo'shimcha xarajat ulushi (`calcBatch`), sotilgan donaga mutanosib.
+ *
+ * REKLAMA (2026-11-12). Uzum "Buyurtmalarni ko'paytirish" to'lovini mahsulot
+ * bo'yicha, xaridor tovarni olgan kuni yechadi — buyurtma raqamisiz. Shuning
+ * uchun kunlik to'lov o'sha kuni xaridorga topshirilgan shu mahsulot
+ * sotuvlariga tushum ulushiga qarab bo'linadi (`spreadAdFees`), keyin
+ * pozitsiya puli bilan birga partiyalarga boradi: qaytgan pul = Uzum
+ * to'laydigani − reklama − soliq.
  *
  * Bu modul toza: vaqt va baza yo'q, faqat kunlar (YYYY-MM-DD) — testlarda soat
  * kerak emas. Ma'lumotni server yig'adi (apps/api/src/services/batch-profit.ts).
@@ -203,6 +210,223 @@ export function splitSigned(amount: number, weights: readonly number[]): number[
   return splitByWeight(-a, weights).map((v) => (v === 0 ? 0 : -v));
 }
 
+// ─────────────────────────── Reklama ───────────────────────────
+
+/** Bitta mahsulotning bir kunlik reklama to'lovi */
+export interface AdFeeInput {
+  /** Uzum mahsulot ID'si (to'lov izohidagi "tovar IDsi") */
+  product: string;
+  /** To'lov kuni (YYYY-MM-DD) */
+  day: string;
+  /** So'm; qaytarilgani manfiy */
+  amount: number;
+}
+
+/** Reklama bo'linadigan sotuv: xaridorga topshirilgan tirik pozitsiya */
+export interface AdBaseLine {
+  product: string;
+  /** Xaridorga topshirilgan savdo kuni (YYYY-MM-DD) */
+  day: string;
+  /** Sotuv summasi — ulush shunga qarab */
+  revenue: number;
+}
+
+export interface AdSpread {
+  /** `base` bilan bir xil tartibda: har pozitsiyaga tushgan reklama, so'm */
+  perLine: number[];
+  /** Mahsulot → hech bir sotuvga tushmagan reklama (yaqin kunlarda topshirilgan sotuvi yo'q) */
+  unplaced: Map<string, number>;
+}
+
+/** Reklama to'lovi kunida sotuv bo'lmasa, shuncha kun ichidagi eng yaqin sotuv kuniga */
+export const AD_MATCH_DAYS = 7;
+
+const DAY_MS = 86_400_000;
+const dayGap = (a: string, b: string): number => Math.abs(Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS;
+
+/** Saralangan kunlar ichidan `day` ga eng yaqini (teng bo'lsa — oldingisi); `maxGap` dan uzoq bo'lsa null */
+function nearestDay(days: readonly string[], day: string, maxGap: number): string | null {
+  let lo = 0;
+  let hi = days.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (days[mid] < day) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo < days.length && days[lo] === day) return day;
+  const prev = lo > 0 ? days[lo - 1] : null;
+  const next = lo < days.length ? days[lo] : null;
+  const dPrev = prev !== null ? dayGap(prev, day) : Infinity;
+  const dNext = next !== null ? dayGap(day, next) : Infinity;
+  // To'lov topshirilgandan keyin yechiladi: teng uzoqlikda — oldingi kun
+  const best = dPrev <= dNext ? prev : next;
+  return best !== null && Math.min(dPrev, dNext) <= maxGap ? best : null;
+}
+
+/**
+ * Mahsulot reklamasini sotuvlarga bo'lish. Uzum to'lovni xaridor tovarni olgan
+ * kuni yechadi, lekin qaysi buyurtmaniki ekanini aytmaydi: kunlik to'lov o'sha
+ * kuni topshirilgan shu mahsulot sotuvlariga (barcha SKU'lari) tushum ulushiga
+ * qarab, butun so'mda bo'linadi. O'sha kuni sotuv bo'lmasa (vaqt mintaqasi,
+ * holat kechikib yangilangan, tovar qaytarilgan) — `maxGapDays` ichidagi eng
+ * yaqin sotuv kuniga; u ham bo'lmasa — `unplaced`. Qaytarilgan to'lov (manfiy)
+ * xuddi shunday bo'linadi.
+ */
+export function spreadAdFees(fees: readonly AdFeeInput[], base: readonly AdBaseLine[], maxGapDays = AD_MATCH_DAYS): AdSpread {
+  const perLine = base.map(() => 0);
+  const unplaced = new Map<string, number>();
+
+  const linesOf = new Map<string, Map<string, number[]>>();
+  base.forEach((b, i) => {
+    let byDay = linesOf.get(b.product);
+    if (!byDay) {
+      byDay = new Map();
+      linesOf.set(b.product, byDay);
+    }
+    pushTo(byDay, b.day, i);
+  });
+  const daysOf = new Map<string, string[]>();
+  for (const [product, byDay] of linesOf) daysOf.set(product, [...byDay.keys()].sort());
+
+  // Bir kunning to'lovlari (bir nechta do'kon yoki qator) avval qo'shiladi
+  const sums = new Map<string, Map<string, number>>();
+  for (const f of fees) {
+    if (!f.product || !f.day || !Number.isFinite(f.amount) || f.amount === 0) continue;
+    let byDay = sums.get(f.product);
+    if (!byDay) {
+      byDay = new Map();
+      sums.set(f.product, byDay);
+    }
+    byDay.set(f.day, (byDay.get(f.day) ?? 0) + f.amount);
+  }
+
+  for (const [product, byDay] of sums) {
+    const days = daysOf.get(product) ?? [];
+    const lineDays = linesOf.get(product);
+    for (const [day, raw] of byDay) {
+      const amount = Math.round(raw);
+      if (amount === 0) continue;
+      const target = nearestDay(days, day, maxGapDays);
+      const idx = target !== null ? lineDays?.get(target) : undefined;
+      if (!idx || idx.length === 0) {
+        unplaced.set(product, (unplaced.get(product) ?? 0) + amount);
+        continue;
+      }
+      const weights = idx.map((i) => Math.max(0, base[i].revenue || 0));
+      const shares = splitSigned(amount, weights.some((w) => w > 0) ? weights : idx.map(() => 1));
+      idx.forEach((i, j) => {
+        perLine[i] += shares[j];
+      });
+    }
+  }
+  return { perLine, unplaced };
+}
+
+// ─────────────────────────── Uzum ta'minlashlari ───────────────────────────
+
+/** Qabul «Keldi» kunidan bir kun oldin ham (vaqt mintaqasi, ertasi kuni belgilangan) — partiya kelgan hisoblanadi */
+export const SUPPLY_MATCH_DAYS = 1;
+/** «Keldi» kech belgilangan bo'lishi mumkin: qabul undan ko'pi bilan shuncha kun oldin bo'lsa ham partiyaniki */
+export const SUPPLY_LATE_DAYS = 14;
+/** Hali qabul qilinmagan ta'minlash oldindan yaratiladi (vaqt band qilinadi) — kelgan kundan shuncha kun oldin ham */
+export const SUPPLY_PENDING_DAYS = 14;
+/** Ta'minlash partiyaga tegishli bo'lishi uchun umumiy kodlar ta'minlashning yoki partiyaning kamida shuncha ulushi */
+export const SUPPLY_MATCH_SHARE = 0.5;
+
+/** Kunni (YYYY-MM-DD) shuncha kunga suradi */
+export const shiftIsoDay = (day: string, days: number): string =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+
+/** Bog'lash uchun partiya */
+export interface SupplyMatchBatch {
+  /** Bog'langan kodlar (`normSkuCode`) */
+  codes: ReadonlySet<string>;
+  /** Tovar sotuvchiga kelgan kun (eng erta «Keldi»), bo'lmasa jo'natilgan, bo'lmasa partiya yaratilgan kun */
+  anchor: string;
+  /** Eng erta jo'natilgan kun (Xitoydan); noma'lum — null */
+  shippedFrom: string | null;
+  /**
+   * Kamida bitta jo'natmasi «Keldi»: hali kelmagan tovar Uzumda bo'lolmaydi. Yo'ldagi
+   * partiya bir xil tovarning boshqa partiyasi ta'minlashini "o'g'irlamasin" — cargo
+   * yo'lga chiqqanidan ikki kun keyingi qabul uniki emas.
+   */
+  canBeAtUzum: boolean;
+  /** Sig'im — bog'langan qatorlar donasi: shuncha qabul qilingach partiya "to'ladi" */
+  capacity: number;
+}
+
+/** Bog'lash uchun Uzum ta'minlashi */
+export interface SupplyMatchSupply {
+  /** Qabul qilingan kun; hali qabul qilinmagan bo'lsa — yaratilgan kun */
+  day: string;
+  accepted: boolean;
+  codes: ReadonlySet<string>;
+  /** Kod → dona (qabul qilingani; kutilayotganda — rejadagi) */
+  units: ReadonlyMap<string, number>;
+}
+
+/**
+ * Qaysi Uzum ta'minlashi qaysi partiyaniki (natija: ta'minlash → partiya o'rni yoki null).
+ * Uzum buni aytmaydi — tovar kodlari, sanalar va partiya sig'imi bo'yicha topiladi.
+ *
+ * Ta'minlashlar kun tartibida ko'riladi; har biri unga mos partiyalardan (partiyalar
+ * Xitoydan jo'natilgan tartibda — FIFO) birinchisiga beriladi:
+ *  • mos — umumiy kodlar ta'minlashning yoki partiyaning yarmidan ko'pi
+ *    (`SUPPLY_MATCH_SHARE`); partiya «Keldi»; qabul jo'natilgan kundan oldin emas va
+ *    «Keldi» kunidan `SUPPLY_LATE_DAYS` dan ko'p oldin emas (kech belgilangan sana);
+ *  • avval o'sha kunga kelib bo'lgan partiyalar, keyin «Keldi» kechroq yozilganlari;
+ *  • to'lgan partiya (sig'imicha qabul qilingan) o'tkaziladi — bir xil tovar qayta
+ *    olinganda keyingi ta'minlash keyingi partiyaniki;
+ *  • ta'minlashi bor partiya undan yangi partiya kelgach yopiladi: dona birligi mos
+ *    kelmasa ham (bog'lam ↔ dona) yangi partiya o'z ta'minlashini oladi.
+ * Hech biriga to'g'ri kelmagan qabul — partiyalarga kiritilmagan tovar (eski qoldiq).
+ */
+export function matchBatchSupplies(
+  batches: readonly SupplyMatchBatch[],
+  supplies: readonly SupplyMatchSupply[],
+): (number | null)[] {
+  const owner: (number | null)[] = supplies.map(() => null);
+  const order = supplies.map((_, i) => i).sort((a, b) => cmpStr(supplies[a].day, supplies[b].day) || a - b);
+  const fifo = batches
+    .map((_, i) => i)
+    .sort((a, b) => cmpStr(batches[a].shippedFrom ?? batches[a].anchor, batches[b].shippedFrom ?? batches[b].anchor) || a - b);
+  const rank = new Map(fifo.map((b, i) => [b, i]));
+  const assigned = batches.map(() => 0);
+  const hasSupply = batches.map(() => false);
+
+  const fits = (b: number, s: number): boolean => {
+    const B = batches[b];
+    const S = supplies[s];
+    if (!B.canBeAtUzum || B.codes.size === 0 || S.codes.size === 0) return false;
+    let ov = 0;
+    for (const c of S.codes) if (B.codes.has(c)) ov += 1;
+    if (ov === 0 || (ov / S.codes.size < SUPPLY_MATCH_SHARE && ov / B.codes.size < SUPPLY_MATCH_SHARE)) return false;
+    if (S.accepted && B.shippedFrom && S.day < B.shippedFrom) return false;
+    return S.day >= shiftIsoDay(B.anchor, -(S.accepted ? SUPPLY_LATE_DAYS : SUPPLY_PENDING_DAYS));
+  };
+  /** Partiya shu ta'minlash kuniga kelib bo'lgan (kutilayotgani oldindan yaratiladi) */
+  const arrivedBy = (b: number, s: number): boolean =>
+    batches[b].anchor <= shiftIsoDay(supplies[s].day, supplies[s].accepted ? SUPPLY_MATCH_DAYS : SUPPLY_PENDING_DAYS);
+
+  for (const s of order) {
+    const cands = fifo.filter((b) => fits(b, s));
+    if (cands.length === 0) continue;
+    const ready = cands.filter((b) => arrivedBy(b, s));
+    const late = cands.filter((b) => !arrivedBy(b, s));
+    const pick = [...ready, ...late].find(
+      (b) =>
+        assigned[b] < batches[b].capacity &&
+        // Ta'minlashi bor eski partiya — undan yangi partiya kelib bo'lgach yopiq
+        !(hasSupply[b] && ready.some((n) => (rank.get(n) as number) > (rank.get(b) as number))),
+    );
+    if (pick === undefined) continue;
+    owner[s] = pick;
+    hasSupply[pick] = true;
+    for (const [code, units] of supplies[s].units) if (batches[pick].codes.has(code)) assigned[pick] += Math.max(0, units);
+  }
+  return owner;
+}
+
 // ─────────────────────────── Taqsimlash ───────────────────────────
 
 /**
@@ -232,9 +456,15 @@ export interface ProfitLotInput {
    * bu lotga "ayblanmaydi": u hali sotib olinmagan yoki yo'lda edi. null — chegarasiz.
    */
   notBefore?: string | null;
+  /**
+   * false — lot hech qachon "ayblanmaydi" (notMarked/beforeArrival): mavjud
+   * bo'lish kuni Uzum qabulidan aniq ma'lum, undan oldingi sotuv bu lotdan
+   * bo'lolmaydi — u partiyalarga kiritilmagan tovardan. Standart: true.
+   */
+  blame?: boolean;
 }
 
-/** Eski qoldiq: birinchi partiya kelishidan oldin Uzum qabul qilgan dona */
+/** Eski qoldiq: hech qaysi partiyaga tegishli bo'lmagan, Uzum qabul qilgan dona */
 export interface ProfitOpeningInput {
   /** `normSkuCode` */
   code: string;
@@ -260,6 +490,8 @@ export interface ProfitLineInput {
   revenue: number;
   /** Soliq, so'm */
   tax: number;
+  /** Uzum reklamasining shu pozitsiyaga tushgan ulushi (`spreadAdFees`), so'm */
+  adFee?: number;
   state: ProfitMoneyState;
 }
 
@@ -271,6 +503,7 @@ export interface ProfitPiece {
   payout: number;
   tax: number;
   revenue: number;
+  adFee: number;
 }
 
 export interface ProfitMoneyByState {
@@ -285,7 +518,9 @@ export interface ProfitTake {
   payout: number;
   tax: number;
   revenue: number;
-  /** Qo'lga tegadigan pul (Uzum to'laydigani − soliq) holati bo'yicha */
+  /** Uzum reklamasi */
+  adFee: number;
+  /** Qo'lga tegadigan pul (Uzum to'laydigani − reklama − soliq) holati bo'yicha */
   back: ProfitMoneyByState;
   firstDay: string | null;
   lastDay: string | null;
@@ -306,6 +541,7 @@ export interface ProfitLeftover {
   payout: number;
   tax: number;
   revenue: number;
+  adFee: number;
   /** Eski qoldiqdan sotilgan */
   opening: number;
   /** Partiya (yoki eski qoldiq) kelishidan oldin */
@@ -330,6 +566,7 @@ const emptyTake = (): ProfitTake => ({
   payout: 0,
   tax: 0,
   revenue: 0,
+  adFee: 0,
   back: { unlocked: 0, held: 0, transit: 0 },
   firstDay: null,
   lastDay: null,
@@ -345,6 +582,7 @@ const emptyLeftover = (): ProfitLeftover => ({
   payout: 0,
   tax: 0,
   revenue: 0,
+  adFee: 0,
   opening: 0,
   beforeArrival: 0,
   notMarked: 0,
@@ -371,21 +609,24 @@ interface Stray {
   payout: number;
   tax: number;
   revenue: number;
+  adFee: number;
   reason: 'beforeArrival' | 'notMarked' | 'overTracked';
   blame: number | null;
 }
 
 /** `units` donani bo'lakdan ajratib oladi (pul ham mutanosib, butun so'mda); bo'lak qolganiga kamayadi */
-function splitOff(p: { units: number; payout: number; tax: number; revenue: number }, units: number) {
+function splitOff(p: { units: number; payout: number; tax: number; revenue: number; adFee: number }, units: number) {
   const w = [units, p.units - units];
   const pay = splitSigned(p.payout, w);
   const tax = splitSigned(p.tax, w);
   const rev = splitSigned(p.revenue, w);
+  const ad = splitSigned(p.adFee, w);
   p.units -= units;
   p.payout = pay[1];
   p.tax = tax[1];
   p.revenue = rev[1];
-  return { units, payout: pay[0], tax: tax[0], revenue: rev[0] };
+  p.adFee = ad[1];
+  return { units, payout: pay[0], tax: tax[0], revenue: rev[0], adFee: ad[0] };
 }
 
 /**
@@ -444,7 +685,7 @@ export function allocateBatchSales(
     .sort((a, b) => cmpStr(lots[a].availableFrom as string, lots[b].availableFrom as string) || byCreated(a, b));
   const waiting = lots
     .map((_, i) => i)
-    .filter((i) => !lots[i].availableFrom && lotLeft[i] > 0 && lots[i].codes.length > 0)
+    .filter((i) => !lots[i].availableFrom && lotLeft[i] > 0 && lots[i].codes.length > 0 && lots[i].blame !== false)
     .sort(byCreated);
 
   const slots = new Map<string, Slot[]>();
@@ -506,6 +747,7 @@ export function allocateBatchSales(
     const payouts = splitSigned(s.payout, weights);
     const taxes = splitSigned(s.tax, weights);
     const revenues = splitSigned(s.revenue, weights);
+    const ads = splitSigned(s.adFee ?? 0, weights);
 
     parts.forEach((part, idx) => {
       if (part.slot.kind === 'open') {
@@ -516,9 +758,17 @@ export function allocateBatchSales(
         cur.payout += payouts[idx];
         cur.tax += taxes[idx];
         cur.revenue += revenues[idx];
+        cur.adFee += ads[idx];
         return;
       }
-      takes[part.slot.i].pieces.push({ line: k, units: part.units, payout: payouts[idx], tax: taxes[idx], revenue: revenues[idx] });
+      takes[part.slot.i].pieces.push({
+        line: k,
+        units: part.units,
+        payout: payouts[idx],
+        tax: taxes[idx],
+        revenue: revenues[idx],
+        adFee: ads[idx],
+      });
     });
 
     if (need > 0) {
@@ -532,10 +782,14 @@ export function allocateBatchSales(
         payout: payouts[last],
         tax: taxes[last],
         revenue: revenues[last],
+        adFee: ads[last],
         ...(preferWaiting
           ? { reason: 'notMarked' as const, blame: w as number }
           : blockedBy
-            ? { reason: 'beforeArrival' as const, blame: blockedBy.kind === 'lot' ? blockedBy.i : null }
+            ? {
+                reason: 'beforeArrival' as const,
+                blame: blockedBy.kind === 'lot' && lots[blockedBy.i].blame !== false ? blockedBy.i : null,
+              }
             : { reason: 'overTracked' as const, blame: null }),
       });
     }
@@ -647,6 +901,7 @@ export function allocateBatchSales(
         cur.payout += pc.payout;
         cur.tax += pc.tax;
         cur.revenue += pc.revenue;
+        cur.adFee += pc.adFee;
       } else merged.set(pc.line, { ...pc });
     }
     t.pieces = [...merged.values()].sort((a, b) => lineOrder(a.line, b.line));
@@ -655,7 +910,8 @@ export function allocateBatchSales(
       t.payout += pc.payout;
       t.tax += pc.tax;
       t.revenue += pc.revenue;
-      t.back[lines[pc.line].state] += pc.payout - pc.tax;
+      t.adFee += pc.adFee;
+      t.back[lines[pc.line].state] += pc.payout - pc.tax - pc.adFee;
     }
     t.firstDay = t.pieces.length ? lines[t.pieces[0].line].day : null;
     t.lastDay = t.pieces.length ? lines[t.pieces[t.pieces.length - 1].line].day : null;
@@ -669,6 +925,7 @@ export function allocateBatchSales(
     cur.payout += e.payout;
     cur.tax += e.tax;
     cur.revenue += e.revenue;
+    cur.adFee += e.adFee;
     cur[e.reason] += e.units;
     if (e.blame !== null && e.reason !== 'overTracked') {
       const t = takes[e.blame];
@@ -685,12 +942,25 @@ export function allocateBatchSales(
 /**
  * Partiya holati:
  *  • empty — hisoblashga narsa yo'q (sotiladigan qator yo'q);
- *  • waiting — hech bir qatori hali «Keldi» emas;
- *  • unlinked — kelgan, lekin kelgan qatorlari Uzum tovariga bog'lanmagan;
+ *  • waiting — hech bir qatori hali sotuvda emas (`BatchStage` qaysi bosqichda ekanini aytadi);
+ *  • unlinked — sotuvda, lekin sotuvdagi qatorlari Uzum tovariga bog'lanmagan;
  *  • selling — sotilmoqda;
  *  • paidBack — qaytgan pul tikilgan puldan oshdi.
  */
 export type BatchProfitState = 'empty' | 'waiting' | 'unlinked' | 'selling' | 'paidBack';
+
+/**
+ * Tovar qayerda (qator yoki butun partiya):
+ *  • warehouse — Xitoy omborida; shipped — cargo yo'lda; arrived — keldi, Uzumga hali topshirilmagan;
+ *  • toUzum — Uzum ta'minlashi yaratilgan (rejada yoki omborga yo'lda);
+ *  • accepting — Uzum ombori qabul qilmoqda ("Qabul qilish jarayonida");
+ *  • selling — Uzum qabul qilgan, sotuvda; soldOut — hammasi sotilgan.
+ * Sotuv faqat `selling` dan boshlab partiyaga yoziladi.
+ */
+export type BatchStage = 'warehouse' | 'shipped' | 'arrived' | 'toUzum' | 'accepting' | 'selling' | 'soldOut';
+
+/** Uzum ta'minlashi (FBO nakladnoy) holati — partiya uchun kerakli qismi */
+export type BatchSupplyStatus = 'planned' | 'in_transit' | 'accepting' | 'accepted';
 
 /** Qator bo'yicha hisob uchun kirish (server yig'adi) */
 export interface ProfitRowInput {
@@ -709,7 +979,24 @@ export interface ProfitRowInput {
    * ulushga qarab tan olinadi; "bog'lanmagan" deb sanalmaydi
    */
   optedOut?: boolean;
+  /** Qator sotuvdami (Uzum qabul qilgan). Berilmasa — `legStatus === 'arrived'` (eski qoida) */
+  onSale?: boolean;
+  /** Qator bosqichi. Berilmasa — `onSale` va `legStatus` dan */
+  stage?: BatchStage;
+  /** Sotuvga chiqqan kun (YYYY-MM-DD) */
+  onSaleFrom?: string | null;
 }
+
+/** Qator bosqichi: berilgani, bo'lmasa sotuvda/jo'natma holatidan */
+export function rowStage(row: Pick<ProfitRowInput, 'stage' | 'onSale' | 'legStatus'>): BatchStage {
+  if (row.stage) return row.stage;
+  if (row.onSale ?? row.legStatus === 'arrived') return 'selling';
+  // Jo'natma holatlari (warehouse/shipped/arrived) bosqichlarning bir qismi
+  return row.legStatus;
+}
+
+/** Partiya bosqichi uchun ustunlik: eng ilgari ketgan qator partiyaning holati */
+const STAGE_ORDER: readonly BatchStage[] = ['selling', 'accepting', 'toUzum', 'arrived', 'shipped', 'warehouse'];
 
 export interface BatchProfitRowCalc {
   /** Sotuvga qo'yilgan pul: shaxsiy/namuna qatorda 0 (u alohida, `personalCost`) */
@@ -720,7 +1007,9 @@ export interface BatchProfitRowCalc {
   payout: number;
   tax: number;
   revenue: number;
-  /** Qaytgan pul = Uzum to'laydigani − soliq */
+  /** Uzum reklamasining shu qator sotuvlariga tushgan ulushi */
+  adFee: number;
+  /** Qaytgan pul = Uzum to'laydigani − reklama − soliq */
   moneyBack: number;
   /** Shundan hali kutilayotgani (ushlab turilgan + yo'ldagi) */
   pendingBack: number;
@@ -744,6 +1033,9 @@ export interface BatchProfitTotals {
   payout: number;
   tax: number;
   revenue: number;
+  /** Uzum reklamasi (qaytgan puldan ayrilgan) */
+  adFee: number;
+  /** Qaytgan pul = Uzum to'laydigani − reklama − soliq */
   moneyBack: number;
   /** Qaytgan pul holati bo'yicha */
   back: ProfitMoneyByState;
@@ -785,9 +1077,13 @@ export interface BatchProfitTotals {
   lastSaleAt: string | null;
   /** Hammasi sotilgan kun (bog'langan barcha qator sotilgan, kelmagan/bog'lanmagani yo'q) */
   soldOutAt: string | null;
+  /** Partiya qayerda: eng ilgari ketgan sotiladigan qatori bo'yicha; hammasi sotilgan bo'lsa soldOut */
+  stage: BatchStage;
+  /** Sotuvga chiqqan birinchi kun (YYYY-MM-DD) */
+  onSaleFrom: string | null;
 }
 
-const pctOf = (part: number, whole: number): number | null => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
+const pctOf =(part: number, whole: number): number | null => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 
 /** Bitta qatorning hisobi */
 export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
@@ -803,6 +1099,7 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
       payout: 0,
       tax: 0,
       revenue: 0,
+      adFee: 0,
       moneyBack: 0,
       pendingBack: 0,
       cogs: 0,
@@ -814,7 +1111,8 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
   const sold = Math.min(qty, t.sold);
   // Yaxlitlash yig'ilib ketmasin: hammasi sotilganda tannarx aynan qator puli
   const cogs = qty > 0 ? Math.round((cost * sold) / qty) : 0;
-  const moneyBack = t.payout - t.tax;
+  const adFee = t.adFee ?? 0;
+  const moneyBack = t.payout - t.tax - adFee;
   const profit = moneyBack - cogs;
   return {
     invested: cost,
@@ -823,6 +1121,7 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
     payout: t.payout,
     tax: t.tax,
     revenue: t.revenue,
+    adFee,
     moneyBack,
     pendingBack: t.back.held + t.back.transit,
     cogs,
@@ -842,7 +1141,8 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
   const isLot = (i: number) => (rows[i].link === 'explicit' || rows[i].link === 'name') && wholeUnits(rows[i].qty) > 0;
   const isPersonal = (i: number) => rows[i].link === 'personal';
   const isOptedOut = (i: number) => rows[i].link === 'none' && Boolean(rows[i].optedOut);
-  const arrived = (i: number) => rows[i].legStatus === 'arrived';
+  // Sotuvda: Uzum qabul qilgan (server `onSale` beradi); berilmasa — eski qoida, «Keldi»
+  const arrived = (i: number) => rows[i].onSale ?? rows[i].legStatus === 'arrived';
 
   const extra = Math.max(0, Math.round(undistributedExtra || 0));
   const noQty = rows.map((r, i) => !isPersonal(i) && !isOptedOut(i) && wholeUnits(r.qty) === 0 && Math.round(r.cost || 0) !== 0);
@@ -926,6 +1226,18 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
           ? 'unlinked'
           : 'selling';
 
+  const soldOutAt = allSold && soldOutDays.length ? soldOutDays[soldOutDays.length - 1] : null;
+  // Partiya bosqichi — sotiladigan qatorlarning eng ilgari ketgani (bittasi sotuvda bo'lsa — "sotuvda")
+  const stageRows = rows.map((_, i) => i).filter((i) => sellable(i) && wholeUnits(rows[i].qty) > 0);
+  const stages = new Set(stageRows.map((i) => rowStage(rows[i])));
+  const stage: BatchStage = soldOutAt
+    ? 'soldOut'
+    : (STAGE_ORDER.find((s) => stages.has(s)) ?? (stages.has('soldOut') ? 'soldOut' : 'warehouse'));
+  const onSaleDays = stageRows
+    .map((i) => rows[i].onSaleFrom ?? null)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+
   return {
     state,
     invested,
@@ -934,6 +1246,7 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
     payout: sum((c) => c.payout),
     tax: sum((c) => c.tax),
     revenue: sum((c) => c.revenue),
+    adFee: sum((c) => c.adFee),
     moneyBack,
     back,
     cogs,
@@ -958,7 +1271,9 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
     notMarked: rows.reduce((a, r, i) => a + (isLot(i) && r.take ? r.take.notMarked : 0), 0),
     firstSaleAt: firsts[0] ?? null,
     lastSaleAt: lasts.length ? lasts[lasts.length - 1] : null,
-    soldOutAt: allSold && soldOutDays.length ? soldOutDays[soldOutDays.length - 1] : null,
+    soldOutAt,
+    stage,
+    onSaleFrom: onSaleDays[0] ?? null,
   };
 }
 
@@ -989,8 +1304,10 @@ export interface BatchProfitOrder {
   orderNo: string | null;
   day: string;
   units: number;
-  /** Qaytgan pul (Uzum to'laydigani − soliq) */
+  /** Qaytgan pul (Uzum to'laydigani − reklama − soliq) */
   moneyBack: number;
+  /** Shundan ayrilgan Uzum reklamasi */
+  adFee: number;
   state: ProfitMoneyState;
 }
 
@@ -1021,16 +1338,49 @@ export interface BatchProfitRow extends BatchProfitRowCalc {
   orders: BatchProfitOrder[];
   /** Jami sotuv pozitsiyalari soni (orders kesilgan bo'lishi mumkin) */
   ordersTotal: number;
+  /** Qator qayerda (qator bo'yicha; bog'lanmagan qatorda — partiyaniki) */
+  stage: BatchStage;
+  /** Sotuvga chiqqan kun (Uzum qabul qilgan) */
+  onSaleFrom: string | null;
+  /** Qatorning tovari kelgan (yoki kelayotgan) Uzum ta'minlashi */
+  supply: BatchSupplyRef | null;
+}
+
+/** Uzum ta'minlashiga havola */
+export interface BatchSupplyRef {
+  /** Kabinetdagi raqam (12 xonali) */
+  code: string;
+  status: BatchSupplyStatus;
+  /** Qabul qilingan kun; hali qabul qilinmagan bo'lsa — yaratilgan kun */
+  day: string | null;
+}
+
+/** Partiyaga tegishli Uzum ta'minlashi */
+export interface BatchSupplyInfo extends BatchSupplyRef {
+  /** Rejadagi dona (butun ta'minlash) */
+  planned: number;
+  /** Uzum qabul qilgan dona */
+  accepted: number;
 }
 
 export interface BatchProfitSummary extends BatchProfitTotals {
   batchId: string;
+  /** Partiya tovari kelgan (kelayotgan) Uzum ta'minlashlari, kun tartibida */
+  supplies: BatchSupplyInfo[];
 }
 
 /** Hech qaysi partiyaga tushmagan sotuv (kompaniya bo'yicha) */
 export interface BatchProfitUnattributed {
   units: number;
+  /** Qaytgan pul (reklama ayrilgan) */
   moneyBack: number;
+  /** Shu sotuvlarga tushgan Uzum reklamasi */
+  adFee: number;
+  /**
+   * Partiyadagi tovarlarning hech bir sotuvga tushmagan reklamasi: to'lov kuni
+   * atrofida (`AD_MATCH_DAYS`) xaridorga topshirilgan sotuvi yo'q
+   */
+  adUnplaced: number;
   opening: number;
   beforeArrival: number;
   notMarked: number;
@@ -1046,6 +1396,8 @@ export interface BatchProfitListResponse {
     moneyBack: number;
     profit: number;
     pendingBack: number;
+    /** Partiyalar qaytgan pulidan ayrilgan Uzum reklamasi */
+    adFee: number;
     /** O'zini oqlagan partiyalar soni */
     paidBack: number;
   };

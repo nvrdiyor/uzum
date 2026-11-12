@@ -312,14 +312,27 @@ export function cabinetInvoiceNumber(raw: string): string {
 /**
  * Nakladnoy holati → bizdagi yetkazma holati. Aniq tekshirilgani faqat
  * `ACCEPTED` ("Stokda qabul qilingan"); qolganlari nomiga qarab.
- * "ACCEPTANCE_IN_PROGRESS" ham ACCEPT so'zini o'z ichiga oladi — shuning
- * uchun avval to'liq qabul qilinganlari tekshiriladi.
+ *
+ * "Qabul qilish jarayonida" (Uzum ombori tovarni sanab, qabul qilmoqda) —
+ * alohida holat `accepting` (2026-11-12, egasi: kabinetda "Qabul qilish
+ * jarayonida", SavdoIQ'da esa "Yo'lda" turibdi). Uning kodi jonli
+ * kabinetda hali ko'rilmagan, shuning uchun kod ham ("ACCEPTANCE_IN_PROGRESS"
+ * kabi), holat matni ham (`invoiceStatus.text`) tekshiriladi. Tartib muhim:
+ * bekor qilish, keyin to'liq qabul (ACCEPTANCE_IN_PROGRESS ham ACCEPT so'zini
+ * o'z ichiga oladi), keyin qabul jarayoni, keyin yo'l.
  */
-function mapInvoiceStatus(raw: string): UzumInvoice['status'] {
+export function mapInvoiceStatus(raw: string, text = ''): UzumInvoice['status'] {
   const s = raw.toUpperCase();
-  if (/CANCEL|REJECT|DECLIN/.test(s)) return 'canceled';
+  const label = text.toLowerCase();
+  if (/CANCEL|REJECT|DECLIN/.test(s) || /bekor|отмен|cancel/.test(label)) return 'canceled';
   if (s === 'ACCEPTED' || /COMPLETE|FINISH|DONE|STOCKED/.test(s)) return 'accepted';
-  if (/ACCEPT|RECEIV|PROGRESS|TRANSIT|DELIVER|SENT|SHIP/.test(s)) return 'in_transit';
+  if (
+    /ACCEPTANCE|ACCEPTING|IN_ACCEPT|RECEIV|PROGRESS/.test(s) ||
+    /qabul qilish jarayon|qabul qilinmoqda|при[её]мк|acceptance|accepting/.test(label)
+  ) {
+    return 'accepting';
+  }
+  if (/TRANSIT|DELIVER|SENT|SHIP|ACCEPT/.test(s)) return 'in_transit';
   if (/DRAFT/.test(s)) return 'draft';
   return 'planned';
 }
@@ -1126,7 +1139,7 @@ export class LiveUzumClient implements UzumClient {
         id,
         ...(itemsFailed ? { itemsFailed } : {}),
         number: cabinetInvoiceNumber(asString(r.invoiceNumber) || id),
-        status: mapInvoiceStatus(statusValue),
+        status: mapInvoiceStatus(statusValue, asString(statusRec.text)),
         statusText: asString(statusRec.text) || asString(r.status) || undefined,
         createdAt,
         plannedAt: asNumber(slot.timeFrom) > 0 ? asIso(slot.timeFrom, '') : undefined,
