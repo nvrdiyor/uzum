@@ -1,5 +1,6 @@
 import {
   Banknote,
+  Coins,
   HandCoins,
   LayoutDashboard,
   CalendarClock,
@@ -79,6 +80,8 @@ export const NAV: NavGroup[] = [
       { to: '/cost-price', labelKey: 'nav.costPrice', icon: Tag, feature: 'cost_price' },
       // Ilgari Boxes edi — Qoldiqlar (Layers) bilan aynan bir xil "stack" belgisi chiqardi
       { to: '/batches', labelKey: 'nav.batches', icon: PackagePlus, feature: 'cost_price' },
+      // Egasi (2026-11-12): partiya foydasi — alohida sahifa, Partiyalar tagida
+      { to: '/batch-profit', labelKey: 'nav.batchProfit', icon: Coins, feature: 'cost_price' },
       { to: '/mxik', labelKey: 'nav.mxik', icon: ScanBarcode },
       { to: '/illiquid', labelKey: 'nav.illiquid', icon: Snowflake, feature: 'illiquid' },
     ],

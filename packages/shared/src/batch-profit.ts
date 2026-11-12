@@ -1116,6 +1116,8 @@ export interface BatchProfitTotals {
   /** Shaxsiy va namuna tovarlar (tikilganga kirmaydi) */
   personalCost: number;
   personalRows: number;
+  /** Sotuvchi «Uzumda yo'q» deb belgilagan qatorlar (donasi sotiladigan donaga kirmaydi) */
+  optedOutRows: number;
   payout: number;
   tax: number;
   revenue: number;
@@ -1335,6 +1337,7 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
     invested,
     personalCost,
     personalRows: rows.filter((_, i) => isPersonal(i)).length,
+    optedOutRows: rows.filter((_, i) => isOptedOut(i)).length,
     payout: sum((c) => c.payout),
     tax: sum((c) => c.tax),
     revenue: sum((c) => c.revenue),
@@ -1459,6 +1462,12 @@ export interface BatchProfitSummary extends BatchProfitTotals {
   batchId: string;
   /** Partiya tovari kelgan (kelayotgan) Uzum ta'minlashlari, kun tartibida */
   supplies: BatchSupplyInfo[];
+  /**
+   * Kutilayotgan sana tuzatishlari (qatorlardagi `fix`): har jo'natma (kargo · tur ·
+   * reys) va turiga bitta, eng ertagi sana bilan. Masalan, «Keldi» belgilanmagan,
+   * lekin Uzum tovarni qabul qilgan — sotuvi partiyaga yozilmayapti.
+   */
+  fixes: BatchProfitFix[];
 }
 
 /** Hech qaysi partiyaga tushmagan sotuv (kompaniya bo'yicha) */

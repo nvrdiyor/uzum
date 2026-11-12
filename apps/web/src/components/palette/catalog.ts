@@ -31,6 +31,7 @@ export const PAGE_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   '/abc': ['abc', 'xyz', 'pareto', 'анализ', 'analysis'],
   '/cost-price': ['tannarx', 'tan narx', 'xarid narxi', 'себестоимость', 'закупочная цена', 'cost', 'cogs', 'purchase price', 'sebestoimost'],
   '/batches': ['partiya', 'kirim', 'zavoz', 'партия', 'приход', 'batch', 'lot'],
+  '/batch-profit': ['partiya foydasi', 'qaytgan pul', 'sarflangan pul', 'прибыль партии', 'окупаемость', 'batch profit', 'payback'],
   '/mxik': ['mxik', 'ikpu', 'soliq kodi', 'икпу', 'мхик', 'tax code'],
   '/illiquid': ['nolikvid', 'harakatsiz', 'sotilmayotgan', 'yotib qolgan', 'неликвид', 'залежалый', 'dead stock', 'slow moving', 'nelikvid'],
   '/promos': ['aksiya', 'chegirma', 'skidka', 'promo', 'акция', 'скидка', 'промо', 'discount', 'promotion', 'akciya'],

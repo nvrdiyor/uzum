@@ -163,6 +163,8 @@ export const VIEW_TEMPLATES: Record<MemberView, ViewTemplate> = {
       '/products',
       '/cost-price',
       '/batches',
+      // Partiya foydasi (2026-11-12) — Partiyalar ro'yxatidan shu sahifaga ko'chdi; API'si /batches/* ichida
+      '/batch-profit',
       '/mxik',
       '/illiquid',
       '/finance',

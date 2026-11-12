@@ -5,33 +5,26 @@ import { registerNamespace } from '@/i18n';
  * registerNamespace 'batches' nom maydoniga QO'SHADI (kalitlar "profit." bilan
  * boshlanadi, mavjudlari bilan to'qnashmaydi). profit.tsx shu faylni import qiladi.
  *
- * So'zlar sotuvchining o'zinikidan: "tikilgan pul", "qaytgan pul", "sof foyda".
- * SavdoIQ'da "qaytdi" yolg'iz xaridor qaytarishini anglatadi — shuning uchun
- * doim "pul" so'zi bilan: "Qaytgan pul", "tikilganning 72% qaytdi".
+ * So'zlar sotuvchining o'zinikidan: "sarflangan pul" (egasi: "shuncha pul chiqib
+ * ketdi"), "qaytgan pul", "sof foyda". SavdoIQ'da "qaytdi" yolg'iz xaridor
+ * qaytarishini anglatadi — shuning uchun doim "pul" so'zi bilan: "Qaytgan pul".
  *
  * Egasi (2026-11-12): "aniq-aniq kerak: shuncha tovar, shuncha pul chiqib ketdi,
  * undan sof foyda buncha; 3-partiya hali bormadi — qabul jarayonida". Shuning
- * uchun bosqich (Qabul qilinmoqda, Sotuvda...) va uch raqam; ROI va prognoz yo'q.
+ * uchun bosqich (Qabul qilinmoqda, Sotuvda...); ROI va prognoz yo'q. Partiyalar
+ * bo'yicha umumiy ko'rinish — «Partiya foydasi» sahifasi (texts-profit-page.ts).
  *
  * Raqamlar matnga yozilmaydi — {o'rinbosar} bilan. O'zbekcha o‘/g‘ — U+2018.
  */
 
 registerNamespace('batches', {
   uz: {
-    // ── Asosiy uch raqam ──
-    'profit.invested': 'Tikilgan pul',
-    'profit.investedHint': 'Tovar, cargo va barcha qo‘shimcha xarajatlar',
-    'profit.investedPersonal': 'shaxsiy/namuna ({sum}) kirmadi',
-    'profit.back': 'Qaytgan pul',
+    // ── Qaytgan pul va foyda ──
     'profit.backBreakdown': 'Uzum to‘lovi {payout} − Uzum reklamasi {ads} − soliq {tax}',
     'profit.backPending': 'shundan {sum} hali kutilmoqda (Uzum ushlab turibdi yoki xaridorga yetkazilmoqda)',
-    'profit.backAds': 'reklama {sum} ayrildi',
-    'profit.payback': 'tikilganning {pct}% qaytdi',
     'profit.profit': 'Sof foyda',
-    'profit.profitHint': 'Qaytgan pul − sotilgan tovarlar tannarxi {cogs}',
-    'profit.profitHintOverhead': 'Qaytgan pul − sotilgan tovarlar tannarxi {cogs} − bo‘linmagan xarajat ulushi {over}',
     'profit.overhead': 'Bo‘linmagan xarajat',
-    'profit.overheadHint': 'Partiyaning qatorlarga bo‘linmagan xarajati: bo‘linmagan qo‘shimcha xarajat, soni yozilmagan va «Uzumda yo‘q» qatorlar puli. Tikilgan pulga kiradi, foydadan sotilgan ulushga qarab ayriladi',
+    'profit.overheadHint': 'Partiyaning qatorlarga bo‘linmagan xarajati: bo‘linmagan qo‘shimcha xarajat, soni yozilmagan va «Uzumda yo‘q» qatorlar puli. Sarflangan pulga kiradi, foydadan sotilgan ulushga qarab ayriladi',
 
     // ── Bosqich (qisqa) ──
     'profit.stage.warehouse': 'Xitoyda',
@@ -53,30 +46,14 @@ registerNamespace('batches', {
     'profit.line.soldOut': 'Hammasi sotildi: {date}',
     'profit.line.unlinked': 'Tovarlar Uzum’dagi tovarga bog‘lanmagan — pastda «Bog‘lash» tugmasini bosing',
 
-    // ── Holat va qoplanish ──
+    // ── Holat ──
     'profit.sold': 'Sotildi {sold} / {qty} dona',
-    'profit.left': 'qoldi {n} dona',
-    'profit.notOnSale': '{n} dona hali sotuvda emas',
-    'profit.unlinkedQty': '{n} dona bog‘lanmagan',
-    'profit.paidBack': 'O‘zini oqladi: +{sum}',
-    'profit.toPayback': 'Qoplanishiga yana {sum}',
-    'profit.toPaybackQty': 'Qoplanishiga yana {sum} (~{n} dona)',
-    'profit.state.unlinked': 'Bog‘lanmagan',
-    'profit.state.noSales': 'Sotuv yo‘q',
     'profit.error': 'Foydani hisoblab bo‘lmadi',
     'profit.retry': 'Qayta urinish',
     'profit.updating': 'Saqlangach yangilanadi',
     'profit.synced': 'Uzum ma’lumoti: {date}',
 
-    // ── Ro'yxat sahifasi ──
-    'profit.col.back': 'Qaytgan pul (so‘m)',
-    'profit.col.backHint': 'Uzum to‘laydigan summa (komissiya va yetkazish ayirilgan) minus Uzum reklamasi va soliq. Foiz — tikilgan pulga nisbatan',
-    'profit.col.profit': 'Sof foyda (so‘m)',
-    'profit.col.profitHint': 'Sotilgan donalardan: qaytgan pul − ularning tannarxi − partiyaning bo‘linmagan xarajati ulushi',
-    'profit.cellTitle': 'Tikilgan {invested} · qaytgan {back} ({pct}%)',
-    'profit.stat': 'Partiyalardan sof foyda',
-    'profit.statHint': 'Qaytgan pul {back} · {n} ta partiya o‘zini oqladi',
-    'profit.statHintNone': 'Qaytgan pul {back} · tikilgan {invested}',
+    // ── «Partiya foydasi» sahifasi: reklama va partiyaga tushmagan sotuv ──
     'profit.statAds': 'reklama {sum} ayrildi',
     'profit.unattributed': 'Hech qaysi partiyaga tushmagan sotuv: {n} dona · {sum} — eski qoldiq yoki partiyaga kiritilmagan tovar',
     'profit.un.top': 'Ko‘p uchragan: {list}',
@@ -87,7 +64,7 @@ registerNamespace('batches', {
     'profit.th.item': 'Tovar',
     'profit.th.stage': 'Holat',
     'profit.th.sold': 'Sotildi',
-    'profit.th.invested': 'Tikilgan (so‘m)',
+    'profit.th.invested': 'Sarflangan (so‘m)',
     'profit.th.back': 'Qaytgan pul (so‘m)',
     'profit.th.profit': 'Sof foyda (so‘m)',
     'profit.row.orders': 'Sotuvlar ({n})',
@@ -101,8 +78,9 @@ registerNamespace('batches', {
     'profit.row.state.transit': 'xaridorga yetkazilmoqda',
     'profit.row.pending': '{n} ta qatorda saqlanmagan o‘zgarish — saqlangach bog‘lash mumkin',
     'profit.note':
-      'Sof foyda = Uzum to‘lovi (komissiya va yetkazish ayirilgan) − Uzum reklamasi − soliq {rate}% − sotilgan tovarlar tannarxi. Sotuv partiyaga Uzum uning tovarini qabul qilgan kundan yoziladi. Saqlash va boshqa umumiy xarajatlar — Moliya sahifasida.',
+      'Sof foyda = Uzum to‘lovi (komissiya va yetkazish ayirilgan) − Uzum reklamasi − soliq {rate}% − sotilgan tovarlar tannarxi. Sotuv partiyaga Uzum uning tovarini qabul qilgan kundan (tovari Uzum omboriga umuman yuborilmasa — FBS/DBS — «Keldi» kunidan) yoziladi. Saqlash va boshqa umumiy xarajatlar — Moliya sahifasida.',
     'profit.footTotal': 'Jami',
+    'profit.footOverhead': 'Shundan bo‘linmagan xarajat: sarflangan {invested}, foydadan ayrilgan {profit}',
 
     // ── Bog'lash ──
     'profit.link.button': 'Bog‘lash',
@@ -110,7 +88,7 @@ registerNamespace('batches', {
     'profit.link.byName': 'nomi bo‘yicha · {batch}',
     'profit.link.byNameHint': '«{batch}» partiyasida xuddi shu nomli tovar shunday bog‘langan. O‘zgartirsangiz, faqat shu qator o‘zgaradi',
     'profit.link.personal': 'Shaxsiy/namuna',
-    'profit.link.personalHint': 'Qo‘shimcha xarajatdan chiqarilgan va bog‘lanmagan — sotilmaydi deb hisoblanadi, tikilgan pulga kirmaydi',
+    'profit.link.personalHint': 'Qo‘shimcha xarajatdan chiqarilgan va bog‘lanmagan — sotilmaydi deb hisoblanadi, sarflangan pulga kirmaydi',
     'profit.link.missing': 'katalogda yo‘q',
     'profit.link.missingHint': 'Bu SKU kodi Uzum katalogida topilmadi — kod o‘zgargan bo‘lishi mumkin',
     'profit.link.none': 'Bog‘lanmagan — sotuvi hisobga kirmayapti',
@@ -156,19 +134,11 @@ registerNamespace('batches', {
     'profit.fix.noCargo': 'Kargo ko‘rsatilmagan',
   },
   ru: {
-    'profit.invested': 'Вложено',
-    'profit.investedHint': 'Товар, карго и все дополнительные расходы',
-    'profit.investedPersonal': 'личное/образцы ({sum}) не входят',
-    'profit.back': 'Вернулось денег',
     'profit.backBreakdown': 'Выплата Uzum {payout} − реклама Uzum {ads} − налог {tax}',
     'profit.backPending': 'из них {sum} ещё в ожидании (Uzum удерживает или доставляется покупателю)',
-    'profit.backAds': 'реклама {sum} вычтена',
-    'profit.payback': 'вернулось {pct}% вложенного',
     'profit.profit': 'Чистая прибыль',
-    'profit.profitHint': 'Вернувшиеся деньги − себестоимость проданного {cogs}',
-    'profit.profitHintOverhead': 'Вернувшиеся деньги − себестоимость проданного {cogs} − доля нераспределённых расходов {over}',
     'profit.overhead': 'Нераспределённые расходы',
-    'profit.overheadHint': 'Нераспределённые доп. расходы, строки без количества и строки «Нет в Uzum»: входят во вложенное, из прибыли вычитаются пропорционально проданному',
+    'profit.overheadHint': 'Нераспределённые доп. расходы, строки без количества и строки «Нет в Uzum»: входят в потраченное, из прибыли вычитаются пропорционально проданному',
 
     'profit.stage.warehouse': 'В Китае',
     'profit.stage.shipped': 'В пути',
@@ -189,27 +159,11 @@ registerNamespace('batches', {
     'profit.line.unlinked': 'Товары не связаны с товарами в Uzum — нажмите «Связать» ниже',
 
     'profit.sold': 'Продано {sold} / {qty} шт.',
-    'profit.left': 'осталось {n} шт.',
-    'profit.notOnSale': '{n} шт. ещё не в продаже',
-    'profit.unlinkedQty': '{n} шт. не связано',
-    'profit.paidBack': 'Окупилась: +{sum}',
-    'profit.toPayback': 'До окупаемости ещё {sum}',
-    'profit.toPaybackQty': 'До окупаемости ещё {sum} (~{n} шт.)',
-    'profit.state.unlinked': 'Не связана',
-    'profit.state.noSales': 'Продаж нет',
     'profit.error': 'Не удалось посчитать прибыль',
     'profit.retry': 'Повторить',
     'profit.updating': 'Обновится после сохранения',
     'profit.synced': 'Данные Uzum: {date}',
 
-    'profit.col.back': 'Вернулось (сум)',
-    'profit.col.backHint': 'Сумма к выплате от Uzum (за вычетом комиссии и доставки) минус реклама Uzum и налог. Процент — от вложенного',
-    'profit.col.profit': 'Чистая прибыль (сум)',
-    'profit.col.profitHint': 'С проданных штук: вернувшиеся деньги − их себестоимость − доля нераспределённых расходов партии',
-    'profit.cellTitle': 'Вложено {invested} · вернулось {back} ({pct}%)',
-    'profit.stat': 'Чистая прибыль с партий',
-    'profit.statHint': 'Вернулось {back} · окупилось партий: {n}',
-    'profit.statHintNone': 'Вернулось {back} · вложено {invested}',
     'profit.statAds': 'реклама {sum} вычтена',
     'profit.unattributed': 'Продажи, не попавшие ни в одну партию: {n} шт. · {sum} — старый остаток или товар не из партий',
     'profit.un.top': 'Чаще всего: {list}',
@@ -219,7 +173,7 @@ registerNamespace('batches', {
     'profit.th.item': 'Товар',
     'profit.th.stage': 'Статус',
     'profit.th.sold': 'Продано',
-    'profit.th.invested': 'Вложено (сум)',
+    'profit.th.invested': 'Потрачено (сум)',
     'profit.th.back': 'Вернулось (сум)',
     'profit.th.profit': 'Чистая прибыль (сум)',
     'profit.row.orders': 'Продажи ({n})',
@@ -233,15 +187,16 @@ registerNamespace('batches', {
     'profit.row.state.transit': 'доставляется покупателю',
     'profit.row.pending': 'Несохранённые изменения ({n}) — связать можно после сохранения',
     'profit.note':
-      'Чистая прибыль = выплата Uzum (за вычетом комиссии и доставки) − реклама Uzum − налог {rate}% − себестоимость проданного. Продажи считаются в партию со дня, когда Uzum принял её товар. Хранение и прочие общие расходы — на странице «Финансы».',
+      'Чистая прибыль = выплата Uzum (за вычетом комиссии и доставки) − реклама Uzum − налог {rate}% − себестоимость проданного. Продажи считаются в партию со дня, когда Uzum принял её товар (если товар не поставляется на склад Uzum — FBS/DBS — со дня «Прибыла»). Хранение и прочие общие расходы — на странице «Финансы».',
     'profit.footTotal': 'Итого',
+    'profit.footOverhead': 'В том числе нераспределённые расходы: потрачено {invested}, вычтено из прибыли {profit}',
 
     'profit.link.button': 'Связать',
     'profit.link.edit': 'Изменить',
     'profit.link.byName': 'по названию · {batch}',
     'profit.link.byNameHint': 'В партии «{batch}» товар с таким же названием связан так. Если измените — изменится только эта строка',
     'profit.link.personal': 'Личное/образец',
-    'profit.link.personalHint': 'Исключено из доп. расходов и не связано — считается непродаваемым, во вложенное не входит',
+    'profit.link.personalHint': 'Исключено из доп. расходов и не связано — считается непродаваемым, в потраченное не входит',
     'profit.link.missing': 'нет в каталоге',
     'profit.link.missingHint': 'Этот SKU-код не найден в каталоге Uzum — возможно, код изменился',
     'profit.link.none': 'Не связано — продажи не учитываются',
@@ -286,19 +241,11 @@ registerNamespace('batches', {
     'profit.fix.noCargo': 'Карго не указано',
   },
   en: {
-    'profit.invested': 'Invested',
-    'profit.investedHint': 'Goods, cargo and all extra costs',
-    'profit.investedPersonal': 'personal/samples ({sum}) excluded',
-    'profit.back': 'Money back',
     'profit.backBreakdown': 'Uzum payout {payout} − Uzum ads {ads} − tax {tax}',
     'profit.backPending': '{sum} of it is still pending (held by Uzum or being delivered)',
-    'profit.backAds': 'ads {sum} deducted',
-    'profit.payback': '{pct}% of the investment is back',
     'profit.profit': 'Net profit',
-    'profit.profitHint': 'Money back − cost of sold units {cogs}',
-    'profit.profitHintOverhead': 'Money back − cost of sold units {cogs} − share of unallocated costs {over}',
     'profit.overhead': 'Unallocated costs',
-    'profit.overheadHint': 'Undistributed extra costs, rows without a quantity and “Not on Uzum” rows: part of the investment, deducted from profit in proportion to what has sold',
+    'profit.overheadHint': 'Undistributed extra costs, rows without a quantity and “Not on Uzum” rows: part of the money spent, deducted from profit in proportion to what has sold',
 
     'profit.stage.warehouse': 'In China',
     'profit.stage.shipped': 'In transit',
@@ -319,27 +266,11 @@ registerNamespace('batches', {
     'profit.line.unlinked': 'The goods are not linked to Uzum products — press “Link” below',
 
     'profit.sold': 'Sold {sold} / {qty} pcs',
-    'profit.left': '{n} pcs left',
-    'profit.notOnSale': '{n} pcs not on sale yet',
-    'profit.unlinkedQty': '{n} pcs not linked',
-    'profit.paidBack': 'Paid for itself: +{sum}',
-    'profit.toPayback': '{sum} more to break even',
-    'profit.toPaybackQty': '{sum} more to break even (~{n} pcs)',
-    'profit.state.unlinked': 'Not linked',
-    'profit.state.noSales': 'No sales',
     'profit.error': 'Could not calculate the profit',
     'profit.retry': 'Retry',
     'profit.updating': 'Updates after saving',
     'profit.synced': 'Uzum data: {date}',
 
-    'profit.col.back': 'Money back (UZS)',
-    'profit.col.backHint': 'What Uzum pays out (after commission and delivery) minus Uzum ads and tax. The percentage is of the money invested',
-    'profit.col.profit': 'Net profit (UZS)',
-    'profit.col.profitHint': 'On sold units: money back − their cost − share of the batch’s unallocated costs',
-    'profit.cellTitle': 'Invested {invested} · back {back} ({pct}%)',
-    'profit.stat': 'Net profit from batches',
-    'profit.statHint': 'Money back {back} · {n} batches paid for themselves',
-    'profit.statHintNone': 'Money back {back} · invested {invested}',
     'profit.statAds': 'ads {sum} deducted',
     'profit.unattributed': 'Sales not matched to any batch: {n} pcs · {sum} — old stock or goods outside the batches',
     'profit.un.top': 'Most often: {list}',
@@ -349,7 +280,7 @@ registerNamespace('batches', {
     'profit.th.item': 'Product',
     'profit.th.stage': 'Status',
     'profit.th.sold': 'Sold',
-    'profit.th.invested': 'Invested (UZS)',
+    'profit.th.invested': 'Spent (UZS)',
     'profit.th.back': 'Money back (UZS)',
     'profit.th.profit': 'Net profit (UZS)',
     'profit.row.orders': 'Sales ({n})',
@@ -363,15 +294,16 @@ registerNamespace('batches', {
     'profit.row.state.transit': 'being delivered',
     'profit.row.pending': 'Unsaved changes ({n}) — you can link after saving',
     'profit.note':
-      'Net profit = Uzum payout (after commission and delivery) − Uzum ads − {rate}% tax − cost of sold units. Sales count toward a batch from the day Uzum accepted its goods. Storage and other overheads are on the Finance page.',
+      'Net profit = Uzum payout (after commission and delivery) − Uzum ads − {rate}% tax − cost of sold units. Sales count toward a batch from the day Uzum accepted its goods (if the goods are never sent to an Uzum warehouse — FBS/DBS — from the day they are marked “Arrived”). Storage and other overheads are on the Finance page.',
     'profit.footTotal': 'Total',
+    'profit.footOverhead': 'Of which unallocated costs: spent {invested}, taken from profit {profit}',
 
     'profit.link.button': 'Link',
     'profit.link.edit': 'Change',
     'profit.link.byName': 'by name · {batch}',
     'profit.link.byNameHint': 'In batch “{batch}” the product with the same name is linked this way. Changing it changes only this row',
     'profit.link.personal': 'Personal/sample',
-    'profit.link.personalHint': 'Excluded from extra costs and not linked — treated as not for sale and left out of the investment',
+    'profit.link.personalHint': 'Excluded from extra costs and not linked — treated as not for sale and left out of the money spent',
     'profit.link.missing': 'not in catalog',
     'profit.link.missingHint': 'This SKU code is not in the Uzum catalog — the code may have changed',
     'profit.link.none': 'Not linked — its sales are not counted',

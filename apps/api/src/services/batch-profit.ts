@@ -650,14 +650,44 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
    * (eski partiya keyin kiritilgan). Taklif — o'sha qabul kuni; bosilsa partiya o'z
    * ta'minlashini oladi.
    */
-  const supplyFixOf = (r: LoadedRow): BatchProfitFix | null => {
+  /*
+   * Partiyaning o'z ta'minlashi, lekin uni partiyaning kelgan qatorlari to'liq egallamagan:
+   * ko'p jo'natmali partiyada avia «Keldi» va sotuvda, avto «Keldi» unutilgan — Uzum avto
+   * tovarini ham qabul qilgan va o'sha ta'minlash shu partiyaga tegishli (eski qoldiq emas),
+   * shuning uchun "hech kimga tegishli bo'lmagan qabul" qoidasi taklif bermasdi va avto
+   * sotuvlari hech qaysi partiyaga yozilmay qolardi (2026-11-12, mustaqil tekshiruv).
+   * Kelgan qatorlar sotuvga chiqqan ta'minlash (bir xil kodlar) — ularning donasi ayriladi:
+   * avia ta'minlashi avto uchun "kelgan kun" bo'lib taklif qilinmaydi.
+   */
+  const spareOwnSupply = (si: number, bi: number, r: LoadedRow): boolean => {
+    const s = supplies[si];
+    if (owner[si] !== bi && ![...extra[si].values()].includes(bi)) return false;
+    const lot = lots[r.lot];
+    const units = lot.codes.reduce((a, c) => a + (s.acceptedBy.get(c) ?? 0), 0);
+    if (units <= 0) return false;
+    const used = batches[bi].rows.reduce((a, row) => {
+      if (row.lot < 0 || row.legStatus !== 'arrived') return a;
+      const other = lots[row.lot];
+      return other.availableFrom === s.day && other.codes.some((c) => lot.codes.includes(c)) ? a + row.qty : a;
+    }, 0);
+    if (used === 0) return true;
+    /*
+     * Kelgan qator shu qabuldan sotuvda: ortib qolgan bir-ikki dona — sanoq farqi (avia 5,
+     * Uzum 6 qabul qilgan), avtoning kelgan kuni emas. Ikkala jo'natma bitta ta'minlashda
+     * kelgan bo'lsa — ortgani yo'ldagi qatorning kamida yarmi.
+     */
+    return units - used >= Math.max(2, Math.ceil(r.qty / 2));
+  };
+  const supplyFixOf = (r: LoadedRow, bi: number): BatchProfitFix | null => {
     if (r.lot < 0) return null;
     const lot = lots[r.lot];
+    // Yo'lda deb turgan qatorga partiyaning o'z (bo'sh qolgan) ta'minlashi ham — yuqoridagi izoh
+    const shippedLeg = r.legStatus === 'shipped' && Boolean(r.shippedAt) && !lot.availableFrom;
     const days = supplies
       .filter(
         (s, si) =>
           s.status === 'accepted' &&
-          !claimed[si] &&
+          (!claimed[si] || (shippedLeg && spareOwnSupply(si, bi, r))) &&
           lot.codes.some((c) => s.codes.has(c)) &&
           (!r.shippedAt || s.day >= r.shippedAt),
       )
@@ -780,7 +810,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
           soldOutAt: take && calc.left === 0 ? take.soldOutDay : null,
           missingCodes: r.link.codes.filter((c) => !skus.has(normSkuCode(c))),
           // Ta'minlash rejimida kelgan kun Uzum qabulidan — tuzatadigan narsa yo'q
-          fix: take ? (supplyMode[bi] ? supplyFixOf(r) : fixOf(r, take)) : null,
+          fix: take ? (supplyMode[bi] ? supplyFixOf(r, bi) : fixOf(r, take)) : null,
           orders,
           ordersTotal: pieces.length,
           stage: inputs[index].stage as BatchStage,
@@ -939,12 +969,31 @@ export async function getBatchProfit(companyId: string): Promise<BatchProfitBook
   return book;
 }
 
+/**
+ * Partiyaning kutilayotgan sana tuzatishlari: har jo'natma (kargo · tur · reys) va
+ * turiga bitta, eng ertagi sana bilan. Jo'natma — saqlanadigan kalit bo'yicha
+ * (`shipKeyOf`: "Mandarin" va "MANDARIN" bitta jo'natma — tuzatish ham bitta).
+ * «Partiya foydasi» sahifasi shu bo'yicha "Tuzatish" havolasini ko'rsatadi — aks
+ * holda «Keldi» unutilgan partiya "Uzum qabul qilgach..." deb kutib turardi.
+ */
+function batchFixes(rows: readonly BatchProfitRow[] | undefined): BatchProfitFix[] {
+  const out = new Map<string, BatchProfitFix>();
+  for (const r of rows ?? []) {
+    if (!r.fix) continue;
+    const key = `${r.fix.kind}|${shipKeyOf(r.fix.cargoName, r.fix.trip)}|${r.fix.delivery}`;
+    const cur = out.get(key);
+    if (!cur || r.fix.date < cur.date) out.set(key, r.fix);
+  }
+  return [...out.values()];
+}
+
 /** Ro'yxat sahifasi uchun */
 export function toListResponse(book: BatchProfitBook): BatchProfitListResponse {
   const items: BatchProfitSummary[] = book.batches.map((b) => ({
     batchId: b.id,
     ...(book.totals.get(b.id) as BatchProfitTotals),
     supplies: book.suppliesOf.get(b.id) ?? [],
+    fixes: batchFixes(book.rowsOf.get(b.id)),
   }));
   const grand = { invested: 0, moneyBack: 0, profit: 0, pendingBack: 0, adFee: 0, paidBack: 0 };
   for (const t of items) {
@@ -975,6 +1024,7 @@ export function toDetailResponse(book: BatchProfitBook, batchId: string): BatchP
     batchId,
     ...totals,
     supplies: book.suppliesOf.get(batchId) ?? [],
+    fixes: batchFixes(rows),
     rows,
     skus,
     taxRate: book.taxRate,

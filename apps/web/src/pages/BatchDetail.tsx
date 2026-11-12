@@ -70,7 +70,7 @@ import {
   toast,
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
-import { ProfitCard, ProfitStrip } from '@/components/batches/profit';
+import { ProfitCard, ProfitLink } from '@/components/batches/profit';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
 interface Row extends BatchItemInput {
@@ -1473,8 +1473,8 @@ function BatchDetail({ id }: { id: string }) {
               </div>
             ) : null}
 
-            {/* Tikilgan → qaytgan → foyda (saqlangan holat bo'yicha, server hisoblaydi) */}
-            <ProfitStrip batchId={draft.id} pending={saveState === 'pending' || saveState === 'saving'} />
+            {/* Partiya qayerda va sof foyda — bitta qator; batafsili «Partiya foydasi» sahifasida */}
+            <ProfitLink batchId={draft.id} pending={saveState === 'pending' || saveState === 'saving'} />
           </Card>
 
           {/* ── Jadval ── */}

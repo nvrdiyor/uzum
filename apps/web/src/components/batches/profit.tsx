@@ -10,9 +10,11 @@
  * keladi. Saqlash kutilayotganda raqamlar xiraroq ko'rinadi.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarDays,
   Check,
   ChevronDown,
@@ -42,7 +44,11 @@ import { useFormat, useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { Badge, Button, Card, Input, Modal, ProductThumb, ProgressBar, Skeleton, toast, type Tone } from '@/components/ui';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { useCanOpen } from '@/lib/view';
+// Umumiy partiya matnlari (№, avia/avto, reys) — «Partiya foydasi» sahifasi ularni o'zi yuklamaydi
+import './shared';
 import './texts-profit';
+import './texts-profit-page';
 
 /** Bo'linmas bo'shliq — raqam ("1 234 567") qatorga bo'linib ketmasin */
 const NBSP = String.fromCharCode(0xa0);
@@ -80,14 +86,17 @@ export function useBatchProfit(id: string) {
 }
 
 /** Sana: joriy yil bo'lsa qisqa ("03.09"), boshqa yil bo'lsa yili bilan — "01.06" 2025 yilniki ekani ko'rinsin */
-function useDayText() {
+export function useDayText() {
   const f = useFormat();
   const year = String(new Date().getFullYear());
   return (iso: string) => (iso.slice(0, 4) === year ? f.dateShort(iso) : f.date(iso));
 }
 
-/** Foiz: kichigi bir kasr bilan ("4,5%"), kattasi butun ("72%") */
-const pctText = (f: ReturnType<typeof useFormat>, v: number) => f.num(v, Math.abs(v) < 10 ? 1 : 0);
+/** Soliq stavkasi: butun bo'lsa kasrsiz ("1%", "1,0%" emas), aks holda bir kasr ("4,5%") */
+export function useRateText() {
+  const f = useFormat();
+  return (v: number) => f.num(v, Number.isInteger(v) ? 0 : 1);
+}
 
 // ─────────────────────────── Bosqich ───────────────────────────
 
@@ -96,7 +105,7 @@ const pctText = (f: ReturnType<typeof useFormat>, v: number) => f.num(v, Math.ab
  * sotuvda. Sotuv faqat "sotuvda" dan boshlab (Uzum qabul qilgan kundan) yoziladi.
  * Ranglar Yetkazmalar sahifasidagi holatlar bilan bir xil: qabul — binafsha, sotuvda — brend.
  */
-const STAGE_TONE: Record<BatchStage, Tone> = {
+export const STAGE_TONE: Record<BatchStage, Tone> = {
   warehouse: 'muted',
   shipped: 'warn',
   arrived: 'info',
@@ -106,10 +115,10 @@ const STAGE_TONE: Record<BatchStage, Tone> = {
   soldOut: 'brand',
 };
 
-const isOnSale = (stage: BatchStage) => stage === 'selling' || stage === 'soldOut';
+export const isOnSale = (stage: BatchStage) => stage === 'selling' || stage === 'soldOut';
 
 /** Bosqich nishoni; sotuvda bo'lsa — qaysi kundan */
-function StageBadge({ stage, since }: { stage: BatchStage; since?: string | null }) {
+export function StageBadge({ stage, since }: { stage: BatchStage; since?: string | null }) {
   const t = useT('batches');
   const dayText = useDayText();
   return (
@@ -125,7 +134,7 @@ function StageBadge({ stage, since }: { stage: BatchStage; since?: string | null
 }
 
 /** Partiya bosqichi bitta jumlada — Uzum ta'minlashi raqami bilan */
-function useStageLine() {
+export function useStageLine() {
   const t = useT('batches');
   const f = useFormat();
   const dayText = useDayText();
@@ -156,58 +165,7 @@ function useStageLine() {
   };
 }
 
-// ─────────────────────────── Ro'yxat sahifasi ───────────────────────────
-
-/** "Qaytgan pul" katagi: summa va tikilganning necha foizi qaytgani; hali sotuvda emas — Uzum bosqichi */
-export function ProfitBackCell({ p, loading }: { p: BatchProfitSummary | undefined; loading: boolean }) {
-  const t = useT('batches');
-  const f = useFormat();
-  if (!p) return loading ? <Skeleton className="ml-auto h-4 w-20" /> : <span className="text-muted">—</span>;
-  if (p.state === 'empty') return <span className="text-muted">—</span>;
-  if (p.moneyBack === 0 && p.soldQty === 0) {
-    if (p.state === 'unlinked') return <span className="text-xs font-semibold text-warn-ink">{t('profit.state.unlinked')}</span>;
-    if (!isOnSale(p.stage)) {
-      // Xitoyda / cargo yo'lda — "Holat" ustunida bor; Uzum bosqichi (topshirilmagan, qabul qilinmoqda) — yangi ma'lumot
-      if (p.stage === 'warehouse' || p.stage === 'shipped') return <span className="text-muted">—</span>;
-      return (
-        <Badge tone={STAGE_TONE[p.stage]} dot>
-          {t(`profit.stage.${p.stage}`)}
-        </Badge>
-      );
-    }
-  }
-  const pct = p.paybackPct ?? 0;
-  const title = [
-    t('profit.cellTitle', { invested: f.num(p.invested), back: f.num(p.moneyBack), pct: pctText(f, pct) }),
-    p.adFee !== 0 ? t('profit.backAds', { sum: f.num(p.adFee) }) : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  return (
-    <div className="inline-flex flex-col items-end" title={title}>
-      <span className="font-semibold text-ink">{f.num(p.moneyBack)}</span>
-      <span className="mt-1 flex items-center gap-1.5">
-        <ProgressBar value={pct} tone={pct >= 100 ? 'brand' : 'info'} className="w-12" />
-        <span className="text-2xs text-muted">{pctText(f, pct)}%</span>
-      </span>
-    </div>
-  );
-}
-
-/** "Sof foyda" katagi: sotilgan donalardan */
-export function ProfitCell({ p, loading }: { p: BatchProfitSummary | undefined; loading: boolean }) {
-  const t = useT('batches');
-  const f = useFormat();
-  if (!p) return loading ? <Skeleton className="ml-auto h-4 w-16" /> : <span className="text-muted">—</span>;
-  if (p.soldQty === 0) {
-    return p.state === 'selling' || p.state === 'paidBack' ? (
-      <span className="text-xs text-muted">{t('profit.state.noSales')}</span>
-    ) : (
-      <span className="text-muted">—</span>
-    );
-  }
-  return <span className={cn('font-bold', p.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(p.profit)}</span>;
-}
+// ─────────────────────────── Hisobga kirmagan sotuv ───────────────────────────
 
 /** Hech qaysi partiyaga tushmagan sotuv va reklama — ro'yxat ostida qisqa qator(lar) */
 export function UnattributedNote({ un, className }: { un: BatchProfitUnattributed | undefined; className?: string }) {
@@ -238,44 +196,7 @@ export function UnattributedNote({ un, className }: { un: BatchProfitUnattribute
   );
 }
 
-// ─────────────────────────── Partiya sahifasi: uch raqam ───────────────────────────
-
-function Term({
-  label,
-  value,
-  dot,
-  strong,
-  tone,
-  title,
-  children,
-}: {
-  label: string;
-  value: string;
-  dot: string;
-  strong?: boolean;
-  tone?: 'loss';
-  title?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="min-w-0" title={title}>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-muted">
-        <span className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />
-        <span className="truncate">{label}</span>
-      </div>
-      <p
-        className={cn(
-          'tnum mt-2 whitespace-nowrap leading-none tracking-[-0.02em]',
-          strong ? 'font-title text-[26px] font-semibold' : 'font-display text-[22px] font-bold text-ink',
-          strong && (tone === 'loss' ? 'text-danger-ink' : 'text-brand-ink'),
-        )}
-      >
-        {value}
-      </p>
-      {children}
-    </div>
-  );
-}
+// ─────────────────────────── Partiya sahifasi: bitta qator ───────────────────────────
 
 /** Qaytgan pul qayerdan: Uzum to'lovi − reklama − soliq; kutilayotgani */
 function useBackTitle() {
@@ -291,23 +212,28 @@ function useBackTitle() {
 }
 
 /**
- * Tannarx tenglamasi kartochkasining pastki qismi: tikilgan → qaytgan → sof foyda.
- * Hali sotuvda bo'lmagan partiya — bitta qator: qancha tikilgan va qayerda
- * (masalan, "Uzum qabul qilmoqda, ta'minlash №…"). Batafsili jadval ostidagi
- * "Sotuv va foyda" kartochkasida.
+ * Partiya sahifasidagi tannarx kartochkasi ostida BITTA qator: partiya qayerda va
+ * (sotilgan bo'lsa) sof foyda — batafsili «Partiya foydasi» sahifasida.
+ *
+ * Egasi (2026-11-12): "partiyalar foydasi juda chalkash — alohida sahifa qil".
+ * Ilgari bu yerda uchta katta raqam (tikilgan / qaytgan / sof foyda) bor edi:
+ * tannarx kartochkasida "Umumiy" va "Tikilgan pul" ikki marta bir xil summa
+ * ko'rsatardi. Endi bu kartochka faqat tannarx haqida.
  */
-export function ProfitStrip({ batchId, pending }: { batchId: string; pending: boolean }) {
+export function ProfitLink({ batchId, pending }: { batchId: string; pending: boolean }) {
   const t = useT('batches');
   const f = useFormat();
   const stageLine = useStageLine();
-  const backTitle = useBackTitle();
+  const canOpen = useCanOpen();
   const { data, isLoading, isError, refetch } = useBatchProfit(batchId);
   const num = (v: number) => f.num(v).replace(/ /g, NBSP);
 
-  if (isLoading) return <Skeleton className="mt-6 h-[76px] w-full" />;
-  if (isError || !data) {
+  if (isLoading) return <Skeleton className="mt-6 h-6 w-full" />;
+  // Foyda hisoblanmasa — tannarx kartochkasi ishlayveradi, xato shu qatorda va qayta urinish bilan
+  // (jadval ostidagi "Sotuv va foyda" ham shu so'rovni o'qiydi — u ham qayta keladi)
+  if (isError && !data) {
     return (
-      <div className="mt-6 flex items-center gap-3 border-t border-line pt-5 text-sm text-muted">
+      <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-4 text-sm text-muted">
         <AlertTriangle className="h-4 w-4 shrink-0 text-warn-ink" />
         <span>{t('profit.error')}</span>
         <button type="button" onClick={() => void refetch()} className="focusable rounded font-semibold text-brand-ink hover:underline">
@@ -316,89 +242,44 @@ export function ProfitStrip({ batchId, pending }: { batchId: string; pending: bo
       </div>
     );
   }
-  if (data.state === 'empty') return null;
-
-  const wrap = cn('mt-6 border-t border-line pt-5 transition-opacity duration-200', pending && 'opacity-60');
-  const wrapTitle = pending ? t('profit.updating') : undefined;
-  const nothingYet = data.soldQty === 0 && data.moneyBack === 0;
+  if (!data || data.state === 'empty') return null;
   const onSale = isOnSale(data.stage);
-
-  // Hali sotuvda emas (yoki sotuvda, lekin bog'lanmagan) va hech narsa sotilmagan — bitta qator
-  if (nothingYet && (!onSale || data.state === 'unlinked')) {
-    return (
-      <div className={wrap} title={wrapTitle}>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
-          <Coins className="h-4 w-4 shrink-0" />
-          <span className="font-semibold text-ink">{t('profit.invested')}:</span>
-          <span className="tnum font-semibold text-ink">{f.money(data.invested)}</span>
-          <span aria-hidden>·</span>
-          {!onSale ? (
-            <Badge tone={STAGE_TONE[data.stage]} dot>
-              {t(`profit.stage.${data.stage}`)}
-            </Badge>
-          ) : null}
-          <span>{onSale ? t('profit.line.unlinked') : stageLine(data)}</span>
-        </p>
-      </div>
-    );
-  }
-
-  const pct = data.paybackPct ?? 0;
-  const facts = [
-    data.qty > 0 ? t('profit.sold', { sold: num(data.soldQty), qty: num(data.qty) }) : null,
-    data.leftQty > 0 ? t('profit.left', { n: num(data.leftQty) }) : null,
-    data.transitQty > 0 ? t('profit.notOnSale', { n: num(data.transitQty) }) : null,
-    data.unlinkedQty > 0 ? t('profit.unlinkedQty', { n: num(data.unlinkedQty) }) : null,
-  ].filter((x): x is string => Boolean(x));
-  const outcome =
-    data.state === 'paidBack'
-      ? { text: t('profit.paidBack', { sum: num(data.moneyBack - data.invested) }), tone: 'text-brand-ink font-semibold' }
-      : !nothingYet
-        ? {
-            text:
-              data.breakEvenQty !== null
-                ? t('profit.toPaybackQty', { sum: num(data.toPayback), n: num(data.breakEvenQty) })
-                : t('profit.toPayback', { sum: num(data.toPayback) }),
-            tone: 'text-ink-soft',
-          }
-        : null;
+  const sold = data.soldQty > 0;
 
   return (
-    <div className={wrap} title={wrapTitle}>
-      <div className="grid gap-x-5 gap-y-5 sm:grid-cols-3">
-        <Term label={t('profit.invested')} value={f.money(data.invested)} dot="bg-[rgb(var(--c-slate))]">
-          <p className="mt-2 text-xs leading-snug text-muted">
-            {t('profit.investedHint')}
-            {data.personalCost > 0 ? ` · ${t('profit.investedPersonal', { sum: num(data.personalCost) })}` : ''}
-          </p>
-        </Term>
-        <Term
-          label={t('profit.back')}
-          value={f.money(data.moneyBack)}
-          dot="bg-info"
-          title={backTitle({ payout: data.payout, adFee: data.adFee, tax: data.tax, pending: data.back.held + data.back.transit })}
-        >
-          <ProgressBar value={pct} tone={pct >= 100 ? 'brand' : 'info'} className="mt-2.5 max-w-[220px]" />
-          <p className="tnum mt-1.5 text-xs leading-snug text-muted">
-            {t('profit.payback', { pct: pctText(f, pct) })}
-            {data.adFee !== 0 ? ` · ${t('profit.backAds', { sum: num(data.adFee) })}` : ''}
-          </p>
-        </Term>
-        <Term label={t('profit.profit')} value={f.money(data.profit)} dot="bg-brand" strong tone={data.profit < 0 ? 'loss' : undefined}>
-          <p className="tnum mt-2 text-xs leading-snug text-muted">
-            {data.overheadNow > 0
-              ? t('profit.profitHintOverhead', { cogs: num(data.cogs), over: num(data.overheadNow) })
-              : t('profit.profitHint', { cogs: num(data.cogs) })}
-          </p>
-        </Term>
-      </div>
-      <p className="tnum mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-        <span className="font-medium text-ink-soft">{stageLine(data)}</span>
-        {facts.map((x) => (
-          <span key={x}>{x}</span>
-        ))}
-        {outcome ? <span className={outcome.tone}>{outcome.text}</span> : null}
+    <div
+      className={cn(
+        'mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line pt-4 text-sm transition-opacity duration-200',
+        pending && 'opacity-60',
+      )}
+      title={pending ? t('profit.updating') : undefined}
+    >
+      <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-muted">
+        <Coins className="h-4 w-4 shrink-0" />
+        <Badge tone={STAGE_TONE[data.stage]} dot>
+          {t(`profit.stage.${data.stage}`)}
+        </Badge>
+        {sold ? (
+          <span className="tnum">
+            {data.profit < 0 ? t('pp.fig.loss') : t('profit.profit')}:{' '}
+            <span className={cn('whitespace-nowrap font-semibold', data.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.money(Math.abs(data.profit))}</span>
+            {' · '}
+            {t('profit.sold', { sold: num(data.soldQty), qty: num(data.qty) })}
+          </span>
+        ) : (
+          <span>{data.qty === 0 ? t('pp.fig.noQty') : onSale && data.state === 'unlinked' ? t('profit.line.unlinked') : stageLine(data)}</span>
+        )}
       </p>
+      {/* Sahifa a'zoning shablonida yopiq bo'lsa — havola yo'q (bosilsa "Bu bo'lim sizga yopiq" chiqardi) */}
+      {canOpen('/batch-profit') ? (
+        <Link
+          to={`/batch-profit#${batchId}`}
+          className="focusable inline-flex shrink-0 items-center gap-1 rounded font-semibold text-brand-ink hover:underline"
+        >
+          {t('pp.title')}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -413,7 +294,9 @@ export interface ProfitDraftRow {
   skuCodes: string[] | null;
 }
 
-const legKey = (fix: BatchProfitFix) => `${fix.cargoName}|${fix.delivery}|${fix.trip}`;
+/** Yozilishdan qat'i nazar bitta kalit: "Mandarin" va "MANDARIN " — bitta jo'natma (server: batch-keys.ts shipKeyOf) */
+const keyText = (s: string) => s.trim().replace(/\s+/g, ' ').toUpperCase();
+const legKey = (fix: BatchProfitFix) => `${keyText(fix.cargoName)}|${fix.delivery}|${keyText(fix.trip)}`;
 
 export function ProfitCard({
   batchId,
@@ -434,12 +317,21 @@ export function ProfitCard({
   const f = useFormat();
   const dayText = useDayText();
   const stageLine = useStageLine();
+  const rateText = useRateText();
   const { data, isLoading } = useBatchProfit(batchId);
-  const [open, setOpen] = useState<number | null>(null);
   const [linkFor, setLinkFor] = useState<number | null>(null);
   const [fixFor, setFixFor] = useState<BatchProfitFix | null>(null);
-  // Telefonda jadval o'rniga har qator — kartochka (ro'yxat sahifasidagidek)
-  const isDesktop = useIsDesktop();
+  /*
+   * «Partiya foydasi» sahifasidan "Bog'lash" bosilsa — `/batches/:id#profit`:
+   * jadval yuklangach shu kartochkaga o'tiladi (bog'lash shu yerda).
+   */
+  const ready = Boolean(data);
+  useEffect(() => {
+    if (!ready || window.location.hash !== '#profit') return;
+    // Bir kadr keyin — AppLayout'ning "yangi sahifa — tepaga" surishidan keyin (u bizdan keyin ishlaydi)
+    const frame = requestAnimationFrame(() => document.getElementById('profit')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
 
   if (isLoading) {
     return (
@@ -478,19 +370,8 @@ export function ProfitCard({
       .filter(Boolean)
       .join(' · ');
 
-  const th = 'table-head border-b border-line px-3 py-3';
-  /*
-   * Jami — partiya xulosasidan (yuqoridagi uch raqam bilan aynan bir xil). Qatorlarga
-   * tushmagan umumiy xarajat (bo'linmagan qo'shimcha xarajat; soni yo'q va "Uzumda
-   * yo'q" qatorlarning foydadan ayrilgan ulushi) alohida qatorda — ustunlar yig'indisi jamiga teng.
-   */
-  const rowsInvested = data.rows.reduce((a, r) => a + r.invested, 0);
-  const overheadRow = { invested: data.invested - rowsInvested, profit: -data.overheadNow };
-  const showOverhead = overheadRow.invested !== 0 || overheadRow.profit !== 0;
-  const foot = { invested: data.invested, back: data.moneyBack, profit: data.profit, sold: data.soldQty };
-
   return (
-    <Card className={cn('overflow-hidden transition-opacity duration-200', pending && 'opacity-70')}>
+    <Card id="profit" className={cn('scroll-mt-20 overflow-hidden transition-opacity duration-200', pending && 'opacity-70')}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 font-semibold text-ink">
@@ -566,11 +447,77 @@ export function ProfitCard({
         <p className="border-b border-line px-5 py-2 text-xs text-muted">{t('profit.row.pending', { n: f.num(mismatched) })}</p>
       ) : null}
 
+      <ProfitRows
+        data={data}
+        linkFor={(r) => (canEdit && draftOf(r) && r.link !== 'personal' ? () => setLinkFor(r.index) : undefined)}
+      />
+
+      <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">{t('profit.note', { rate: rateText(data.taxRate) })}</p>
+
+      {linkFor !== null
+        ? (() => {
+            const r = data.rows.find((x) => x.index === linkFor);
+            const draft = r ? draftOf(r) : null;
+            if (!r || !draft) return null;
+            return (
+              <SkuLinkModal
+                open
+                name={draft.name}
+                // Tegilmagan qatorda — faqat server ham "nomi bo'yicha" desa (saqlash kutilayotganda eski kodlar qaytmasin)
+                initial={draft.skuCodes ?? (r.link === 'name' ? r.codes : [])}
+                state={draft.skuCodes === null ? 'auto' : draft.skuCodes.length ? 'codes' : 'none'}
+                onClose={() => setLinkFor(null)}
+                onSave={(codes) => {
+                  onLink(draft.key, codes);
+                  setLinkFor(null);
+                }}
+              />
+            );
+          })()
+        : null}
+      <FixModal batchId={batchId} fix={fixFor} onClose={() => setFixFor(null)} legName={fixFor ? legName(fixFor) : ''} />
+    </Card>
+  );
+}
+
+/**
+ * Partiya qatorlari: kompyuterda jadval, telefonda kartochkalar; ostida
+ * bo'linmagan xarajat va jami (partiya xulosasi bilan aynan bir xil).
+ * Partiya sahifasida — bog'lash tugmasi bilan, «Partiya foydasi» sahifasida — faqat ko'rish.
+ */
+export function ProfitRows({
+  data,
+  linkFor,
+}: {
+  data: BatchProfitDetail;
+  /** Qatorni bog'lash oynasini ochuvchi (partiya sahifasida); undefined — tugma yo'q */
+  linkFor?: (r: BatchProfitRow) => (() => void) | undefined;
+}) {
+  const t = useT('batches');
+  const f = useFormat();
+  const num = (v: number) => f.num(v).replace(/ /g, NBSP);
+  const [open, setOpen] = useState<number | null>(null);
+  // Telefonda jadval o'rniga har qator — kartochka (ro'yxat sahifasidagidek)
+  const isDesktop = useIsDesktop();
+
+  const th = 'table-head border-b border-line px-3 py-3';
+  /*
+   * Jami — partiya xulosasidan (partiya kartochkasidagi raqamlar bilan aynan bir xil).
+   * Qatorlarga tushmagan umumiy xarajat (bo'linmagan qo'shimcha xarajat; soni yo'q va
+   * "Uzumda yo'q" qatorlarning foydadan ayrilgan ulushi) alohida qatorda — ustunlar
+   * yig'indisi jamiga teng.
+   */
+  const rowsInvested = data.rows.reduce((a, r) => a + r.invested, 0);
+  const overheadRow = { invested: data.invested - rowsInvested, profit: -data.overheadNow };
+  const showOverhead = overheadRow.invested !== 0 || overheadRow.profit !== 0;
+  const foot = { invested: data.invested, back: data.moneyBack, profit: data.profit, sold: data.soldQty };
+
+  return (
+    <>
       {!isDesktop ? (
         <>
           <ul className="divide-y divide-line/70">
             {data.rows.map((r) => {
-              const draft = draftOf(r);
               const expanded = open === r.index;
               return (
                 <ProfitRowCard
@@ -579,36 +526,40 @@ export function ProfitCard({
                   skus={data.skus}
                   expanded={expanded}
                   onToggle={() => setOpen(expanded ? null : r.index)}
-                  onLink={canEdit && draft && r.link !== 'personal' ? () => setLinkFor(r.index) : undefined}
+                  onLink={linkFor?.(r)}
                 />
               );
             })}
           </ul>
-          {/* Ikkala qatorda bir xil ustunlar: tikilgan · qaytgan · sof foyda (yuqoridagi kartochkalardagidek) */}
+          {/*
+            Jami — ustma-ust: nomi chapda, summa o'ngda. Uchta 8–10 xonali summa 360–375 px da
+            yonma-yon sig'masdi — oxirgisi (sof foyda) kartochka chetida kesilib qolardi.
+          */}
           <div className="border-t border-line bg-surface-2/60 px-4 py-3 text-sm">
-            {/* Ustun nomlari ikki qatorga bo'linadi — 375 px da "Jami" raqamlar ostida qolmasin */}
-            <div className="grid grid-cols-[minmax(2.75rem,1fr)_auto_auto_auto] items-baseline gap-x-3 gap-y-1.5">
-              <span />
-              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.invested')}</span>
-              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.back')}</span>
-              <span className="max-w-[5.5rem] justify-self-end text-right text-2xs font-medium leading-tight text-muted">{t('profit.th.profit')}</span>
-              {showOverhead ? (
-                <>
-                  <span className="truncate text-ink-soft" title={t('profit.overheadHint')}>
-                    {t('profit.overhead')}
-                  </span>
-                  <span className="tnum whitespace-nowrap text-right text-ink-soft">{overheadRow.invested ? f.num(overheadRow.invested) : '—'}</span>
-                  <span className="tnum whitespace-nowrap text-right text-muted">—</span>
-                  <span className="tnum whitespace-nowrap text-right text-ink-soft">{overheadRow.profit ? f.num(overheadRow.profit) : '—'}</span>
-                </>
-              ) : null}
-              <span className="font-semibold text-ink">{t('profit.footTotal')}</span>
-              <span className="tnum whitespace-nowrap text-right font-semibold text-ink-soft">{f.num(foot.invested)}</span>
-              <span className="tnum whitespace-nowrap text-right font-semibold text-ink">{f.num(foot.back)}</span>
-              <span className={cn('tnum whitespace-nowrap text-right font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>
-                {f.num(foot.profit)}
-              </span>
-            </div>
+            <p className="font-semibold text-ink">{t('profit.footTotal')}</p>
+            <dl className="mt-1.5 space-y-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="min-w-0 text-ink-soft">{t('profit.th.invested')}</dt>
+                <dd className="tnum whitespace-nowrap font-semibold text-ink-soft">{f.num(foot.invested)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="min-w-0 text-ink-soft">{t('profit.th.back')}</dt>
+                <dd className="tnum whitespace-nowrap font-semibold text-ink">{f.num(foot.back)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="min-w-0 text-ink-soft">{t('profit.th.profit')}</dt>
+                <dd className={cn('tnum whitespace-nowrap font-extrabold', foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(foot.profit)}</dd>
+              </div>
+            </dl>
+            {/*
+              Bo'linmagan xarajat to'liq (qo'shimcha xarajat + soni yo'q va «Uzumda yo'q» qatorlar puli —
+              profit.overheadHint dagi ta'rif) va undan hozirgacha foydadan ayrilgani: ikkalasi bir asosda.
+            */}
+            {data.overhead > 0 || data.overheadNow !== 0 ? (
+              <p className="tnum mt-2 text-xs leading-snug text-muted" title={t('profit.overheadHint')}>
+                {t('profit.footOverhead', { invested: num(data.overhead), profit: num(data.overheadNow) })}
+              </p>
+            ) : null}
           </div>
         </>
       ) : (
@@ -636,7 +587,6 @@ export function ProfitCard({
             </thead>
             <tbody>
               {data.rows.map((r) => {
-                const draft = draftOf(r);
                 const expanded = open === r.index;
                 return (
                   <ProfitRowView
@@ -645,7 +595,7 @@ export function ProfitCard({
                     skus={data.skus}
                     expanded={expanded}
                     onToggle={() => setOpen(expanded ? null : r.index)}
-                    onLink={canEdit && draft && r.link !== 'personal' ? () => setLinkFor(r.index) : undefined}
+                    onLink={linkFor?.(r)}
                   />
                 );
               })}
@@ -683,32 +633,7 @@ export function ProfitCard({
           </table>
         </div>
       )}
-
-      <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">{t('profit.note', { rate: f.num(data.taxRate, 1) })}</p>
-
-      {linkFor !== null
-        ? (() => {
-            const r = data.rows.find((x) => x.index === linkFor);
-            const draft = r ? draftOf(r) : null;
-            if (!r || !draft) return null;
-            return (
-              <SkuLinkModal
-                open
-                name={draft.name}
-                // Tegilmagan qatorda — faqat server ham "nomi bo'yicha" desa (saqlash kutilayotganda eski kodlar qaytmasin)
-                initial={draft.skuCodes ?? (r.link === 'name' ? r.codes : [])}
-                state={draft.skuCodes === null ? 'auto' : draft.skuCodes.length ? 'codes' : 'none'}
-                onClose={() => setLinkFor(null)}
-                onSave={(codes) => {
-                  onLink(draft.key, codes);
-                  setLinkFor(null);
-                }}
-              />
-            );
-          })()
-        : null}
-      <FixModal batchId={batchId} fix={fixFor} onClose={() => setFixFor(null)} legName={fixFor ? legName(fixFor) : ''} />
-    </Card>
+    </>
   );
 }
 
@@ -910,7 +835,8 @@ function ProfitRowView({
     <>
       <tr className="border-b border-line/70 last:border-0">
         <td className={cn(td, 'text-center text-xs text-muted')}>{r.index + 1}</td>
-        <td className={td}>
+        {/* w-full max-w-0: nom ustun kengligini belgilamaydi — uzun nom "…" bilan qisqaradi */}
+        <td className={cn(td, 'w-full max-w-0')}>
           <div className="flex min-w-0 items-start gap-2">
             {r.orders.length ? (
               <button

@@ -40,6 +40,7 @@ const Abc = lazyPage(() => import('@/pages/Abc'), '/abc');
 const CostPrice = lazyPage(() => import('@/pages/CostPrice'), '/cost-price');
 const Batches = lazyPage(() => import('@/pages/Batches'), '/batches');
 const BatchDetail = lazyPage(() => import('@/pages/BatchDetail'));
+const BatchProfit = lazyPage(() => import('@/pages/BatchProfit'), '/batch-profit');
 const Mxik = lazyPage(() => import('@/pages/Mxik'), '/mxik');
 const Illiquid = lazyPage(() => import('@/pages/Illiquid'), '/illiquid');
 const Stocks = lazyPage(() => import('@/pages/Stocks'), '/stocks');
@@ -195,6 +196,7 @@ export default function App() {
               <Route path="/cost-price" element={<CostPrice />} />
               <Route path="/batches" element={<Batches />} />
               <Route path="/batches/:id" element={<BatchDetail />} />
+              <Route path="/batch-profit" element={<BatchProfit />} />
               <Route path="/mxik" element={<Mxik />} />
               <Route path="/illiquid" element={<Illiquid />} />
               <Route path="/stocks" element={<Stocks />} />

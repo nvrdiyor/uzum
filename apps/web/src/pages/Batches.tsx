@@ -24,10 +24,12 @@ import {
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
 import { BatchEtaCell, BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
-import { ProfitBackCell, ProfitCell, UnattributedNote, useBatchProfitList } from '@/components/batches/profit';
+// "Partiya foydasi" tugmasi matni (sahifaning o'zi — pages/BatchProfit.tsx)
+import '@/components/batches/texts-profit-page';
 import { cn } from '@/lib/utils';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { useCanOpen } from '@/lib/view';
 
 function CreateModal({ open, onClose: close, nextNo }: { open: boolean; onClose: () => void; nextNo: number }) {
   const t = useT('batches');
@@ -165,6 +167,7 @@ export default function Batches() {
   const f = useFormat();
   const navigate = useNavigate();
   const canEdit = useSession((st) => st.me?.company?.role !== 'viewer');
+  const canOpen = useCanOpen();
   // Telefonda 10 ustunli jadval o'rniga kartalar
   const isDesktop = useIsDesktop();
 
@@ -179,13 +182,6 @@ export default function Batches() {
   });
 
   const rows = data?.items ?? [];
-  /*
-   * Partiya foydasi alohida so'rov: ro'yxat (va Qarzlar sahifasi o'qiydigan
-   * `['batches']`) unga bog'liq emas — foyda hisoblanmay qolsa ham ro'yxat ishlaydi.
-   */
-  const profitQ = useBatchProfitList(rows.length > 0);
-  const profitOf = useMemo(() => new Map((profitQ.data?.items ?? []).map((p) => [p.batchId, p])), [profitQ.data]);
-  const profitLoading = profitQ.isLoading;
   /**
    * Ro'yxatdagi "Umumiy" — tovar + cargo + yo'l kira. Logistika, paket kabi
    * boshqa qo'shimcha xarajatlar bu yerga kirmaydi (ular faqat tovar tannarxida).
@@ -221,12 +217,10 @@ export default function Batches() {
           cargo: a.cargo + b.totals.cargoUzs,
           cargoDue: a.cargoDue + (b.cargoPayment?.due ?? 0),
           total: a.total + listTotal(b),
-          back: a.back + (profitOf.get(b.id)?.moneyBack ?? 0),
-          profit: a.profit + (profitOf.get(b.id)?.profit ?? 0),
         }),
-        { items: 0, cny: 0, goods: 0, cargo: 0, cargoDue: 0, total: 0, back: 0, profit: 0 },
+        { items: 0, cny: 0, goods: 0, cargo: 0, cargoDue: 0, total: 0 },
       ),
-    [visible, profitOf],
+    [visible],
   );
 
   /*
@@ -269,10 +263,20 @@ export default function Batches() {
         title={t('title')}
         description={t('subtitle')}
         actions={
-          canEdit && rows.length > 0 ? (
-            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
-              {t('new')}
-            </Button>
+          rows.length > 0 ? (
+            <>
+              {/* Foyda — alohida sahifada (egasi, 2026-11-12: "partiyalar foydasi juda chalkash"); a'zoga yopiq bo'lsa tugma yo'q */}
+              {canOpen('/batch-profit') ? (
+                <Button variant="outline" icon={<Coins className="h-4 w-4" />} onClick={() => navigate('/batch-profit')}>
+                  {t('pp.title')}
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+                  {t('new')}
+                </Button>
+              ) : null}
+            </>
           ) : undefined
         }
       />
@@ -321,23 +325,6 @@ export default function Batches() {
               icon={<CircleCheck className="h-5 w-5" />}
               tone="brand"
             />
-            {/* Partiyalardan sof foyda: sotilgan donalardan (Uzum reklamasi va soliq ayrilgan), tikilgan pul qaytgani bilan */}
-            {profitQ.data && profitQ.data.grand.invested > 0 ? (
-              <StatCard
-                label={t('profit.stat')}
-                value={f.money(profitQ.data.grand.profit)}
-                hint={[
-                  profitQ.data.grand.paidBack > 0
-                    ? t('profit.statHint', { back: f.money(profitQ.data.grand.moneyBack), n: profitQ.data.grand.paidBack })
-                    : t('profit.statHintNone', { back: f.money(profitQ.data.grand.moneyBack), invested: f.money(profitQ.data.grand.invested) }),
-                  profitQ.data.grand.adFee !== 0 ? t('profit.statAds', { sum: f.money(profitQ.data.grand.adFee) }) : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                icon={<Coins className="h-5 w-5" />}
-                tone={profitQ.data.grand.profit < 0 ? 'danger' : 'brand'}
-              />
-            ) : null}
           </StatGrid>
         ) : null}
 
@@ -447,21 +434,6 @@ export default function Batches() {
                       ))}
                     </dl>
                     <CargoPayNote pay={b.cargoPayment} className="mt-2 text-xs" />
-                    {/* Partiya foydasi: qaytgan pul va foyda */}
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line/60 pt-2.5 text-sm">
-                      <div className="min-w-0">
-                        <dt className="truncate text-2xs font-medium text-muted">{t('profit.col.back')}</dt>
-                        <dd className="tnum mt-0.5 [&>div]:items-start">
-                          <ProfitBackCell p={profitOf.get(b.id)} loading={profitLoading} />
-                        </dd>
-                      </div>
-                      <div className="min-w-0">
-                        <dt className="truncate text-2xs font-medium text-muted">{t('profit.col.profit')}</dt>
-                        <dd className="tnum mt-0.5 [&>div]:items-start">
-                          <ProfitCell p={profitOf.get(b.id)} loading={profitLoading} />
-                        </dd>
-                      </div>
-                    </dl>
                     {canEdit ? (
                       <div className="mt-2 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                         {canReorder ? (
@@ -505,7 +477,7 @@ export default function Batches() {
             </>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1300px] text-sm">
+              <table className="w-full min-w-[1040px] text-sm">
                 <thead>
                   <tr>
                     {canEdit ? <th className="table-head w-10 border-b border-line" /> : null}
@@ -522,12 +494,6 @@ export default function Batches() {
                     <th className="table-head border-b border-line px-4 py-3 text-right">{t('col.cargo')}</th>
                     <th className="table-head border-b border-line px-4 py-3 text-right" title={t('col.totalHint')}>
                       {t('col.total')}
-                    </th>
-                    <th className="table-head border-b border-line px-4 py-3 text-right" title={t('profit.col.backHint')}>
-                      {t('profit.col.back')}
-                    </th>
-                    <th className="table-head border-b border-line px-4 py-3 text-right" title={t('profit.col.profitHint')}>
-                      {t('profit.col.profit')}
                     </th>
                     <th className={cn('table-head border-b border-line px-4 py-3', canEdit ? 'w-40' : 'w-24')} />
                   </tr>
@@ -589,12 +555,6 @@ export default function Batches() {
                         <CargoPayNote pay={b.cargoPayment} className="text-2xs" />
                       </td>
                       <td className="tnum whitespace-nowrap px-4 py-3.5 text-right font-bold text-ink">{f.num(listTotal(b))}</td>
-                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right">
-                        <ProfitBackCell p={profitOf.get(b.id)} loading={profitLoading} />
-                      </td>
-                      <td className="tnum whitespace-nowrap px-4 py-3.5 text-right">
-                        <ProfitCell p={profitOf.get(b.id)} loading={profitLoading} />
-                      </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-1">
                           {canReorder ? (
@@ -660,17 +620,6 @@ export default function Batches() {
                       ) : null}
                     </td>
                     <td className="tnum whitespace-nowrap px-4 py-3 text-right font-extrabold text-ink">{f.num(foot.total)}</td>
-                    <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">
-                      {profitQ.data ? f.num(foot.back) : ''}
-                    </td>
-                    <td
-                      className={cn(
-                        'tnum whitespace-nowrap px-4 py-3 text-right font-extrabold',
-                        foot.profit < 0 ? 'text-danger-ink' : 'text-brand-ink',
-                      )}
-                    >
-                      {profitQ.data ? f.num(foot.profit) : ''}
-                    </td>
                     <td />
                   </tr>
                 </tfoot>
@@ -678,9 +627,6 @@ export default function Batches() {
             </div>
           )}
         </Card>
-
-        {/* Hech qaysi partiyaga tushmagan sotuv (eski qoldiq, partiyaga kiritilmagan tovar) va reklama */}
-        {rows.length > 0 ? <UnattributedNote un={profitQ.data?.unattributed} className="mt-3 px-1" /> : null}
 
         {rows.length > 0 && data ? (
           <div className="mt-4">
