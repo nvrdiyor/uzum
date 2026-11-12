@@ -28,6 +28,16 @@
  * pozitsiya puli bilan birga partiyalarga boradi: qaytgan pul = Uzum
  * to'laydigani − reklama − soliq.
  *
+ * SOTUVSIZ CHIQIM (2026-11-12, egasi: "2-partiyada 12 dona bor deyapti — brak
+ * chiqqanlari, utilizatsiya qilinganlari bor"). Uzum omboridan sotilmasdan
+ * chiqib ketgan dona — brak, yo'qolgan (utilizatsiya ham shu: Uzum hisobida
+ * yo'q), sizga qaytarilgan, xaridordan qaytish yo'lidagi — sotuv kabi, o'sha
+ * kuni sotuvda turgan eng eski partiyadan yechiladi (pulsiz,
+ * `ProfitOutflowInput`). Aks holda u partiyada "qoldi" bo'lib turib, keyingi
+ * sotuvlarni o'ziga olardi: yangi partiyaning sotuvi eski partiyaga yozilardi.
+ * Brak va yo'qolganning tannarxi foydadan ayriladi (zarar); qaytayotgan va
+ * sizga qaytarilgani sizniki — tannarxi "qolgan tovar"da qoladi.
+ *
  * Bu modul toza: vaqt va baza yo'q, faqat kunlar (YYYY-MM-DD) — testlarda soat
  * kerak emas. Ma'lumotni server yig'adi (apps/api/src/services/batch-profit.ts).
  */
@@ -581,6 +591,42 @@ export interface ProfitLineInput {
   state: ProfitMoneyState;
 }
 
+/**
+ * Sotuvsiz chiqim turi:
+ *  • defect — brak: Uzum omborida brak deb turibdi yoki brak sifatida ombordan
+ *    chiqarilgan (sizga qaytarish yoki utilizatsiya hujjati);
+ *  • lost — Uzum hisobida yo'q: yo'qolgan, utilizatsiya qilingan, qabulda kam chiqqan;
+ *  • returning — xaridor qaytargan yoki bekor qilgan, omborga qaytmoqda (vaqtincha);
+ *  • toSeller — yaroqli tovar Uzum omboridan sizga qaytarilgan.
+ */
+export type ProfitOutKind = 'defect' | 'lost' | 'returning' | 'toSeller';
+export const PROFIT_OUT_KINDS: readonly ProfitOutKind[] = ['defect', 'lost', 'returning', 'toSeller'];
+/** Tannarxi foydadan ayriladigan (zarar) turlar; qolganlari — hali sotuvchiniki */
+export const PROFIT_LOSS_KINDS: readonly ProfitOutKind[] = ['defect', 'lost'];
+export type ProfitOutCounts = Record<ProfitOutKind, number>;
+export const emptyOutCounts = (): ProfitOutCounts => ({ defect: 0, lost: 0, returning: 0, toSeller: 0 });
+
+/**
+ * Sotuvsiz chiqim hodisasi — sotuv kabi vaqt tartibida, o'sha kuni sotuvda turgan
+ * eng eski manbadan (eski qoldiq yoki lot) yechiladi, lekin pulsiz.
+ */
+export interface ProfitOutflowInput {
+  /** `normSkuCode` */
+  code: string;
+  /** Hodisa savdo kuni (YYYY-MM-DD) */
+  day: string;
+  /** Hodisa payti (ms) — kun ichidagi tartib; bir paytda sotuv oldin */
+  at: number;
+  units: number;
+  kind: ProfitOutKind;
+  /**
+   * Aniq lot(lar) (`lots` dagi o'rni): hodisa bitta partiyaga tegishli (masalan, partiya
+   * ta'minlashining qabulda kam chiqqani) — ro'yxat tartibida, sig'imi borlaridan.
+   * Berilmasa — FIFO.
+   */
+  lot?: number | readonly number[] | null;
+}
+
 /** Pozitsiyaning bitta lotga tushgan qismi */
 export interface ProfitPiece {
   /** `lines` dagi o'rni */
@@ -610,8 +656,12 @@ export interface ProfitTake {
   back: ProfitMoneyByState;
   firstDay: string | null;
   lastDay: string | null;
-  /** Oxirgi donasi sotilgan kun */
+  /** Lot tugagan kun: oxirgi donasi sotilgan yoki sotuvsiz chiqqan kun */
   soldOutDay: string | null;
+  /** Sotuvsiz chiqqan dona, turi bo'yicha (`ProfitOutflowInput`) */
+  out: ProfitOutCounts;
+  /** Oxirgi sotuvsiz chiqim kuni */
+  lastOutDay: string | null;
   /** Shu lot kelishidan oldin sotilgan va hech qaysi lotga tushmagan dona (eski qoldiq yoki kelgan sana kech yozilgan) */
   beforeArrival: number;
   /** Lot «Keldi» emas, lekin uning tovaridan sotilgan va hech qaysi lotga tushmagan dona */
@@ -636,13 +686,17 @@ export interface ProfitLeftover {
   notMarked: number;
   /** Partiyalardagi sonidan ortiq */
   overTracked: number;
+  /** Sotuvsiz chiqim — eski qoldiqdan (partiyaga tegishli emas) */
+  outOpening: number;
+  /** Sotuvsiz chiqim — o'sha kuni hech qaysi manbada dona qolmagan (ma'lumot mos emas) */
+  outUnplaced: number;
 }
 
 export interface ProfitAllocation {
   /** `lots` bilan bir xil tartibda */
   lots: ProfitTake[];
-  /** Eski qoldiq: `openings` bilan bir xil tartibda — nechtasi sotildi */
-  openings: { sold: number }[];
+  /** Eski qoldiq: `openings` bilan bir xil tartibda — nechtasi sotildi va sotuvsiz chiqdi */
+  openings: { sold: number; out: number }[];
   /** Kod → hech qaysi partiyaga tushmagan sotuv */
   byCode: Map<string, ProfitLeftover>;
 }
@@ -657,6 +711,8 @@ const emptyTake = (): ProfitTake => ({
   firstDay: null,
   lastDay: null,
   soldOutDay: null,
+  out: emptyOutCounts(),
+  lastOutDay: null,
   beforeArrival: 0,
   notMarked: 0,
   firstBlameDay: null,
@@ -673,6 +729,8 @@ const emptyLeftover = (): ProfitLeftover => ({
   beforeArrival: 0,
   notMarked: 0,
   overTracked: 0,
+  outOpening: 0,
+  outUnplaced: 0,
 });
 
 const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -738,18 +796,25 @@ function splitOff(p: { units: number; payout: number; tax: number; revenue: numb
  * joyi bor) ko'chiriladi va bo'shagan dona partiyasiz qolgan sotuvga beriladi.
  * Haqiqatda bitta qatorning har rangidan nechtadan borligi noma'lum — shunday
  * taqsimot ham to'g'ri va hech narsa partiyasiz qolmaydi.
+ *
+ * `outflows` — sotuvsiz chiqim (brak, yo'qolgan, qaytayotgan, sizga qaytarilgan):
+ * sotuvlar bilan bitta vaqt chizig'ida (bir paytda — sotuv oldin), sotuv kabi
+ * o'sha kuni donasi bor eng eski manbadan, lekin pulsiz. `lot` berilgani — faqat
+ * o'sha lotdan. Joy topilmagani `outUnplaced`: hech qaysi lot "ayblanmaydi".
+ * Qayta taqsimlash sotuvsiz chiqimni ko'chirmaydi (u lot qoldig'ini kamaytirgan, xolos).
  */
 export function allocateBatchSales(
   lots: readonly ProfitLotInput[],
   openings: readonly ProfitOpeningInput[],
   lines: readonly ProfitLineInput[],
-  options: { rebalance?: boolean } = {},
+  options: { rebalance?: boolean; outflows?: readonly ProfitOutflowInput[] } = {},
 ): ProfitAllocation {
   const rebalance = options.rebalance ?? true;
+  const outs = options.outflows ?? [];
   const takes = lots.map(() => emptyTake());
   const lotLeft = lots.map((l) => wholeUnits(l.qty));
   const openLeft = openings.map((o) => wholeUnits(o.units));
-  const openOut = openings.map(() => ({ sold: 0 }));
+  const openOut = openings.map(() => ({ sold: 0, out: 0 }));
   const byCode = new Map<string, ProfitLeftover>();
   const leftoverOf = (code: string): ProfitLeftover => {
     const cur = byCode.get(code);
@@ -798,7 +863,69 @@ export function allocateBatchSales(
     cmpStr(lines[a].day, lines[b].day) || lines[a].at - lines[b].at || cmpStr(lines[a].id, lines[b].id) || a - b;
   const order = lines.map((_, k) => k).sort(lineOrder);
 
-  for (const k of order) {
+  /*
+   * Sotuvsiz chiqim — sotuv kabi: o'sha kuni donasi bor eng eski manbadan (ko'rsatkich
+   * bilan bir xil yurish), pulsiz. Aniq lotga tegishlisi — faqat o'sha lotdan.
+   */
+  const consumeOut = (o: ProfitOutflowInput): void => {
+    let need = wholeUnits(o.units);
+    if (need === 0) return;
+    const toLot = (i: number, n: number): void => {
+      lotLeft[i] -= n;
+      takes[i].out[o.kind] += n;
+      takes[i].lastOutDay = takes[i].lastOutDay && takes[i].lastOutDay > o.day ? takes[i].lastOutDay : o.day;
+    };
+    if (o.lot !== undefined && o.lot !== null) {
+      const pins: readonly number[] = typeof o.lot === 'number' ? [o.lot] : o.lot;
+      for (const i of pins) {
+        if (need <= 0) break;
+        if (!Number.isInteger(i) || i < 0 || i >= lots.length) continue;
+        const n = Math.min(lotLeft[i], need);
+        if (n > 0) toLot(i, n);
+        need -= n;
+      }
+      if (need > 0) leftoverOf(o.code).outUnplaced += need;
+      return;
+    }
+    const list = slots.get(o.code) ?? [];
+    let p = ptr.get(o.code) ?? 0;
+    while (p < list.length && left(list[p]) === 0) p += 1;
+    ptr.set(o.code, p);
+    for (let j = p; need > 0 && j < list.length; j += 1) {
+      const slot = list[j];
+      if (slot.from > o.day) break;
+      const n = Math.min(left(slot), need);
+      if (n <= 0) continue;
+      if (slot.kind === 'lot') toLot(slot.i, n);
+      else {
+        openLeft[slot.i] -= n;
+        openOut[slot.i].out += n;
+        leftoverOf(o.code).outOpening += n;
+      }
+      need -= n;
+    }
+    if (need > 0) leftoverOf(o.code).outUnplaced += need;
+  };
+
+  /** Sotuvlar va sotuvsiz chiqimlar bitta vaqt chizig'ida: kun, payt; bir paytda — sotuv oldin */
+  const outOrder = outs
+    .map((_, k) => k)
+    .sort((a, b) => cmpStr(outs[a].day, outs[b].day) || outs[a].at - outs[b].at || a - b);
+  const timeline: { sale: boolean; k: number }[] = [];
+  for (let a = 0, b = 0; a < order.length || b < outOrder.length; ) {
+    const s = a < order.length ? lines[order[a]] : null;
+    const o = b < outOrder.length ? outs[outOrder[b]] : null;
+    const saleFirst = s !== null && (o === null || cmpStr(s.day, o.day) < 0 || (s.day === o.day && s.at <= o.at));
+    if (saleFirst) timeline.push({ sale: true, k: order[a++] });
+    else timeline.push({ sale: false, k: outOrder[b++] });
+  }
+
+  for (const ev of timeline) {
+    if (!ev.sale) {
+      consumeOut(outs[ev.k]);
+      continue;
+    }
+    const k = ev.k;
     const s = lines[k];
     const units = wholeUnits(s.units);
     if (units === 0) continue;
@@ -1001,7 +1128,9 @@ export function allocateBatchSales(
     }
     t.firstDay = t.pieces.length ? lines[t.pieces[0].line].day : null;
     t.lastDay = t.pieces.length ? lines[t.pieces[t.pieces.length - 1].line].day : null;
-    t.soldOutDay = lotLeft[i] === 0 && t.lastDay ? t.lastDay : null;
+    // Tugagan kun — oxirgi sotuv yoki oxirgi sotuvsiz chiqim (qaysi keyin bo'lsa)
+    const end = t.lastDay && t.lastOutDay ? (t.lastDay > t.lastOutDay ? t.lastDay : t.lastOutDay) : (t.lastDay ?? t.lastOutDay);
+    t.soldOutDay = lotLeft[i] === 0 && end ? end : null;
   });
 
   for (const e of strays) {
@@ -1071,6 +1200,12 @@ export interface ProfitRowInput {
   stage?: BatchStage;
   /** Sotuvga chiqqan kun (YYYY-MM-DD) */
   onSaleFrom?: string | null;
+  /**
+   * Qolgan donadan Uzum'da hozir turgani (server Uzum qoldig'ini yangi partiyalardan
+   * boshlab taqsimlaydi): sotuvda va sotuvdan tashqari (fotostudiya, qo'shimcha
+   * ombor). null — noma'lum (nakladnoysiz sotuvchi, qator hali sotuvda emas).
+   */
+  stock?: { onSale: number; elsewhere: number } | null;
 }
 
 /** Qator bosqichi: berilgani, bo'lmasa sotuvda/jo'natma holatidan */
@@ -1088,8 +1223,22 @@ export interface BatchProfitRowCalc {
   /** Sotuvga qo'yilgan pul: shaxsiy/namuna qatorda 0 (u alohida, `personalCost`) */
   invested: number;
   sold: number;
-  /** Qolgan dona (bog'langan qatorda); bog'lanmagan — barcha donasi noma'lum */
+  /** Sotuvsiz chiqqan dona, turi bo'yicha */
+  out: ProfitOutCounts;
+  /** Zarar bo'lgan dona: brak + yo'qolgan */
+  lost: number;
+  /** Ularning tannarxi — foydadan ayriladi */
+  lossCost: number;
+  /**
+   * Qolgan dona — hali sizniki, sotilmagan (qaytayotgan va sizga qaytarilgani ham
+   * shu yerda); bog'lanmagan qatorda — barcha donasi
+   */
   left: number;
+  /**
+   * Qolganidan qayerda turgani (qaytayotgan va sizga qaytarilgandan tashqari): Uzum'da
+   * sotuvda, Uzum'da sotuvdan tashqari va Uzum omborida ko'rinmayotgani. null — noma'lum
+   */
+  stock: { onSale: number; elsewhere: number; missing: number } | null;
   payout: number;
   tax: number;
   revenue: number;
@@ -1101,9 +1250,9 @@ export interface BatchProfitRowCalc {
   pendingBack: number;
   /** Sotilganlar tannarxi */
   cogs: number;
-  /** Qolgan dona tannarxi */
+  /** Qolgan dona tannarxi (zarar bo'lganlarsiz) */
   leftCost: number;
-  /** Sotilgan donadan foyda; bog'lanmagan/shaxsiy qatorda null */
+  /** Sotilgan donadan foyda, brak va yo'qolgan tannarxi ayrilgan; bog'lanmagan/shaxsiy qatorda null */
   profit: number | null;
   /** Foyda ÷ sotilganlar tannarxi, % */
   roi: number | null;
@@ -1129,8 +1278,9 @@ export interface BatchProfitTotals {
   back: ProfitMoneyByState;
   cogs: number;
   /**
-   * Sotilgan donadan foyda: Σ (qaytgan − tannarx) − umumiy xarajatning sotilgan
-   * ulushi. Hammasi sotilganda aynan qaytgan − tikilgan.
+   * Sotilgan donadan foyda: Σ (qaytgan − tannarx − brak va yo'qolgan tannarxi) −
+   * umumiy xarajatning tugagan ulushi. Hammasi sotilgan yoki zarar bo'lganda
+   * aynan qaytgan − tikilgan.
    */
   profit: number;
   roi: number | null;
@@ -1144,9 +1294,23 @@ export interface BatchProfitTotals {
   expectedProfit: number | null;
   qty: number;
   soldQty: number;
-  /** Kelgan, bog'langan, sotilmagan */
+  /** Sotuvsiz chiqqan dona, turi bo'yicha (bog'langan qatorlar) */
+  out: ProfitOutCounts;
+  /** Zarar bo'lgan dona: brak + yo'qolgan */
+  lostQty: number;
+  /** Ularning tannarxi — foydadan ayrilgan */
+  lossCost: number;
+  /** Kelgan, bog'langan, sotilmagan va zarar bo'lmagan (qaytayotgan, sizga qaytarilgani ham) */
   leftQty: number;
   leftCost: number;
+  /** Qolganidan Uzum'da sotuvda turgani */
+  onSaleQty: number;
+  /** Uzum'da, lekin sotuvdan tashqari (fotostudiya, qo'shimcha ombor) */
+  elsewhereQty: number;
+  /** Partiyada qolgan, lekin Uzum omborida ko'rinmayotgani (yuborilmagan, qabul qilinmagan, noto'g'ri bog'langan) */
+  missingQty: number;
+  /** Sotuvdagi qatorlarning qayerdaligi noma'lum qolgani (nakladnoysiz sotuvchi) */
+  restQty: number;
   /** Bog'langan, lekin hali kelmagan */
   transitQty: number;
   /** Bog'lanmagan qatorlar */
@@ -1183,7 +1347,11 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
     return {
       invested: personal ? 0 : cost,
       sold: 0,
+      out: emptyOutCounts(),
+      lost: 0,
+      lossCost: 0,
       left: qty,
+      stock: null,
       payout: 0,
       tax: 0,
       revenue: 0,
@@ -1197,15 +1365,38 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
     };
   }
   const sold = Math.min(qty, t.sold);
-  // Yaxlitlash yig'ilib ketmasin: hammasi sotilganda tannarx aynan qator puli
+  // Sotuvsiz chiqim lot donasidan oshmaydi (taqsimlash ham shunday) — ehtiyot uchun kesiladi
+  const out = emptyOutCounts();
+  let room = qty - sold;
+  for (const kind of PROFIT_OUT_KINDS) {
+    const n = Math.min(room, wholeUnits(t.out?.[kind] ?? 0));
+    out[kind] = n;
+    room -= n;
+  }
+  const lost = out.defect + out.lost;
+  // Yaxlitlash yig'ilib ketmasin: hammasi sotilgan yoki zarar bo'lganda tannarx aynan qator puli
   const cogs = qty > 0 ? Math.round((cost * sold) / qty) : 0;
+  const lossCost = qty > 0 ? Math.round((cost * (sold + lost)) / qty) - cogs : 0;
   const adFee = t.adFee ?? 0;
   const moneyBack = t.payout - t.tax - adFee;
-  const profit = moneyBack - cogs;
+  const profit = moneyBack - cogs - lossCost;
+  const left = qty - sold - lost;
+  const atUzum = left - out.returning - out.toSeller;
+  const stock = row.stock
+    ? (() => {
+        const onSale = Math.min(atUzum, wholeUnits(row.stock.onSale));
+        const elsewhere = Math.min(atUzum - onSale, wholeUnits(row.stock.elsewhere));
+        return { onSale, elsewhere, missing: atUzum - onSale - elsewhere };
+      })()
+    : null;
   return {
     invested: cost,
     sold,
-    left: qty - sold,
+    out,
+    lost,
+    lossCost,
+    left,
+    stock,
     payout: t.payout,
     tax: t.tax,
     revenue: t.revenue,
@@ -1213,9 +1404,9 @@ export function profitRow(row: ProfitRowInput): BatchProfitRowCalc {
     moneyBack,
     pendingBack: t.back.held + t.back.transit,
     cogs,
-    leftCost: cost - cogs,
+    leftCost: cost - cogs - lossCost,
     profit,
-    roi: cogs > 0 ? pctOf(profit, cogs) : null,
+    roi: cogs + lossCost > 0 ? pctOf(profit, cogs + lossCost) : null,
   };
 }
 
@@ -1240,15 +1431,21 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
 
   const lotCost = sum((c, i) => (isLot(i) ? c.invested : 0));
   const cogs = sum((c, i) => (isLot(i) ? c.cogs : 0));
+  const lossCost = sum((c, i) => (isLot(i) ? c.lossCost : 0));
   const lotQty = rows.reduce((a, r, i) => a + (isLot(i) ? wholeUnits(r.qty) : 0), 0);
   const lotSold = sum((c, i) => (isLot(i) ? c.sold : 0));
+  const lotLost = sum((c, i) => (isLot(i) ? c.lost : 0));
   /*
-   * Bo'linmagan xarajat sotilgan ulushga qarab tan olinadi — hammasi sotilganda to'liq.
-   * Ulush tannarx bo'yicha; sotiladigan qatorlarning narxi hali yozilmagan bo'lsa
-   * (tannarxi 0) — dona bo'yicha, aks holda xarajat hech qachon ayrilmasdi.
+   * Bo'linmagan xarajat tugagan (sotilgan yoki zarar bo'lgan) ulushga qarab tan olinadi —
+   * hammasi tugaganda to'liq. Ulush tannarx bo'yicha; sotiladigan qatorlarning narxi hali
+   * yozilmagan bo'lsa (tannarxi 0) — dona bo'yicha, aks holda xarajat hech qachon ayrilmasdi.
    */
   const overheadNow =
-    lotCost > 0 ? Math.round((overhead * cogs) / lotCost) : lotQty > 0 ? Math.round((overhead * lotSold) / lotQty) : 0;
+    lotCost > 0
+      ? Math.round((overhead * (cogs + lossCost)) / lotCost)
+      : lotQty > 0
+        ? Math.round((overhead * (lotSold + lotLost)) / lotQty)
+        : 0;
   const moneyBack = sum((c) => c.moneyBack);
   const profit = sum((c, i) => (isLot(i) ? (c.profit ?? 0) : 0)) - overheadNow;
   const back: ProfitMoneyByState = { unlocked: 0, held: 0, transit: 0 };
@@ -1261,8 +1458,18 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
 
   const qty = rows.reduce((a, r, i) => a + (isPersonal(i) || isOptedOut(i) ? 0 : wholeUnits(r.qty)), 0);
   const soldQty = sum((c, i) => (isLot(i) ? c.sold : 0));
+  const out = emptyOutCounts();
+  calcs.forEach((c, i) => {
+    if (!isLot(i)) return;
+    for (const kind of PROFIT_OUT_KINDS) out[kind] += c.out[kind];
+  });
   const leftQty = sum((c, i) => (isLot(i) && arrived(i) ? c.left : 0));
   const leftCost = sum((c, i) => (isLot(i) && arrived(i) ? c.leftCost : 0));
+  const onSaleLot = (i: number) => isLot(i) && arrived(i);
+  const onSaleQty = sum((c, i) => (onSaleLot(i) && c.stock ? c.stock.onSale : 0));
+  const elsewhereQty = sum((c, i) => (onSaleLot(i) && c.stock ? c.stock.elsewhere : 0));
+  const missingQty = sum((c, i) => (onSaleLot(i) && c.stock ? c.stock.missing : 0));
+  const restQty = sum((c, i) => (onSaleLot(i) && !c.stock ? c.left - c.out.returning - c.out.toSeller : 0));
   const transitQty = sum((c, i) => (isLot(i) && !arrived(i) ? c.left : 0));
   const unlinked = rows.map((r, i) => r.link === 'none' && !isOptedOut(i) && wholeUnits(r.qty) > 0);
   const unlinkedRows = unlinked.filter(Boolean).length;
@@ -1276,7 +1483,7 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
   const unitsToPayback = toPayback > 0 && soldQty > 0 && perUnit > 0 ? Math.ceil(toPayback / perUnit) : null;
   const breakEvenQty = unitsToPayback !== null && unitsToPayback <= remaining ? unitsToPayback : null;
 
-  // Prognoz: qolgan har qator o'z ustamasi bilan (sotuvi bo'lmasa — partiyaning o'rtachasi)
+  // Prognoz: qolgan har qator o'z ustamasi bilan (sotuvi bo'lmasa — partiyaning o'rtachasi); zarar bo'lgani sotilmaydi
   const markup = cogs > 0 ? moneyBack / cogs : null;
   let expectedProfit: number | null = null;
   if (soldQty > 0 && markup !== null) {
@@ -1284,7 +1491,7 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
     calcs.forEach((c, i) => {
       if (isPersonal(i) || noQty[i] || isOptedOut(i)) return;
       const m = isLot(i) && c.cogs > 0 ? c.moneyBack / c.cogs : markup;
-      future += (c.invested - c.cogs) * m;
+      future += (c.invested - c.cogs - c.lossCost) * m;
     });
     expectedProfit = Math.round(moneyBack + future) - invested;
   }
@@ -1346,15 +1553,22 @@ export function summarizeBatchProfit(rows: readonly ProfitRowInput[], undistribu
     back,
     cogs,
     profit,
-    roi: cogs + overheadNow > 0 ? pctOf(profit, cogs + overheadNow) : null,
+    roi: cogs + lossCost + overheadNow > 0 ? pctOf(profit, cogs + lossCost + overheadNow) : null,
     paybackPct: pctOf(moneyBack, invested),
     toPayback,
     breakEvenQty,
     expectedProfit,
     qty,
     soldQty,
+    out,
+    lostQty: lotLost,
+    lossCost,
     leftQty,
     leftCost,
+    onSaleQty,
+    elsewhereQty,
+    missingQty,
+    restQty,
     transitQty,
     unlinkedRows,
     unlinkedQty,
@@ -1486,6 +1700,10 @@ export interface BatchProfitUnattributed {
   beforeArrival: number;
   notMarked: number;
   overTracked: number;
+  /** Sotuvsiz chiqim (brak, yo'qolgan...) — eski qoldiqdan, partiyalarga tegishli emas */
+  outOpening: number;
+  /** Sotuvsiz chiqim — o'sha kuni partiyalarda ham, eski qoldiqda ham dona yo'q edi */
+  outUnplaced: number;
   /** Eng ko'p dona bo'yicha (5 tagacha) */
   top: { code: string; title: string; units: number }[];
 }

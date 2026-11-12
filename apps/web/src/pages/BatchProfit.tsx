@@ -133,11 +133,14 @@ export default function BatchProfit() {
           ads: a.ads + p.adFee,
           qty: a.qty + p.qty,
           sold: a.sold + p.soldQty,
-          inGoods: a.inGoods + (p.invested - p.cogs - p.overheadNow),
+          // Brak va yo'qolgan — tovarda emas: tannarxi foydadan ayrilgan
+          lost: a.lost + (p.lostQty ?? 0),
+          lossCost: a.lossCost + (p.lossCost ?? 0),
+          inGoods: a.inGoods + (p.invested - p.cogs - (p.lossCost ?? 0) - p.overheadNow),
           unlinked: a.unlinked + p.unlinkedQty,
           paidBack: a.paidBack + (p.state === 'paidBack' ? 1 : 0),
         }),
-        { invested: 0, back: 0, profit: 0, ads: 0, qty: 0, sold: 0, inGoods: 0, unlinked: 0, paidBack: 0 },
+        { invested: 0, back: 0, profit: 0, ads: 0, qty: 0, sold: 0, lost: 0, lossCost: 0, inGoods: 0, unlinked: 0, paidBack: 0 },
       ),
     [items],
   );
@@ -170,7 +173,7 @@ export default function BatchProfit() {
   const loading = listQ.isLoading || (hasBatches && profitQ.isLoading);
   const failed = listQ.isError || (hasBatches && profitQ.isError && !profitQ.data);
   const failure = listQ.error ?? profitQ.error;
-  const unsold = Math.max(0, sum.qty - sum.sold);
+  const unsold = Math.max(0, sum.qty - sum.sold - sum.lost);
   // Izohdagi raqam qatorga bo'linmasin ("1 067" — "1" va "067" emas)
   const nb = (s: string) => s.replace(/ /g, NBSP);
 
@@ -239,7 +242,14 @@ export default function BatchProfit() {
                 label={sum.profit < 0 ? t('pp.sum.loss') : t('pp.sum.profit')}
                 value={f.money(Math.abs(sum.profit))}
                 hint={t('pp.sum.profitHint', { n: nb(f.num(sum.sold)) })}
-                footer={sum.paidBack > 0 ? t('pp.sum.paidBack', { n: sum.paidBack }) : undefined}
+                footer={
+                  [
+                    sum.lossCost !== 0 ? t('pp.sum.lossCost', { sum: nb(`${MINUS}${f.money(sum.lossCost)}`) }) : null,
+                    sum.paidBack > 0 ? t('pp.sum.paidBack', { n: sum.paidBack }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || undefined
+                }
                 icon={<Coins className="h-5 w-5" />}
                 tone={sum.profit < 0 ? 'danger' : 'brand'}
               />
@@ -293,6 +303,7 @@ function HowCounted({ taxRate, un }: { taxRate: number; un: BatchProfitUnattribu
           <p>{t('pp.how.invested')}</p>
           <p>{t('pp.how.back', { rate: rateText(taxRate) })}</p>
           <p>{t('pp.how.profit')}</p>
+          <p>{t('pp.how.out')}</p>
           <p>{t('pp.how.storage')}</p>
           <UnattributedNote un={un} className="pt-1" />
         </div>
@@ -341,6 +352,58 @@ function Figure({
   );
 }
 
+/**
+ * Partiya donalari qayerda (egasi: "2-partiyada 12 dona bor deyapti — nima qoldi?"):
+ * sotildi, Uzum'da sotuvda, brak, yo'qolgan, qaytish yo'lida... — bitta chiziq va
+ * izoh, faqat bor turlari. Yig'indisi partiya donasiga teng (shared summarize).
+ */
+const UNIT_PARTS: readonly { key: string; of: (p: BatchProfitSummary) => number; cls: string }[] = [
+  { key: 'sold', of: (p) => p.soldQty, cls: 'bg-brand' },
+  { key: 'onSale', of: (p) => p.onSaleQty ?? 0, cls: 'bg-info' },
+  { key: 'elsewhere', of: (p) => p.elsewhereQty ?? 0, cls: 'bg-info/40' },
+  { key: 'returning', of: (p) => p.out?.returning ?? 0, cls: 'bg-violet/55' },
+  { key: 'toSeller', of: (p) => p.out?.toSeller ?? 0, cls: 'bg-violet' },
+  { key: 'defect', of: (p) => p.out?.defect ?? 0, cls: 'bg-danger' },
+  { key: 'lost', of: (p) => p.out?.lost ?? 0, cls: 'bg-danger/45' },
+  { key: 'missing', of: (p) => p.missingQty ?? 0, cls: 'bg-warn' },
+  { key: 'rest', of: (p) => p.restQty ?? 0, cls: 'bg-ink/30' },
+  { key: 'transit', of: (p) => p.transitQty, cls: 'bg-muted/40' },
+  // Bog'lanmagan — chiziqli (noma'lum): "hali sotuvda emas" kulrangidan ajralib tursin
+  { key: 'unlinked', of: (p) => p.unlinkedQty, cls: 'bg-[repeating-linear-gradient(135deg,rgb(var(--c-muted)/0.6)_0_2px,transparent_2px_4px)]' },
+];
+
+function UnitsStrip({ p }: { p: BatchProfitSummary }) {
+  const t = useT('batches');
+  const f = useFormat();
+  const num = (v: number) => f.num(v).replace(/ /g, NBSP);
+  const parts = UNIT_PARTS.map((x) => ({ ...x, n: Math.max(0, x.of(p)) })).filter((x) => x.n > 0);
+  const total = parts.reduce((a, x) => a + x.n, 0);
+  if (total === 0) return null;
+  return (
+    <div className="border-t border-line px-4 py-3 sm:px-5">
+      <p className="tnum text-xs font-semibold text-ink-soft">{t('pp.u.title', { n: num(p.qty) })}</p>
+      <div
+        className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-2"
+        role="img"
+        aria-label={parts.map((x) => `${t(`pp.u.${x.key}`)} ${x.n}`).join(', ')}
+      >
+        {parts.map((x) => (
+          <span key={x.key} className={cn('h-full', x.cls)} style={{ width: `${(x.n / total) * 100}%` }} />
+        ))}
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        {parts.map((x) => (
+          <li key={x.key} className="flex items-center gap-1.5" title={t(`pp.u.${x.key}Hint`)}>
+            <span className={cn('h-2 w-2 shrink-0 rounded-full', x.cls)} aria-hidden />
+            <span className="text-muted">{t(`pp.u.${x.key}`)}</span>
+            <span className="tnum font-semibold text-ink">{num(x.n)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function BatchCard({
   b,
   p,
@@ -365,8 +428,10 @@ function BatchCard({
 
   const onSale = isOnSale(p.stage);
   const hasMoney = p.soldQty > 0 || p.moneyBack !== 0;
+  // Foyda/zarar bor: sotuv yoki brak/yo'qolgan (sotuvsiz ham zarar — tannarxi ayrilgan)
+  const hasResult = hasMoney || (p.lostQty ?? 0) > 0;
   // Hali sotuvda emas va hech narsa sotilmagan — to'rt raqam o'rniga: qancha sarflangan va qayerda
-  const waiting = !onSale && !hasMoney;
+  const waiting = !onSale && !hasResult;
   const loss = p.profit < 0;
   const soldPct = p.qty > 0 ? Math.min(100, (p.soldQty / p.qty) * 100) : 0;
   /*
@@ -374,28 +439,15 @@ function BatchCard({
    * ko'rinib qolardi). Sarflangan pul 0 bo'lsa — foiz yo'q (0% emas).
    */
   const backPct = p.invested > 0 ? (p.moneyBack / p.invested) * 100 : null;
-  const restQty = Math.max(0, p.qty - p.soldQty);
   /*
    * Nechtasi sotilgani bilinmaydi: donasi yozilmagan yoki birorta tovari Uzum'dagi
    * tovarga bog'lanmagan — "0 / N" (go'yo hech narsa sotilmagan) deb ko'rsatilmaydi.
+   * Qolgan holatda donalar qayerdaligi — kartochkadagi chiziqda (`UnitsStrip`).
    */
   const soldUnknown = p.qty === 0 || p.unlinkedQty >= p.qty;
   /** Pul yo'q — nega: soni yozilmagan, bog'lanmagan yoki rostdan hali sotilmagan */
   const why = p.qty === 0 ? t('pp.fig.noQty') : p.state === 'unlinked' ? t('pp.fig.unlinked') : t('pp.fig.noSales');
-  const leftText =
-    p.qty === 0
-      ? t('pp.fig.noQty')
-      : soldUnknown
-        ? t('pp.fig.allUnlinked', { n: num(p.unlinkedQty) })
-        : restQty > 0
-          ? [
-              t('pp.fig.left', { n: num(restQty) }),
-              p.transitQty > 0 ? t('pp.fig.leftWait', { n: num(p.transitQty) }) : null,
-              p.unlinkedQty > 0 ? t('pp.fig.leftUnlinked', { n: num(p.unlinkedQty) }) : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          : t('pp.fig.allSold');
+  const leftText = p.qty === 0 ? t('pp.fig.noQty') : t('pp.fig.allUnlinked', { n: num(p.unlinkedQty) });
   // Shaxsiy/namuna va «Uzumda yo'q» qatorlar donaga kirmaydi — "xil tovar" ham ularsiz (ikkalasi bir xil narsani sanasin)
   const kinds = Math.max(0, b.totals.items - p.personalRows - p.optedOutRows);
   const fixLink = 'focusable inline-flex shrink-0 items-center gap-1 rounded text-sm font-semibold text-brand-ink hover:underline';
@@ -466,7 +518,8 @@ function BatchCard({
           <Figure label={t('pp.fig.invested')} value={f.money(p.invested)} hint={t('pp.fig.investedHint')} />
           <Figure label={t('pp.fig.sold')} value={soldUnknown ? '—' : t('pp.fig.soldOf', { sold: num(p.soldQty), qty: num(p.qty) })}>
             {soldUnknown ? null : <ProgressBar value={soldPct} tone={soldPct >= 100 ? 'brand' : 'info'} className="mt-2 max-w-[180px]" />}
-            <p className="tnum mt-1.5 text-xs leading-snug text-muted">{leftText}</p>
+            {/* Qolgani qayerda — pastdagi chiziqda; bu yerda faqat sotilgani bilinmaydigan holat */}
+            {soldUnknown ? <p className="tnum mt-1.5 text-xs leading-snug text-muted">{leftText}</p> : null}
           </Figure>
           <Figure
             label={t('pp.fig.back')}
@@ -484,12 +537,21 @@ function BatchCard({
           />
           <Figure
             label={loss ? t('pp.fig.loss') : t('pp.fig.profit')}
-            value={hasMoney ? f.money(Math.abs(p.profit)) : '—'}
-            tone={hasMoney ? (loss ? 'loss' : 'gain') : undefined}
-            hint={hasMoney ? t('pp.fig.profitHint', { n: num(p.soldQty) }) : why}
+            value={hasResult ? f.money(Math.abs(p.profit)) : '—'}
+            tone={hasResult ? (loss ? 'loss' : 'gain') : undefined}
+            hint={
+              hasResult
+                ? (p.lostQty ?? 0) > 0
+                  ? t('pp.fig.profitHintLoss', { n: num(p.soldQty), lost: num(p.lostQty) })
+                  : t('pp.fig.profitHint', { n: num(p.soldQty) })
+                : why
+            }
           />
         </div>
       )}
+
+      {/* Donalar qayerda: sotildi, sotuvda, brak, yo'qolgan... (egasi: "nima qoldi?") */}
+      {!waiting && !soldUnknown ? <UnitsStrip p={p} /> : null}
 
       {/* Hisobga to'liq kirmayotgan narsa — tuzatish partiya sahifasida */}
       {p.unlinkedRows > 0 || p.noQtyRows > 0 || p.fixes.length > 0 ? (
@@ -549,7 +611,7 @@ function BatchCard({
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         {open ? t('pp.less') : t('pp.more')}
       </button>
-      {open ? <BatchDetails id={b.id} p={p} taxRate={taxRate} showReceipt={hasMoney} /> : null}
+      {open ? <BatchDetails id={b.id} p={p} taxRate={taxRate} showReceipt={hasResult} /> : null}
     </Card>
   );
 }
@@ -608,10 +670,19 @@ function Receipt({ p, taxRate }: { p: BatchProfitSummary; taxRate: number }) {
   const payout = back + ads + tax;
   const over = Math.round(p.overheadNow);
   const profit = Math.round(p.profit);
-  // Sotilganlar tannarxi bo'linmagan xarajat ulushi bilan (= cogs + overheadNow)
-  const cost = back - profit;
-  const rest = Math.round(p.invested) - cost;
-  const restQty = Math.max(0, p.qty - p.soldQty);
+  const lostQty = p.lostQty ?? 0;
+  /*
+   * Bo'linmagan xarajat tugagan donalarga (sotilgan + zarar bo'lgan) tushadi: uning sotilganlar
+   * ulushi "Sotilgan N dona tannarxi" ichida, qolgani — brak va yo'qolgan qatorida. Ikki qator
+   * yig'indisi aynan qaytgan − foyda: chekdagi raqamlar doim teng.
+   */
+  const cogs = Math.round(p.cogs);
+  const lossBase = Math.round(p.lossCost ?? 0);
+  const overSold = cogs + lossBase > 0 ? Math.round((over * cogs) / (cogs + lossBase)) : lostQty > 0 ? 0 : over;
+  const cost = cogs + overSold;
+  const lossCost = back - profit - cost;
+  const rest = Math.round(p.invested) - cost - lossCost;
+  const restQty = Math.max(0, p.qty - p.soldQty - lostQty);
   const pending = p.back.held + p.back.transit;
 
   const line = 'flex items-baseline justify-between gap-4 py-1';
@@ -645,17 +716,27 @@ function Receipt({ p, taxRate }: { p: BatchProfitSummary; taxRate: number }) {
           </span>
           <span className={cn(amount, 'text-ink')}>{num(back)}</span>
         </div>
-        <div className={line}>
-          <span className="min-w-0 text-ink-soft">
-            {t('pp.r.cogs', { n: num(p.soldQty) })}
-            {over !== 0 ? (
-              <span className="ml-1.5 text-xs text-muted" title={t('profit.overheadHint')}>
-                ({t('pp.r.cogsOver', { sum: num(over) })})
-              </span>
-            ) : null}
-          </span>
-          <span className={cn(amount, 'text-ink-soft')}>{minus(cost)}</span>
-        </div>
+        {p.soldQty > 0 || cost !== 0 ? (
+          <div className={line}>
+            <span className="min-w-0 text-ink-soft">
+              {t('pp.r.cogs', { n: num(p.soldQty) })}
+              {overSold !== 0 ? (
+                <span className="ml-1.5 text-xs text-muted" title={t('profit.overheadHint')}>
+                  ({t('pp.r.cogsOver', { sum: num(overSold) })})
+                </span>
+              ) : null}
+            </span>
+            <span className={cn(amount, 'text-ink-soft')}>{minus(cost)}</span>
+          </div>
+        ) : null}
+        {lossCost !== 0 || lostQty > 0 ? (
+          <div className={line}>
+            <span className="min-w-0 text-ink-soft">
+              {t('pp.r.lossCost', { n: num(lostQty) })} <span className="text-xs text-muted">({t('pp.r.lossHint')})</span>
+            </span>
+            <span className={cn(amount, 'text-danger-ink')}>{minus(lossCost)}</span>
+          </div>
+        ) : null}
         <div className={cn(line, 'border-t border-line pt-1.5 font-bold')}>
           <span className="min-w-0 text-ink">{profit < 0 ? t('pp.r.loss') : t('pp.r.profit')}</span>
           <span className={cn(amount, profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{num(Math.abs(profit))}</span>

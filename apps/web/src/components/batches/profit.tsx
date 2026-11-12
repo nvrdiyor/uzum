@@ -244,7 +244,9 @@ export function ProfitLink({ batchId, pending }: { batchId: string; pending: boo
   }
   if (!data || data.state === 'empty') return null;
   const onSale = isOnSale(data.stage);
-  const sold = data.soldQty > 0;
+  const lost = data.lostQty ?? 0;
+  // Sotilgan yoki zarar bo'lgan (brak, yo'qolgan) donasi bor — foyda/zarar ko'rinadi
+  const sold = data.soldQty > 0 || lost > 0;
 
   return (
     <div
@@ -265,6 +267,12 @@ export function ProfitLink({ batchId, pending }: { batchId: string; pending: boo
             <span className={cn('whitespace-nowrap font-semibold', data.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.money(Math.abs(data.profit))}</span>
             {' · '}
             {t('profit.sold', { sold: num(data.soldQty), qty: num(data.qty) })}
+            {lost > 0 ? (
+              <span className="text-danger-ink">
+                {' · '}
+                {t('pp.o.lostAll', { n: num(lost) })}
+              </span>
+            ) : null}
           </span>
         ) : (
           <span>{data.qty === 0 ? t('pp.fig.noQty') : onSale && data.state === 'unlinked' ? t('profit.line.unlinked') : stageLine(data)}</span>
@@ -734,6 +742,30 @@ function OrdersList({ r, className }: { r: BatchProfitRow; className?: string })
 const hasMoney = (r: BatchProfitRow) =>
   (r.link === 'explicit' || r.link === 'name') && (isOnSale(r.stage) || r.sold > 0 || r.moneyBack !== 0);
 
+/** Foyda katagi: sotilgan yoki zarar bo'lgan (brak, yo'qolgan) donasi bor */
+const hasProfit = (r: BatchProfitRow) => r.profit !== null && (r.sold > 0 || (r.lost ?? 0) > 0);
+
+/**
+ * Qatorning sotuvsiz chiqimi qisqacha (egasi: "brak chiqqanlari, utilizatsiya qilinganlari
+ * bor"): brak, yo'qolgan, qaytish yo'lida, sizga qaytarilgan va Uzum omborida ko'rinmayotgani.
+ */
+function useOutParts() {
+  const t = useT('batches');
+  const f = useFormat();
+  return (r: BatchProfitRow): { key: string; text: string; cls: string }[] => {
+    const out = r.out ?? { defect: 0, lost: 0, returning: 0, toSeller: 0 };
+    return [
+      { key: 'defect', n: out.defect, cls: 'text-danger-ink' },
+      { key: 'lost', n: out.lost, cls: 'text-danger-ink' },
+      { key: 'returning', n: out.returning, cls: 'text-violet-ink' },
+      { key: 'toSeller', n: out.toSeller, cls: 'text-violet-ink' },
+      { key: 'missing', n: r.stock?.missing ?? 0, cls: 'text-warn-ink' },
+    ]
+      .filter((x) => x.n > 0)
+      .map((x) => ({ key: x.key, cls: x.cls, text: t(`pp.o.${x.key}`, { n: f.num(x.n) }) }));
+  };
+}
+
 /** Qator bosqichi — shaxsiy va "Uzumda yo'q" qatorda yo'q */
 function RowStage({ r }: { r: BatchProfitRow }) {
   if (r.link === 'personal' || r.optedOut) return <span className="text-muted">—</span>;
@@ -757,11 +789,27 @@ function ProfitRowCard({
   const t = useT('batches');
   const f = useFormat();
   const backTitle = useBackTitle();
+  const outParts = useOutParts();
   const isLot = r.link === 'explicit' || r.link === 'name';
+  const parts = isLot ? outParts(r) : [];
   const cells: [string, ReactNode][] = [
     [t('profit.th.stage'), <RowStage key="s" r={r} />],
     // Sotilmaydigan (bog'lanmagan, shaxsiy, "Uzumda yo'q") qatorda sotildi — yo'q
-    [t('profit.th.sold'), isLot ? `${f.num(r.sold)} / ${f.num(r.qty)}` : '—'],
+    [
+      t('profit.th.sold'),
+      isLot ? (
+        <span key="sold">
+          {f.num(r.sold)} / {f.num(r.qty)}
+          {parts.map((x) => (
+            <span key={x.key} className={cn('block text-2xs leading-snug', x.cls)}>
+              {x.text}
+            </span>
+          ))}
+        </span>
+      ) : (
+        '—'
+      ),
+    ],
     [t('profit.th.invested'), r.link === 'personal' ? '—' : f.num(r.invested)],
     [
       t('profit.th.back'),
@@ -773,7 +821,7 @@ function ProfitRowCard({
     ],
     [
       t('profit.th.profit'),
-      r.profit !== null && r.sold > 0 ? (
+      hasProfit(r) && r.profit !== null ? (
         <span className={cn('font-bold', r.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(r.profit)}</span>
       ) : (
         '—'
@@ -827,6 +875,7 @@ function ProfitRowView({
   const t = useT('batches');
   const f = useFormat();
   const backTitle = useBackTitle();
+  const outParts = useOutParts();
   const td = 'px-3 py-3 align-top';
   const num = 'tnum whitespace-nowrap text-right';
   const isLot = r.link === 'explicit' || r.link === 'name';
@@ -869,6 +918,12 @@ function ProfitRowView({
                 {f.num(r.sold)} / {f.num(r.qty)}
               </span>
               {r.qty > 0 ? <ProgressBar value={(r.sold / r.qty) * 100} tone={r.sold >= r.qty ? 'brand' : 'info'} className="mt-1 w-16" /> : null}
+              {/* Sotuvsiz chiqim — har biri alohida qatorda; uzunrog'i o'raladi (ustun kengaymasin) */}
+              {outParts(r).map((x) => (
+                <span key={x.key} className={cn('mt-0.5 whitespace-normal text-2xs leading-tight', x.cls)} title={t(`pp.u.${x.key}Hint`)}>
+                  {x.text}
+                </span>
+              ))}
             </div>
           ) : (
             <span className="text-muted">—</span>
@@ -888,7 +943,7 @@ function ProfitRowView({
           )}
         </td>
         <td className={cn(td, num)}>
-          {r.profit !== null && r.sold > 0 ? (
+          {hasProfit(r) && r.profit !== null ? (
             <span className={cn('font-bold', r.profit < 0 ? 'text-danger-ink' : 'text-brand-ink')}>{f.num(r.profit)}</span>
           ) : (
             <span className="text-muted">—</span>

@@ -48,6 +48,7 @@ import {
   type ProfitLotInput,
   type ProfitMoneyState,
   type ProfitOpeningInput,
+  type ProfitOutflowInput,
   type ProfitRowInput,
   type ProfitTake,
   type BatchStage,
@@ -60,6 +61,7 @@ import {
 import { getStoreIds, getTaxRate } from './common.js';
 import { shipKeyOf } from './batch-keys.js';
 import { adProductId } from './pnl.js';
+import { loadBalances } from './stock-balance.js';
 
 const MAX_BATCHES = 500;
 /** Bitta `IN (...)` ro'yxatidagi qiymatlar — SQLite o'zgaruvchilar chegarasidan ancha past */
@@ -72,6 +74,13 @@ const HISTORY_GAP_MIN = 1;
 const FIX_LOOKBACK_DAYS = 120;
 /** Reklama qatorlari bazadan partiyadagi mahsulot ID'lari bo'yicha olinadi (undan ko'p bo'lsa — hammasi) */
 const AD_NOTE_FILTER_MAX = 300;
+/**
+ * Xaridor qaytarishi sababi — brak: tovar omborga brak bo'lib qaytgan. Jonli do'konda
+ * ko'rilgan: "Брак", "BAD_QUALITY" (2026-11-12); qolganlari namuna va hujjatdagi yozilishlar.
+ */
+const DEFECT_CAUSE = /брак|дефект|bad.?quality|defect|shikast|поврежд|damag|broken|сломан/i;
+/** Uzum qoldig'i shuncha kundan eski bo'lsa — noma'lum (SKU sinxrondan tushib qolgan) */
+const STOCK_FRESH_DAYS = 14;
 
 const chunk = <T>(items: readonly T[], size = IN_CHUNK): T[][] => {
   const out: T[][] = [];
@@ -232,6 +241,9 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
           storeId: true,
           uzumSold: true,
           uzumReturned: true,
+          qtyDefected: true,
+          qtyMissing: true,
+          qtyElsewhere: true,
           product: { select: { title: true, uzumProductId: true } },
         },
       })
@@ -465,6 +477,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
         })
       : [];
   interface LoadedSupply {
+    /** Shipment id (qabuldagi kamomad yozuvi shu bilan bog'lanadi) */
+    id: string;
     code: string;
     status: BatchSupplyStatus;
     /** Qabul qilingan kun; kutilayotgani — yaratilgan kun */
@@ -482,6 +496,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     const status: BatchSupplyStatus =
       s.status === 'accepted' ? 'accepted' : s.status === 'accepting' ? 'accepting' : s.status === 'in_transit' ? 'in_transit' : 'planned';
     const sup: LoadedSupply = {
+      id: s.id,
       code: s.code,
       status,
       // Tovar balansi bilan bir xil qoida (stock-balance.ts): qabul payti, bo'lmasa reja, bo'lmasa yaratilgan
@@ -640,8 +655,226 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     }
   }
 
+  /*
+   * ── Sotuvsiz chiqim (2026-11-12) ──
+   * Egasi: "2-partiyada 12 dona bor deyapti — brak chiqqanlari, utilizatsiya qilinganlari
+   * bor". Uzum omboridan sotilmasdan chiqqan (yoki hali qaytayotgan) dona partiyada "qoldi"
+   * bo'lib turmasin: aks holda keyingi sotuvlar eski partiyaga yozilardi (bugungi oq skeyt
+   * 3-partiyaga emas, 2-partiyaning yo'qolgan donasiga). Faqat Uzum ta'minlashida uchragan
+   * kodlar (FBO): nakladnoysiz sotuvchida Uzum ombori yo'q. Manbalar «Yo'qotilganlar»
+   * sahifasi bilan bir xil (tovar balansi, stock-balance.ts) va har biri o'z sanasi bilan:
+   *  • qaytish yo'lida — balansning kutilayotgan buyurtmalari, buyurtma kuni;
+   *  • brak — DEFECTED qaytarish hujjatlari (sizga qaytarish yoki utilizatsiya) va Uzum
+   *    omboridagi brak hisoblagichi. Sanasi — brak sababli qaytgan (omborga yetgan) buyurtma:
+   *    tovar o'sha buyurtma partiyasidan chiqqan. Hujjat faqat o'zidan OLDINGI da'volarni
+   *    oladi (eski hujjat yangi da'vo sanasini olmasin), hisoblagich — birinchi ko'rilgan
+   *    kunigacha bo'lganlarini, keyin qolganlarini; da'vo yetmasa — hujjat yoki o'sha kun;
+   *  • sizga qaytarilgan — yaroqli tovar qaytarish hujjatlari, hujjat kuni;
+   *  • yo'qolgan (utilizatsiya ham shu yerga tushadi — Uzum API'da alohida ko'rinmaydi) —
+   *    JONLI balansdan (topilgan yoki da'vosi rad etilgan dona "abadiy yo'qolgan" bo'lib
+   *    qolmasin), har dona o'z dalili kuni bilan: buyurtmasiz kamayish yoki qaytmagan
+   *    buyurtma. Qabuldan keyingi kun (settling) — oxirgi ishonchli yozuvdan oshmaydi;
+   *  • qabulda kam chiqqani — o'sha ta'minlash sotuvga chiqargan qatorga (bir xil kodli
+   *    avia va avto qatorlarda — aynan o'sha jo'natmaniki), qabul kuni boshida.
+   */
+  const outflows: ProfitOutflowInput[] = [];
+  /** Kod → Uzum'da hozir: sotuvda va sotuvdan tashqari (oxirgi qoldiq) */
+  const stockOf = new Map<string, { onSale: number; elsewhere: number }>();
+  const fboSkuIds = relevantSkuIds.filter((id) => supplyCodes.has(codeOfSku.get(id) ?? ''));
+  if (fboSkuIds.length) {
+    const inParts = async <T>(f: (part: string[]) => Promise<T[]>): Promise<T[]> => (await Promise.all(chunk(fboSkuIds).map(f))).flat();
+    const stockSince = new Date(now.getTime() - STOCK_FRESH_DAYS * 86_400_000);
+    const [balances, returnDocs, lossRecs, defectReturns, snaps] = await Promise.all([
+      loadBalances(storeIds, now, { skuIds: fboSkuIds, compensation: false }),
+      inParts((part) =>
+        prisma.returnRecord.findMany({
+          where: { skuId: { in: part }, status: { in: ['pending', 'completed'] }, qty: { gt: 0 } },
+          orderBy: [{ returnedAt: 'asc' }, { id: 'asc' }],
+          select: { skuId: true, qty: true, reason: true, returnedAt: true },
+        }),
+      ),
+      // Faqat sanasi (brak/Uzum belgilagani birinchi ko'rilgan kun) va settling cheklovi uchun
+      inParts((part) =>
+        prisma.lossRecord.findMany({
+          where: { skuId: { in: part }, source: { in: ['balance', 'counter', 'defect'] }, qty: { gt: 0 } },
+          orderBy: [{ happenedAt: 'asc' }, { id: 'asc' }],
+          select: { skuId: true, source: true, qty: true, happenedAt: true },
+        }),
+      ),
+      inParts((part) =>
+        prisma.orderItem.findMany({
+          where: { skuId: { in: part }, status: 'returned', returnedQty: { gt: 0 }, returnCause: { not: null }, order: { deliveryType: 'FBO' } },
+          orderBy: [{ orderedAt: 'desc' }, { id: 'asc' }],
+          select: { skuId: true, returnedQty: true, orderedAt: true, returnCause: true, order: { select: { uzumOrderId: true } } },
+        }),
+      ),
+      // Oxirgi qoldiq — faqat shu SKU'lar, yaqin kunlardan (eskisi yoki umuman yo'g'i — noma'lum)
+      inParts((part) =>
+        prisma.stockSnapshot.findMany({
+          where: { skuId: { in: part }, date: { gte: stockSince } },
+          orderBy: [{ date: 'desc' }, { id: 'asc' }],
+          select: { skuId: true, fbo: true, fbs: true },
+        }),
+      ),
+    ]);
+    const skuInfo = new Map(skuRecs.map((s) => [s.id, s]));
+    const latest = new Map<string, { fbo: number; fbs: number }>();
+    for (const sn of snaps) if (!latest.has(sn.skuId)) latest.set(sn.skuId, sn);
+    const at = (code: string, d: Date, units: number, kind: ProfitOutflowInput['kind']): void => {
+      if (units > 0) outflows.push({ code, day: toBusinessDate(d), at: d.getTime(), units, kind });
+    };
+    for (const id of fboSkuIds) {
+      const code = codeOfSku.get(id) as string;
+      const sku = skuInfo.get(id);
+      const bal = balances.bySku.get(id);
+      const firstSeen = (source: string): Date | undefined => lossRecs.find((l) => l.skuId === id && l.source === source)?.happenedAt;
+
+      // Qaytish yo'lida
+      const onTheWay = new Set<string>();
+      for (const w of bal?.waiting ?? []) {
+        at(code, w.orderedAt, w.qty, 'returning');
+        if (w.orderId) onTheWay.add(w.orderId);
+      }
+
+      // Brak — har manba o'z sanasi bilan (yuqoridagi izoh)
+      const claims = defectReturns
+        .filter((it) => it.skuId === id && DEFECT_CAUSE.test(it.returnCause ?? '') && !onTheWay.has(it.order.uzumOrderId ?? ''))
+        .map((it) => ({ at: it.orderedAt, left: it.returnedQty }));
+      /** Eng yangi, `until` gacha bo'lgan, hali olinmagan da'volardan `n` dona; qolgani — `fallback` kuni */
+      const fromClaims = (n: number, until: Date | null): number => {
+        for (const c of claims) {
+          if (n <= 0) break;
+          if (c.left <= 0 || (until && c.at.getTime() > until.getTime())) continue;
+          const k = Math.min(n, c.left);
+          at(code, c.at, k, 'defect');
+          c.left -= k;
+          n -= k;
+        }
+        return n;
+      };
+      const docs = returnDocs.filter((r) => r.skuId === id);
+      for (const r of docs) {
+        if ((r.reason ?? '').toUpperCase() !== 'DEFECTED') continue;
+        at(code, r.returnedAt, fromClaims(r.qty, r.returnedAt), 'defect');
+      }
+      const counter = Math.max(0, sku?.qtyDefected ?? 0);
+      if (counter > 0) {
+        const seen = firstSeen('defect') ?? null;
+        const rest = fromClaims(fromClaims(counter, seen), null);
+        at(code, seen ?? now, rest, 'defect');
+      }
+
+      // Sizga qaytarilgan yaroqli tovar
+      for (const r of docs) if ((r.reason ?? '').toUpperCase() !== 'DEFECTED') at(code, r.returnedAt, r.qty, 'toSeller');
+
+      // Yo'qolgan — jonli balansdan; qabuldan keyingi kun — oxirgi ishonchli yozuvdan oshmaydi
+      if (bal && (bal.state === 'ok' || bal.state === 'settling')) {
+        const trusted = lossRecs.filter((l) => l.skuId === id && l.source === 'balance').reduce((sum, l) => sum + l.qty, 0);
+        let lost = bal.state === 'ok' ? bal.unaccounted : Math.min(bal.unaccounted, trusted);
+        /*
+         * O'z dalili (kamayish kuni, qaytmagan buyurtma) yo'q dona — yo'qotish birinchi aniqlangan
+         * kun («Yo'qotilganlar» yozuvi). "Hozir" emas: aks holda eski partiyada yolg'on qoldiq
+         * qolib, bugungi sotuvni yana o'ziga olardi.
+         */
+        const firstLost = firstSeen('balance');
+        for (const e of bal.lostEvents) {
+          if (lost <= 0) break;
+          const n = Math.min(lost, e.qty);
+          at(code, e.dated || !firstLost ? e.at : firstLost, n, 'lost');
+          lost -= n;
+        }
+      }
+      // Uzum o'zi "yo'qolgan" degani (hisoblagich; amalda doim 0)
+      const missing = Math.max(0, sku?.qtyMissing ?? 0);
+      if (missing > 0) at(code, firstSeen('counter') ?? now, missing, 'lost');
+
+      // Uzum'dagi qoldiq — qoldig'i ma'lum SKU'lar bo'yicha (noma'lumi — "qayerdaligi noma'lum")
+      const st = latest.get(id);
+      if (st) {
+        const cur = stockOf.get(code) ?? { onSale: 0, elsewhere: 0 };
+        cur.onSale += Math.max(0, st.fbo) + Math.max(0, st.fbs);
+        cur.elsewhere += Math.max(0, sku?.qtyElsewhere ?? 0);
+        stockOf.set(code, cur);
+      }
+    }
+
+    // Qabulda kam chiqqani — o'sha ta'minlash sotuvga chiqargan qator(lar)ga, qabul kuni boshida (shu kungi sotuvdan oldin)
+    const supplyIndex = new Map(supplies.map((s, si) => [s.id, si]));
+    for (const sh of balances.shortages) {
+      const code = codeOfSku.get(sh.skuId);
+      const si = supplyIndex.get(sh.shipmentId);
+      if (!code || si === undefined || sh.sent <= sh.accepted) continue;
+      const owned = owner[si];
+      const bi = extra[si].get(code) ?? (owned !== null && batchCodes[owned].has(code) ? owned : undefined);
+      // Partiyaga tegishli bo'lmagan ta'minlash — u eski qoldiq hisobida, partiyalarga ta'siri yo'q
+      if (bi === undefined) continue;
+      const day = supplies[si].day;
+      const onSale = batches[bi].rows.filter((r) => r.lot >= 0 && lots[r.lot].codes.includes(code) && lots[r.lot].availableFrom !== null);
+      const pins = [
+        ...onSale.filter((r) => lots[r.lot].availableFrom === day),
+        ...onSale.filter((r) => (lots[r.lot].availableFrom as string) < day),
+      ].map((r) => r.lot);
+      if (pins.length) outflows.push({ code, day, at: 0, units: sh.sent - sh.accepted, kind: 'lost', lot: pins });
+    }
+  }
+
   // ── Taqsimlash ──
-  const alloc = allocateBatchSales(lots, openings, lines);
+  const alloc = allocateBatchSales(lots, openings, lines, { outflows });
+
+  /*
+   * Qolgan dona qayerda: Uzum'dagi qoldiq yangi manbalardan boshlab taqsimlanadi (FIFO:
+   * eskisi oldin sotiladi — omborda turgani eng yangisi); bir kunda kelganlar — qator
+   * tartibida. Qoldiq yetmagani — "Uzum omborida yo'q" (yuborilmagan, qabul qilinmagan
+   * yoki noto'g'ri bog'langan). Faqat sotuvdagi, ta'minlashli partiyalar lotlari.
+   */
+  const stockOfLot = new Map<number, { onSale: number; elsewhere: number }>();
+  if (stockOf.size) {
+    const lotBatch = new Map<number, number>();
+    batches.forEach((b, bi) => b.rows.forEach((r) => r.lot >= 0 && lotBatch.set(r.lot, bi)));
+    const remaining = lots.map((l, i) => {
+      const t = alloc.lots[i];
+      return Math.max(0, l.qty - t.sold - t.out.defect - t.out.lost - t.out.returning - t.out.toSeller);
+    });
+    /** Manbalar: lotlar va eski qoldiq (u ham omborda turgan bo'lishi mumkin), yangisi birinchi */
+    type Source = { lot: number; from: string; created: string; pos: number } | { open: number; from: string };
+    const sources: Source[] = [];
+    lots.forEach((l, i) => {
+      const bi = lotBatch.get(i);
+      if (bi !== undefined && supplyMode[bi] && l.availableFrom && l.codes.some((c) => stockOf.has(c))) {
+        sources.push({ lot: i, from: l.availableFrom, created: l.batchCreatedAt + '|' + l.batchId, pos: l.position });
+        stockOfLot.set(i, { onSale: 0, elsewhere: 0 });
+      }
+    });
+    const openRemaining = openings.map((o, i) => Math.max(0, o.units - alloc.openings[i].sold - alloc.openings[i].out));
+    openings.forEach((o, i) => stockOf.has(o.code) && sources.push({ open: i, from: o.day }));
+    sources.sort((a, b) => {
+      if (a.from !== b.from) return a.from < b.from ? 1 : -1;
+      // Bir kunda: lotlar eski qoldiqdan oldin (slot tartibida eski qoldiq birinchi sotiladi), lotlar — qator tartibida
+      if ('lot' in a && 'lot' in b) return a.created.localeCompare(b.created) || a.pos - b.pos;
+      return 'lot' in a ? -1 : 'lot' in b ? 1 : 0;
+    });
+    for (const field of ['onSale', 'elsewhere'] as const) {
+      for (const [code, st] of [...stockOf.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        let pool = st[field];
+        for (const s of sources) {
+          if (pool <= 0) break;
+          if ('open' in s) {
+            if (openings[s.open].code !== code) continue;
+            const n = Math.min(pool, openRemaining[s.open]);
+            openRemaining[s.open] -= n;
+            pool -= n;
+            continue;
+          }
+          if (!lots[s.lot].codes.includes(code)) continue;
+          const n = Math.min(pool, remaining[s.lot]);
+          if (n <= 0) continue;
+          (stockOfLot.get(s.lot) as { onSale: number; elsewhere: number })[field] += n;
+          remaining[s.lot] -= n;
+          pool -= n;
+        }
+      }
+    }
+  }
 
   /*
    * Ta'minlash rejimida sana taklifi: qator hali sotuvda emas, lekin Uzum uning tovarini
@@ -756,7 +989,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     const inputs: ProfitRowInput[] = b.rows.map((r, ri) => {
       const take = r.lot >= 0 ? alloc.lots[r.lot] : null;
       const { onSale, from } = sale[ri];
-      const soldAll = take !== null && r.qty > 0 && take.sold >= r.qty;
+      // Tugagan: hammasi sotilgan yoki zarar bo'lgan (qaytayotgan va sizga qaytarilgani hali sizniki)
+      const soldAll = take !== null && r.qty > 0 && take.sold + take.out.defect + take.out.lost >= r.qty;
       const stage: BatchStage = onSale
         ? soldAll
           ? 'soldOut'
@@ -775,6 +1009,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
         onSale,
         stage,
         onSaleFrom: from,
+        stock: r.lot >= 0 && onSale ? (stockOfLot.get(r.lot) ?? null) : null,
       };
     });
     totals.set(b.id, summarizeBatchProfit(inputs, b.undistributed));
@@ -831,6 +1066,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     beforeArrival: 0,
     notMarked: 0,
     overTracked: 0,
+    outOpening: 0,
+    outUnplaced: 0,
     top: [],
   };
   const tops: { code: string; title: string; units: number }[] = [];
@@ -842,6 +1079,8 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
     unattributed.beforeArrival += v.beforeArrival;
     unattributed.notMarked += v.notMarked;
     unattributed.overTracked += v.overTracked;
+    unattributed.outOpening += v.outOpening;
+    unattributed.outUnplaced += v.outUnplaced;
     // Eski qoldiqdan sotilgani — tushunarli, ro'yxatda alohida ko'rsatilmaydi
     const unexplained = v.units - v.opening;
     if (unexplained > 0) tops.push({ code: skus.get(code)?.code ?? code, title: skus.get(code)?.title ?? '', units: unexplained });

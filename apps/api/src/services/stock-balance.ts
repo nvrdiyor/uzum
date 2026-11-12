@@ -122,6 +122,13 @@ interface EventRef {
   expectedBy: Date;
 }
 
+/** Qaytish yo'lidagi dona — qaysi buyurtmadan (partiya foydasi uni o'sha kungi partiyadan yechadi) */
+export interface BalanceWaiting {
+  orderId: string;
+  orderedAt: Date;
+  qty: number;
+}
+
 export interface BalanceResult {
   /** none — Uzum nakladnoyi yo'q, hisoblab bo'lmaydi */
   state: 'none' | 'incomplete' | 'settling' | 'ok';
@@ -133,7 +140,15 @@ export interface BalanceResult {
   /** Tushuntirilmagan farq (manfiy bo'lmaydi) */
   gap: number;
   inReturn: number;
+  /** `inReturn` donalari buyurtmalari bilan (eng yangi qaytishlardan), yig'indisi aynan `inReturn` */
+  waiting: BalanceWaiting[];
   unaccounted: number;
+  /**
+   * `unaccounted` donalari sanasi bilan (partiya foydasi ularni o'sha kungi partiyadan yechadi):
+   * buyurtmasiz kamayishlar, keyin omborga qaytmagan buyurtmalar (eng yangilaridan), qolgani —
+   * eng erta dalil kuni (`dated: false` — o'z dalili yo'q). Yig'indisi aynan `unaccounted`.
+   */
+  lostEvents: { at: Date; qty: number; dated: boolean }[];
   waitingUntil: Date | null;
   suspects: EventRef[];
   removals: { date: Date; qty: number }[];
@@ -213,7 +228,9 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
     held: inp.held,
     gap: 0,
     inReturn: 0,
+    waiting: [],
     unaccounted: 0,
+    lostEvents: [],
     waitingUntil: null,
     suspects: [],
     removals: [],
@@ -270,6 +287,15 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
 
   const inReturn = Math.min(gap, sum(waiting.map((e) => e.qty)));
   const unaccounted = gap - inReturn;
+  // Farq kutilayotganlardan kam bo'lsa — eng yangi qaytishlar qoladi (eskilari omborga yetgan bo'lishi ehtimolroq)
+  const waitingOut: BalanceWaiting[] = [];
+  let wantBack = inReturn;
+  for (const e of [...waiting].sort((a, b) => b.at.getTime() - a.at.getTime())) {
+    if (wantBack <= 0) break;
+    const qty = Math.min(e.qty, wantBack);
+    waitingOut.push({ orderId: e.orderId, orderedAt: e.orderedAt, qty });
+    wantBack -= qty;
+  }
 
   // Buyurtmasiz kamayishlar — eng so'nggilaridan, hisobda yo'q donadan oshmasin
   const removals: { date: Date; qty: number }[] = [];
@@ -283,17 +309,36 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
 
   const shownSuspects = unaccounted > 0 ? suspects.slice(0, MAX_SUSPECTS) : [];
   const dates = [...removals.map((r) => r.date.getTime()), ...shownSuspects.map((s) => s.orderedAt.getTime())];
+  const since = unaccounted > 0 && dates.length ? new Date(Math.min(...dates)) : null;
+
+  // Hisobda yo'q donalar sanasi: kamayishlar, keyin qaytmagan buyurtmalar (dalil ro'yxati kesilmagan), qolgani — eng erta dalil
+  const lostEvents: { at: Date; qty: number; dated: boolean }[] = [];
+  let lostLeft = unaccounted;
+  for (const r of removals) {
+    const qty = Math.min(lostLeft, r.qty);
+    if (qty > 0) lostEvents.push({ at: r.date, qty, dated: true });
+    lostLeft -= qty;
+  }
+  for (const s of suspects) {
+    if (lostLeft <= 0) break;
+    const qty = Math.min(lostLeft, s.qty);
+    lostEvents.push({ at: s.orderedAt, qty, dated: true });
+    lostLeft -= qty;
+  }
+  if (lostLeft > 0) lostEvents.push({ at: since ?? inp.now, qty: lostLeft, dated: false });
 
   return {
     ...base,
     state,
     gap,
     inReturn,
+    waiting: waitingOut,
     unaccounted,
+    lostEvents,
     waitingUntil: inReturn > 0 ? new Date(Math.max(...waiting.map((e) => e.expectedBy.getTime()))) : null,
     suspects: shownSuspects,
     removals,
-    since: unaccounted > 0 && dates.length ? new Date(Math.min(...dates)) : null,
+    since,
   };
 }
 
@@ -423,14 +468,24 @@ async function loadCompensation(
  * keyin faqat farqi bor SKU'lar uchun buyurtmalar va qoldiq tarixi — katta
  * do'konda yuz minglab buyurtmani har so'rovda o'qimaslik uchun.
  */
-export async function loadBalances(storeIds: string[], now: Date = new Date()): Promise<StoreBalances> {
+/** Faqat shu SKU'lar (partiya foydasi): ro'yxat bundan uzun bo'lsa — hammasi o'qiladi (IN chegarasi) */
+const ONLY_SKUS_MAX = 400;
+
+export async function loadBalances(
+  storeIds: string[],
+  now: Date = new Date(),
+  opts: { skuIds?: readonly string[]; compensation?: boolean } = {},
+): Promise<StoreBalances> {
   const bySku = new Map<string, SkuBalance>();
   if (storeIds.length === 0) return { bySku, shortages: [] };
+  const only = opts.skuIds && opts.skuIds.length <= ONLY_SKUS_MAX ? [...opts.skuIds] : null;
+  if (only && only.length === 0) return { bySku, shortages: [] };
+  const skuFilter = only ? { skuId: { in: only } } : {};
 
   const [skus, shipItems, fboSums, allSums, backSums, stocks] = await Promise.all([
     prisma.sku.findMany({
       // Sotuvchi "o'chirgan" arxiv tovar hech qayerda ko'rinmaydi — bu yerda ham
-      where: { storeId: { in: storeIds }, NOT: { archived: true, product: { hidden: true } } },
+      where: { storeId: { in: storeIds }, NOT: { archived: true, product: { hidden: true } }, ...(only ? { id: { in: only } } : {}) },
       select: {
         id: true,
         storeId: true,
@@ -446,7 +501,7 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
       },
     }),
     prisma.shipmentItem.findMany({
-      where: { shipment: { storeId: { in: storeIds }, source: 'uzum', status: 'accepted' } },
+      where: { shipment: { storeId: { in: storeIds }, source: 'uzum', status: 'accepted' }, ...skuFilter },
       select: {
         skuId: true,
         qty: true,
@@ -456,17 +511,17 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
     }),
     prisma.orderItem.groupBy({
       by: ['skuId'],
-      where: { skuId: { not: null }, order: { storeId: { in: storeIds }, deliveryType: 'FBO' } },
+      where: { skuId: only ? { in: only } : { not: null }, order: { storeId: { in: storeIds }, deliveryType: 'FBO' } },
       _sum: { qty: true },
     }),
     prisma.orderItem.groupBy({
       by: ['skuId'],
-      where: { skuId: { not: null }, order: { storeId: { in: storeIds } } },
+      where: { skuId: only ? { in: only } : { not: null }, order: { storeId: { in: storeIds } } },
       _sum: { qty: true, returnedQty: true },
     }),
     prisma.returnRecord.groupBy({
       by: ['skuId'],
-      where: { storeId: { in: storeIds }, skuId: { not: null }, status: { in: ['pending', 'completed'] } },
+      where: { storeId: { in: storeIds }, skuId: only ? { in: only } : { not: null }, status: { in: ['pending', 'completed'] } },
       _sum: { qty: true },
     }),
     getLatestStocks(storeIds),
@@ -578,6 +633,7 @@ export async function loadBalances(storeIds: string[], now: Date = new Date()): 
     });
   }
 
+  if (opts.compensation === false) return { bySku, shortages };
   // Kompensatsiya faqat yo'qotishi bor SKU'lar uchun — qolganlariga kerak emas
   const short = new Set(shortages.map((x) => x.skuId));
   const lossy = skus.filter((s) => {
