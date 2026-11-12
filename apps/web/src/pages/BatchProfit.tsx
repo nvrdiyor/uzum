@@ -111,6 +111,10 @@ export default function BatchProfit() {
   const hasBatches = (listQ.data?.items.length ?? 0) > 0;
   const profitQ = useBatchProfitList(hasBatches);
 
+  /** «Uzum uchun emas» deb belgilangan partiyalar — hisobda yo'q, pastda nomlari aytiladi */
+  const hidden = useMemo(() => (listQ.data?.items ?? []).filter((b) => b.forUzum === false).map((b) => b.name), [listQ.data]);
+  const allHidden = hidden.length > 0 && hidden.length === (listQ.data?.items.length ?? 0);
+
   /** Partiyalar tartibida; hisoblashga narsasi yo'q (bo'sh) partiya ko'rsatilmaydi */
   const items = useMemo<Item[]>(() => {
     const byId = new Map((profitQ.data?.items ?? []).map((p) => [p.batchId, p]));
@@ -203,8 +207,9 @@ export default function BatchProfit() {
           <Card>
             <EmptyState
               icon={<Coins className="h-6 w-6" />}
-              title={t('pp.empty.title')}
-              hint={t('pp.empty.hint')}
+              // Hamma partiyadan «Uzum uchun» belgisi olingan — "partiya yo'q" emas, sababi aytiladi
+              title={allHidden ? t('pp.emptyHidden.title') : t('pp.empty.title')}
+              hint={allHidden ? t('pp.emptyHidden.hint') : t('pp.empty.hint')}
               action={
                 canOpen('/batches') ? (
                   <Button variant="outline" iconRight={<ArrowRight className="h-4 w-4" />} onClick={() => navigate('/batches')}>
@@ -213,6 +218,11 @@ export default function BatchProfit() {
                 ) : undefined
               }
             />
+            {hidden.length && !allHidden ? (
+              <div className="px-5 pb-5">
+                <HiddenNote names={hidden} />
+              </div>
+            ) : null}
           </Card>
         ) : (
           <>
@@ -268,10 +278,31 @@ export default function BatchProfit() {
                 <BatchCard key={b.id} b={b} p={p} taxRate={profitQ.data!.taxRate} open={open.has(b.id)} onToggle={() => toggle(b.id)} />
               ))}
             </div>
+            <HiddenNote names={hidden} />
           </>
         )}
       </PlanGate>
     </>
+  );
+}
+
+/** «Uzum uchun emas» deb belgilangan partiyalar — bu yerda hisoblanmaydi; belgini Partiyalarda o'zgartirish */
+function HiddenNote({ names }: { names: readonly string[] }) {
+  const t = useT('batches');
+  const canOpen = useCanOpen();
+  if (!names.length) return null;
+  return (
+    <p className="mt-4 flex items-start gap-2 text-xs leading-relaxed text-muted">
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0">
+        {t('pp.hidden', { names: names.join(', ') })}{' '}
+        {canOpen('/batches') ? (
+          <Link to="/batches" className="focusable whitespace-nowrap rounded font-semibold text-brand-ink hover:underline">
+            {t('pp.hiddenLink')}
+          </Link>
+        ) : null}
+      </span>
+    </p>
   );
 }
 

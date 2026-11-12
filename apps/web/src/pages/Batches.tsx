@@ -26,6 +26,7 @@ import { parseAmount } from '@/components/batches/shared';
 import { BatchEtaCell, BatchStatusCell, CargoStatsCard, ShipmentModal } from '@/components/batches/shipments';
 // "Partiya foydasi" tugmasi matni (sahifaning o'zi — pages/BatchProfit.tsx)
 import '@/components/batches/texts-profit-page';
+import { ForUzumToggle } from '@/components/batches/uzum-toggle';
 import { cn } from '@/lib/utils';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
@@ -395,6 +396,8 @@ export default function Batches() {
                         <p className="mt-0.5 text-xs text-muted">
                           {f.date(b.createdAt)} · 1 ¥ = {f.num(b.rate, 2)}
                         </p>
+                        {/* Uzum uchunmi — belgilangani «Partiya foydasi»da hisoblanadi */}
+                        <ForUzumToggle id={b.id} name={b.name} forUzum={b.forUzum !== false} canEdit={canEdit} className="mt-1.5" />
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <p className="tnum whitespace-nowrap text-right font-bold text-ink" title={t('col.totalHint')}>
@@ -539,6 +542,8 @@ export default function Batches() {
                         <p className="mt-0.5 whitespace-nowrap text-xs text-muted">
                           {f.date(b.createdAt)} · 1 ¥ = {f.num(b.rate, 2)}
                         </p>
+                        {/* Uzum uchunmi — belgilangani «Partiya foydasi»da hisoblanadi */}
+                        <ForUzumToggle id={b.id} name={b.name} forUzum={b.forUzum !== false} canEdit={canEdit} className="mt-1.5" />
                       </td>
                       <td className="px-4 py-3.5 align-middle">
                         {/* Bosilganda jo'natmalar oynasi ochiladi; ko'rish huquqi bo'lsa ham holat ko'rinadi */}

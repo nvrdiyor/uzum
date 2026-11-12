@@ -71,6 +71,7 @@ import {
 } from '@/components/ui';
 import { parseAmount } from '@/components/batches/shared';
 import { ProfitCard, ProfitLink } from '@/components/batches/profit';
+import { ForUzumToggle } from '@/components/batches/uzum-toggle';
 import { dropLine, useDragReorder } from '@/hooks/useDragReorder';
 
 interface Row extends BatchItemInput {
@@ -965,7 +966,12 @@ function BatchDetail({ id }: { id: string }) {
         serverVersion.current = saved.updatedAt;
         lastName.current = saved.name;
         savedVersion.current = v;
-        qc.setQueryData(['batch', d.id], saved);
+        /*
+         * «Uzum uchun» belgisi jadval saqlanishidan alohida yoziladi (PUT /:id/uzum): javob belgi
+         * bosilishidan oldin o'qilgan bo'lishi mumkin — keshdagi qiymat saqlanadi, aks holda belgi
+         * eski holatiga qaytib ko'rinardi. Belgi yozilgach u o'zi partiyani qayta so'raydi.
+         */
+        qc.setQueryData<BatchDetailData>(['batch', d.id], (prev) => (prev ? { ...saved, forUzum: prev.forUzum } : saved));
         void qc.invalidateQueries({ queryKey: ['batches'] });
         setSaveState(version.current === v ? 'saved' : 'pending');
       } catch (err) {
@@ -1209,6 +1215,8 @@ function BatchDetail({ id }: { id: string }) {
 
   const notFound = isError && error instanceof ApiError && error.status === 404;
   const readonly = !canEdit;
+  // Uzum uchunmi — server javobidan (jadval qoralamasida emas: belgi alohida saqlanadi); eski javobda yo'q — ha
+  const forUzum = data?.forUzum !== false;
   const filledExtras = draft?.extras.filter((e) => !isBlankExtra(e)) ?? [];
   // Cargo puli to'langan deb belgilangan tovarlar (bo'sh qatorlar hisobga olinmaydi, ularning cargosi 0)
   const paidCount = draft?.rows.filter((r) => !isBlank(r) && r.cargoPaid).length ?? 0;
@@ -1294,18 +1302,22 @@ function BatchDetail({ id }: { id: string }) {
         <div className="space-y-5">
           {/* ── Partiya sozlamalari ── */}
           <Card className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="block min-w-0">
-              <span className="label">{t('f.name')}</span>
-              <Input
-                value={draft.name}
-                maxLength={80}
-                disabled={readonly}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  edit((d) => ({ ...d, name }));
-                }}
-              />
-            </label>
+            <div className="min-w-0">
+              <label className="block min-w-0">
+                <span className="label">{t('f.name')}</span>
+                <Input
+                  value={draft.name}
+                  maxLength={80}
+                  disabled={readonly}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    edit((d) => ({ ...d, name }));
+                  }}
+                />
+              </label>
+              {/* Uzum uchunmi — jadval saqlanishidan alohida, darhol yoziladi */}
+              <ForUzumToggle id={draft.id} name={draft.name} forUzum={forUzum} canEdit={canEdit} withHint className="mt-2" />
+            </div>
             <div className="min-w-0">
               <span className="label">{t('f.rate')}</span>
               <div className="flex items-stretch gap-2">
@@ -1474,7 +1486,11 @@ function BatchDetail({ id }: { id: string }) {
             ) : null}
 
             {/* Partiya qayerda va sof foyda — bitta qator; batafsili «Partiya foydasi» sahifasida */}
-            <ProfitLink batchId={draft.id} pending={saveState === 'pending' || saveState === 'saving'} />
+            {forUzum ? (
+              <ProfitLink batchId={draft.id} pending={saveState === 'pending' || saveState === 'saving'} />
+            ) : (
+              <p className="mt-6 border-t border-line pt-4 text-sm text-muted">{t('uzum.offNote')}</p>
+            )}
           </Card>
 
           {/* ── Jadval ── */}
@@ -1898,13 +1914,16 @@ function BatchDetail({ id }: { id: string }) {
             ── Sotuv va foyda ── jadvaldan PASTDA: tahrir qilinadigan jadval 1920 ga
             scrollsiz sig'adi (2026-11-05), unga ustun qo'shilmaydi. Bog'lash shu yerda.
           */}
-          <ProfitCard
-            batchId={draft.id}
-            rows={draft.rows.filter((r) => !isBlank(r))}
-            canEdit={canEdit}
-            pending={saveState === 'pending' || saveState === 'saving'}
-            onLink={(key, skuCodes) => patchRow(key, { skuCodes })}
-          />
+          {/* Uzum uchun emas — foyda va bog'lash kerak emas (hisob uni umuman olmaydi) */}
+          {forUzum ? (
+            <ProfitCard
+              batchId={draft.id}
+              rows={draft.rows.filter((r) => !isBlank(r))}
+              canEdit={canEdit}
+              pending={saveState === 'pending' || saveState === 'saving'}
+              onLink={(key, skuCodes) => patchRow(key, { skuCodes })}
+            />
+          ) : null}
         </div>
       </PlanGate>
 

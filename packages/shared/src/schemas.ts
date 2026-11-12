@@ -212,6 +212,9 @@ export const batchShipmentSchema = z.object({
   arrivedAt: isoDay.nullable().optional(),
 });
 
+/** PUT /batches/:id/uzum — partiya Uzum'da sotish uchunmi (2026-11-13) */
+export const batchUzumSchema = z.object({ forUzum: z.boolean() });
+
 /** Cargo to'lovlari chegarasi */
 export const BATCH_MAX_PAYMENTS = 50;
 

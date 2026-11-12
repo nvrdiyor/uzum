@@ -2080,6 +2080,11 @@ export interface BatchSummary {
   roadExtra: number;
   /** Cargo qancha to'langan va qancha qolgan */
   cargoPayment: CargoPayment;
+  /**
+   * Uzum'da sotish uchun: false — shaxsiy yoki boshqa joyga xarid, «Partiya foydasi»da
+   * hisoblanmaydi (2026-11-13). Eski server javobida yo'q bo'lishi mumkin — `!== false`
+   */
+  forUzum: boolean;
 }
 
 /** Kargo kompaniyasi va yetkazish turi bo'yicha haqiqiy muddat */

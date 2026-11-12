@@ -857,6 +857,10 @@ model PurchaseBatch {
   /// Ro'yxatdagi o'rni (kichigi yuqorida). Sotuvchi sudrab o'zgartiradi;
   /// yangi partiya eng kichik qiymatdan bittaga kam oladi — tepada chiqadi
   position  Int      @default(0)
+  /// Uzum'da sotish uchun (2026-11-13, egasi: "FOR MY bu partiya emas — belgilasa
+  /// partiyalar foydasida bo'lsin"). false — shaxsiy yoki boshqa joyga xarid:
+  /// «Partiya foydasi»da hisoblanmaydi va Uzum sotuvlarini olmaydi
+  forUzum   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

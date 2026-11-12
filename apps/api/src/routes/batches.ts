@@ -14,6 +14,7 @@ import {
   batchOrderSchema,
   batchShipmentSchema,
   batchUpdateSchema,
+  batchUzumSchema,
   calcBatch,
   cargoPaidRows,
   cargoPayment,
@@ -50,6 +51,7 @@ interface BatchRecord {
   name: string;
   rate: number;
   extra: number;
+  forUzum: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -285,6 +287,7 @@ function toSummary(
     shipments,
     roadExtra: Math.round(roadExtra),
     cargoPayment: cargoPayment(totals.cargoUzs, payments, cargoPayTracked(b.createdAt), cargoPaidRows(items)),
+    forUzum: b.forUzum,
   };
 }
 
@@ -696,6 +699,45 @@ router.put(
     const { byBatch, stats } = await companyShipments(company.id);
     const shipments = byBatch.get(id) ?? [];
     res.json({ shipments, status: batchStatus(shipments), cargoStats: stats });
+  }),
+);
+
+/**
+ * PUT /:id/uzum — partiya Uzum'da sotish uchunmi (2026-11-13, egasi: "FOR MY bu partiya
+ * emas — belgilasa partiyalar foydasida bo'lsin"). Belgisi olingan partiya «Partiya
+ * foydasi»da hisoblanmaydi va Uzum sotuvlarini olmaydi.
+ *
+ * `updatedAt` ATAYLAB o'zgartirilmaydi (PUT /order kabi): u jadval mazmunining versiyasi —
+ * ochiq jadval belgi tufayli "boshqa joyda o'zgargan" deb saqlashni rad etmasin. Butun
+ * partiya PUT'i bu maydonga tegmaydi, shuning uchun ochiq jadval uni qaytarib yozmaydi.
+ */
+router.put(
+  '/:id/uzum',
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const id = String(req.params.id);
+    const { forUzum } = batchUzumSchema.parse(req.body ?? {});
+    /*
+     * Solishtirib-yozish: o'qilgan versiya o'zgarmagan bo'lsagina yoziladi va o'sha versiya
+     * qoldiriladi. Oddiy "o'qi, keyin yoz" bo'lsa, shu orada saqlangan jadvalning yangi
+     * versiyasi ustiga eskisi yozilib qolardi: ochiq sahifa keyingi saqlashda 409 olardi,
+     * eski oyna esa qulfni aylanib o'tardi. Belgi mazmun emas — 409 o'rniga qayta uriniladi.
+     */
+    let written = false;
+    for (let attempt = 0; attempt < 3 && !written; attempt += 1) {
+      const batch = await prisma.purchaseBatch.findFirst({ where: { id, companyId: company.id }, select: { updatedAt: true } });
+      if (!batch) throw AppError.notFound('Partiya topilmadi');
+      const r = await prisma.purchaseBatch.updateMany({
+        where: { id, companyId: company.id, updatedAt: batch.updatedAt },
+        data: { forUzum, updatedAt: batch.updatedAt },
+      });
+      written = r.count === 1;
+    }
+    if (!written) throw AppError.conflict('Partiya hozir saqlanmoqda — belgini qayta bosing');
+    // Foyda hisobi: barmoq izi updatedAt ni sezmaydi — kesh qo'lda unutiladi
+    invalidateBatchProfit(company.id);
+    res.json({ id, forUzum });
   }),
 );
 

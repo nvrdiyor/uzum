@@ -144,6 +144,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
         name: true,
         rate: true,
         extra: true,
+        forUzum: true,
         createdAt: true,
         items: {
           orderBy: { position: 'asc' },
@@ -171,6 +172,12 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
 
   // ── Qatorlar: tannarx, jo'natma holati, bog'lanish ──
   const shipOf = new Map(ships.map((sh) => [`${sh.batchId}|${sh.cargoKey}|${sh.delivery}`, sh]));
+  /*
+   * Bog'lanish HAMMA partiyalar bo'yicha (2026-11-13): «Uzum uchun emas» deb belgilangan partiyaning
+   * bog'langan qatori boshqa partiyadagi xuddi shu nomli qatorga bog'lanish berishda davom etadi —
+   * bitta partiyaning belgisi boshqa partiya raqamlarini o'zgartirmasin. Hisobga (qatorlar, lotlar,
+   * ta'minlash, FIFO) esa faqat «Uzum uchun» partiyalar kiradi.
+   */
   const links = resolveRowLinks(
     batchRecs.map((b) => ({
       id: b.id,
@@ -181,7 +188,10 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
   );
 
   const lots: ProfitLotInput[] = [];
-  const batches: LoadedBatch[] = batchRecs.map((b, bi) => {
+  const batches: LoadedBatch[] = [];
+  batchRecs.forEach((b, bi) => {
+    // Shaxsiy yoki boshqa joyga xarid (forUzum: false) — hisobga umuman kirmaydi
+    if (!b.forUzum) return;
     const calc = calcBatch(b.rate, b.extra, b.items);
     const rows = b.items.map<LoadedRow>((it, ri) => {
       const r = calc.rows[ri];
@@ -222,7 +232,7 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       return row;
     });
     const undistributed = calc.totals.extra - calc.rows.reduce((a, r) => a + r.extraShare, 0);
-    return { id: b.id, name: b.name, createdAt: b.createdAt, undistributed, rows };
+    batches.push({ id: b.id, name: b.name, createdAt: b.createdAt, undistributed, rows });
   });
 
   // ── Katalog: kod → SKU'lar ──
