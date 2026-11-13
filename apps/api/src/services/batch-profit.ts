@@ -685,7 +685,9 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
    *    qolmasin), har dona o'z dalili kuni bilan: buyurtmasiz kamayish yoki qaytmagan
    *    buyurtma. Qabuldan keyingi kun (settling) — oxirgi ishonchli yozuvdan oshmaydi;
    *  • qabulda kam chiqqani — o'sha ta'minlash sotuvga chiqargan qatorga (bir xil kodli
-   *    avia va avto qatorlarda — aynan o'sha jo'natmaniki), qabul kuni boshida.
+   *    avia va avto qatorlarda — aynan o'sha jo'natmaniki), qabul kuni boshida. Faqat
+   *    partiyaning o'z donasi yetmagan qismi (pastda): nakladnoyda ortiq yozilgani yo'qotish
+   *    emas — bu yerda «Yo'qotilganlar»dagi Uzum yozuvidan kam bo'lishi mumkin.
    */
   const outflows: ProfitOutflowInput[] = [];
   /** Kod → Uzum'da hozir: sotuvda va sotuvdan tashqari (oxirgi qoldiq) */
@@ -808,23 +810,79 @@ export async function loadBatchProfit(companyId: string, now: Date = new Date())
       }
     }
 
-    // Qabulda kam chiqqani — o'sha ta'minlash sotuvga chiqargan qator(lar)ga, qabul kuni boshida (shu kungi sotuvdan oldin)
+    /*
+     * Qabulda kam chiqqani — o'sha ta'minlash sotuvga chiqargan qator(lar)ga, qabul kuni boshida
+     * (shu kungi sotuvdan oldin). Faqat partiyaning o'z donasi yetmagan qismi: nakladnoyda ortiq
+     * yozilgan dona yo'qotish emas (egasining 3-Partiyasi, 2026-11-13: R1 qatori 48 dona,
+     * nakladnoyda 49, Uzum 48 qabul qilgan — "sotuvga endi chiqdi, nega bittasi yo'qolgan?").
+     * Har kamomad faqat o'z kunigacha bo'lgan dalil bilan o'lchanadi — keyingi ta'minlash o'tgan
+     * kunni o'zgartirmaydi: shu kungacha sotuvga chiqqan, kod orqali bog'langan qatorlar soni,
+     * minus ularni sotuvga chiqargan ta'minlashlar va shu ta'minlashning o'zi bu partiya uchun
+     * qabul qilgani, minus guruhga avvalroq yozilgan kamomad. Hech bir guruh qatorini sotuvga
+     * chiqarmagan ta'minlash («Keldi» belgilanmagan qator tovari, qayta yuborilgan dona) hisobga
+     * kirmaydi — haqiqiy yo'qotishni yashirmasin. Bir qator ikki ta'minlashda kelsa va birinchisida
+     * ortiq yozilgan bo'lsa — kamomad avvalgidek yoziladi (oldindan bilib bo'lmaydi). Tartib
+     * bazadan emas: kun, nakladnoy, kod — natija har safar bir xil.
+     */
     const supplyIndex = new Map(supplies.map((s, si) => [s.id, si]));
-    for (const sh of balances.shortages) {
-      const code = codeOfSku.get(sh.skuId);
-      const si = supplyIndex.get(sh.shipmentId);
-      if (!code || si === undefined || sh.sent <= sh.accepted) continue;
+    /** Ta'minlashdagi kod qaysi partiyaniki: kodi bo'yicha qo'shilgani, bo'lmasa asosiy partiya (kodi bo'lsa) */
+    const batchOfCode = (si: number, code: string): number | undefined => {
       const owned = owner[si];
-      const bi = extra[si].get(code) ?? (owned !== null && batchCodes[owned].has(code) ? owned : undefined);
+      return extra[si].get(code) ?? (owned !== null && batchCodes[owned].has(code) ? owned : undefined);
+    };
+    const shortList = balances.shortages
+      .flatMap((sh) => {
+        const code = codeOfSku.get(sh.skuId);
+        const si = supplyIndex.get(sh.shipmentId);
+        return code && si !== undefined && sh.sent > sh.accepted ? [{ code, si, units: sh.sent - sh.accepted }] : [];
+      })
+      .sort(
+        (a, b) =>
+          supplies[a.si].day.localeCompare(supplies[b.si].day) ||
+          supplies[a.si].code.localeCompare(supplies[b.si].code) ||
+          a.code.localeCompare(b.code),
+      );
+    /** Shu yerda yozilgan kamomadlar: guruhga avvalroq yozilgani keyingisining chegarasidan ayriladi */
+    const booked: { bi: number; lots: number[]; units: number }[] = [];
+    for (const { code, si, units: short } of shortList) {
+      const bi = batchOfCode(si, code);
       // Partiyaga tegishli bo'lmagan ta'minlash — u eski qoldiq hisobida, partiyalarga ta'siri yo'q
       if (bi === undefined) continue;
       const day = supplies[si].day;
-      const onSale = batches[bi].rows.filter((r) => r.lot >= 0 && lots[r.lot].codes.includes(code) && lots[r.lot].availableFrom !== null);
+      // Shu kungacha sotuvga chiqqan qatorlar (sotuvga chiqqan kuni — uni olib kelgan ta'minlash kuni)
+      const onSaleBy = batches[bi].rows
+        .filter((r) => r.lot >= 0 && lots[r.lot].availableFrom !== null && (lots[r.lot].availableFrom as string) <= day)
+        .map((r) => r.lot);
       const pins = [
-        ...onSale.filter((r) => lots[r.lot].availableFrom === day),
-        ...onSale.filter((r) => (lots[r.lot].availableFrom as string) < day),
-      ].map((r) => r.lot);
-      if (pins.length) outflows.push({ code, day, at: 0, units: sh.sent - sh.accepted, kind: 'lost', lot: pins });
+        ...onSaleBy.filter((li) => lots[li].codes.includes(code) && lots[li].availableFrom === day),
+        ...onSaleBy.filter((li) => lots[li].codes.includes(code) && (lots[li].availableFrom as string) < day),
+      ];
+      if (!pins.length) continue;
+      // Guruh: shu koddan boshlab umumiy kodi bor qatorlar (bir qatorda bir nechta kod bo'ladi)
+      const groupCodes = new Set([code]);
+      const group = new Set<number>();
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const li of onSaleBy) {
+          if (group.has(li) || !lots[li].codes.some((c) => groupCodes.has(c))) continue;
+          group.add(li);
+          for (const c of lots[li].codes) groupCodes.add(c);
+          grew = true;
+        }
+      }
+      const feedDays = new Set([...group].map((li) => lots[li].availableFrom as string));
+      let accepted = 0;
+      for (const s of suppliesOfBatch[bi]) {
+        if (s.status !== 'accepted' || (s.id !== supplies[si].id && !feedDays.has(s.day))) continue;
+        const ssi = supplyIndex.get(s.id) as number;
+        for (const c of groupCodes) if (batchOfCode(ssi, c) === bi) accepted += s.acceptedBy.get(c) ?? 0;
+      }
+      const before = booked.filter((x) => x.bi === bi && x.lots.some((li) => group.has(li))).reduce((a, x) => a + x.units, 0);
+      const room = [...group].reduce((a, li) => a + lots[li].qty, 0) - accepted - before;
+      const units = Math.min(short, room);
+      if (units <= 0) continue;
+      booked.push({ bi, lots: pins, units });
+      outflows.push({ code, day, at: 0, units, kind: 'lost', lot: pins });
     }
   }
 
