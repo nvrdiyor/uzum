@@ -497,6 +497,13 @@ router.get(
  * `updatedAt` ATAYLAB o'zgartirilmaydi: u partiya mazmunining versiyasi
  * (ochiq jadval shu bo'yicha "boshqa joyda o'zgargan" deb tekshiradi) —
  * ro'yxatdagi o'rin almashgani mazmunni o'zgartirmaydi.
+ *
+ * Versiya solishtirib yoziladi (PUT /:id/uzum kabi): o'qish va yozish orasida
+ * avtomatik saqlash yangi versiya yozib ulgursa, eski qiymat qaytarib yozilmaydi —
+ * aks holda ochiq sahifaning keyingi saqlashi "boshqa joyda o'zgargan" bo'lib
+ * qolardi, eski oyna esa qulfni aylanib o'tardi. Mos kelmaganlari yangi versiyasi
+ * bilan qayta yoziladi. Yozuvlar id tartibida: ikki oynaning bir vaqtdagi
+ * tartiblashi bir-birini kutadi, o'zaro tiqilib qolmaydi.
  */
 router.put(
   '/order',
@@ -507,6 +514,7 @@ router.put(
 
     const own = await prisma.purchaseBatch.findMany({
       where: { companyId: company.id },
+      orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, updatedAt: true },
     });
     const byId = new Map(own.map((b) => [b.id, b.updatedAt]));
@@ -515,11 +523,29 @@ router.put(
 
     // Ro'yxatga kirmay qolganlar (boshqa oynada qo'shilgan) oxiriga, hozirgi tartibida
     const rest = own.map((b) => b.id).filter((id) => !unique.includes(id));
-    await prisma.$transaction(
-      [...unique, ...rest].map((id, position) =>
-        prisma.purchaseBatch.update({ where: { id }, data: { position, updatedAt: byId.get(id) } }),
-      ),
-    );
+    let pending = [...unique, ...rest]
+      .map((id, position) => ({ id, position, version: byId.get(id) as Date }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (let attempt = 0; pending.length > 0; attempt += 1) {
+      if (attempt === 5) throw AppError.conflict('Partiyalar hozir saqlanmoqda — tartibni qayta suring');
+      const written = await prisma.$transaction(
+        pending.map((p) =>
+          prisma.purchaseBatch.updateMany({
+            where: { id: p.id, companyId: company.id, updatedAt: p.version },
+            data: { position: p.position, updatedAt: p.version },
+          }),
+        ),
+      );
+      const missed = pending.filter((_, i) => written[i].count === 0);
+      if (missed.length === 0) break;
+      // Shu orada saqlanganlari — yangi versiyasi bilan qayta; o'chirilgani tushib qoladi
+      const fresh = await prisma.purchaseBatch.findMany({
+        where: { companyId: company.id, id: { in: missed.map((p) => p.id) } },
+        select: { id: true, updatedAt: true },
+      });
+      const latest = new Map(fresh.map((b) => [b.id, b.updatedAt]));
+      pending = missed.filter((p) => latest.has(p.id)).map((p) => ({ ...p, version: latest.get(p.id) as Date }));
+    }
     res.json({ ok: true });
   }),
 );
