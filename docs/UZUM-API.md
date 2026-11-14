@@ -310,10 +310,32 @@ bilan keladi. Farqni `returnCause` beradi (jonli do'kon 130436, 2026-09-26):
 | `returnCause` | `dateIssued` | Sotuvchi tilida |
 | --- | --- | --- |
 | `Отменён до получения` | yo'q | **bekor qilish** — xaridor olmasdan bekor qildi |
-| `Не подошёл размер`, `Клиент не указал причину`, `Товара не оказалось в заказе` | bor | **qaytarish** — punktga keldi, olmadi yoki olib qaytardi |
+| `Товара не оказалось в заказе` | ko'pincha yo'q | **Uzum yo'qotgan** — buyurtmada tovar bo'lmagan (pastda) |
+| `Не подошёл размер`, `Клиент не указал причину`, `Брак`, `BAD_QUALITY`, `PHOTO_MISMATCH` | bor | **qaytarish** — punktga keldi, olmadi yoki olib qaytardi |
 
 Sabab bo'lmasa — `dateIssued` bo'yicha. `OrderItem.status` = `canceled` | `returned`,
 asl matn `OrderItem.returnCause` da. "Qaytarishlar" sahifasi aynan shulardan quriladi.
+Qoida bitta joyda — `packages/shared/src/return-cause.ts`.
+
+**"Товара не оказалось в заказе" (2026-11-14).** Buyurtmada tovar bo'lmagan:
+Uzum uni omborda topmagan yoki yetkazishda yo'qotgan. Bu xaridor qaytarishi
+EMAS — tovar sotuvchining omboriga qaytmaydi. FBO'da Uzum aybi (oferta 8.1):
+kompensatsiya qo'llanma 6.8 bo'yicha (narx − komissiya), lekin avtomatik
+emas — da'vo bilan, yig'indi kamida 500 000 so'm, 60 kungacha. Rasmiy
+hujjatda bu sabab matni alohida ta'riflanmagan. Ilgari "qaytarish" deb yozilib, qaytarish
+foizini oshirardi va bot "Qaytarildi" derdi (egasining №141386381). Jonli
+bazada 4 ta shunday pozitsiya: 3 tasida `dateIssued` yo'q (xaridorga
+topshirilmasdan bekor bo'lgan), bittasida bor (xaridor buyurtmani olgan, tovar
+ichida bo'lmagan); hammasida `commission`, `sellerProfit`, `withdrawnProfit` 0.
+Kompensatsiya API'da hali ko'rinmagan: 2 oylik sentyabr holatida ham na
+buyurtma satrida, na `/v1/finance/expenses` da (balans Uzumniki bilan 502 so'm
+aniqlikda mos keladi). Endi:
+- pozitsiya `canceled` (`returnedAt` yo'q) — qaytarish foiziga kirmaydi;
+- FBO bo'lsa — "Uzum yo'qotgan": bot "Uzum yo'qotdi … kompensatsiya taxminan"
+  deydi, "Qaytarishlar" sahifasida alohida ro'yxat, tovar balansi uni omborga
+  qaytishini kutmasdan darhol yo'qotish deb sanaydi (partiya foydasida "yo'qolgan");
+- FBS/DBS da buyurtmani sotuvchi yig'adi — oddiy bekor qilish, sababi bilan.
+14.11 gacha yozilgan qatorlar `scripts/missing-in-order-migrate.ts` bilan tuzatiladi.
 
 > `/v1/shop/{shopId}/return` — xaridor qaytarishi EMAS, Uzum omboridan sotuvchiga
 > qaytarish nakladnoylari. Ilgari sahifa shundan o'qib, 13 ta qaytgan pozitsiyada 0 ko'rsatardi.

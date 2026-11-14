@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, BarChart3, CalendarRange, Coins, Download, Percent, PieChart, Receipt, Undo2 } from '@/components/icons';
-import { type ReturnKind, type ReturnRow, type ReturnsResponse } from '@savdoiq/shared';
+import { type ReturnRow, type ReturnsResponse, type ReturnsView } from '@savdoiq/shared';
 import { registerNamespace, useFormat, useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { useReturnReasonLabel } from '@/lib/returnReasons';
@@ -81,7 +81,7 @@ registerNamespace('returns', {
     'kind.canceled': 'Bekor qilishlar',
     'kind.all': 'Hammasi',
     'kind.returnedHint': 'Tovar punktga keldi: xaridor olmadi yoki oldi-yu qaytardi',
-    'kind.canceledHint': 'Xaridor buyurtma berib, tovarni olmasdan bekor qildi',
+    'kind.canceledHint': 'Tovar xaridorga yetmadi: xaridor olmasdan bekor qildi yoki buyurtmada tovar bo‘lmagan (Uzum yo‘qotgan)',
     'kind.allHint': 'Qaytarishlar va bekor qilishlar birga',
     'period.hint': 'Davr — buyurtma sanasi bo‘yicha, Boshqaruv paneli va Sotuv voronkasi bilan bir xil.',
     'col.kind': 'Turi',
@@ -109,6 +109,23 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'Tanlangan davrda bekor qilish qayd etilmagan',
     'empty.title.all': 'Qaytarish va bekor qilishlar yo‘q',
     'empty.hint.all': 'Tanlangan davrda hech narsa qaytmagan va bekor qilinmagan',
+    'kind.missing': 'Uzum yo‘qotgan',
+    'kind.missingHint':
+      'Buyurtmada tovar bo‘lmagan: Uzum uni omborda topmagan yoki yetkazishda yo‘qotgan. Tovar sizga qaytmaydi — Uzum kompensatsiya to‘lashi kerak (narx − komissiya), da’vo «Yo‘qotilganlar» bo‘limidan yuboriladi. Bekor qilishlar ichida ham sanaladi',
+    'status.missing': 'Uzum yo‘qotgan',
+    'badge.missing': 'Kompensatsiya — da’vo bilan',
+    'kpi.count.missing': 'Uzum yo‘qotgan dona',
+    'kpi.amount.missing': 'Yo‘qolgan tovar summasi',
+    'kpi.amountHint.missing': 'Sotuv narxida; kompensatsiya — narx − komissiya',
+    'kpi.rate.missing': 'Yo‘qotish ulushi',
+    'kpi.rateHint.missing': 'Buyurtma qilingan barcha donadan',
+    'kpi.avg.missing': 'O‘rtacha qiymat',
+    'chart.reasonsSub.missing': 'Sabablar taqsimoti',
+    'chart.dynamicsSub.missing': 'Uzum yo‘qotgan dona — buyurtma kuni bo‘yicha',
+    'chart.count.missing': 'Uzum yo‘qotgan',
+    'table.title.missing': 'Uzum yo‘qotgan tovarlar',
+    'empty.title.missing': 'Uzum yo‘qotgan tovar yo‘q',
+    'empty.hint.missing': 'Tanlangan davrda buyurtmada tovar bo‘lmagan holat qayd etilmagan',
   },
   ru: {
     title: 'Возвраты',
@@ -155,7 +172,7 @@ registerNamespace('returns', {
     'kind.canceled': 'Отмены',
     'kind.all': 'Все',
     'kind.returnedHint': 'Товар пришёл в пункт выдачи: покупатель не забрал или забрал и вернул',
-    'kind.canceledHint': 'Покупатель отменил заказ, не получив товар',
+    'kind.canceledHint': 'Товар не дошёл до покупателя: отменён до получения или товара не оказалось в заказе (утерян Uzum)',
     'kind.allHint': 'Возвраты и отмены вместе',
     'period.hint': 'Период — по дате заказа, как на дашборде и в воронке продаж.',
     'col.kind': 'Тип',
@@ -183,6 +200,23 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'За выбранный период отмены не зафиксированы',
     'empty.title.all': 'Возвратов и отмен нет',
     'empty.hint.all': 'За выбранный период ничего не вернули и не отменили',
+    'kind.missing': 'Утеряно Uzum',
+    'kind.missingHint':
+      'Товара не оказалось в заказе: Uzum не нашёл его на складе или потерял при доставке. Товар к вам не вернётся — Uzum должен выплатить компенсацию (цена − комиссия), претензия подаётся из раздела «Потери». Учитывается и в отменах',
+    'status.missing': 'Утеряно Uzum',
+    'badge.missing': 'Компенсация — по претензии',
+    'kpi.count.missing': 'Утеряно Uzum, шт.',
+    'kpi.amount.missing': 'Сумма утерянного товара',
+    'kpi.amountHint.missing': 'По цене продажи; компенсация — цена − комиссия',
+    'kpi.rate.missing': 'Доля утерь',
+    'kpi.rateHint.missing': 'От всех заказанных штук',
+    'kpi.avg.missing': 'Средняя стоимость',
+    'chart.reasonsSub.missing': 'Распределение причин',
+    'chart.dynamicsSub.missing': 'Утерянные Uzum штуки — по дню заказа',
+    'chart.count.missing': 'Утеряно Uzum',
+    'table.title.missing': 'Товары, утерянные Uzum',
+    'empty.title.missing': 'Утерянных Uzum товаров нет',
+    'empty.hint.missing': 'За выбранный период не было заказов, в которых не оказалось товара',
   },
   en: {
     title: 'Returns',
@@ -229,7 +263,7 @@ registerNamespace('returns', {
     'kind.canceled': 'Cancellations',
     'kind.all': 'All',
     'kind.returnedHint': 'Reached the pickup point: the buyer didn’t collect it, or collected and returned it',
-    'kind.canceledHint': 'The buyer cancelled the order before receiving it',
+    'kind.canceledHint': 'The item never reached the buyer: cancelled before receipt, or missing from the order (lost by Uzum)',
     'kind.allHint': 'Returns and cancellations together',
     'period.hint': 'The period is by order date, the same as on the dashboard and in the sales funnel.',
     'col.kind': 'Type',
@@ -257,6 +291,23 @@ registerNamespace('returns', {
     'empty.hint.canceled': 'Nothing was cancelled in the selected period',
     'empty.title.all': 'No returns or cancellations',
     'empty.hint.all': 'Nothing was returned or cancelled in the selected period',
+    'kind.missing': 'Lost by Uzum',
+    'kind.missingHint':
+      'The item was missing from the order: Uzum couldn’t find it at the warehouse or lost it in delivery. It won’t come back to you — Uzum owes compensation (price − commission); file the claim from the Losses section. Also counted among cancellations',
+    'status.missing': 'Lost by Uzum',
+    'badge.missing': 'Compensation — on claim',
+    'kpi.count.missing': 'Units lost by Uzum',
+    'kpi.amount.missing': 'Value of lost goods',
+    'kpi.amountHint.missing': 'At sale price; compensation is price − commission',
+    'kpi.rate.missing': 'Loss rate',
+    'kpi.rateHint.missing': 'Of all ordered units',
+    'kpi.avg.missing': 'Average value',
+    'chart.reasonsSub.missing': 'How reasons are distributed',
+    'chart.dynamicsSub.missing': 'Units lost by Uzum by order date',
+    'chart.count.missing': 'Lost by Uzum',
+    'table.title.missing': 'Goods lost by Uzum',
+    'empty.title.missing': 'Nothing lost by Uzum',
+    'empty.hint.missing': 'No order in the selected period was missing its item',
   },
 });
 
@@ -287,7 +338,10 @@ const STATUS_TONE: Record<string, Tone> = {
   rejected: 'danger',
 };
 
-type Kind = ReturnKind | 'all';
+/** `missing` — bekor qilishlar ichidan Uzum yo'qotganlari (bot "Uzum yo'qotdi" xabari shu ro'yxatni ochadi) */
+type Kind = ReturnsView;
+
+const LINK_KINDS: readonly Kind[] = ['canceled', 'missing', 'all'];
 
 export default function Returns() {
   const t = useT('returns');
@@ -297,11 +351,11 @@ export default function Returns() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
-  // Telegram xabaridagi havola (?kind=canceled) kerakli ro'yxatni ochadi
+  // Telegram xabaridagi havola (?kind=canceled, ?kind=missing) kerakli ro'yxatni ochadi
   const [params] = useSearchParams();
   const [kind, setKind] = useState<Kind>(() => {
-    const fromLink = params.get('kind');
-    return fromLink === 'canceled' || fromLink === 'all' ? fromLink : 'returned';
+    const fromLink = params.get('kind') as Kind | null;
+    return fromLink && LINK_KINDS.includes(fromLink) ? fromLink : 'returned';
   });
 
   const query = useMemo(
@@ -403,9 +457,17 @@ export default function Returns() {
         key: 'reason',
         header: t('col.reason'),
         render: (r) => (
-          <span className="line-clamp-2 max-w-[200px] text-sm text-ink-soft" title={r.reason ?? undefined}>
-            {reasonLabel(r.reason)}
-          </span>
+          <div className="max-w-[200px]">
+            <span className="line-clamp-2 text-sm text-ink-soft" title={r.reason ?? undefined}>
+              {reasonLabel(r.reason)}
+            </span>
+            {/* Uzum yo'qotgani — tovar qaytmaydi, pulini Uzum to'laydi (o'z ro'yxatida bu takror bo'lardi) */}
+            {r.missing && kind !== 'missing' ? (
+              <Badge tone="violet" className="mt-1">
+                {t('badge.missing')}
+              </Badge>
+            ) : null}
+          </div>
         ),
         sortValue: (r) => r.reason ?? '',
       },
@@ -415,11 +477,11 @@ export default function Returns() {
               key: 'status',
               header: t('col.kind'),
               render: (r: ReturnRow) => (
-                <Badge tone={STATUS_TONE[r.status] ?? 'muted'} dot>
-                  {STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
+                <Badge tone={r.missing ? 'violet' : (STATUS_TONE[r.status] ?? 'muted')} dot>
+                  {r.missing ? t('status.missing') : STATUS_KEY[r.status] ? t(STATUS_KEY[r.status]) : r.status}
                 </Badge>
               ),
-              sortValue: (r: ReturnRow) => r.status,
+              sortValue: (r: ReturnRow) => (r.missing ? 'missing' : r.status),
             },
           ]
         : []),
@@ -484,6 +546,10 @@ export default function Returns() {
           options={[
             { value: 'returned', label: t('kind.returned'), count: data?.counts.returned.qty },
             { value: 'canceled', label: t('kind.canceled'), count: data?.counts.canceled.qty },
+            // Uzum yo'qotgani — bo'lsagina (ko'p sotuvchida umuman yo'q); havola bilan ochilganda doim
+            ...((data?.counts.missing?.qty ?? 0) > 0 || kind === 'missing'
+              ? [{ value: 'missing' as const, label: t('kind.missing'), count: data?.counts.missing?.qty }]
+              : []),
             { value: 'all', label: t('kind.all') },
           ]}
         />
@@ -530,7 +596,7 @@ export default function Returns() {
               value={f.money(totals.amount)}
               hint={tk('kpi.amountHint')}
               icon={<Coins className="h-5 w-5" />}
-              tone={kind === 'canceled' ? 'warn' : 'danger'}
+              tone={kind === 'canceled' ? 'warn' : kind === 'missing' ? 'violet' : 'danger'}
               loading={isLoading}
             />
             <StatCard
@@ -635,7 +701,8 @@ export default function Returns() {
                         {
                           key: 'qty',
                           name: tk('chart.count'),
-                          color: kind === 'canceled' ? CHART_COLORS.warn : CHART_COLORS.danger,
+                          color:
+                            kind === 'canceled' ? CHART_COLORS.warn : kind === 'missing' ? CHART_COLORS.violet : CHART_COLORS.danger,
                         },
                       ]}
                       showLegend={false}

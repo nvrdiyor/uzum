@@ -27,7 +27,7 @@ import {
   toUzumApiError,
   uzumErrorMessage,
 } from './http.js';
-import { payoutFeeKind } from '@savdoiq/shared';
+import { payoutFeeKind, returnCauseKind } from '@savdoiq/shared';
 import { fetchStorefrontReviews } from './storefront.js';
 import type {
   UzumClient,
@@ -264,18 +264,21 @@ function mapOrderStatus(raw: string): string {
 /**
  * Bekor qilingan pozitsiya — xaridor tovarni olmasdan bekor qilganmi yoki
  * olgach qaytarganmi. Uzum ikkalasiga ham `status: CANCELED` beradi, farq
- * `returnCause` da (jonli do'kon ma'lumotida tekshirilgan):
+ * `returnCause` da (jonli do'kon ma'lumotida tekshirilgan, shared return-cause.ts):
  *
  *   "Отменён до получения"              → bekor qilish (topshirilmagan)
- *   "Не подошёл размер", "Клиент не указал причину",
- *   "Товара не оказалось в заказе" ...  → qaytarish (topshirilgandan keyin)
+ *   "Товара не оказалось в заказе"      → bekor qilish: buyurtmada tovar bo'lmagan,
+ *                                          Uzum yo'qotgan — xaridorga yetmagan va
+ *                                          omborga qaytmaydi (2026-11-14, ilgari
+ *                                          "qaytarish" deb yozilardi)
+ *   "Не подошёл размер", "Клиент не указал причину", "Брак" ...
+ *                                        → qaytarish (topshirilgandan keyin)
  *
  * Sabab kelmasa — topshirilgan sana (`dateIssued`) bo'yicha.
  */
-const CANCEL_BEFORE_RECEIPT = /до\s+получени|before\s+recei|qabul\s+qilishdan\s+oldin/i;
-
 function classifyReturn(returnCause: string, issued: boolean): 'canceled' | 'returned' {
-  if (returnCause) return CANCEL_BEFORE_RECEIPT.test(returnCause) ? 'canceled' : 'returned';
+  const kind = returnCauseKind(returnCause);
+  if (kind) return kind === 'returned' ? 'returned' : 'canceled';
   return issued ? 'returned' : 'canceled';
 }
 

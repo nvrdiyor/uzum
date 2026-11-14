@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
+  isMissingInOrder,
   round,
   toISODate,
   toBusinessDate,
@@ -116,7 +117,8 @@ interface EventRef {
   orderedAt: Date;
   /** Tovar omborga qaytishi mumkin bo'lgan eng erta payt */
   at: Date;
-  kind: 'canceled' | 'returned';
+  /** missing — buyurtmada tovar bo'lmagan (Uzum yo'qotgan): omborga qaytishi kutilmaydi */
+  kind: 'canceled' | 'returned' | 'missing';
   qty: number;
   cause: string | null;
   expectedBy: Date;
@@ -253,12 +255,19 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
     .map((o) => {
       // Qachondan kutiladi: qaytarilgan kun → bekor bo'lgani ko'rilgan payt → (ikkalasi ham noma'lum) buyurtma kuni
       const at = o.returnedAt ?? o.canceledAt ?? o.orderedAt;
-      const waitDays = o.returnedAt ? RETURNED_WAIT_DAYS : o.canceledAt ? CANCEL_WAIT_DAYS : RETURN_WAIT_DAYS;
+      /*
+       * "Товара не оказалось в заказе" — buyurtmada tovar bo'lmagan: Uzum uni
+       * omborda topmagan yoki yetkazishda yo'qotgan, omborga qaytadigan narsa
+       * yo'q. Ilgari u ham 10–14 kun "qaytish yo'lida" turardi va yo'qotish
+       * kechikib chiqardi (egasining №141386381, 2026-11-14) — endi darhol.
+       */
+      const missing = isMissingInOrder(o.cause);
+      const waitDays = missing ? 0 : o.returnedAt ? RETURNED_WAIT_DAYS : o.canceledAt ? CANCEL_WAIT_DAYS : RETURN_WAIT_DAYS;
       return {
         orderId: o.orderId,
         orderedAt: o.orderedAt,
         at,
-        kind: o.status === 'returned' ? ('returned' as const) : ('canceled' as const),
+        kind: missing ? ('missing' as const) : o.status === 'returned' ? ('returned' as const) : ('canceled' as const),
         qty: o.returnedQty,
         left: o.returnedQty,
         cause: o.cause,
@@ -270,20 +279,24 @@ export function reconcileSku(inp: BalanceInput): BalanceResult {
   /*
    * Omborga kelgan har bir dona o'sha kungacha bo'lgan ENG YANGI qaytarishga
    * tegishli deb olinadi: tez bekor qilingan buyurtma tovari o'sha kuniyoq
-   * bo'shaydi, bir oy oldingi qaytarish esa endi kelishi dargumon.
+   * bo'shaydi, bir oy oldingi qaytarish esa endi kelishi dargumon. Uzum
+   * yo'qotgan dona (missing) kelgan tovarni o'ziga olmaydi — u qaytmaydi.
    */
   const book = ledger(inp);
   for (const arrival of book.arrivals) {
     for (let n = 0; n < arrival.qty; n += 1) {
-      const match = events.find((e) => e.left > 0 && dayOf(e.at) <= arrival.day);
+      const match = events.find((e) => e.kind !== 'missing' && e.left > 0 && dayOf(e.at) <= arrival.day);
       if (!match) break;
       match.left -= 1;
     }
   }
 
   const out = events.filter((e) => e.left > 0).map(({ left, ...e }) => ({ ...e, qty: left }));
-  const waiting = out.filter((e) => e.expectedBy.getTime() >= inp.now.getTime());
-  const suspects = out.filter((e) => e.expectedBy.getTime() < inp.now.getTime());
+  const waiting = out.filter((e) => e.kind !== 'missing' && e.expectedBy.getTime() >= inp.now.getTime());
+  // Uzum yo'qotgani birinchi — u aniq dalil, qolganlari faqat taxmin (dalil ro'yxati kesiladi)
+  const suspects = out
+    .filter((e) => e.kind === 'missing' || e.expectedBy.getTime() < inp.now.getTime())
+    .sort((a, b) => Number(b.kind === 'missing') - Number(a.kind === 'missing'));
 
   const inReturn = Math.min(gap, sum(waiting.map((e) => e.qty)));
   const unaccounted = gap - inReturn;
@@ -459,6 +472,24 @@ async function loadCompensation(
     }
   }
   return out;
+}
+
+/**
+ * Berilgan SKU'lar uchun kompensatsiya taxmini (6.8) — «Yo'qotilganlar»
+ * sahifasidagi summa bilan bir xil hisob. Bot "Uzum yo'qotdi" xabarida
+ * (buyurtmada tovar bo'lmagan) Uzum qancha to'lashi kerakligini aytadi.
+ */
+export async function compensationFor(
+  skuIds: readonly string[],
+  now: Date = new Date(),
+): Promise<Map<string, CompensationBasis>> {
+  const ids = [...new Set(skuIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const skus = await prisma.sku.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, price: true, commissionPct: true },
+  });
+  return loadCompensation(skus, now);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { isMissingInOrder } from '@savdoiq/shared';
 import { registerNamespace, useT } from '@/i18n';
 
 /*
@@ -46,7 +47,6 @@ const REASON_RULES: ReadonlyArray<readonly [RegExp, ReturnReasonKey]> = [
   [/до\s+получени/i, 'cancelBeforeReceipt'],
   [/размер/i, 'sizeMismatch'],
   [/не\s+указал\s+причин/i, 'noReason'],
-  [/не\s+оказалось/i, 'missingItem'],
 ];
 
 /** Server sababsiz yozuvlarni shu matn bilan guruhlaydi (routes/warehouse.ts NO_REASON) */
@@ -56,6 +56,8 @@ const SERVER_NO_REASON = 'Sabab ko‘rsatilmagan';
 export function returnReasonKey(raw: string | null | undefined): ReturnReasonKey | 'unknown' | null {
   const value = raw?.trim();
   if (!value || value === SERVER_NO_REASON) return 'unknown';
+  // Buyurtmada tovar bo'lmagan — server tasnifi bilan AYNAN bir qoida (shared return-cause.ts)
+  if (isMissingInOrder(value)) return 'missingItem';
   return REASON_RULES.find(([re]) => re.test(value))?.[1] ?? null;
 }
 

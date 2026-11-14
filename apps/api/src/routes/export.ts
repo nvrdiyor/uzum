@@ -1606,19 +1606,22 @@ router.get(
 
     // Xaridor qaytarishlari va bekor qilishlari — buyurtma pozitsiyalaridan (sahifa bilan bir xil manba)
     const q = req.query as Record<string, string | undefined>;
-    const kind = q.kind === 'canceled' || q.kind === 'all' ? q.kind : 'returned';
+    // `missing` — bekor qilishlar ichidan Uzum yo'qotganlari (sahifadagi "Uzum yo'qotgan" tabi)
+    const kind = q.kind === 'canceled' || q.kind === 'all' || q.kind === 'missing' ? q.kind : 'returned';
 
     const [allLines, sales] = await Promise.all([
       loadReturnLines(storeIds, range.from, range.toExclusive),
       aggregateSales(storeIds, range.from, range.toExclusive),
     ]);
-    const lines = kind === 'all' ? allLines : allLines.filter((l) => l.kind === kind);
+    const lines =
+      kind === 'all' ? allLines : kind === 'missing' ? allLines.filter((l) => l.missing) : allLines.filter((l) => l.kind === kind);
     const total = lines.length;
 
     let soldUnits = 0;
     for (const agg of sales.values()) soldUnits += agg.units;
     const returnedUnits = allLines.filter((l) => l.kind === 'returned').reduce((n, l) => n + l.qty, 0);
     const canceledUnits = allLines.filter((l) => l.kind === 'canceled').reduce((n, l) => n + l.qty, 0);
+    const missingUnits = allLines.filter((l) => l.missing).reduce((n, l) => n + l.qty, 0);
     const returnRate = pct(returnedUnits, soldUnits + returnedUnits);
     const cancelRate = pct(canceledUnits, soldUnits + canceledUnits);
 
@@ -1641,7 +1644,7 @@ router.get(
       l.qty,
       round(l.amount),
       dash(l.reason),
-      RETURN_STATUS_LABEL[l.kind] ?? l.kind,
+      l.missing ? 'Uzum yo‘qotgan' : (RETURN_STATUS_LABEL[l.kind] ?? l.kind),
     ]);
 
     const wb = newWorkbook();
@@ -1664,6 +1667,8 @@ router.get(
       ['Qaytarish ulushi, %', returnRate],
       ['Bekor qilingan dona', canceledUnits],
       ['Bekor qilish ulushi, %', cancelRate],
+      // Bekor qilinganlar ichidan: buyurtmada tovar bo'lmagan (FBO) — Uzum kompensatsiya qiladi
+      ['shundan Uzum yo‘qotgan dona', missingUnits],
     ];
     addSheet(wb, { name: 'Xulosa', columns: summaryColumns, rows: summaryRows });
 

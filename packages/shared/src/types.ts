@@ -2162,7 +2162,8 @@ export interface BalanceOrderRef {
   orderId: string;
   /** Buyurtma sanasi (ISO) */
   date: string;
-  kind: 'canceled' | 'returned';
+  /** missing — buyurtmada tovar bo'lmagan (Uzum yo'qotgan, omborga qaytishi kutilmaydi) */
+  kind: 'canceled' | 'returned' | 'missing';
   qty: number;
   /** Uzum bergan sabab (asl matni) */
   cause: string | null;
@@ -2356,17 +2357,32 @@ export interface ReturnRow {
   /** `kind` bilan bir xil — eski mijozlar uchun qoldirilgan */
   status: string;
   kind: ReturnKind;
+  /**
+   * Buyurtmada tovar bo'lmagan ("Товара не оказалось в заказе") — Uzum
+   * yo'qotgan: tovar qaytmaydi, Uzum kompensatsiya to'laydi. Bunday qator
+   * `kind: 'canceled'` (xaridorga yetmagan), bu belgi uni alohida ko'rsatadi.
+   */
+  missing?: boolean;
   /** Taxminiy qaytish sanasi (Uzum aniq sanani bermaydi); bo'lmasa buyurtma kuni */
   returnedAt: string;
   /** Buyurtma kuni, YYYY-MM-DD — davr va jadval tartibi shu bo'yicha */
   orderedAt: string;
 }
 
+/**
+ * "Qaytarishlar" sahifasidagi tanlov: qaytarishlar, bekor qilishlar, ular
+ * ichidan Uzum yo'qotganlari (`missing`) va hammasi.
+ */
+export type ReturnsView = ReturnKind | 'missing' | 'all';
+
 export interface ReturnsResponse {
   /** Qaysi tur ko'rsatilmoqda */
-  kind: ReturnKind | 'all';
-  /** Ikkala tur bo'yicha davr jamlari — tanlovdan qat'i nazar */
-  counts: Record<ReturnKind, { qty: number; amount: number }>;
+  kind: ReturnsView;
+  /**
+   * Turlar bo'yicha davr jamlari — tanlovdan qat'i nazar. `missing` —
+   * bekor qilishlarning bir qismi (ularga ham kirgan).
+   */
+  counts: Record<ReturnKind | 'missing', { qty: number; amount: number }>;
   totals: { qty: number; amount: number; rate: number };
   byReason: { reason: string; qty: number; share: number }[];
   /** Kunlik qaytarishlar — BUTUN davr bo'yicha (jadval sahifasiga bog'liq emas) */
@@ -3392,6 +3408,12 @@ export interface ReturnsSummary {
   returned: { qty: number; amount: number; rate: number };
   /** Bekor qilingan dona, summa va ulush (%, 2 xona) */
   canceled: { qty: number; amount: number; rate: number };
+  /**
+   * Bekor qilinganlar ichidan buyurtmada tovar bo'lmagani ("Товара не оказалось
+   * в заказе") — Uzum yo'qotgan, kompensatsiya qiladi. `canceled` ga kirgan;
+   * ulush — buyurtma qilingan barcha donadan.
+   */
+  missing: { qty: number; amount: number; rate: number };
   /**
    * Qaytarishlar orasida eng ko'p uchragan HAQIQIY sabab — Uzum bergan asl
    * matn (sayt uni "Qaytarishlar" sahifasidagi qoidalar bilan tarjima qiladi).

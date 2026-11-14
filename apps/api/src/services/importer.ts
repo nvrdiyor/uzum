@@ -23,7 +23,9 @@ import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
   DEFAULTS,
+  isMissingInOrder,
   payoutFeeKind,
+  returnCauseKind,
   round,
   toISODate,
   type DeliveryType,
@@ -630,8 +632,14 @@ export interface NewSaleNotice {
  * haqda "sotildi" ham olmagan, demak aytadigan yangilik ham yo'q.
  */
 export interface OrderChangeNotice {
-  kind: 'canceled' | 'returned';
+  /**
+   * missing — buyurtmada tovar bo'lmagan ("Товара не оказалось в заказе"):
+   * Uzum yo'qotgan, tovar omborga qaytmaydi, kompensatsiya kutiladi.
+   */
+  kind: 'canceled' | 'returned' | 'missing';
   uzumOrderId: string;
+  /** Bizdagi SKU (kompensatsiya taxmini va yo'qotish xabari bilan bog'lash uchun) */
+  skuId: string | null;
   title: string;
   /** Shu sinxronda bekor bo'lgan yoki qaytgan dona */
   qty: number;
@@ -685,12 +693,6 @@ const SALE_STATUSES = new Set<OrderStatus>(['new', 'processing', 'delivered']);
 const NEW_SALES_CAP = 50;
 
 /**
- * Pozitsiya holati aniq bo'lmaganda (qisman qaytgan) sabab matnidan:
- * "Отменён до получения" — xaridor olmasdan bekor qilgan, qolgani — qaytarish.
- */
-const CANCELED_CAUSE = /до\s+получени|before\s+recei|qabul\s+qilishdan\s+oldin/i;
-
-/**
  * Buyurtmalar va ularning pozitsiyalari.
  * Tabiiy kalit: `Order(storeId, uzumOrderId)`. Pozitsiyalar buyurtma bilan birga
  * qayta yoziladi (avval o'chiriladi, keyin yangidan yaratiladi) — bu eng ishonchli idempotentlik.
@@ -736,6 +738,8 @@ export async function upsertOrders(
       select: {
         id: true,
         uzumOrderId: true,
+        // Saqlangan sxema — FBS/DBS ro'yxati bu safar kelmasa ham yo'qolmasin (pastda)
+        deliveryType: true,
         // Oldingi sinxronda xaridorga topshirilganmidi — "qabul qilib oldi" xabari uchun
         deliveredAt: true,
         // Oldingi holat — nima bekor bo'lgani/qaytganini va QACHON ko'rilganini bilish uchun
@@ -743,6 +747,8 @@ export async function upsertOrders(
       },
     });
     const byKey = new Map<string, string>();
+    /** Uzum buyurtma raqami → saqlangan sxema (FBO/FBS/DBS) */
+    const schemeBefore = new Map<string, string>();
     /** Uzum buyurtma raqami → oldingi sinxrondagi topshirilgan sana (bo'sh — hali yo'lda edi) */
     const deliveredBefore = new Map<string, Date | null>();
     /** Pozitsiya id'si → oldingi sinxrondagi qaytgan/bekor bo'lgan dona */
@@ -752,6 +758,7 @@ export async function upsertOrders(
     for (const o of existing) {
       if (o.uzumOrderId) {
         byKey.set(o.uzumOrderId, o.id);
+        schemeBefore.set(o.uzumOrderId, o.deliveryType);
         deliveredBefore.set(o.uzumOrderId, o.deliveredAt);
       }
       for (const it of o.items) {
@@ -772,7 +779,20 @@ export async function upsertOrders(
 
       const orderId = byKey.get(uzumOrderId) ?? stableId('or', storeId, uzumOrderId);
       const status = mapOrderStatus(order.status);
-      const deliveryType = mapDeliveryType(order.deliveryType);
+      /*
+       * Sxema: Uzum moliyaviy ro'yxatida u yo'q — jonli mijoz hammasini FBO deb
+       * oladi va faqat FBS/DBS ro'yxatidan aniqlashtiradi. O'sha so'rov xato
+       * bersa (yoki buyurtma u ro'yxatdan chiqib ketsa), FBS buyurtma "FBO"
+       * bo'lib qolardi — "buyurtmada tovar bo'lmagan" esa FBO'da "Uzum yo'qotdi"
+       * degani (sotuvchi o'zi yig'gan buyurtma uchun Uzum'dan pul so'rashga
+       * undardi). Buyurtma sxemasi o'zgarmaydi: saqlangan FBS/DBS ustun.
+       */
+      const incomingScheme = mapDeliveryType(order.deliveryType);
+      const storedScheme = schemeBefore.get(uzumOrderId);
+      const deliveryType: DeliveryType =
+        storedScheme && storedScheme !== 'FBO' && incomingScheme === 'FBO'
+          ? mapDeliveryType(storedScheme)
+          : incomingScheme;
       const orderedAt = toDate(order.orderedAt, new Date()) ?? new Date();
       const paidAt = toDate(order.paidAt);
       const deliveredAt = toDate(order.deliveredAt);
@@ -851,7 +871,16 @@ export async function upsertOrders(
         sumLogistics += logistics;
         sumQty += qty;
 
-        const lineStatus = text(it.status) ? mapItemStatus(it.status, itemStatus) : itemStatus;
+        const cause = text(it.returnCause);
+        /*
+         * "Товара не оказалось в заказе" — buyurtmada tovar bo'lmagan (Uzum
+         * yo'qotgan): xaridor tovarni olmagan, demak bu qaytarish EMAS — bekor
+         * qilingan pozitsiya, sababi bilan (shared return-cause.ts). Mijoz va
+         * namuna ma'lumoti uni "qaytarilgan" deb bersa ham shu yerda tuzatiladi,
+         * aks holda qaytarish foizi Uzum aybi bilan oshardi.
+         */
+        const mappedStatus = text(it.status) ? mapItemStatus(it.status, itemStatus) : itemStatus;
+        const lineStatus = mappedStatus === 'returned' && isMissingInOrder(cause) ? 'canceled' : mappedStatus;
         // Qaytarish sanasi faqat haqiqiy qaytarishda: bekor qilingan pozitsiyada u
         // bo'lsa, voronka va analitika uni "qaytarilgan" deb sanab yuborardi
         const lineReturnedAt =
@@ -876,16 +905,26 @@ export async function upsertOrders(
         if (options.collectNew && before !== undefined && returnedQty > before) {
           res.changesTotal += 1;
           if (res.changes.length < NEW_SALES_CAP) {
-            const cause = text(it.returnCause);
             const gone = returnedQty - before;
+            /*
+             * Sabab birinchi: tirik satrdagi qisman bekor/qaytish ham shu bilan ajraladi.
+             * "Uzum yo'qotdi" — faqat FBO: tovar Uzum omborida edi. FBS/DBS da
+             * buyurtmani sotuvchi o'zi yig'adi — bu oddiy bekor qilish (sababi bilan).
+             */
+            const byCause = returnCauseKind(cause);
             res.changes.push({
               kind:
-                lineStatus === 'returned'
-                  ? 'returned'
-                  : lineStatus === 'canceled' || (cause !== null && CANCELED_CAUSE.test(cause))
-                    ? 'canceled'
-                    : 'returned',
+                byCause === 'missing'
+                  ? deliveryType === 'FBO'
+                    ? 'missing'
+                    : 'canceled'
+                  : lineStatus === 'returned'
+                    ? 'returned'
+                    : lineStatus === 'canceled' || byCause === 'canceled'
+                      ? 'canceled'
+                      : 'returned',
               uzumOrderId,
+              skuId: ref?.id ?? null,
               title: text(it.title) ?? text(it.skuCode) ?? ref?.sku ?? 'Mahsulot',
               qty: gone,
               amount: round(sellPrice * gone),

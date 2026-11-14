@@ -37,6 +37,7 @@ import {
   formatMoney,
   getPlan,
   hasFeature,
+  isCanceledBeforeReceipt,
   resolvePlan,
   round,
   toISODate,
@@ -65,7 +66,7 @@ import { itemCostChanged, itemCostFields } from './item-cost.js';
 import { notifyCompanyOwners } from './notify.js';
 import { attachPayoutFees, recordPayout } from './payout-history.js';
 import { getPayoutRules } from './payout-schedule.js';
-import { syncLossRecords } from './stock-balance.js';
+import { compensationFor, syncLossRecords } from './stock-balance.js';
 import { nextAutoSyncAt } from './sync-schedule.js';
 import {
   applyActualLogistics,
@@ -904,6 +905,12 @@ interface SyncRun {
     reviews: number;
     shipments: number;
   };
+  /**
+   * Shu sinxronda "Uzum yo'qotdi" deb aytilgan dona: `${storeId}|${skuId}` → dona.
+   * Tovar balansi o'sha donani shu sinxronning o'zida yo'qotish deb topsa,
+   * ikkinchi xabar yuborilmaydi (notifyLossChanges).
+   */
+  missingAnnounced?: Map<string, number>;
 }
 
 const emptyTotals = (): SyncRun['totals'] => ({
@@ -1322,18 +1329,69 @@ Do‘kon: ${storeTitle} · №${sale.uzumOrderId}`,
  */
 async function notifyOrderChanges(
   run: SyncRun,
-  storeTitle: string,
+  store: { id: string; title: string },
   res: OrdersImportResult,
   budget: number,
 ): Promise<number> {
   if (res.changes.length === 0) return budget;
+  const storeTitle = store.title;
 
   const single = res.changes.slice(0, Math.max(0, budget));
+
+  /*
+   * Buyurtmada tovar bo'lmagan ("Товара не оказалось в заказе", FBO) — Uzum
+   * yo'qotgan: tovar omborga qaytmaydi, Uzum kompensatsiya to'lashi kerak
+   * (qo'llanma 6.8: narx − komissiya; avtomatik emas — da'vo bilan). Ilgari
+   * bu "Qaytarildi" deb kelardi (egasining №141386381, 2026-11-14). Taxmin
+   * «Yo'qotilganlar» sahifasidagi bilan bir xil hisob. Aytilgan dona eslab
+   * qolinadi — tovar balansi uni shu sinxronda yo'qotish deb topsa, ikkinchi
+   * xabar yuborilmaydi.
+   */
+  const missing = single.filter((c) => c.kind === 'missing');
+  let comps = new Map<string, { unit: number }>();
+  if (missing.length > 0) {
+    try {
+      comps = await compensationFor(missing.map((c) => c.skuId ?? ''));
+    } catch (err) {
+      log(`job ${run.jobId}: kompensatsiya taxmini hisoblanmadi — ${errorMessage(err)}`);
+    }
+    const announced = (run.missingAnnounced ??= new Map());
+    for (const c of missing) {
+      if (!c.skuId) continue;
+      const key = `${store.id}|${c.skuId}`;
+      announced.set(key, (announced.get(key) ?? 0) + c.qty);
+    }
+  }
+
   for (const change of single) {
-    const returned = change.kind === 'returned';
     const money = change.amount > 0 ? ` · ${formatMoney(change.amount, 'uz')}` : '';
-    // Bekor qilishda sabab doim bir xil ("olmasdan bekor qilindi") — faqat qaytarishda foydali
-    const cause = returned && change.cause ? `\nSabab: ${change.cause}` : '';
+    if (change.kind === 'missing') {
+      const unit = change.skuId ? (comps.get(change.skuId)?.unit ?? 0) : 0;
+      const comp = unit > 0 ? `, taxminan ${formatMoney(unit * change.qty, 'uz')}` : '';
+      /*
+       * `notifyOrders` sozlamasiga bog'lanmaydi: bu yo'qotish xabari (pul — kompensatsiya),
+       * "Yo'qotilgan tovar aniqlandi" kabi. Aks holda buyurtma xabarlarini o'chirgan
+       * egasi hech narsa olmasdi — balans xabari quyida shu dona uchun bostiriladi.
+       */
+      await notifyCompanyOwners(run.companyId, {
+        type: 'warning',
+        title: `Uzum yo‘qotdi: ${change.title}`,
+        body: `${change.qty} dona${money}
+Sabab: buyurtmada tovar bo‘lmagan${change.cause ? ` (${change.cause})` : ''}
+Tovar omborga qaytmaydi — Uzum kompensatsiya to‘lashi kerak (da’vo bilan)${comp}
+Do‘kon: ${storeTitle} · №${change.uzumOrderId}`,
+        link: '/returns?kind=missing',
+        buttonText: 'Yo‘qolganlarni ko‘rish',
+      });
+      continue;
+    }
+    const returned = change.kind === 'returned';
+    /*
+     * Bekor qilishda sabab odatda bir xil ("Отменён до получения") — aytilmaydi.
+     * Boshqa sabab (masalan FBS buyurtmada "Товара не оказалось в заказе") aytiladi.
+     */
+    const cause =
+      change.cause && (returned || !isCanceledBeforeReceipt(change.cause)) ? `\nSabab: ${change.cause}` : '';
     await notifyCompanyOwners(run.companyId, {
       type: 'warning',
       requireFlag: 'notifyOrders',
@@ -1419,9 +1477,28 @@ Do‘kon: ${storeTitle} · №${order.uzumOrderId}`,
  */
 async function notifyLossChanges(
   run: SyncRun,
-  storeTitle: string,
-  found: Awaited<ReturnType<typeof syncLossRecords>>,
+  store: { id: string; title: string },
+  result: Awaited<ReturnType<typeof syncLossRecords>>,
 ): Promise<void> {
+  const storeTitle = store.title;
+  /*
+   * Shu sinxronda "Uzum yo'qotdi" deb aytilgan dona (buyurtmada tovar
+   * bo'lmagan) — o'sha SKU'ning yangi balans yo'qotishidan ayriladi: bitta
+   * voqea uchun ketma-ket ikki xabar kelmasin. Ortgani (boshqa dona) aytiladi.
+   */
+  const told = new Map(run.missingAnnounced ?? []);
+  const fresh = result.found.flatMap((r) => {
+    const key = `${store.id}|${r.skuId}`;
+    // Uzum o'sha donani o'zi ham "yo'qolgan" deb belgilagan bo'lsa (hisoblagich) — u ham o'sha voqea
+    const left = r.kind === 'balance' || r.kind === 'counter' ? (told.get(key) ?? 0) : 0;
+    if (left <= 0) return [r];
+    const cut = Math.min(left, r.qty);
+    told.set(key, left - cut);
+    const qty = r.qty - cut;
+    return qty > 0 ? [{ ...r, qty, amount: round((r.amount * qty) / r.qty) }] : [];
+  });
+  const found = { found: fresh, recovered: result.recovered };
+
   if (found.found.length === 0 && found.recovered.length === 0) return;
   // Bo'lim tarifda ochiq bo'lmasa xabar yuborilmaydi — havola yopiq sahifaga olib borardi
   if (!hasFeature(run.planId, 'losses_report')) return;
@@ -1575,7 +1652,7 @@ async function stepOrders(run: SyncRun, setDetail: (t: string) => void): Promise
      */
     try {
       budget = await notifyNewSales(run, store.title, res, budget);
-      changeBudget = await notifyOrderChanges(run, store.title, res, changeBudget);
+      changeBudget = await notifyOrderChanges(run, store, res, changeBudget);
       acceptBudget = await notifyAccepted(run, store.title, res, acceptBudget);
     } catch (err) {
       log(`job ${run.jobId}: buyurtma xabari yuborilmadi — ${errorMessage(err)}`);
@@ -1768,7 +1845,7 @@ async function stepReturns(run: SyncRun, setDetail: (t: string) => void): Promis
     try {
       const found = await syncLossRecords(store.id);
       run.totals.losses += found.created + found.updated;
-      await notifyLossChanges(run, store.title, found);
+      await notifyLossChanges(run, store, found);
     } catch (err) {
       log(`job ${run.jobId}: tovar balansi hisoblanmadi — ${errorMessage(err)}`);
     }

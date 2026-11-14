@@ -51,6 +51,7 @@ import {
   type ReturnKind,
   type ReturnRow,
   type ReturnsResponse,
+  type ReturnsView,
   type ShipmentItemRow,
   type ShipmentRow,
   type SkuQuery,
@@ -696,8 +697,15 @@ function evidenceLines(r: LossRow): string[] {
       lines.push(`   ${formatDate(rm.date, 'uz')} kuni qoldiq buyurtmasiz ${n(rm.qty)} donaga kamaygan.`);
     }
     for (const s of e.suspects ?? []) {
-      const what = s.kind === 'returned' ? 'qaytarilgan' : 'bekor qilingan';
       const cause = s.cause ? ` («${s.cause}»)` : '';
+      // Buyurtmada tovar bo'lmagan — Uzum o'zi bekor qilgan: tovar ombordan chiqqan, xaridorga yetmagan
+      if (s.kind === 'missing') {
+        lines.push(
+          `   Buyurtma №${s.orderId} (${formatDate(s.date, 'uz')}) buyurtmada tovar bo‘lmagani uchun bekor qilingan${cause} — tovar yo‘qolgan.`,
+        );
+        continue;
+      }
+      const what = s.kind === 'returned' ? 'qaytarilgan' : 'bekor qilingan';
       lines.push(`   Buyurtma №${s.orderId} (${formatDate(s.date, 'uz')}) ${what}${cause} — tovar omborga qaytmagan.`);
     }
   } else if (r.kind === 'shortage') {
@@ -1020,10 +1028,14 @@ const NO_REASON = 'Sabab ko‘rsatilmagan';
 
 const RETURN_KINDS: ReturnKind[] = ['returned', 'canceled'];
 
-/** `?kind=` → tur; eski `?status=` ham tushuniladi. Standart — qaytarishlar */
-function asReturnKind(q: Record<string, string | undefined>): ReturnKind | 'all' {
+/**
+ * `?kind=` → tur; eski `?status=` ham tushuniladi. Standart — qaytarishlar.
+ * `missing` — bekor qilishlar ichidan Uzum yo'qotganlari (bot "Uzum yo'qotdi"
+ * xabari shu ro'yxatga olib keladi).
+ */
+function asReturnKind(q: Record<string, string | undefined>): ReturnsView {
   const v = q.kind ?? q.status;
-  if (v === 'all') return 'all';
+  if (v === 'all' || v === 'missing') return v;
   return RETURN_KINDS.includes(v as ReturnKind) ? (v as ReturnKind) : 'returned';
 }
 
@@ -1064,6 +1076,7 @@ router.get(
     const counts: ReturnsResponse['counts'] = {
       returned: { qty: summary.returned.qty, amount: summary.returned.amount },
       canceled: { qty: summary.canceled.qty, amount: summary.canceled.amount },
+      missing: { qty: summary.missing.qty, amount: summary.missing.amount },
     };
 
     const reasonFilter = q.reason && q.reason !== 'all' ? q.reason : undefined;
@@ -1073,7 +1086,7 @@ router.get(
 
     const rows: ReturnRow[] = [];
     for (const l of lines) {
-      if (kind !== 'all' && l.kind !== kind) continue;
+      if (kind === 'missing' ? !l.missing : kind !== 'all' && l.kind !== kind) continue;
       if (reasonFilter && (l.reason ?? NO_REASON) !== reasonFilter) continue;
 
       const row: ReturnRow = {
@@ -1087,6 +1100,7 @@ router.get(
         reason: l.reason,
         status: l.kind,
         kind: l.kind,
+        missing: l.missing,
         returnedAt: toBusinessDate(l.date),
         // Davr va tartib buyurtma kuni bo'yicha — jadvaldagi sana ham shu, aks holda qatorlar tartibsiz ko'rinardi
         orderedAt: toBusinessDate(l.orderedAt),

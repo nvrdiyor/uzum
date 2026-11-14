@@ -32,7 +32,7 @@
  */
 import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
-import { pct, round, type ReturnsSummary } from '@savdoiq/shared';
+import { isMissingInOrder, pct, round, type ReturnsSummary } from '@savdoiq/shared';
 import { getSkuCatalog, type SkuInfo } from './common.js';
 
 export type ReturnKind = 'returned' | 'canceled';
@@ -40,6 +40,8 @@ export type ReturnKind = 'returned' | 'canceled';
 export interface ReturnLine {
   id: string;
   kind: ReturnKind;
+  /** Buyurtmada tovar bo'lmagan — Uzum yo'qotgan (`kind: 'canceled'`) */
+  missing: boolean;
   skuId: string | null;
   sku: string | null;
   title: string | null;
@@ -65,11 +67,23 @@ interface LineFields {
   revenue: number;
   status: string;
   returnedAt: Date | null;
+  /**
+   * Uzum sababi — "buyurtmada tovar bo'lmagan"ni ajratish uchun. Majburiy:
+   * tanlamagan chaqiruvchi 14.11 gacha yozilgan "qaytarilgan" qatorni
+   * qaytarish deb sanab qolardi (tsc har birini ko'rsatsin).
+   */
+  returnCause: string | null;
 }
 
 interface LineSplit {
   /** Yo'qotilgan donaning turi; null — satrda qaytish ham, bekor qilish ham yo'q */
   kind: ReturnKind | null;
+  /**
+   * Buyurtmada tovar bo'lmagan ("Товара не оказалось в заказе") — Uzum
+   * yo'qotgan. Bunday dona `kind: 'canceled'` (xaridorga yetmagan), bu belgi
+   * esa uni bekor qilishlar ichida alohida ko'rsatish uchun.
+   */
+  missing: boolean;
   /** Qaytgan yoki bekor qilingan dona */
   lost: number;
   /** Tirik dona: xaridor qabul qilgan yoki hali yo'lda */
@@ -87,21 +101,34 @@ interface LineSplit {
  *    yuboradi), u bo'lmasa `qty` (kamida 1);
  *  • tirik satrdagi `returnedQty` — qisman qaytarish (xaridor bir nechta
  *    donadan birini qaytargan). Ilgari "Qaytarishlar" sahifasi ularni
- *    ko'rmasdi, voronka va panel esa sanardi.
+ *    ko'rmasdi, voronka va panel esa sanardi;
+ *  • sababi "Товара не оказалось в заказе" — buyurtmada tovar bo'lmagan (Uzum
+ *    yo'qotgan): holati qanday bo'lmasin BEKOR QILISH (`missing: true`). Bu
+ *    xaridor qaytarishi emas — qaytarish ulushini Uzum aybi bilan oshirmasin
+ *    (2026-11-14; 14.11 gacha import qilingan yozuvlarda holat 'returned').
  */
 export function splitLine(it: LineFields): LineSplit {
   const unitPrice = it.sellPrice > 0 ? it.sellPrice : it.qty > 0 ? it.revenue / it.qty : 0;
-  const returned = it.status === 'returned' || Boolean(it.returnedAt);
-  if (returned || it.status === 'canceled') {
+  const missing = isMissingInOrder(it.returnCause);
+  const gone = it.status === 'returned' || it.status === 'canceled' || Boolean(it.returnedAt);
+  if (gone) {
+    const returned = !missing && (it.status === 'returned' || Boolean(it.returnedAt));
     return {
       kind: returned ? 'returned' : 'canceled',
+      missing,
       lost: it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1),
       live: 0,
       unitPrice,
     };
   }
   const partial = Math.max(0, it.returnedQty);
-  return { kind: partial > 0 ? 'returned' : null, lost: partial, live: it.qty, unitPrice };
+  return {
+    kind: partial > 0 ? (missing ? 'canceled' : 'returned') : null,
+    missing: missing && partial > 0,
+    lost: partial,
+    live: it.qty,
+    unitPrice,
+  };
 }
 
 /**
@@ -126,7 +153,7 @@ export function realReason(raw: string | null): string | null {
  *  • bekor qilish va ikkalasi birga — buyurtma qilingan barcha donadan.
  */
 export function returnsRate(
-  kind: ReturnKind | 'all',
+  kind: ReturnKind | 'missing' | 'all',
   qty: number,
   base: Pick<ReturnsSummary, 'soldUnits' | 'orderedUnits'>,
 ): number {
@@ -148,9 +175,16 @@ const ITEM_SELECT = {
   returnCause: true,
   returnedAt: true,
   orderedAt: true,
-  // Topshirilgan sana — "xaridor qabul qilgan" shu bilan (voronkadagi "Sotildi")
-  order: { select: { uzumOrderId: true, deliveredAt: true } },
+  // Topshirilgan sana — "xaridor qabul qilgan" shu bilan (voronkadagi "Sotildi");
+  // sxema — "Uzum yo'qotgan" faqat FBO (tovar Uzum omborida edi)
+  order: { select: { uzumOrderId: true, deliveredAt: true, deliveryType: true } },
 } as const satisfies Prisma.OrderItemSelect;
+
+/**
+ * Uzum yo'qotgan dona: buyurtmada tovar bo'lmagan VA tovar Uzum omborida edi
+ * (FBO). FBS/DBS da buyurtmani sotuvchi o'zi yig'adi — u oddiy bekor qilish.
+ */
+const lostByUzum = (it: Item, s: LineSplit): boolean => s.missing && it.order.deliveryType === 'FBO';
 
 type Item = Prisma.OrderItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
@@ -179,6 +213,7 @@ function toLines(items: Item[], catalog: Map<string, SkuInfo>): ReturnLine[] {
     out.push({
       id: it.id,
       kind: s.kind,
+      missing: lostByUzum(it, s),
       skuId: it.skuId,
       sku: info?.sku ?? it.skuCode ?? null,
       title: info?.title ?? it.title ?? null,
@@ -204,6 +239,8 @@ function buildSummary(items: Item[], catalog: Map<string, SkuInfo>, asOf: Date):
   let soldUnits = 0;
   let orderedUnits = 0;
   const parts = { returned: { qty: 0, amount: 0 }, canceled: { qty: 0, amount: 0 } };
+  /** Bekor qilinganlar ichidan Uzum yo'qotgani (buyurtmada tovar bo'lmagan) */
+  const missing = { qty: 0, amount: 0 };
   const reasons = new Map<string, number>();
   const bySku = new Map<string, { returned: number; amount: number; sold: number }>();
 
@@ -219,6 +256,10 @@ function buildSummary(items: Item[], catalog: Map<string, SkuInfo>, asOf: Date):
     if (s.kind && s.lost > 0) {
       parts[s.kind].qty += s.lost;
       parts[s.kind].amount += lostAmount;
+      if (lostByUzum(it, s)) {
+        missing.qty += s.lost;
+        missing.amount += lostAmount;
+      }
     }
 
     if (s.kind === 'returned' && s.lost > 0) {
@@ -287,6 +328,11 @@ function buildSummary(items: Item[], catalog: Map<string, SkuInfo>, asOf: Date):
       qty: parts.canceled.qty,
       amount: round(parts.canceled.amount),
       rate: returnsRate('canceled', parts.canceled.qty, base),
+    },
+    missing: {
+      qty: missing.qty,
+      amount: round(missing.amount),
+      rate: returnsRate('missing', missing.qty, base),
     },
     topReason,
     topSku,

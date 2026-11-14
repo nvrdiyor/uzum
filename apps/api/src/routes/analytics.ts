@@ -19,6 +19,7 @@ import {
   featureAccess,
   formatCompact,
   formatNumber,
+  isMissingInOrder,
   parseISODate,
   pct,
   round,
@@ -174,6 +175,7 @@ export async function collectTotals(storeIds: string[], from: Date, toExclusive:
           status: true,
           returnedAt: true,
           returnedQty: true,
+          returnCause: true,
         },
       },
     },
@@ -197,7 +199,14 @@ export async function collectTotals(storeIds: string[], from: Date, toExclusive:
 
     let orderRevenue = 0;
     for (const it of o.items) {
-      const returned = it.status === 'returned' || Boolean(it.returnedAt);
+      /*
+       * Buyurtmada tovar bo'lmagan ("Товара не оказалось в заказе") — Uzum
+       * yo'qotgan, xaridor qaytarishi emas: qaytarish foiziga kirmaydi
+       * (splitLine bilan bir xil; 14.11 gacha import qilinganlarida holat 'returned').
+       */
+      const missing = isMissingInOrder(it.returnCause);
+      const gone = it.status === 'returned' || it.status === 'canceled' || Boolean(it.returnedAt);
+      const returned = !missing && (it.status === 'returned' || Boolean(it.returnedAt));
       const skuAgg = it.skuId
         ? t.bySku.get(it.skuId) ??
           ({ units: 0, revenue: 0, payout: 0, cogs: 0, otherCost: 0, netProfit: 0, returns: 0 } satisfies SkuAgg)
@@ -214,11 +223,11 @@ export async function collectTotals(storeIds: string[], from: Date, toExclusive:
       // Qoida services/returns.ts splitLine bilan bir xil: panel kartasi va "Davr xulosalari" bitta foiz aytsin
       let returnedUnits = 0;
       if (returned) returnedUnits = it.returnedQty > 0 ? it.returnedQty : Math.max(it.qty, 1);
-      else if (it.status !== 'canceled') returnedUnits = it.returnedQty;
+      else if (!gone && !missing) returnedUnits = it.returnedQty;
       t.returnsUnits += returnedUnits;
       if (skuAgg) skuAgg.returns += returnedUnits;
 
-      if (!returned && it.status !== 'canceled') {
+      if (!gone) {
         // Qaytarish foizi asosi — faqat xaridor HOZIRGACHA qabul qilgan dona, yo'ldagilar emas (summarizeReturns kabi)
         if (o.deliveredAt && o.deliveredAt.getTime() <= now) t.handedUnits += it.qty;
         t.units += it.qty;

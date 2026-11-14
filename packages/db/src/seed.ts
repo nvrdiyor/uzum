@@ -29,6 +29,7 @@ import {
   LOGISTICS_FEE,
   TURNOVER_WINDOW_DAYS,
   hasExtendedNewSkuFree,
+  isMissingInOrder,
   logisticsFee,
   storageFeePerDay,
   storageTariffKind,
@@ -727,6 +728,8 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
       let orderLogistics = 0;
       let orderDiscount = 0;
       let orderQty = 0;
+      /** Qaytgan buyurtmada haqiqiy qaytarish bormi (hammasi "buyurtmada tovar bo'lmagan" bo'lsa — bekor) */
+      let realReturn = false;
 
       for (let li = 0; li < linesCount; li += 1) {
         const sku = weightedSku(storeId);
@@ -752,6 +755,21 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         const tax = money((revenue * spec.taxRate) / 100);
         const netProfit = payout - cogs - tax;
 
+        /*
+         * "Товара не оказалось в заказе" — buyurtmada tovar bo'lmagan (Uzum
+         * yo'qotgan): qaytarish emas, bekor qilish — importer bilan bir xil
+         * (shared return-cause.ts). Sabab avvalgidek o'z joyida tanlanadi
+         * (alohida tasodifiy oqim), boshqa namuna ma'lumoti o'zgarmaydi.
+         */
+        const cause =
+          status === 'returned'
+            ? returnCauseFor(sku.category)
+            : status === 'canceled'
+              ? CANCEL_BEFORE_RECEIPT_CAUSE
+              : null;
+        const lostInOrder = status === 'returned' && isMissingInOrder(cause);
+        if (status === 'returned' && !lostInOrder) realReturn = true;
+
         itemSeq += 1;
         orderItemRows.push({
           id: `demo_oi_${spec.key}_${String(itemSeq).padStart(6, '0')}`,
@@ -769,14 +787,15 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
           revenue,
           payout,
           netProfit,
-          status: status === 'returned' ? 'returned' : status === 'canceled' ? 'canceled' : 'delivered',
-          returnedAt,
-          returnCause:
-            status === 'returned'
-              ? returnCauseFor(sku.category)
+          status: lostInOrder
+            ? 'canceled'
+            : status === 'returned'
+              ? 'returned'
               : status === 'canceled'
-                ? CANCEL_BEFORE_RECEIPT_CAUSE
-                : null,
+                ? 'canceled'
+                : 'delivered',
+          returnedAt: lostInOrder ? null : returnedAt,
+          returnCause: cause,
           orderedAt,
         });
 
@@ -795,7 +814,7 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
 
         // Qaytarish yozuvi
         if (status === 'returned' && returnedAt) {
-          returnRows.push({
+          const record = {
             id: `demo_rt_${spec.key}_${String(itemSeq).padStart(6, '0')}`,
             storeId,
             skuId: sku.id,
@@ -806,7 +825,10 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
             status: chance(0.75) ? 'returned' : 'refunded',
             returnedAt,
             createdAt: returnedAt,
-          });
+          };
+          // Uzum yo'qotgan tovar sotuvchiga qaytmaydi — yozuv yo'q. Tasodifiy sonlar baribir olinadi:
+          // ularning tartibi o'zgarsa, keyingi butun namuna ma'lumoti boshqacha chiqardi.
+          if (!lostInOrder) returnRows.push(record);
         }
       }
 
@@ -814,7 +836,8 @@ function buildCompany(spec: CompanySpec, index: number): CompanyResult {
         id: orderId,
         storeId,
         uzumOrderId: `UZ-${index + 1}-${String(orderSeq).padStart(5, '0')}`,
-        status,
+        // Hamma pozitsiyasi "buyurtmada tovar bo'lmagan" — buyurtma bekor qilingan (live orderStatusFromItems kabi)
+        status: status === 'returned' && !realReturn ? 'canceled' : status,
         deliveryType,
         orderedAt,
         paidAt,

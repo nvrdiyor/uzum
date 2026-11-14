@@ -412,6 +412,8 @@ const SAMPLE_CURRENT: ReturnsSummary = {
   orderedUnits: 1420,
   returned: { qty: 74, amount: 9_850_000, rate: 5.9 },
   canceled: { qty: 96, amount: 12_400_000, rate: 6.76 },
+  // Bekor qilishlar ichidan Uzum yo'qotgani (2 ÷ 1420)
+  missing: { qty: 2, amount: 260_000, rate: 0.14 },
   topReason: { raw: 'Не подошёл размер', qty: 31, share: 41.89 },
   topSku: {
     skuId: 'sample',

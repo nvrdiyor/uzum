@@ -219,6 +219,8 @@ async function collectSnapshot(
             skuId: true,
             qty: true,
             returnedQty: true,
+            // splitLine: "buyurtmada tovar bo'lmagan" (Uzum yo'qotgan) qaytarish emas
+            returnCause: true,
             sellPrice: true,
             revenue: true,
             payout: true,
