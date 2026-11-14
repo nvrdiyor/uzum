@@ -137,7 +137,7 @@ const MAX_SETTINGS = 60;
  * Kalit katta-kichik harfdan qat'i nazar solishtiriladi: dev SQLite'da
  * `startsWith` ham shunday ishlaydi.
  */
-const RESERVED_SETTING_PREFIXES = ['bot:', 'sync.', 'history.', 'billing:', 'goals:', 'unit:', 'review_templates', 'todo_state'];
+const RESERVED_SETTING_PREFIXES = ['bot:', 'claim:', 'sync.', 'history.', 'billing:', 'goals:', 'unit:', 'review_templates', 'todo_state'];
 const isReservedSetting = (key: string): boolean => {
   const k = key.toLowerCase();
   return RESERVED_SETTING_PREFIXES.some((p) => k.startsWith(p));

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { copyToClipboard } from '@/lib/utils';
 import { useT } from '@/i18n';
 import { Button, ErrorState, Modal, Skeleton, toast } from '@/components/ui';
+import { ClaimPackagePanel } from './ClaimPackage';
 
 export const UZUM_SUPPORT_URL = 'https://seller.uzum.uz';
 
@@ -86,6 +87,8 @@ export function ClaimDraftModal({
         </div>
       }
     >
+      {/* Uzum shablonidagi rasmiy hujjatlar (ZIP) — matn esa pastda, xat yoki chat uchun */}
+      <ClaimPackagePanel open={open} ids={ids} />
       {isLoading ? (
         <div className="space-y-2.5">
           <Skeleton className="h-4 w-2/3" />

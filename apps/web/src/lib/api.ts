@@ -100,7 +100,11 @@ async function request<T>(
   });
 
   if (opts.raw) {
-    if (!res.ok) throw new ApiError(res.status, { code: 'download_failed', message: 'Yuklab olishda xatolik' });
+    if (!res.ok) {
+      // Server sababini aytgan bo'lsa (masalan "ochiq yo'qotish topilmadi") — o'shani ko'rsatamiz
+      const body = (await res.json().catch(() => null)) as { error?: ApiErrorShape } | null;
+      throw new ApiError(res.status, body?.error ?? { code: 'download_failed', message: 'Yuklab olishda xatolik' });
+    }
     return (await res.blob()) as unknown as T;
   }
 
@@ -146,4 +150,25 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   del: <T>(path: string, query?: Query) => request<T>('DELETE', path, { query }),
   blob: (path: string, query?: Query) => request<Blob>('GET', path, { query, raw: true }),
+  /** POST bilan fayl (masalan da'vo paketi ZIP) — fayl va javob sarlavhalari */
+  download: (path: string, body?: unknown) => downloadRequest(path, body),
 };
+
+async function downloadRequest(path: string, body?: unknown): Promise<{ blob: Blob; headers: Headers }> {
+  const headers: Record<string, string> = { Accept: '*/*', 'Content-Type': 'application/json' };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const companyId = getCompanyId();
+  if (companyId) headers['x-company-id'] = companyId;
+  const res = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { error?: ApiErrorShape } | null;
+    throw new ApiError(res.status, payload?.error ?? { code: 'download_failed', message: 'Yuklab olishda xatolik' });
+  }
+  return { blob: await res.blob(), headers: res.headers };
+}

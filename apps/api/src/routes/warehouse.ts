@@ -42,6 +42,8 @@ import {
   shipmentSchema,
   toISODate,
   toBusinessDate,
+  type ClaimRequisites,
+  type ClaimRequisitesResponse,
   type LossEvidence,
   type LossKind,
   type LossRow,
@@ -74,6 +76,7 @@ import {
   withSoldSkus,
   type SkuInfo,
 } from '../services/common.js';
+import { buildClaimPackage, lineTotal, mergeClaimLines, type ClaimLine } from '../services/claim-docs.js';
 import { notifyCompanyOwners } from '../services/notify.js';
 import { loadReturns, returnsRate } from '../services/returns.js';
 import { AUTO_LOSS_SOURCES, getBalanceSummary } from '../services/stock-balance.js';
@@ -1019,6 +1022,280 @@ router.patch(
 
     const catalog = await getSkuCatalog(storeIds, true);
     res.json(toLossRow(updated, catalog));
+  }),
+);
+
+// ─────────────────────────── Da'vo paketi (Uzum shabloni) ───────────────────────────
+
+/**
+ * Sotuvchi rekvizitlari — kompaniya sozlamasida (`claim:` umumiy sozlamalar
+ * orqali o'zgartirilmaydi, routes/company.ts). Bank rekvizitlari — faqat ega
+ * va menejer ko'radi va o'zgartiradi.
+ */
+const CLAIM_REQUISITES_KEY = 'claim:requisites';
+/** Da'vo paketlari raqami (fayl nomlarida): har yuklab olishda +1 */
+const CLAIM_SEQ_KEY = 'claim:seq';
+
+const EMPTY_REQUISITES: ClaimRequisites = {
+  fio: '',
+  entity: '',
+  tin: '',
+  account: '',
+  mfo: '',
+  bank: '',
+  license: '',
+  address: '',
+  contractNo: '',
+  contractDate: '',
+};
+/** Pretenziyaning boshidagi va to'lov uchun shart bo'lgan maydonlar */
+const REQUIRED_REQUISITES: (keyof ClaimRequisites)[] = ['fio', 'entity', 'tin', 'account', 'mfo'];
+
+async function loadRequisites(companyId: string): Promise<ClaimRequisites> {
+  const row = await prisma.companySetting.findUnique({
+    where: { companyId_key: { companyId, key: CLAIM_REQUISITES_KEY } },
+  });
+  if (!row) return { ...EMPTY_REQUISITES };
+  try {
+    const parsed = JSON.parse(row.value) as Partial<Record<keyof ClaimRequisites, unknown>>;
+    const out = { ...EMPTY_REQUISITES };
+    for (const key of Object.keys(EMPTY_REQUISITES) as (keyof ClaimRequisites)[]) {
+      if (typeof parsed[key] === 'string') out[key] = parsed[key] as string;
+    }
+    return out;
+  } catch {
+    return { ...EMPTY_REQUISITES };
+  }
+}
+
+function requisitesResponse(requisites: ClaimRequisites): ClaimRequisitesResponse {
+  const missing = REQUIRED_REQUISITES.filter((k) => !requisites[k].trim());
+  return { requisites, filled: missing.length === 0, missing };
+}
+
+/** Bo'shliqsiz raqamlar: bo'sh yoki aniq uzunlikda */
+const digitsField = (lengths: number[], message: string) =>
+  z
+    .string()
+    .max(60)
+    .transform((s) => s.replace(/\s+/g, ''))
+    .refine((s) => s === '' || (/^[0-9]+$/.test(s) && lengths.includes(s.length)), { message });
+
+const requisitesSchema = z.object({
+  fio: z.string().trim().max(150),
+  entity: z.string().trim().max(200),
+  tin: digitsField([9, 14], 'STIR — 9 ta, JShShIR — 14 ta raqam'),
+  account: digitsField([20], 'Hisob raqami — 20 ta raqam'),
+  mfo: digitsField([5], 'MFO — 5 ta raqam'),
+  bank: z.string().trim().max(200),
+  license: z.string().trim().max(100),
+  address: z.string().trim().max(300),
+  contractNo: z.string().trim().max(60),
+  contractDate: z
+    .string()
+    .trim()
+    .max(10)
+    .refine((s) => s === '' || /^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$/.test(s), { message: 'Sana KK.OO.YYYY ko‘rinishida' }),
+});
+
+/** GET /losses/requisites — da'vo uchun saqlangan rekvizitlar */
+router.get(
+  '/losses/requisites',
+  requireFeature('losses_report'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    res.json(requisitesResponse(await loadRequisites(company.id)));
+  }),
+);
+
+/** PUT /losses/requisites — rekvizitlarni saqlash (bir marta, keyin har paketga yoziladi) */
+router.put(
+  '/losses/requisites',
+  requireFeature('losses_report'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const input = requisitesSchema.parse({ ...EMPTY_REQUISITES, ...(req.body ?? {}) });
+    const value = JSON.stringify(input);
+    await prisma.companySetting.upsert({
+      where: { companyId_key: { companyId: company.id, key: CLAIM_REQUISITES_KEY } },
+      create: { companyId: company.id, key: CLAIM_REQUISITES_KEY, value },
+      update: { value },
+    });
+    res.json(requisitesResponse(input));
+  }),
+);
+
+const claimIdsSchema = z.object({
+  ids: z.array(z.string().min(1).max(64)).max(500).default([]),
+});
+
+/** Da'voga kiradigan yozuvlar: tanlanganlar (bo'lmasa — hamma ochiq), qoplangan va rad etilganlar emas */
+async function claimRecords(storeIds: string[], ids: string[]) {
+  if (storeIds.length === 0) return [];
+  return prisma.lossRecord.findMany({
+    where: ids.length
+      ? { storeId: { in: storeIds }, id: { in: ids }, status: { in: ['open', 'claimed'] } }
+      : { storeId: { in: storeIds }, status: 'open' },
+    orderBy: { happenedAt: 'asc' },
+    take: 500,
+  });
+}
+
+/** Da'vodagi tovar nomi: mahsulot nomi, variant (rang, o'lcham) bo'lsa — vergul bilan */
+function claimProductName(info: SkuInfo | undefined, fallback: string): string {
+  if (!info) return fallback;
+  const product = info.productTitle.trim() || info.title.trim();
+  const variant = info.title.trim();
+  return variant && variant !== product && !product.includes(variant) ? `${product}, ${variant}` : product;
+}
+
+/**
+ * POST /losses/claim-package — Uzum shablonidagi da'vo paketi (ZIP):
+ * Претензия.docx, Доп-соглашение.docx va pozitsiyalar jadvali (xlsx).
+ * Rekvizitlar avtomatik yoziladi. Summa — haqiqiy narx bo'yicha (6.8),
+ * komissiyani Uzum o'zi ayiradi. Yozuvlar holati o'zgarmaydi — "yuborildi"
+ * belgisi alohida (POST /losses/claim-bulk).
+ */
+router.post(
+  '/losses/claim-package',
+  requireFeature('losses_report'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company, user } = companyCtx(req);
+    const { ids } = claimIdsSchema.parse(req.body ?? {});
+    const storeIds = await getStoreIds(company.id);
+    const [records, catalog, requisites] = await Promise.all([
+      claimRecords(storeIds, ids),
+      getSkuCatalog(storeIds, true),
+      loadRequisites(company.id),
+    ]);
+    if (records.length === 0) throw AppError.badRequest('Da’vo uchun ochiq yo‘qotish topilmadi');
+
+    const lines: ClaimLine[] = mergeClaimLines(
+      records.map((l) => {
+        const info = l.skuId ? catalog.get(l.skuId) : undefined;
+        const comp = parseEvidence(l.details)?.comp;
+        // Haqiqiy narx (6.8): yozuvdagi asos → kabinet narxi → yozuv summasidan
+        const unitPrice = comp?.price ?? (info?.price || (l.qty > 0 ? l.amount / l.qty : 0));
+        return {
+          name: claimProductName(info, l.note?.trim() || 'Товар'),
+          barcode: info?.barcode ?? '',
+          reason: toLossType(l.type) === 'damaged' ? ('damage' as const) : ('loss' as const),
+          unitPrice,
+          qty: l.qty,
+        };
+      }),
+    );
+
+    // Paket raqami — kompaniya bo'yicha ketma-ket
+    const number = await prisma.$transaction(async (tx) => {
+      const cur = await tx.companySetting.findUnique({
+        where: { companyId_key: { companyId: company.id, key: CLAIM_SEQ_KEY } },
+      });
+      const next = (Number(cur?.value) || 0) + 1;
+      await tx.companySetting.upsert({
+        where: { companyId_key: { companyId: company.id, key: CLAIM_SEQ_KEY } },
+        create: { companyId: company.id, key: CLAIM_SEQ_KEY, value: String(next) },
+        update: { value: String(next) },
+      });
+      return next;
+    });
+
+    const zip = await buildClaimPackage({ number, date: toBusinessDate(new Date()), requisites, lines });
+    const qty = lines.reduce((s, l) => s + l.qty, 0);
+    const total = lines.reduce((s, l) => s + lineTotal(l), 0);
+
+    /*
+     * Paketga qaysi yozuvlar kirgani — jurnalda: "da'vo yuborildi" belgisi
+     * aynan shularga qo'yiladi (paketdan keyin paydo bo'lgan yangi yo'qotishga
+     * emas). Rekvizitlar jurnalga yozilmaydi — ular sozlamada.
+     */
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'losses.claim_package',
+        entity: 'company',
+        entityId: company.id,
+        meta: JSON.stringify({ number, ids: records.map((r) => r.id), positions: lines.length, qty, total: Math.round(total) }),
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="pretenziya-${number}.zip"`);
+    res.setHeader('X-Claim-Number', String(number));
+    res.setHeader('X-Claim-Records', String(records.length));
+    res.setHeader('X-Claim-Qty', String(qty));
+    res.setHeader('X-Claim-Total', String(Math.round(total)));
+    res.send(zip);
+  }),
+);
+
+const claimBulkSchema = claimIdsSchema.extend({
+  /** Yuklab olingan paket raqami — undagi yozuvlar belgilanadi */
+  number: z.coerce.number().int().positive().optional(),
+});
+
+/** Paketga kirgan yozuvlar (jurnaldan) */
+async function packageRecordIds(companyId: string, number: number): Promise<string[] | null> {
+  const logs = await prisma.auditLog.findMany({
+    where: { action: 'losses.claim_package', entity: 'company', entityId: companyId },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    select: { meta: true },
+  });
+  for (const l of logs) {
+    try {
+      const meta = JSON.parse(l.meta ?? '{}') as { number?: number; ids?: unknown };
+      if (meta.number === number && Array.isArray(meta.ids)) return meta.ids.filter((x): x is string => typeof x === 'string');
+    } catch {
+      // buzilgan yozuv — keyingisi
+    }
+  }
+  return null;
+}
+
+/**
+ * POST /losses/claim-bulk — "da'vo yuborildi" deb belgilash (paket Uzum'ga
+ * yuborilgandan keyin): `number` — shu paketdagi yozuvlar, yoki `ids`.
+ * Faqat ochiq yozuvlar o'zgaradi; bitta yozuvli yo'ldan farqi — har yozuv
+ * uchun alohida xabar emas, bitta.
+ */
+router.post(
+  '/losses/claim-bulk',
+  requireFeature('losses_report'),
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company } = companyCtx(req);
+    const input = claimBulkSchema.parse(req.body ?? {});
+    let ids = input.ids;
+    if (input.number !== undefined) {
+      const fromPackage = await packageRecordIds(company.id, input.number);
+      if (!fromPackage) throw AppError.notFound('Da’vo paketi topilmadi');
+      ids = fromPackage;
+    }
+    if (ids.length === 0) throw AppError.badRequest('Yozuvlar tanlanmagan');
+    const storeIds = await getStoreIds(company.id);
+    const open = await prisma.lossRecord.findMany({
+      where: { storeId: { in: storeIds }, id: { in: ids }, status: 'open' },
+      select: { id: true, qty: true, amount: true },
+    });
+    if (open.length > 0) {
+      await prisma.lossRecord.updateMany({
+        where: { id: { in: open.map((l) => l.id) }, status: 'open' },
+        data: { status: 'claimed', claimSentAt: new Date() },
+      });
+      const qty = open.reduce((s, l) => s + l.qty, 0);
+      const amount = open.reduce((s, l) => s + l.amount, 0);
+      await notifyCompanyOwners(company.id, {
+        type: 'info',
+        title: 'Yo‘qotishlar bo‘yicha da’vo yuborildi',
+        body: `${formatNumber(open.length, 'uz')} ta yozuv — ${formatNumber(qty, 'uz')} dona, ${formatNumber(round(amount), 'uz')} so‘m. Uzum javobini kuting.`,
+        link: '/losses',
+      });
+    }
+    res.json({ claimed: open.length, skipped: ids.length - open.length });
   }),
 );
 

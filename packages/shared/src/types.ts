@@ -2338,6 +2338,41 @@ export interface LossesResponse {
 }
 
 /**
+ * Uzum'ga kompensatsiya da'vosi uchun sotuvchi rekvizitlari (qo'llanma 6.8:
+ * Претензия + Дополнительное соглашение). Bir marta kiritiladi, kompaniyada
+ * saqlanadi va har da'vo paketiga avtomatik yoziladi. Bo'sh maydon — hujjatda "______".
+ */
+export interface ClaimRequisites {
+  /** F.I.Sh. — da'voni imzolovchi */
+  fio: string;
+  /** YaTT / MChJ nomi */
+  entity: string;
+  /** STIR (9 raqam) yoki JShShIR (14 raqam) */
+  tin: string;
+  /** Hisob raqami (20 raqam) */
+  account: string;
+  /** Bank MFO (5 raqam) */
+  mfo: string;
+  bank: string;
+  /** YaTT guvohnomasi / MChJ litsenziya (asos) raqami — qo'shimcha kelishuv uchun */
+  license: string;
+  /** Tashkilot manzili */
+  address: string;
+  /** Uzum bilan shartnoma (oferta) raqami */
+  contractNo: string;
+  /** Shartnoma sanasi, KK.OO.YYYY */
+  contractDate: string;
+}
+
+export interface ClaimRequisitesResponse {
+  requisites: ClaimRequisites;
+  /** Da'vo uchun majburiy maydonlar (F.I.Sh., YaTT/MChJ, STIR, hisob, MFO) to'ldirilganmi */
+  filled: boolean;
+  /** Bo'sh qolgan majburiy maydonlar */
+  missing: (keyof ClaimRequisites)[];
+}
+
+/**
  * Xaridor tomonidagi holat:
  *  • `returned` — tovar punktga keldi, xaridor olmadi yoki oldi-yu qaytardi;
  *  • `canceled` — xaridor tovarni olmasdan buyurtmani bekor qildi.
