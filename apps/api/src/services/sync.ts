@@ -63,7 +63,7 @@ import type {
 } from '../uzum/types.js';
 import { itemCostChanged, itemCostFields } from './item-cost.js';
 import { notifyCompanyOwners } from './notify.js';
-import { earlyFeeFrom, recordPayout } from './payout-history.js';
+import { attachPayoutFees, recordPayout } from './payout-history.js';
 import { getPayoutRules } from './payout-schedule.js';
 import { syncLossRecords } from './stock-balance.js';
 import { nextAutoSyncAt } from './sync-schedule.js';
@@ -1658,7 +1658,7 @@ function ownExpenses(run: SyncRun, storeId: string, expenses: UzumExpense[]): Uz
  * Yetkazish to'lovlari (buyurtma raqami bilan kelgan satrlar) butun oraliq
  * bo'yicha yig'ilib, oxirida qo'llanadi: bitta buyurtmaning satrlari ikki
  * oynaga tushsa ham keyingi oyna oldingisining yig'indisini ustidan yozmaydi.
- * Qaytaradi: oxirgi kunlardagi xarajatlar — erta yechish haqi uchun (`earlyFeeFrom`).
+ * Yechib olish haqlari to'lovlarga bazadan biriktiriladi (`attachPayoutFees`).
  */
 async function importFinanceRange(
   run: SyncRun,
@@ -1666,10 +1666,8 @@ async function importFinanceRange(
   store: { id: string; uzumShopId: string },
   range: TimeWindow,
   onProgress?: () => void,
-): Promise<UzumExpense[]> {
+): Promise<void> {
   const delivery = new Map<string, number>();
-  const recent: UzumExpense[] = [];
-  const recentSince = toISODate(addDays(new Date(), -3));
 
   await walkWindows(range, await regularPlan(store.id, 'finance', range), async (w) => {
     const window = await fetchFinanceWindow(client, store.uzumShopId, w, `job ${run.jobId}`);
@@ -1678,7 +1676,6 @@ async function importFinanceRange(
     const expRes = await upsertExpenses(run.companyId, store.id, expenses);
     const feeRes = await upsertStorageFees(store.id, fees);
     collectDeliveries(delivery, expenses);
-    for (const e of expenses) if (e.date >= recentSince) recent.push(e);
     run.totals.expenses += countOf(expRes);
     run.totals.storage += countOf(feeRes);
     onProgress?.();
@@ -1686,7 +1683,6 @@ async function importFinanceRange(
   });
 
   await applyDeliveries(store.id, delivery);
-  return recent;
 }
 
 /** Buyurtma raqami bilan kelgan yetkazish to'lovlari — buyurtma bo'yicha yig'indi */
@@ -1717,12 +1713,34 @@ async function applyDeliveries(storeId: string, delivery: Map<string, number>): 
 async function stepFinance(run: SyncRun, setDetail: (t: string) => void): Promise<void> {
   const client = requireClient(run);
   for (const store of run.stores) {
-    const recent = await importFinanceRange(run, client, store, { from: run.from, to: run.to }, () =>
+    await importFinanceRange(run, client, store, { from: run.from, to: run.to }, () =>
       setDetail(`Xarajatlar: ${run.totals.expenses} · saqlash: ${run.totals.storage}`),
     );
-    // Buyurtmalar shu paytgacha yozilgan — yechib olingan summa oshgan bo'lsa to'lovlar tarixiga tushadi
-    await recordPayout(run.companyId, store.id, earlyFeeFrom(recent));
     setDetail(`Xarajatlar: ${run.totals.expenses} · saqlash: ${run.totals.storage}`);
+  }
+
+  /*
+   * To'lovlar tarixi — hamma do'konning xarajati yozilgandan keyin, BITTA payt
+   * bilan ketma-ket. Buyurtmalar shu paytgacha yozilgan: yechib olingan summa
+   * oshgan bo'lsa — yangi to'lov (recordPayout xarajatlarga bog'liq emas).
+   * Bitta to'lovning do'kon yozuvlari shunda bir zumda yoziladi va tarix ularni
+   * bitta qatorga qo'shadi; ilgari ular orasida keyingi do'konning butun
+   * xarajat importi turardi (to'liq sinxronda 15 daqiqadan oshishi mumkin).
+   */
+  const payoutAt = new Date();
+  for (const store of run.stores) await recordPayout(run.companyId, store.id, payoutAt);
+
+  /*
+   * Yechib olish haqlari to'lovlarga — hamma do'konning to'lovi va sotuvchi
+   * darajasidagi haq satrlari (faqat birinchi do'konda turadi) bazada bo'lgach.
+   * Haq satri to'lovdan keyingi sinxronda kelsa ham shu yerda ulanadi
+   * (2026-11-09 dagi 800 000 erta yechishda haq 0 bo'lib qolgan edi). Faqat
+   * ko'rinish uchun — xato sinxronni to'xtatmaydi.
+   */
+  try {
+    await attachPayoutFees(run.stores.map((s) => s.id));
+  } catch (err) {
+    log(`job ${run.jobId}: to‘lov haqlari ulanmadi — ${errorMessage(err)}`);
   }
 }
 

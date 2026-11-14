@@ -49,6 +49,8 @@ const CATEGORY_ORDER: ExpenseCategory[] = [
   'logistics',
   'marketing',
   'storage',
+  // Bu ro'yxat jami va sof foydani beradi — toifa bu yerda bo'lmasa, sof foyda haq miqdoricha oshadi
+  'payout_fee',
   'tax',
   'salary',
   'other',
@@ -59,6 +61,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   logistics: 'Logistika',
   marketing: 'Marketing',
   storage: 'Ombor (saqlash)',
+  payout_fee: 'Yechib olish haqi',
   tax: 'Soliq',
   salary: 'Ish haqi',
   other: 'Boshqa',
@@ -84,6 +87,7 @@ const emptyCategories = (): Record<ExpenseCategory, number> => ({
   logistics: 0,
   marketing: 0,
   storage: 0,
+  payout_fee: 0,
   tax: 0,
   salary: 0,
   other: 0,
@@ -215,6 +219,8 @@ interface FinanceSnapshot {
     logistics: number;
     marketing: number;
     storage: number;
+    /** Uzum yechib olish haqi — reklama emas (2026-11-14) */
+    payoutFee: number;
     salary: number;
     other: number;
     /** Qo'lda kiritilgan komissiya va soliq — donutdagi kategoriyaga mos qatorlar */
@@ -255,6 +261,7 @@ async function collectFinance(
     logistics: logistics + manual.logistics,
     marketing: manual.marketing,
     storage: storage + manual.storage,
+    payout_fee: manual.payout_fee,
     tax: taxAmount + manual.tax,
     salary: manual.salary,
     other: otherCost + manual.other,
@@ -295,6 +302,7 @@ async function collectFinance(
       logistics: manual.logistics,
       marketing: manual.marketing,
       storage: storage + manual.storage,
+      payoutFee: manual.payout_fee,
       salary: manual.salary,
       other: manual.other,
       manualCommission: manual.commission,
@@ -514,6 +522,13 @@ const FLOW: FlowDef[] = [
   },
   { id: 'storage', kind: 'minus', label: 'Saqlash', amount: (x) => x.snap.periodCosts.storage },
   { id: 'logistics', kind: 'minus', label: 'Omborga logistika', amount: (x) => x.snap.periodCosts.logistics },
+  /*
+   * Uzum pulni hisobdan yechib berganda oladigan haq (har hafta 1%, shoshilinch
+   * 2,5%). Sotuvdan emas — pul balansdan chiqqanda olinadi, shuning uchun
+   * "Hisobga tushadi" dan keyin, davr xarajatlari qatorida. Qadam bo'lmasa,
+   * farq jim boshqa ustunga qo'shilib ketardi (flowAmounts).
+   */
+  { id: 'payout_fee', kind: 'minus', label: 'Yechib olish haqi', amount: (x) => x.snap.periodCosts.payoutFee },
   { id: 'salary', kind: 'minus', label: 'Ish haqi', amount: (x) => x.snap.periodCosts.salary },
   {
     id: 'manualCommission',
@@ -650,6 +665,7 @@ router.get(
       line('logistics', 'Omborga logistika', 'cost', cur.periodCosts.logistics, prev.periodCosts.logistics),
       line('marketing', CATEGORY_LABEL.marketing, 'cost', cur.periodCosts.marketing, prev.periodCosts.marketing),
       line('storage', CATEGORY_LABEL.storage, 'cost', cur.periodCosts.storage, prev.periodCosts.storage),
+      line('payout_fee', CATEGORY_LABEL.payout_fee, 'cost', cur.periodCosts.payoutFee, prev.periodCosts.payoutFee),
       line('salary', CATEGORY_LABEL.salary, 'cost', cur.periodCosts.salary, prev.periodCosts.salary),
       line(
         'manualCommission',

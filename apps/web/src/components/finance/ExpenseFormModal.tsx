@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { EXPENSE_CATEGORIES, toBusinessDate, type ExpenseCategory } from '@savdoiq/shared';
+import { EXPENSE_CATEGORIES, payoutFeeKind, toBusinessDate, type ExpenseCategory } from '@savdoiq/shared';
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useStores } from '@/store/session';
 import { pickLocalized, useFormat, useLang, useT } from '@/i18n';
@@ -118,7 +118,18 @@ export function ExpenseFormModal({
               value={category}
               onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
             >
-              {EXPENSE_CATEGORIES.map((c) => (
+              {EXPENSE_CATEGORIES.filter(
+                /*
+                 * Yechib olish haqi Uzumdan o'zi keladi — qo'lda qo'shilsa ikki marta
+                 * ayrilardi, reklamani shu toifaga o'tkazish esa to'lov haqini
+                 * buzardi. Faqat tahrirda: qator shu toifada yoki izohi haq bo'lsa
+                 * (eski "reklama" bo'lib yozilgan haqni to'g'rilash uchun).
+                 */
+                (c) =>
+                  c.id !== 'payout_fee' ||
+                  initial?.category === 'payout_fee' ||
+                  (initial ? payoutFeeKind(initial.note) !== null : false),
+              ).map((c) => (
                 <option key={c.id} value={c.id}>
                   {pickLocalized(c.label, lang)}
                 </option>

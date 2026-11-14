@@ -6,18 +6,29 @@ import { pickLocalized, useFormat, useLang, useT } from '@/i18n';
 import { COST_COLORS } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
-const KEYS = ['commission', 'logistics', 'marketing', 'storage', 'tax', 'other'] as const;
+// Kalit = toifa id (yorliq EXPENSE_CATEGORIES dan shu id bilan olinadi)
+const KEYS = ['commission', 'logistics', 'marketing', 'storage', 'payout_fee', 'tax', 'other'] as const;
 
 /**
  * Xarajat turi rangi — butun ilovada bir xil (lib/theme COST_COLORS).
  * Ilgari rang EXPENSE_CATEGORIES dagi HEX dan olinardi: komissiya qizil
  * ("zarar" deb o'qilardi), soliq esa foyda bilan bir xil yashil edi.
  */
+/**
+ * Tor ustundagi qisqa yorliq (88–96px, Onest 14px da o'lchangan): to'liq nom
+ * "Yechib olish haqi" / "Плата за вывод средств" kesilib qolardi. To'liq nom
+ * `title` da qoladi.
+ */
+const SHORT_LABEL: Partial<Record<(typeof KEYS)[number], { uz: string; ru: string; en: string }>> = {
+  payout_fee: { uz: 'Yechish haqi', ru: 'За вывод', en: 'Payout fees' },
+};
+
 const COLOR: Record<(typeof KEYS)[number], string> = {
   commission: COST_COLORS.commission,
   logistics: COST_COLORS.logistics,
   marketing: COST_COLORS.marketing,
   storage: COST_COLORS.storage,
+  payout_fee: COST_COLORS.payoutFee,
   tax: COST_COLORS.tax,
   other: COST_COLORS.other,
 };
@@ -53,9 +64,12 @@ export function ExpensesCard({
   const rows = KEYS.map((id) => {
     const meta = EXPENSE_CATEGORIES.find((c) => c.id === id);
     const amount = data.expenses[id] ?? 0;
+    const label = meta ? pickLocalized(meta.label, lang) : id;
+    const short = SHORT_LABEL[id];
     return {
       id,
-      label: meta ? pickLocalized(meta.label, lang) : id,
+      label,
+      short: short ? pickLocalized(short, lang) : label,
       color: COLOR[id],
       amount,
       share: base > 0 ? (amount / base) * 100 : 0,
@@ -147,7 +161,7 @@ export function ExpensesCard({
                   <li key={r.id} className="flex min-w-0 items-center gap-2.5 text-sm">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
                     <span className="w-[5.5rem] min-w-0 shrink-0 truncate text-ink-soft sm:w-24" title={r.label}>
-                      {r.label}
+                      {r.short}
                     </span>
                     {/* Chiziq — jami xarajatdagi ulush; yonidagi foiz bilan bir xil o'lchov. Telefonda joy yo'q */}
                     <span className="hidden h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3 sm:block">

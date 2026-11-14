@@ -73,7 +73,8 @@ export const costPriceBulkSchema = z.object({
 
 export const expenseSchema = z.object({
   date: z.string(),
-  category: z.enum(['commission', 'logistics', 'marketing', 'storage', 'tax', 'salary', 'other']),
+  // Uzumdan kelgan har qanday satr (yechib olish haqi ham) tahrirlanganda toifasi qayta yuboriladi
+  category: z.enum(['commission', 'logistics', 'marketing', 'storage', 'payout_fee', 'tax', 'salary', 'other']),
   amount: z.coerce.number().min(0),
   storeId: z.string().optional(),
   note: z.string().max(300).optional(),

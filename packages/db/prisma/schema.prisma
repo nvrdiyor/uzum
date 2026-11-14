@@ -694,9 +694,10 @@ model PayoutRecord {
   storeId   String
   /// To'lov kuni (savdo mintaqasi bo'yicha)
   date      DateTime
-  /// Balansdan chiqqan summa — `withdrawnProfit` o'sishi, so'm
+  /// Hisobga tushgan summa (haqsiz) — `withdrawnProfit` o'sishi, so'm. Hech qachon brutto emas
   amount    Float
-  /// Erta yechish haqi (ma'lum bo'lsa), so'm
+  /// Yechib olish haqi (jadval 1% / shoshilinch 2,5%), so'm — Uzum xarajatidan
+  /// biriktiriladi (attachPayoutFees). Uzum kabinetidagi summa = amount + fee
   fee       Float    @default(0)
   /// scheduled — jadval bo'yicha · early — erta yechish · earlier — tarix yuritilishidan oldingi jami
   kind      String   @default("scheduled")

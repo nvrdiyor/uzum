@@ -185,6 +185,7 @@ Bular Uzum Seller API'da mavjud emas — SavdoIQ ularni boshqa yo'l bilan hisobl
 | **Yo'qotishlar (потери)** | Alohida endpoint yo'q, `quantityMissing` hujjatda "eskirgan" (jonli do'konda doim 0). SavdoIQ o'zi hisoblaydi — tovar balansi: qabul qilingan (`invoice`) − sotilgan (`finance/orders`) − sotuvchiga qaytarilgan (`/v1/return`) − ombordagi (`quantityActive` + qo'shimcha/fotostudiya/brak). Bekor qilingan buyurtma tovari 21 kungacha "qaytish yo'lida". Summa — Uzum sotuvchi qo'llanmasi 6.8 formulasi: o'rtacha sotuv narxi (30 kun → 90 kun → oxirgi sotuv → kabinet narxi) − komissiya; da'vo uchun minimal summa 500 000 so'm, ko'rib chiqish 60 kungacha. `apps/api/src/services/stock-balance.ts` |
 | **Pullik saqlash** | `SkuForTable.paidStorageAmount` va `paidStoragePriceItem` orqali |
 | **Reklama xarajatlari** | `GET /v1/finance/expenses` dagi `sources` bo'yicha ajratiladi |
+| **Yechib olish haqi** | Reklama bilan bir xil manba ("Marketing") va kodda (`У000120`) keladi, `shopId`'siz (sotuvchi darajasida): "Har hafta yechib olish xizmati uchun to‘lov" (jadval to'lovining 1%) va "Shoshilinch yechib olish xizmati uchun to‘lov" (erta yechishning 2,5%). Shuning uchun NOMI bo'yicha `payout_fee` toifasiga ajratiladi (`packages/shared/src/payout-fee.ts`) va to'lovlar tarixiga biriktiriladi: kabinetdagi to'lov summasi = hisobga tushgani (`withdrawnProfit` o'sishi) + shu haq. 2026-11-14 gacha reklama bo'lib yozilgan — eski qatorlar `apps/api/src/scripts/payout-fee-migrate.ts` bilan ko'chiriladi |
 
 ---
 

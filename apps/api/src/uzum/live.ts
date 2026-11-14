@@ -27,6 +27,7 @@ import {
   toUzumApiError,
   uzumErrorMessage,
 } from './http.js';
+import { payoutFeeKind } from '@savdoiq/shared';
 import { fetchStorefrontReviews } from './storefront.js';
 import type {
   UzumClient,
@@ -1177,7 +1178,14 @@ export class LiveUzumClient implements UzumClient {
    *   logistics-volume         — buyurtmani mijozga yetkazish (har bir buyurtma uchun)
    *   return-logistics-volume  — qaytarilganda o'sha to'lovning qaytarilishi (INCOME)
    *   У000101                  — omborga yetkazib berish (sotuvchining yuk jo'natmasi)
-   *   У000120                  — reklama / "Buyurtmalarni ko'paytirish"
+   *   У000120                  — reklama / "Buyurtmalarni ko'paytirish", VA yechib olish haqi
+   *
+   * Yechib olish haqi ("Har hafta / Shoshilinch yechib olish xizmati uchun
+   * to‘lov") reklama bilan bir xil manba ("Marketing") va kodda keladi, do'kon
+   * ko'rsatilmaydi (sotuvchi darajasida). Ilgari manba bo'yicha reklama bo'lib
+   * yozilardi va reklama sarfini oshirib ko'rsatardi (2026-11-14) — endi NOMI
+   * bo'yicha `payout_fee` toifasiga ajratiladi (shared payoutFeeKind). Kod
+   * bo'yicha qoida yozmang: u ikkalasini yana aralashtiradi.
    *
    * INCOME satrlari MANFIY summa bilan yoziladi — shunda yig'indi Uzumning
    * "Oylik xizmatlar to'lovi" raqami bilan aynan mos tushadi.
@@ -1207,7 +1215,10 @@ export class LiveUzumClient implements UzumClient {
       const code = asString(r.code);
       const kind = asString(r.type).toUpperCase();
 
-      const category = mapExpenseCategory(`${source} ${code} ${name}`);
+      // Yechib olish haqi nomidan — manba va kod reklama bilan bir xil (yuqoridagi izoh)
+      const category: UzumExpenseCategory = payoutFeeKind(name)
+        ? 'payout_fee'
+        : mapExpenseCategory(`${source} ${code} ${name}`);
 
       /**
        * Har bir buyurtma uchun mijozga yetkazish to'lovi (va uning qaytarilishi)

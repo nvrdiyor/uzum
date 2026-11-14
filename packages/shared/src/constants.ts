@@ -122,6 +122,11 @@ export const EXPENSE_CATEGORIES: {
   { id: 'logistics', label: { uz: 'Logistika', ru: 'Логистика', en: 'Logistics' }, color: '#f5b544' },
   { id: 'marketing', label: { uz: 'Marketing', ru: 'Маркетинг', en: 'Marketing' }, color: '#6ea8ff' },
   { id: 'storage', label: { uz: 'Ombor', ru: 'Хранение', en: 'Storage' }, color: '#a78bfa' },
+  {
+    id: 'payout_fee',
+    label: { uz: 'Yechib olish haqi', ru: 'Плата за вывод средств', en: 'Payout fees' },
+    color: '#8b5cf6',
+  },
   { id: 'tax', label: { uz: 'Soliq', ru: 'Налог', en: 'Tax' }, color: '#2dd4a7' },
   { id: 'salary', label: { uz: 'Ish haqi', ru: 'Зарплата', en: 'Salary' }, color: '#38bdf8' },
   {

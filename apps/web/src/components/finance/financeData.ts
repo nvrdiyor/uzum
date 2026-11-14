@@ -54,6 +54,7 @@ const CATEGORY_COLOR: Record<ExpenseCategory, string> = {
   logistics: COST_COLORS.logistics,
   marketing: COST_COLORS.marketing,
   storage: COST_COLORS.storage,
+  payout_fee: COST_COLORS.payoutFee,
   tax: COST_COLORS.tax,
   salary: COST_COLORS.salary,
   other: COST_COLORS.other,
@@ -83,6 +84,7 @@ export const PNL_LINE_COLOR: Record<string, string> = {
   // Pul oqimida reklama manbaga qarab ikkiga bo'linadi — bir oila, bir rang
   marketingUzum: COST_COLORS.marketing,
   marketingManual: COST_COLORS.marketing,
+  payout_fee: COST_COLORS.payoutFee,
   tax: COST_COLORS.tax,
   manualTax: COST_COLORS.tax,
   salary: COST_COLORS.salary,
@@ -104,6 +106,8 @@ export const CATEGORY_TONE: Record<ExpenseCategory, Tone> = {
   logistics: 'info',
   marketing: 'warn',
   storage: 'info',
+  // Yechib olish haqi — Uzum ulushi, komissiya kabi binafsha
+  payout_fee: 'violet',
   tax: 'warn',
   salary: 'info',
   other: 'muted',
@@ -187,6 +191,7 @@ const KNOWN_PNL_IDS = new Set([
   'logistics',
   'storage',
   'marketing',
+  'payout_fee',
   'tax',
   'salary',
   'other',

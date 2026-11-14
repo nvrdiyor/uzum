@@ -337,6 +337,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   logistics: 'Logistika',
   marketing: 'Marketing',
   storage: 'Ombor (saqlash)',
+  payout_fee: 'Yechib olish haqi',
   tax: 'Soliq',
   salary: 'Ish haqi',
   other: 'Boshqa',

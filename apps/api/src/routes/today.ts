@@ -703,17 +703,21 @@ function compareTasks(a: TodayTask, b: TodayTask): number {
   return LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || b.count - a.count;
 }
 
-/** Uzum bugun jadval bo'yicha o'tkazgan to'lov — sinxron qayd etgan bo'lsa (payout-history.ts) */
+/**
+ * Uzum bugun jadval bo'yicha o'tkazgan to'lov — sinxron qayd etgan bo'lsa
+ * (payout-history.ts). Kabinet va to'lovlar tarixidagi kabi haqi bilan birga
+ * (amount + fee): ilgari hisobga tushgan summa ko'rinib, kabinetdagidan kam edi.
+ */
 async function payoutToday(storeIds: string[], today: string): Promise<number | null> {
   if (storeIds.length === 0) return null;
   const day = parseISODate(today);
   const agg = await prisma.payoutRecord.aggregate({
-    _sum: { amount: true },
+    _sum: { amount: true, fee: true },
     _count: { _all: true },
     // PayoutRecord.date — Toshkent kalendar sanasi (UTC yarim tuni)
     where: { storeId: { in: storeIds }, kind: 'scheduled', date: { gte: day, lt: addDays(day, 1) } },
   });
-  return agg._count._all > 0 ? round(agg._sum.amount ?? 0) : null;
+  return agg._count._all > 0 ? round((agg._sum.amount ?? 0) + (agg._sum.fee ?? 0)) : null;
 }
 
 // ─────────────────────────── GET / ───────────────────────────

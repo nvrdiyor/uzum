@@ -30,6 +30,8 @@ export type UzumExpenseCategory =
   | 'logistics'
   | 'marketing'
   | 'storage'
+  /** Uzum yechib olish haqi — nomidan aniqlanadi (shared payoutFeeKind) */
+  | 'payout_fee'
   | 'tax'
   | 'other';
 

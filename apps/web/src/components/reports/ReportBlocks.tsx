@@ -228,13 +228,27 @@ const EXPENSE_COLOR: Record<ExpenseCategory, string> = {
   logistics: COST_COLORS.logistics,
   storage: COST_COLORS.storage,
   marketing: COST_COLORS.marketing,
+  payout_fee: COST_COLORS.payoutFee,
   tax: COST_COLORS.tax,
   salary: COST_COLORS.salary,
   other: COST_COLORS.other,
 };
 
-/** Lentadagi tartib: avval Uzum oladigan qism, keyin davlat, keyin sotuvchining o'zi */
-const EXPENSE_ORDER: ExpenseCategory[] = ['commission', 'logistics', 'storage', 'marketing', 'tax', 'salary', 'other'];
+/**
+ * Lentadagi tartib: avval Uzum oladigan qism, keyin davlat, keyin sotuvchining o'zi.
+ * Ro'yxatda bo'lmagan toifa lentadan tushib qoladi va tannarx + xarajat + foyda
+ * tushumga teng bo'lmay qoladi — yangi toifa shu yerga ham qo'shiladi.
+ */
+const EXPENSE_ORDER: ExpenseCategory[] = [
+  'commission',
+  'logistics',
+  'storage',
+  'marketing',
+  'payout_fee',
+  'tax',
+  'salary',
+  'other',
+];
 
 function useExpenseLabel() {
   const lang = useLang();

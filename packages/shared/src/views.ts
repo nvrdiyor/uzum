@@ -506,8 +506,9 @@ const CONTEXT_MONEY: Readonly<Record<string, ReadonlySet<string>>> = {
   // Boshqaruv paneli: { units, amount (tannarx bo'yicha), fbo, fbs (dona) }
   stockValue: new Set(['amount']),
   // Boshqaruv paneli xarajatlari: komissiya, logistika, marketing, saqlash ochiq;
-  // sotuvchining o'z xarajati (ish haqi, ijara) va jami — yo'q
-  expenses: new Set(['other', 'total', 'periodOnly']),
+  // sotuvchining o'z xarajati (ish haqi, ijara) va jami — yo'q. Yechib olish
+  // haqi ham yo'q: u to'lovning 1%/2,5% i, ya'ni to'lov summasini ochib qo'yadi
+  expenses: new Set(['other', 'total', 'periodOnly', 'payout_fee']),
 };
 
 /** Son bo'lsa pul (Kategoriya va Nolikvid qatorida tannarx qiymati), obyekt bo'lsa — CONTEXT_MONEY */

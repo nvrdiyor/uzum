@@ -156,8 +156,9 @@ const KNOWN_CATEGORIES = new Set<string>(EXPENSE_CATEGORIES.map((c) => c.id));
  * `source != 'uzum-payout'` bilan olingan (ular pozitsiyada ayrilgan).
  *
  * Faqat ma'lum toifalar: getExpenses noma'lum toifani alohida kalitga
- * yig'adi, getPeriodCosts esa yettita toifani oladi — ya'ni noma'lum toifa
- * panel foydasidan ayrilmaydi. Bot ham ayirmaydi, aks holda raqamlar ajralardi.
+ * yig'adi, getPeriodCosts esa faqat ma'lum toifalarni oladi (2026-11-14 dan
+ * yechib olish haqi `payout_fee` ham) — ya'ni noma'lum toifa panel foydasidan
+ * ayrilmaydi. Bot ham ayirmaydi, aks holda raqamlar ajralardi.
  */
 export function periodCostsTotal(expenses: Array<{ category: string; amount: number }>, storageFees: number): number {
   let total = storageFees;

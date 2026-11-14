@@ -131,12 +131,12 @@ registerNamespace('payout', {
     'plan.transitPlus': '+ ≈{v} yo‘ldagilardan',
     'plan.estimate': 'Taxminan',
     'hist.title': 'To‘lovlar tarixi',
-    'hist.subtitle': 'Uzum hisobingizga o‘tkazgan pul',
+    'hist.subtitle': 'Uzum kabinetidagi to‘lovlar — haqi bilan',
     'hist.scheduled': 'Jadval bo‘yicha',
     'hist.early': 'Erta yechish',
     'hist.earlier': 'Oldingi to‘lovlar (jami)',
-    'hist.fee': 'so‘ralgan {gross}, haq {fee}',
-    'hist.total': 'Jami yechib olingan',
+    'hist.fee': 'haq {fee} · hisobga {net}',
+    'hist.total': 'Hisobingizga tushgan jami',
     'hist.empty': 'Hali to‘lov bo‘lmagan',
     'hist.note': 'Uzum API’da to‘lovlar tarixi yo‘q — ro‘yxat yechib olingan summa o‘zgarishidan tuziladi.',
     'kpi.transit': 'Yo‘lda',
@@ -240,12 +240,12 @@ registerNamespace('payout', {
     'plan.transitPlus': '+ ≈{v} из заказов в пути',
     'plan.estimate': 'Примерно',
     'hist.title': 'История выплат',
-    'hist.subtitle': 'Деньги, которые Uzum перевёл на ваш счёт',
+    'hist.subtitle': 'Выплаты как в кабинете Uzum — с комиссией',
     'hist.scheduled': 'По графику',
     'hist.early': 'Досрочный вывод',
     'hist.earlier': 'Предыдущие выплаты (всего)',
-    'hist.fee': 'запрошено {gross}, комиссия {fee}',
-    'hist.total': 'Всего выведено',
+    'hist.fee': 'комиссия {fee} · на счёт {net}',
+    'hist.total': 'Всего поступило на счёт',
     'hist.empty': 'Выплат ещё не было',
     'hist.note': 'В API Uzum нет истории выплат — список строится по изменению выведенной суммы.',
     'kpi.transit': 'В пути',
@@ -349,12 +349,12 @@ registerNamespace('payout', {
     'plan.transitPlus': '+ ≈{v} from orders in transit',
     'plan.estimate': 'Approx.',
     'hist.title': 'Payout history',
-    'hist.subtitle': 'Money Uzum has transferred to your account',
+    'hist.subtitle': 'Payouts as shown in the Uzum cabinet, fee included',
     'hist.scheduled': 'Scheduled',
     'hist.early': 'Early withdrawal',
     'hist.earlier': 'Earlier payouts (total)',
-    'hist.fee': 'requested {gross}, fee {fee}',
-    'hist.total': 'Total withdrawn',
+    'hist.fee': 'fee {fee} · received {net}',
+    'hist.total': 'Total received',
     'hist.empty': 'No payouts yet',
     'hist.note': 'Uzum API has no payout history — this list is built from changes in the withdrawn total.',
     'kpi.transit': 'In transit',
@@ -813,8 +813,10 @@ function OrderList({ orders }: { orders: PayoutOrder[] }) {
 
 /**
  * To'lovlar tarixi — Uzum haqiqatda o'tkazgan pul.
- * Erta yechishda kabinet so'ralgan summani ko'rsatadi (136 000), balansdan
- * esa haqdan keyingisi chiqadi (132 600) — ikkalasi ham yoziladi.
+ * Asosiy raqam — Uzum kabinetidagi kabi haqi bilan birga (`gross`):
+ * 14.11 da 1 210 900, ostida "haq 12 109 · hisobga 1 198 791". Ilgari faqat
+ * hisobga tushgani ko'rinib, kabinetdagidan kam edi va haq 0 turardi
+ * (2026-11-14). Sarlavhadagi jami — hisobga tushgan pul (net).
  */
 function HistoryCard({ rows, total }: { rows: PayoutHistoryRow[]; total: number }) {
   const t = useT('payout');
@@ -856,11 +858,11 @@ function HistoryCard({ rows, total }: { rows: PayoutHistoryRow[]; total: number 
                   </p>
                   <p className="text-xs text-muted">
                     {r.kind === 'earlier' ? f.date(r.date) : t(`hist.${r.kind}`)}
-                    {r.fee > 0 ? <> · {t('hist.fee', { gross: f.money(r.amount + r.fee), fee: f.money(r.fee) })}</> : null}
+                    {r.fee > 0 ? <> · {t('hist.fee', { fee: f.money(r.fee), net: f.money(r.amount) })}</> : null}
                   </p>
                 </div>
                 <p className="tnum shrink-0 font-display text-base font-bold text-ink">
-                  <Amount value={f.money(r.amount)} />
+                  <Amount value={f.money(r.gross)} />
                 </p>
               </li>
             ))}

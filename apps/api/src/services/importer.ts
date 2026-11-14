@@ -23,6 +23,7 @@ import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
   DEFAULTS,
+  payoutFeeKind,
   round,
   toISODate,
   type DeliveryType,
@@ -1600,7 +1601,36 @@ export async function relinkOrphanItems(storeId: string): Promise<number> {
   return linked;
 }
 
-export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'logistics', 'other'];
+/**
+ * Uzum xarajatlaridan yoziladigan toifalar. Qolganlari (komissiya, saqlash,
+ * soliq) boshqa manbadan hisoblanadi — bu yerda yozilsa ikki marta ayrilardi.
+ * `payout_fee` (yechib olish haqi, 2026-11-14) shu ro'yxatda bo'lishi SHART:
+ * aks holda u jim tashlab yuboriladi, balans va "Yechib olish mumkin" esa
+ * Uzumdagidan katta chiqadi.
+ */
+export const IMPORTED_EXPENSE_CATEGORIES: ExpenseCategory[] = ['marketing', 'logistics', 'payout_fee', 'other'];
+
+/** Uzum xarajatlarining bir kunlik qatorlari to'liq qayta yoziladigan toifalar (upsertExpenses) */
+const DAY_REWRITE_CATEGORIES = ['marketing', 'payout_fee'];
+
+/**
+ * Uzum xarajat qatorining barqaror id'si. Toifa ID ICHIDA — shuning uchun
+ * toifasi o'zgargan qator yangi id oladi va eskisi kunni to'liq qayta yozishda
+ * o'chiriladi (upsertExpenses). Bir martalik ko'chirish skripti ham shu
+ * funksiyadan foydalanadi (scripts/payout-fee-migrate.ts) — id'lar mos bo'lsin.
+ */
+export function expenseRowId(
+  companyId: string,
+  storeId: string | null,
+  day: string,
+  category: string,
+  source: string,
+  subKey = '',
+): string {
+  return subKey
+    ? stableId('ex', companyId, storeId ?? '', day, category, source, subKey)
+    : stableId('ex', companyId, storeId ?? '', day, category, source);
+}
 
 /**
  * Buyurtma logistikasini Uzum HAQIQATDA ushlagan summaga keltiradi.
@@ -1715,10 +1745,18 @@ export async function upsertExpenses(
      * yozilib, qolganlari reklamasiz ko'rinardi (Mahsulot foydasi, ABC foyda
      * rejimi, unit-iqtisod). Mahsulotga bog'lanmagan qatorlar avvalgi kalitda.
      */
-    const productKey = category === 'marketing' ? (adProductId(text(e.note)) ?? '') : '';
-    const id = productKey
-      ? stableId('ex', companyId, storeId ?? '', toISODate(date), category, source, productKey)
-      : stableId('ex', companyId, storeId ?? '', toISODate(date), category, source);
+    /*
+     * Yechib olish haqi — TURI bo'yicha alohida qator (jadval / shoshilinch):
+     * bir kunda ikkalasi kelsa ham har biri o'z izohi bilan qoladi, to'lovlar
+     * tarixi esa haqni turiga qarab biriktiradi (payout-history.ts).
+     */
+    const subKey =
+      category === 'marketing'
+        ? (adProductId(text(e.note)) ?? '')
+        : category === 'payout_fee'
+          ? (payoutFeeKind(text(e.note)) ?? 'scheduled')
+          : '';
+    const id = expenseRowId(companyId, storeId, toISODate(date), category, source, subKey);
     const amount = round(num(e.amount));
     const cur = merged.get(id);
     if (cur) {
@@ -1756,10 +1794,15 @@ export async function upsertExpenses(
    * ikki marta hisoblanmasin; mahsulot to'lovi bekor bo'lsa ham shunday.
    * Sinxron oynasi kun boshidan boshlanadi — kelgan kunning hamma qatorlari
    * shu ro'yxatda (2026-10-27).
+   *
+   * Yechib olish haqi ham shu qoidada (2026-11-14): ilgari u reklama bo'lib
+   * yozilgan, endi `payout_fee` — toifa id ichida, ya'ni yangi qator yangi id
+   * oladi. Shu kunning eski "reklama" nusxasi o'chmasa, haq balans va foydadan
+   * IKKI MARTA ayrilardi. Kun faqat haqdan iborat bo'lsa ham qayta yoziladi.
    */
   const adDays = new Map<string, { storeId: string | null; date: Date; source: string; ids: string[] }>();
   for (const r of rows) {
-    if (r.category !== 'marketing') continue;
+    if (!DAY_REWRITE_CATEGORIES.includes(r.category)) continue;
     const key = `${r.storeId ?? ''}|${r.date.toISOString()}|${r.source}`;
     const day = adDays.get(key) ?? { storeId: r.storeId, date: r.date, source: r.source, ids: [] };
     day.ids.push(r.id);
@@ -1771,11 +1814,31 @@ export async function upsertExpenses(
         companyId,
         storeId: day.storeId,
         date: day.date,
-        category: 'marketing',
+        category: { in: DAY_REWRITE_CATEGORIES },
         source: day.source,
         id: { notIn: day.ids },
       },
     });
+  }
+
+  /*
+   * Haqning eski nusxasi ID BO'YICHA ham o'chiriladi. U mahsulotsiz reklama
+   * kaliti bilan yozilgan; foydalanuvchi uni Xarajatlar sahifasida boshqa
+   * toifaga (sanaga, do'konga) o'tkazgan bo'lsa, yuqoridagi tozalash uni
+   * topmaydi va haq ikki marta ayrilardi. Ilgari shu id qayta kelib, toifasi
+   * qaytarilardi — endi haq yangi id oladi, shuning uchun eski id kelmasa,
+   * qator Uzumda yo'q degani. Shu kunda mahsulotsiz reklama qolgan bo'lsa, id
+   * shu safar ham keladi va tegilmaydi.
+   */
+  const sentIds = new Set(rows.map((r) => r.id));
+  const legacyFeeIds = new Set<string>();
+  for (const r of rows) {
+    if (r.category !== 'payout_fee') continue;
+    const legacy = expenseRowId(companyId, r.storeId, toISODate(r.date), 'marketing', r.source);
+    if (!sentIds.has(legacy)) legacyFeeIds.add(legacy);
+  }
+  if (legacyFeeIds.size > 0) {
+    await prisma.expense.deleteMany({ where: { companyId, id: { in: [...legacyFeeIds] } } });
   }
 
   for (const batch of chunked(rows)) {

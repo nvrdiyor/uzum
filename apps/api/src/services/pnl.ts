@@ -40,6 +40,12 @@ export interface PeriodCosts {
   marketing: number;
   /** Uzum saqlash to'lovi (StorageFee) + qo'lda kiritilgani */
   storage: number;
+  /**
+   * Uzum yechib olish haqi (jadval bo'yicha 1% yoki shoshilinch 2,5%). Ilgari
+   * reklama ichida edi (2026-11-14) — jami o'zgarmaydi, faqat alohida ko'rinadi.
+   * `total` ga KIRADI: yo'qolsa sof foyda haq miqdoricha oshib ketadi.
+   */
+  payoutFee: number;
   salary: number;
   other: number;
   /** Qo'lda kiritilgan komissiya (Uzum komissiyasi pozitsiyada ayrilgan) */
@@ -81,6 +87,7 @@ export async function getPeriodCosts(
     logistics: exp.logistics,
     marketing: exp.marketing,
     storage: exp.storage + fees,
+    payoutFee: exp.payout_fee,
     salary: exp.salary,
     other: exp.other,
     commission: exp.commission,

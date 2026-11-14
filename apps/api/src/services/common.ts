@@ -441,6 +441,7 @@ export async function getExpenses(
     logistics: 0,
     marketing: 0,
     storage: 0,
+    payout_fee: 0,
     tax: 0,
     salary: 0,
     other: 0,

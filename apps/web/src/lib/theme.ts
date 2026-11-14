@@ -75,6 +75,8 @@ export const COST_COLORS = {
   logistics: CHART_COLORS.info,
   storage: CHART_COLORS.pink,
   marketing: 'rgb(var(--sc-2))',
+  // Uzum yechib olish haqi — Uzum (binafsha) oilasi, komissiyadan ochroq (2026-11-14)
+  payoutFee: 'rgb(var(--c-violet) / 0.55)',
   tax: CHART_COLORS.warn,
   // Ish haqi — o'z jamoangiz xarajati; to'q ko'k-binafsha, Uzum binafshasidan to'qroq
   salary: 'rgb(var(--sc-7))',

@@ -735,6 +735,11 @@ router.get(
       marketing: round(costs.marketing),
       // Uzum saqlash to'lovi (StorageFee) ham shu yerda — ilgari u sof foydadan ayrilmasdi
       storage: round(costs.storage),
+      /*
+       * Uzum yechib olish haqi — o'z kaliti (2026-11-14). `other` ga qo'shilmaydi:
+       * MoneyFlow `other` ni sotuvchining o'z xarajati deb "Uzum oldi" dan chiqaradi.
+       */
+      payout_fee: round(costs.payoutFee),
       tax: taxAmount,
       // Bir donaga qo'shimcha xarajat, ish haqi va boshqalar bitta ustunda
       other: round(cur.otherCost + costs.other + costs.salary),
@@ -743,7 +748,13 @@ router.get(
       periodOnly: round(curPeriodOnly),
     };
     expenses.total =
-      expenses.commission + expenses.logistics + expenses.marketing + expenses.storage + expenses.tax + expenses.other;
+      expenses.commission +
+      expenses.logistics +
+      expenses.marketing +
+      expenses.storage +
+      expenses.payout_fee +
+      expenses.tax +
+      expenses.other;
 
     // Do'konlar kesimi
     const storesBreakdown = [...cur.byStore.entries()]

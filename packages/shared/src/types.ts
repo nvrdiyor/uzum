@@ -15,6 +15,8 @@ export type ExpenseCategory =
   | 'logistics'
   | 'marketing'
   | 'storage'
+  /** Uzum yechib olish haqi (jadval bo'yicha 1% yoki shoshilinch 2,5%) — payout-fee.ts */
+  | 'payout_fee'
   | 'tax'
   | 'salary'
   | 'other';
@@ -279,11 +281,13 @@ export interface DashboardResponse {
     logistics: number;
     marketing: number;
     storage: number;
+    /** Uzum yechib olish haqi — reklama emas, alohida (2026-11-14) */
+    payout_fee: number;
     tax: number;
     other: number;
     total: number;
     /**
-     * Davr xarajatlari (omborga logistika, reklama, saqlash, boshqa) —
+     * Davr xarajatlari (omborga logistika, reklama, saqlash, yechib olish haqi, boshqa) —
      * `itemProfit` dan ayirilib `netProfit` chiqadi. Komissiya va mijozga
      * yetkazish buyurtmaning o'zida ayrilgani uchun bu yerga kirmaydi.
      */
@@ -2856,10 +2860,15 @@ export interface PayoutOrder {
 /** Uzum o'tkazgan bitta to'lov */
 export interface PayoutHistoryRow {
   date: string;
-  /** Balansdan chiqqan summa (erta yechishda — haqdan keyingi) */
+  /** Hisobingizga tushgan summa — Uzum haqi ayirilgandan keyin (withdrawnProfit o'sishi) */
   amount: number;
-  /** Erta yechish haqi; jadval to'lovida 0 */
+  /**
+   * Uzum yechib olish haqi: jadval bo'yicha to'lovda 1% (har hafta), erta
+   * yechishda 2,5%. Haq satri hali kelmagan bo'lsa 0 (keyingi sinxron qo'shadi).
+   */
   fee: number;
+  /** Uzum kabinetidagi "To'lovlar tarixi" raqami: amount + fee */
+  gross: number;
   /** scheduled — jadval bo'yicha · early — erta yechish · earlier — tarix yuritilishidan oldingi jami */
   kind: 'scheduled' | 'early' | 'earlier';
 }
@@ -3338,8 +3347,9 @@ export interface TodayResponse {
   cleared: TodayCheck[];
   /**
    * Uzum bugun jadval bo'yicha o'tkazgan to'lov — sinxron uni allaqachon qayd
-   * etgan bo'lsa (PayoutRecord). Bugun to'lov kuni bo'lmasa yoki hali qayd
-   * etilmagan bo'lsa null. Vazifa emas, faqat kontekst.
+   * etgan bo'lsa (PayoutRecord). Kabinetdagi kabi haq bilan birga (amount +
+   * fee). Bugun to'lov kuni bo'lmasa yoki hali qayd etilmagan bo'lsa null.
+   * Vazifa emas, faqat kontekst.
    */
   payoutToday: number | null;
   /** Foydalanuvchi "Bajarildi" yoki "Keyinroq" deb yashirgan obyektlar soni */

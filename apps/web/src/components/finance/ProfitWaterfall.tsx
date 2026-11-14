@@ -40,6 +40,7 @@ const KNOWN = new Set([
   'marketingManual',
   'storage',
   'logistics',
+  'payout_fee',
   'salary',
   'manualCommission',
   'other',
@@ -47,7 +48,7 @@ const KNOWN = new Set([
 ]);
 
 /** Izohida qisqa tushuntirish beriladigan qadamlar (flow.hint.<id>) */
-const HINTED = new Set(['payout', 'itemOther', 'marketingUzum', 'marketingManual', 'operatingProfit']);
+const HINTED = new Set(['payout', 'itemOther', 'marketingUzum', 'marketingManual', 'payout_fee', 'operatingProfit']);
 
 /**
  * Ikkinchi darajali moddalar — o'z oilasining ochroq tusida. Qo'shni ikki
