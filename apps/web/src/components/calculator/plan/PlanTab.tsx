@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,7 +23,7 @@ import {
   type UnitPlanRow,
   type UnitPlanRowResult,
 } from '@savdoiq/shared';
-import { AlertTriangle, Check, Info, Loader2, Plus, RefreshCw, Ruler, Trash2, Undo2, X } from '@/components/icons';
+import { AlertTriangle, Check, GripVertical, Info, Loader2, Plus, RefreshCw, Ruler, Trash2, Undo2, X } from '@/components/icons';
 import { parseAmount } from '@/components/batches/shared';
 import { Amount, Badge, Button, Card, ErrorState, Modal, Skeleton, SkeletonRows, toast } from '@/components/ui';
 import { api, ApiError, getCompanyId } from '@/lib/api';
@@ -155,7 +156,7 @@ const RESULT_TD_FIRST =
 
 /** Yopishqoq katak shaffof bo'lolmaydi: ostidan aylanayotgan ustunlar ko'rinardi. Sariq tus — fon ustida gradient */
 const STICKY_NAME_TD =
-  'sticky left-11 z-10 border-b border-l border-b-line/70 border-l-line/60 p-0 shadow-[2px_0_0_rgb(var(--c-border))] ' +
+  'sticky left-14 z-10 border-b border-l border-b-line/70 border-l-line/60 p-0 shadow-[2px_0_0_rgb(var(--c-border))] ' +
   '[background:linear-gradient(rgb(var(--c-warn)/0.06),rgb(var(--c-warn)/0.06)),rgb(var(--c-surface))]';
 
 /**
@@ -502,6 +503,9 @@ interface RowProps {
   onRemove: (id: string) => void;
   onKey: (rowIdx: number, col: string, e: KeyboardEvent<HTMLElement>) => void;
   onOpenDims: (id: string) => void;
+  /** Qator ushlab tortilmoqda */
+  dragging: boolean;
+  onDragStart: (id: string, e: ReactPointerEvent<HTMLElement>) => void;
 }
 
 /*
@@ -510,7 +514,20 @@ interface RowProps {
  * `res` har hisobda yangi obyekt, shuning uchun qiymatlari solishtiriladi.
  */
 const PlanRowView = memo(
-  function PlanRowView({ row: r, index: i, res, tableRate, canEdit, onPatch, onPick, onRemove, onKey, onOpenDims }: RowProps) {
+  function PlanRowView({
+    row: r,
+    index: i,
+    res,
+    tableRate,
+    canEdit,
+    onPatch,
+    onPick,
+    onRemove,
+    onKey,
+    onOpenDims,
+    dragging,
+    onDragStart,
+  }: RowProps) {
     const t = useT('unitPlan');
     const f = useFormat();
     const pctText = usePctText();
@@ -541,8 +558,33 @@ const PlanRowView = memo(
     const rateTone = (v: number | null) => (v !== null && v < 0 && !nearZero(v) ? 'text-danger' : 'text-ink');
 
     return (
-      <tr className="group">
-        <td className="tnum sticky left-0 z-10 border-b border-b-line/70 bg-surface px-1 py-2.5 text-center text-muted">{i + 1}</td>
+      // Tortilayotgan qator tusi kataklar orqali ko'rinadi; yopishqoq kataklar shaffof emas — ular o'zgarmaydi
+      <tr className={cn('group', dragging && 'bg-brand/[0.10]')}>
+        <td className="tnum sticky left-0 z-10 border-b border-b-line/70 bg-surface p-0 text-muted">
+          <div className="flex items-center justify-center gap-0.5 px-1">
+            {canEdit ? (
+              /*
+               * Tutqich: sichqoncha va barmoq bilan tortiladi (touch-none — sahifa aylanib
+               * ketmasin), fokusda ↑/↓ bilan suriladi. Sensorli ekranda hover yo'q — doim ko'rinadi.
+               */
+              <button
+                type="button"
+                data-cell={`${i}:grip`}
+                title={t('row.move')}
+                aria-label={t('row.move')}
+                onPointerDown={(e) => onDragStart(r.id, e)}
+                onKeyDown={keyFor('grip')}
+                className={cn(
+                  'focusable shrink-0 cursor-grab touch-none rounded-md p-0.5 transition-colors hover:text-ink active:cursor-grabbing',
+                  dragging ? 'text-brand-ink' : 'text-muted/70 group-hover:text-ink-soft',
+                )}
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            <span className={cn('min-w-[1.4rem] text-center', dragging && 'font-semibold text-brand-ink')}>{i + 1}</span>
+          </div>
+        </td>
         <td className={STICKY_NAME_TD}>
           <input
             data-cell={`${i}:name`}
@@ -728,6 +770,8 @@ const PlanRowView = memo(
     a.onRemove === b.onRemove &&
     a.onKey === b.onKey &&
     a.onOpenDims === b.onOpenDims &&
+    a.dragging === b.dragging &&
+    a.onDragStart === b.onDragStart &&
     sameResult(a.res, b.res),
 );
 
@@ -1052,13 +1096,48 @@ export function PlanTab() {
     setUndo(null);
   };
 
-  // ── Klaviatura: Enter — pastga, oxirgi qatorda yangi qator ──
+  // ── Qator joyini almashtirish ──
+  /*
+   * Tartib — qatorlar ro'yxatining o'zi: saqlashda shu tartibda ketadi, server
+   * o'zgartirmaydi. Qator id bo'yicha suriladi: tortish paytida jadval o'zgarsa
+   * (masalan, o'chirish qaytarilsa) eski raqam boshqa qatorni surib yubormasin.
+   */
+  const moveRow = useCallback(
+    (id: string, to: number) => {
+      const rows = draftRef.current?.rows ?? [];
+      const from = rows.findIndex((r) => r.id === id);
+      if (from < 0 || to < 0 || to >= rows.length || from === to) return;
+      edit((d) => {
+        const at = d.rows.findIndex((r) => r.id === id);
+        if (at < 0) return d;
+        const next = [...d.rows];
+        const [row] = next.splice(at, 1);
+        next.splice(Math.min(to, next.length), 0, row);
+        return { ...d, rows: next };
+      });
+    },
+    [edit],
+  );
+
+  // ── Klaviatura: Enter — pastga, oxirgi qatorda yangi qator; Alt + ↑/↓ — qatorni surish ──
   const tableRef = useRef<HTMLTableElement>(null);
   const pendingFocus = useRef<string | null>(null);
   const focusCell = (cell: string) => tableRef.current?.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
 
   const onKey = useCallback(
     (rowIdx: number, col: string, e: KeyboardEvent<HTMLElement>) => {
+      const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+      // Tutqichda oddiy ↑/↓, istalgan katakda Alt bilan. Ctrl/Shift bilan — brauzer va matn tanlashniki
+      if (vertical && (e.altKey || col === 'grip') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const rows = draftRef.current?.rows ?? [];
+        const to = rowIdx + (e.key === 'ArrowUp' ? -1 : 1);
+        if (!canEdit || to < 0 || to >= rows.length) return;
+        // Qator surilgach fokus o'sha katakda qoladi — ketma-ket bosib bir necha pog'ona surish mumkin
+        pendingFocus.current = `${to}:${col}`;
+        moveRow(rows[rowIdx].id, to);
+        return;
+      }
       if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
       e.preventDefault();
       const next = e.shiftKey ? rowIdx - 1 : rowIdx + 1;
@@ -1070,15 +1149,17 @@ export function PlanTab() {
         addRow();
       }
     },
-    [addRow, canEdit],
+    [addRow, canEdit, moveRow],
   );
 
   const rowCount = draft?.rows.length ?? 0;
+  // Yangi qator qo'shilganda yoki qator surilganda — o'sha katakka fokus
+  const draftRows = draft?.rows;
   useEffect(() => {
     if (!pendingFocus.current) return;
     focusCell(pendingFocus.current);
     pendingFocus.current = null;
-  }, [rowCount]);
+  }, [draftRows]);
 
   /*
    * Yozilayotgan katak yopishqoq ustun yoki sarlavha ostida qolmasin: yarim ko'rinib
@@ -1105,7 +1186,8 @@ export function PlanTab() {
       if (cell.top < headBottom) box.scrollTop += cell.top - headBottom;
       else if (cell.bottom > footTop) box.scrollTop += cell.bottom - footTop;
 
-      if (td === stickyName) return;
+      // Yopishqoq № (tutqich) va nom kataklari doim ko'rinadi: yonga surilsa jadval boshiga sakrardi
+      if (td === stickyName || td === row.cells[0]) return;
       const edge = stickyName.getBoundingClientRect().right;
       if (cell.left < edge || cell.width > view.right - edge) box.scrollLeft += cell.left - edge;
       else if (cell.right > view.right) box.scrollLeft += cell.right - view.right;
@@ -1127,6 +1209,144 @@ export function PlanTab() {
   }, []);
 
   const onOpenDims = useCallback((id: string) => setDimsFor(id), []);
+
+  /*
+   * Tutqich bilan tortish. Kutubxonasiz: jadval qatorlari (`tr`) yopishqoq ustunlar
+   * bilan — ko'chma nusxa yasash o'rniga qator joyida qoladi va tushadigan joy
+   * chiziq bilan ko'rsatiladi; qo'yib yuborilganda bitta `edit` bilan suriladi.
+   * Chetga yaqinlashilsa jadval (keng ekranda) yoki sahifa o'zi aylanadi; Esc — bekor.
+   */
+  /** Tortish paytida bo'limdan chiqilsa tinglovchilar qolib ketmasin */
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null);
+  const onDragStart = useCallback(
+    (id: string, e: ReactPointerEvent<HTMLElement>) => {
+      if (!canEdit || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const from = (draftRef.current?.rows ?? []).findIndex((r) => r.id === id);
+      if (from < 0) return;
+      // Matn belgilanmasin va sensorli ekranda sahifa aylanmasin
+      e.preventDefault();
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {
+        // Ba'zi brauzerlarda tugagan ko'rsatkich uchun xato beradi — tortish baribir ishlaydi
+      }
+      const startY = e.clientY;
+      let lastY = startY;
+      let active = false;
+      let to = from;
+      let frame = 0;
+
+      /** Sahifani aylantiradigan ota: jadval o'zi aylanmasa (telefon, kichik ekran) */
+      const pageScroller = (): HTMLElement => {
+        let el = scrollerRef.current?.parentElement ?? null;
+        while (el) {
+          const { overflowY } = getComputedStyle(el);
+          if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+          el = el.parentElement;
+        }
+        return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+      };
+      const page = pageScroller();
+
+      const locate = () => {
+        const body = tableRef.current?.tBodies[0];
+        const box = scrollerRef.current;
+        if (!body || !box) return;
+        const trs = Array.from(body.rows);
+        if (!trs.length) return;
+        // Qaysi qatorning yuqori yarmida — o'sha qator oldiga
+        let pos = trs.length;
+        for (let k = 0; k < trs.length; k += 1) {
+          const rect = trs[k].getBoundingClientRect();
+          if (lastY < rect.top + rect.height / 2) {
+            pos = k;
+            break;
+          }
+        }
+        to = pos > from ? pos - 1 : pos;
+        if (to === from) {
+          setDropLine(null);
+          return;
+        }
+        const view = box.getBoundingClientRect();
+        const y = pos < trs.length ? trs[pos].getBoundingClientRect().top : trs[trs.length - 1].getBoundingClientRect().bottom;
+        setDropLine({ top: y - view.top + box.scrollTop, left: box.scrollLeft, width: box.clientWidth });
+      };
+
+      const tick = () => {
+        const box = scrollerRef.current;
+        const table = tableRef.current;
+        const EDGE = 56;
+        const STEP = 16;
+        if (box && table && box.scrollHeight > box.clientHeight + 1) {
+          // Yopishqoq sarlavha va jami ostida emas, ular chegarasida aylanadi
+          const top = table.tHead?.getBoundingClientRect().bottom ?? box.getBoundingClientRect().top;
+          const bottom = table.tFoot?.getBoundingClientRect().top ?? box.getBoundingClientRect().bottom;
+          if (lastY < top + EDGE) box.scrollTop -= STEP;
+          else if (lastY > bottom - EDGE) box.scrollTop += STEP;
+        } else if (lastY < EDGE) {
+          page.scrollTop -= STEP;
+        } else if (lastY > window.innerHeight - EDGE) {
+          page.scrollTop += STEP;
+        }
+        locate();
+        frame = requestAnimationFrame(tick);
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        lastY = ev.clientY;
+        // Kichik siljish — bosish, tortish emas
+        if (!active && Math.abs(lastY - startY) > 4) {
+          active = true;
+          setDragId(id);
+          document.body.style.cursor = 'grabbing';
+          frame = requestAnimationFrame(tick);
+        }
+      };
+      const finish = (commit: boolean) => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        window.removeEventListener('keydown', onEsc, true);
+        stopDrag.current = null;
+        try {
+          if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+        } catch {
+          // Tugma allaqachon sahifadan olingan
+        }
+        cancelAnimationFrame(frame);
+        document.body.style.cursor = '';
+        setDragId(null);
+        setDropLine(null);
+        if (active && commit && to !== from) moveRow(id, to);
+      };
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId === pointerId) finish(true);
+      };
+      const onCancel = (ev: PointerEvent) => {
+        if (ev.pointerId === pointerId) finish(false);
+      };
+      const onEsc = (ev: globalThis.KeyboardEvent) => {
+        if (ev.key !== 'Escape') return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      };
+      // Oynada tinglanadi: ushlash (capture) bo'lmasa ham ko'rsatkich tugmadan chiqqanda yo'qolmaydi
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+      window.addEventListener('keydown', onEsc, true);
+      stopDrag.current = () => finish(false);
+    },
+    [canEdit, moveRow],
+  );
 
   // ── Hisob ──
   const calc = useMemo(() => (draft ? calcUnitPlan(draft.rows, draft.rates) : null), [draft]);
@@ -1246,7 +1466,7 @@ export function PlanTab() {
         */}
         <div
           ref={scrollerRef}
-          className="isolate scroll-pb-12 scroll-pl-[172px] scroll-pt-24 overflow-auto sm:scroll-pl-[264px] lg:max-h-[calc(100vh-9rem)]"
+          className="relative isolate scroll-pb-12 scroll-pl-[184px] scroll-pt-24 overflow-auto sm:scroll-pl-[276px] lg:max-h-[calc(100vh-9rem)]"
         >
           <table
             ref={tableRef}
@@ -1261,10 +1481,10 @@ export function PlanTab() {
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') revealCell(e.target);
             }}
-            className="w-full min-w-[2444px] table-fixed border-separate border-spacing-0 text-sm sm:min-w-[2536px]"
+            className="w-full min-w-[2456px] table-fixed border-separate border-spacing-0 text-sm sm:min-w-[2548px]"
           >
             <colgroup>
-              <col className="w-11" />
+              <col className="w-14" />
               <col />
               <col className="w-[280px]" />
               <col className="w-[124px]" />
@@ -1314,7 +1534,7 @@ export function PlanTab() {
                 </th>
                 <th
                   title={t('hint.name')}
-                  className="table-head left-11 top-8 z-30 cursor-help border-b border-l border-b-line border-l-line/60 px-3 py-2 text-left align-bottom leading-tight shadow-[2px_0_0_rgb(var(--c-border))]"
+                  className="table-head left-14 top-8 z-30 cursor-help border-b border-l border-b-line border-l-line/60 px-3 py-2 text-left align-bottom leading-tight shadow-[2px_0_0_rgb(var(--c-border))]"
                 >
                   {t('th.name')}
                 </th>
@@ -1358,6 +1578,8 @@ export function PlanTab() {
                     onRemove={onRemove}
                     onKey={onKey}
                     onOpenDims={onOpenDims}
+                    dragging={dragId === r.id}
+                    onDragStart={onDragStart}
                   />
                 );
               })}
@@ -1365,7 +1587,7 @@ export function PlanTab() {
             <tfoot>
               <tr className="font-bold text-ink">
                 <td className="sticky bottom-0 left-0 z-20 bg-surface-2" />
-                <td className="sticky bottom-0 left-11 z-20 bg-surface-2 px-3 py-3 shadow-[2px_0_0_rgb(var(--c-border))]">{t('total')}</td>
+                <td className="sticky bottom-0 left-14 z-20 bg-surface-2 px-3 py-3 shadow-[2px_0_0_rgb(var(--c-border))]">{t('total')}</td>
                 <td colSpan={17} className="sticky bottom-0 z-10 bg-surface-2" />
                 <td className="tnum sticky bottom-0 z-10 whitespace-nowrap bg-surface-2 px-3 py-3 text-right">
                   <span className={cn(calc.totals.monthlyProfit < 0 ? 'text-danger' : 'text-brand-ink')}>
@@ -1380,6 +1602,14 @@ export function PlanTab() {
               </tr>
             </tfoot>
           </table>
+          {dropLine ? (
+            // Qator qo'yiladigan joy: jadval ichida aylanadi, yopishqoq ustunlar ustida turadi
+            <div
+              aria-hidden
+              className="pointer-events-none absolute z-40 h-0.5 -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_3px_rgb(var(--c-brand)/0.18)]"
+              style={{ top: dropLine.top, left: dropLine.left, width: dropLine.width }}
+            />
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-line px-5 py-3.5">

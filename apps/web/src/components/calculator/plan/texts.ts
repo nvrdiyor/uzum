@@ -57,7 +57,7 @@ registerNamespace('unitPlan', {
     'th.needed': 'Nechta tovar kerak',
     'th.capital': 'Kerakli sarmoya',
 
-    'hint.no': 'Qator raqami',
+    'hint.no': 'Qator raqami. ⋮⋮ ni ushlab tortsangiz qator joyi almashadi (Alt + ↑/↓ ham)',
     'hint.name': 'Tovar nomi — o‘zingiz uchun, hisobga ta’sir qilmaydi',
     'hint.category': 'Uzum kategoriyasi: tanlansa, komissiya foizi o‘zi qo‘yiladi',
     'hint.liters': 'Qadoqlangan tovar hajmi. Yuqoriga yaxlitlanadi va logistika shundan hisoblanadi',
@@ -111,10 +111,11 @@ registerNamespace('unitPlan', {
 
     'row.add': 'Qator qo‘shish',
     'row.delete': 'Qatorni o‘chirish',
+    'row.move': 'Ushlab yuqoriga yoki pastga torting · Alt + ↑/↓',
     'rows.count': '{n} / {max} qator',
     'rows.limit': 'Jadvalda ko‘pi bilan {n} ta qator bo‘ladi',
     total: 'Jami',
-    tip: 'Sariq kataklarni o‘zingiz to‘ldirasiz, qolgani avtomatik hisoblanadi. Enter — pastki katak, oxirgi qatorda yangi qator. Hammasi o‘zi saqlanadi.',
+    tip: 'Sariq kataklarni o‘zingiz to‘ldirasiz, qolgani avtomatik hisoblanadi. Enter — pastki katak, oxirgi qatorda yangi qator. Qator joyini ⋮⋮ ni tortib yoki Alt + ↑/↓ bilan almashtirasiz. Hammasi o‘zi saqlanadi.',
 
     'save.idle': 'O‘zgarishlar o‘zi saqlanadi',
     'save.pending': 'O‘zgarishlar bor',
@@ -180,7 +181,7 @@ registerNamespace('unitPlan', {
     'th.needed': 'Сколько товара нужно',
     'th.capital': 'Нужно вложить',
 
-    'hint.no': 'Номер строки',
+    'hint.no': 'Номер строки. Потяните за ⋮⋮, чтобы переставить строку (или Alt + ↑/↓)',
     'hint.name': 'Название товара — для вас, на расчёт не влияет',
     'hint.category': 'Категория Uzum: при выборе процент комиссии подставится сам',
     'hint.liters': 'Объём товара в упаковке. Округляется вверх, логистика считается по нему',
@@ -234,10 +235,11 @@ registerNamespace('unitPlan', {
 
     'row.add': 'Добавить строку',
     'row.delete': 'Удалить строку',
+    'row.move': 'Потяните вверх или вниз · Alt + ↑/↓',
     'rows.count': 'Строк: {n} из {max}',
     'rows.limit': 'В таблице не больше {n} строк',
     total: 'Итого',
-    tip: 'Жёлтые ячейки заполняете вы, остальное считается само. Enter — ячейка ниже, на последней строке — новая строка. Всё сохраняется автоматически.',
+    tip: 'Жёлтые ячейки заполняете вы, остальное считается само. Enter — ячейка ниже, на последней строке — новая строка. Строки переставляются за ⋮⋮ или Alt + ↑/↓. Всё сохраняется автоматически.',
 
     'save.idle': 'Изменения сохраняются сами',
     'save.pending': 'Есть изменения',
@@ -303,7 +305,7 @@ registerNamespace('unitPlan', {
     'th.needed': 'Units needed',
     'th.capital': 'Capital needed',
 
-    'hint.no': 'Row number',
+    'hint.no': 'Row number. Drag ⋮⋮ to move the row (or Alt + ↑/↓)',
     'hint.name': 'Product name — for you, it does not affect the numbers',
     'hint.category': 'Uzum category: pick one and the commission rate fills itself',
     'hint.liters': 'Volume of the packed product. Rounded up; logistics is based on it',
@@ -357,10 +359,11 @@ registerNamespace('unitPlan', {
 
     'row.add': 'Add row',
     'row.delete': 'Delete row',
+    'row.move': 'Drag up or down · Alt + ↑/↓',
     'rows.count': '{n} of {max} rows',
     'rows.limit': 'The table can hold up to {n} rows',
     total: 'Total',
-    tip: 'You fill in the yellow cells, the rest is calculated. Enter moves down; on the last row it adds a new one. Everything saves automatically.',
+    tip: 'You fill in the yellow cells, the rest is calculated. Enter moves down; on the last row it adds a new one. Drag ⋮⋮ or press Alt + ↑/↓ to reorder rows. Everything saves automatically.',
 
     'save.idle': 'Changes save automatically',
     'save.pending': 'Unsaved changes',

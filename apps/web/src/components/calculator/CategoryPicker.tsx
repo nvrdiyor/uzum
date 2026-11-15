@@ -506,7 +506,8 @@ export function CategoryPicker({
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
     if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // Alt + ↑/↓ — jadvalda qatorni surish (Tovarlar jadvali), ro'yxat ochilmaydi
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey) {
         e.preventDefault();
         openList();
         return;
