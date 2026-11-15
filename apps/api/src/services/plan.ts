@@ -897,7 +897,8 @@ export function planTable(data: PlanData, opts: { filter?: PlanStatusFilter | nu
   const query = parseSkuQuery(opts.search);
 
   for (const [skuId, row] of data.rows) {
-    counts.all += 1;
+    // "Hammasi" — rejadagi tovarlar; to'xtatilganlar faqat o'z yorlig'ida (quyida)
+    if (row.status !== 'held') counts.all += 1;
     if (row.status === 'critical') counts.critical += 1;
     else if (row.status === 'ending') counts.ending += 1;
     else if (row.status === 'enough') counts.enough += 1;
@@ -939,6 +940,12 @@ export function planTable(data: PlanData, opts: { filter?: PlanStatusFilter | nu
     if (query && !found) continue;
     if (filter && filter !== 'all' && row.status !== filter) continue;
     if (!filter && row.status === 'no_action') continue;
+    /*
+     * To'xtatilgan (pauza, endi olinmaydi, mavsum emas) — "Hammasi" va standart
+     * ko'rinishda YO'Q, faqat "To'xtatilgan" yorlig'ida (u yerdan rejim qaytariladi).
+     * Egasi (2026-11-15): "endi sotib olinmaydi" tovar rejalashtirishda chiqmasin.
+     */
+    if (row.status === 'held' && filter !== 'held') continue;
     rows.push(row);
   }
 
