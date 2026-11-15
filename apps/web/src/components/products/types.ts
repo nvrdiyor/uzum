@@ -74,7 +74,7 @@ export function planTone(plan: StockPlanSummary | null | undefined, daysLeft?: n
   if (!plan) return coverTone(daysLeft);
   if (plan.status === 'critical') return 'danger';
   if (plan.status === 'ending') return 'warn';
-  if (plan.status === 'no_action') return 'muted';
+  if (plan.status === 'no_action' || plan.status === 'held') return 'muted';
   return plan.daysLeft !== null && plan.daysLeft >= STOCK_THRESHOLDS.excess ? 'info' : 'brand';
 }
 

@@ -100,6 +100,10 @@ registerNamespace('products', {
     'sort.title': 'Nomi bo‘yicha',
     'card.variants': '{n} ta variant',
     'card.noCategory': 'Kategoriyasiz',
+    'card.mode.pause': 'Pauza',
+    'card.mode.stop': 'Olinmaydi',
+    'card.mode.seasonal': 'Mavsumiy',
+    'card.mode.hint': 'Buyurtma rejimi — mahsulot sahifasida o‘zgartiriladi',
     'card.priceWhy':
       'O‘rtacha sotilgan narx — tanlangan davrda xaridorlar haqiqatda to‘lagan narxning o‘rtachasi (tushum ÷ sotilgan dona). Davr ichida narx o‘zgargan yoki aksiya bo‘lgan bo‘lsa, joriy narxdan farq qiladi.',
     'card.cost': 'Tannarx',
@@ -188,6 +192,10 @@ registerNamespace('products', {
     'sort.title': 'По названию',
     'card.variants': 'Вариантов: {n}',
     'card.noCategory': 'Без категории',
+    'card.mode.pause': 'Пауза',
+    'card.mode.stop': 'Не закупаем',
+    'card.mode.seasonal': 'Сезонный',
+    'card.mode.hint': 'Режим заказа — меняется на странице товара',
     'card.priceWhy':
       'Средняя цена продажи — сколько покупатели реально заплатили в среднем за выбранный период (выручка ÷ проданные штуки). Если за период менялась цена или шла акция, она отличается от текущей.',
     'card.cost': 'Себестоимость',
@@ -275,6 +283,10 @@ registerNamespace('products', {
     'sort.title': 'By name',
     'card.variants': 'Variants: {n}',
     'card.noCategory': 'No category',
+    'card.mode.pause': 'Paused',
+    'card.mode.stop': 'Discontinued',
+    'card.mode.seasonal': 'Seasonal',
+    'card.mode.hint': 'Reorder mode — change it on the product page',
     'card.priceWhy':
       'Average selling price — what buyers actually paid on average in the selected period (revenue ÷ units sold). It differs from the current price when the price changed or a promo ran during the period.',
     'card.cost': 'Cost',

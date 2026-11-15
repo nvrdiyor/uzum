@@ -49,6 +49,7 @@ import {
   LEAD_MIN,
   SAFETY_DAYS,
   getPlannerSettings,
+  dueNow,
   inDraftScope,
   loadPlanData,
   parseStatusFilter,
@@ -286,7 +287,12 @@ router.post(
 
     // 0 dona qator qoralamaga hech qachon yozilmaydi
     const ship = considered.filter((r) => inDraftScope(r, 'needed'));
-    const buy = considered.filter((r) => r.recommendedQty > 0);
+    /*
+     * "Sotib olish kerak" — qo'lda tanlangan qatorlarda miqdori borlar; tugma
+     * bilan (scope) — faqat HOZIR sotib olinadiganlar, sahifadagi xulosa va
+     * Excel ro'yxati bilan bir xil (services/plan.ts dueNow).
+     */
+    const buy = considered.filter((r) => (manual ? r.recommendedQty > 0 : dueNow(r)));
     const buyUnits = buy.reduce((s, r) => s + r.recommendedQty, 0);
     // Qoralamaga kirmaganlar: qo'lda tanlanganlardan jo'natiladigani yo'qlari, scope'da — faqat sotib olinadiganlar
     const skipped = considered.filter((r) => r.shipQty <= 0 && (manual || r.recommendedQty > 0)).length;

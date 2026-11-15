@@ -471,8 +471,15 @@ router.get(
         schemes[k].units += st[k];
         schemes[k].costValue += st[k] * (info.purchasePrice + info.extraCost);
       }
+      /*
+       * "Yo'lda" — Uzum omboriga jo'natilgan, hali qabul qilinmagan dona: rejaning
+       * o'zi (getInbound), "yetadi" hisobi ham shu bilan. Ilgari Uzum qoldiq
+       * javobidagi alohida maydon edi — yetkazma yaratilganda u o'smasdi, sahifa
+       * izohi esa "yetkazmalardagi dona" derdi (2026-11-15 tahlili).
+       */
+      const transit = planSku(planData, skuId)?.inbound ?? st.inTransit;
       // Bu bo'lim faqat o'z ombori haqida: FBO qoldig'i bu yerda ko'rsatilmaydi
-      if (st.own <= 0 && st.reserved <= 0 && st.inTransit <= 0) continue;
+      if (st.own <= 0 && st.reserved <= 0 && transit <= 0) continue;
 
       const avg = avgDaily.get(skuId) ?? 0;
       /*
@@ -510,7 +517,7 @@ router.get(
         own: st.own,
         reserved: st.reserved,
         available: Math.max(0, st.own - st.reserved),
-        inTransit: st.inTransit,
+        inTransit: transit,
         costValue,
         retailValue: round(st.own * info.price),
         volumeL,
@@ -535,7 +542,7 @@ router.get(
       agg.skuCount += 1;
       agg.units += st.own;
       agg.reserved += st.reserved;
-      agg.inTransit += st.inTransit;
+      agg.inTransit += transit;
       agg.costValue += costValue;
       agg.volumeL += volumeL;
       byStore.set(info.storeId, agg);

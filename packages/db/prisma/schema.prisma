@@ -405,6 +405,17 @@ model Sku {
   storagePerItem Float   @default(0)
   archived      Boolean  @default(false)
 
+  // ── Rejalashtirish (sotuvchi o'zi belgilaydi; sinxron TEGMAYDI) ──
+  // shared sku-plan.ts: auto | pause ("hozircha buyurtma berilmaydi") |
+  // stop ("endi sotib olinmaydi") | seasonal (faqat `seasonMonths` oylarida sotiladi)
+  planMode       String    @default("auto")
+  /// pause: shu kundan boshlab yana avtomatik; null — muddatsiz
+  planPauseUntil DateTime?
+  /// seasonal: sotiladigan oylar, "11,12,1,2"
+  seasonMonths   String?
+  /// Rejim oxirgi marta qachon o'zgartirilgan
+  planModeAt     DateTime?
+
   // ── Aksiya (Uzum katalogidagi specialOffer) ──
   // Uzum har hafta chegirma kampaniyalari o'tkazadi va ayrim SKU'larni
   // TAKLIF qiladi. `promoOffered` — taklif bor, `promoJoined` — sotuvchi

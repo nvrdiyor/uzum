@@ -26,9 +26,14 @@ import { z } from 'zod';
 import { prisma } from '@savdoiq/db';
 import type { Prisma } from '@savdoiq/db';
 import {
+  SKU_PLAN_MODES,
   STOCK_THRESHOLDS,
   addDays,
   calcUnitEconomics,
+  formatSeasonMonths,
+  parseSeasonMonths,
+  skuPlanSettings,
+  type SkuPlanMode,
   classifyAbc,
   costPriceBulkSchema,
   matchesProductQuery,
@@ -235,6 +240,10 @@ interface ProductSkuRecord {
   uzumSkuId: string | null;
   archived: boolean;
   createdAt: Date;
+  /** Reja rejimi (shared sku-plan.ts) — sotuvchi belgilaydi */
+  planMode: string;
+  planPauseUntil: Date | null;
+  seasonMonths: string | null;
 }
 
 interface ProductRecord {
@@ -295,6 +304,9 @@ async function loadProducts(storeIds: string[], where: { id?: string } = {}): Pr
           extraCost: true,
           promoName: true,
           promoJoined: true,
+          planMode: true,
+          planPauseUntil: true,
+          seasonMonths: true,
           promoEndsAt: true,
           volumeL: true,
           weightGr: true,
@@ -352,12 +364,24 @@ function cardFlags(
   if (x.plan?.status === 'critical' && x.stock > 0) flags.push('lowStock');
   const onSale = p.skus.filter((s) => !s.archived);
   const oldest = onSale.reduce<Date | null>((min, s) => (min === null || s.createdAt < min ? s.createdAt : min), null);
-  if (x.plan?.status === 'no_action' && x.stock > 0 && oldest !== null && daysSince(oldest) >= ILLIQUID_DAYS) {
+  // To'xtatilgan (held) va sotilmayotgan variant ham nolikvid: "endi olinmaydi" deb belgilangan qoldiq turib qolgan
+  const still = x.plan?.status === 'no_action' || (x.plan?.status === 'held' && x.plan.avgDaily === 0);
+  if (still && x.stock > 0 && oldest !== null && daysSince(oldest) >= ILLIQUID_DAYS) {
     flags.push('illiquid');
   }
   if (x.plan && x.plan.daysLeft !== null && x.plan.daysLeft >= STOCK_THRESHOLDS.excess) flags.push('excess');
   if (x.revenue > 0 && x.profit < 0) flags.push('loss');
   return flags;
+}
+
+/** SKU'ning reja rejimi javob uchun (sayt belgi va tugmalarni shundan chizadi) */
+function planFields(s: Pick<ProductSkuRecord, 'planMode' | 'planPauseUntil' | 'seasonMonths'>): {
+  planMode: SkuPlanMode;
+  pauseUntil: string | null;
+  seasonMonths: number[];
+} {
+  const plan = skuPlanSettings(s);
+  return { planMode: plan.mode, pauseUntil: plan.pauseUntil, seasonMonths: plan.seasonMonths };
 }
 
 /**
@@ -426,6 +450,7 @@ function buildCard(p: ProductRecord, c: CardContext): ProductCard {
       sold: agg.units,
       revenue: round(agg.revenue),
       profit: round(agg.netProfit),
+      ...planFields(s),
     });
   }
 
@@ -928,6 +953,89 @@ router.get(
     };
 
     res.json(payload);
+  }),
+);
+
+// ─────────────────────────── PUT /plan-mode — rejadan boshqarish ───────────────────────────
+
+/**
+ * Tovar yoki uning SKU'lari uchun reja rejimi (shared sku-plan.ts): avtomatik,
+ * "hozircha buyurtma berilmaydi" (ixtiyoriy sana bilan), "endi sotib
+ * olinmaydi", mavsumiy (oylar bilan). `productId` berilsa — mahsulotning
+ * barcha SKU'lari, aks holda `skuIds`. Sinxron bu maydonlarga tegmaydi.
+ *
+ * Mahsulotlar ro'yxati va reja keshlanmaydi — keyingi so'rovda o'zi yangi.
+ */
+const planModeSchema = z
+  .object({
+    productId: z.string().min(1).max(64).optional(),
+    skuIds: z.array(z.string().min(1).max(64)).min(1).max(500).optional(),
+    mode: z.enum(SKU_PLAN_MODES),
+    pauseUntil: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana YYYY-MM-DD ko‘rinishida bo‘lsin')
+      .nullable()
+      .optional(),
+    seasonMonths: z.array(z.coerce.number().int().min(1).max(12)).max(12).optional(),
+  })
+  .refine((v) => Boolean(v.productId) !== Boolean(v.skuIds), {
+    message: 'productId yoki skuIds dan bittasini yuboring',
+    path: ['productId'],
+  })
+  .refine((v) => v.mode !== 'seasonal' || parseSeasonMonths(v.seasonMonths ?? []).length > 0, {
+    message: 'Mavsumiy tovar uchun kamida bitta oy tanlang (hammasi emas)',
+    path: ['seasonMonths'],
+  });
+
+router.put(
+  '/plan-mode',
+  requireRole('owner', 'manager'),
+  ah(async (req, res) => {
+    const { company, user } = companyCtx(req);
+    const input = planModeSchema.parse(req.body);
+    const storeIds = await getStoreIds(company.id);
+    const skus = await prisma.sku.findMany({
+      where: {
+        storeId: { in: storeIds },
+        ...(input.productId ? { productId: input.productId } : { id: { in: input.skuIds ?? [] } }),
+      },
+      select: { id: true, sku: true },
+    });
+    if (skus.length === 0) throw AppError.notFound('Tovar topilmadi');
+
+    const today = toBusinessDate(new Date());
+    // O'tgan sana bilan pauza — darhol tugagan bo'lardi: muddatsiz deb olinmaydi, xato beriladi
+    if (input.mode === 'pause' && input.pauseUntil && input.pauseUntil <= today) {
+      throw AppError.badRequest('Pauza sanasi bugundan keyin bo‘lishi kerak', { pauseUntil: 'past' });
+    }
+    const data = {
+      planMode: input.mode,
+      planPauseUntil: input.mode === 'pause' && input.pauseUntil ? parseISODate(input.pauseUntil) : null,
+      seasonMonths: input.mode === 'seasonal' ? formatSeasonMonths(input.seasonMonths ?? []) : null,
+      planModeAt: new Date(),
+    };
+    await prisma.sku.updateMany({ where: { id: { in: skus.map((s) => s.id) } }, data });
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'products.plan_mode',
+        entity: 'company',
+        entityId: company.id,
+        meta: JSON.stringify({
+          productId: input.productId ?? null,
+          skus: skus.map((s) => s.sku),
+          mode: input.mode,
+          pauseUntil: data.planPauseUntil ? input.pauseUntil : null,
+          seasonMonths: data.seasonMonths,
+        }),
+      },
+    });
+    res.json({
+      updated: skus.length,
+      mode: input.mode,
+      pauseUntil: data.planPauseUntil ? input.pauseUntil : null,
+      seasonMonths: parseSeasonMonths(data.seasonMonths),
+    });
   }),
 );
 
@@ -1447,6 +1555,7 @@ router.get(
         roi: pct(agg.netProfit, investedIn(agg.cogs, agg.otherCost)),
         lastSaleAt: agg.lastSaleAt ? agg.lastSaleAt.toISOString() : null,
         ...(summary ? { plan: summary } : {}),
+        ...planFields(s),
       } satisfies ProductDetailSku;
     });
 

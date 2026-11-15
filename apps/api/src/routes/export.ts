@@ -82,6 +82,7 @@ import {
   type MonthCompareRow,
 } from '../services/monthly-report.js';
 import {
+  dueNow,
   loadPlanData,
   parseStatusFilter,
   parseStockStatus,
@@ -2098,8 +2099,11 @@ router.get(
     const q = req.query as Record<string, string | undefined>;
     const storeIds = await getStoreIds(company.id, range.storeId);
     const data = await loadPlanData(company.id, storeIds, { cover: q.cover, lead: q.lead });
-    const table = planTable(data, { filter: parseStatusFilter(q.status), search: range.search });
-    const buy = table.rows.filter((r) => r.recommendedQty > 0);
+    const filter = parseStatusFilter(q.status);
+    const table = planTable(data, { filter, search: range.search });
+    // Standart ro'yxat — HOZIR sotib olinadiganlar (sahifadagi "Sotib olish kerak" bilan bir xil);
+    // holat tanlangan bo'lsa — o'sha holatdagi miqdori borlar
+    const buy = table.rows.filter((r) => (filter ? r.recommendedQty > 0 : dueNow(r)));
 
     // Shtrix-kod katalog (SkuInfo) tarkibida yo'q — alohida, bo'laklab
     const barcodes = new Map<string, string | null>();

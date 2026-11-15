@@ -6,6 +6,7 @@
 import type { PlanId, FeatureAccess, FeatureId } from './plans.js';
 import type { CardAuditResult, CardLang, CardSectionId } from './card-seo.js';
 import type { MemberView } from './views.js';
+import type { PlanHoldReason, SkuPlanMode } from './sku-plan.js';
 
 export type Lang = 'uz' | 'ru' | 'en';
 export type DeliveryType = 'FBO' | 'FBS' | 'DBS';
@@ -769,6 +770,12 @@ export interface ProductCardSku {
   sold: number;
   revenue: number;
   profit: number;
+  /** Reja rejimi: avtomatik, pauza, endi olinmaydi, mavsumiy (shared sku-plan.ts) */
+  planMode: SkuPlanMode;
+  /** pause: shu kuni o'zi qaytadi; null — muddatsiz */
+  pauseUntil: string | null;
+  /** seasonal: sotiladigan oylar (1..12) */
+  seasonMonths: number[];
 }
 
 export interface ProductCard {
@@ -1567,15 +1574,52 @@ export interface PlannerRow {
   /**
    * critical — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
    * ending — buyurtma kuni yetdi yoki bir hafta ichida;
-   * enough — hozircha shoshilmasa bo'ladi; no_action — sotuv yo'q.
+   * enough — hozircha shoshilmasa bo'ladi; no_action — sotuv yo'q;
+   * held — sotuvchi to'xtatgan (pauza, endi olinmaydi) yoki mavsum emas /
+   *        mavsum tugashiga ulgurmaydi: sotib olish tavsiya qilinmaydi (`hold`).
    */
-  status: 'critical' | 'ending' | 'enough' | 'no_action';
+  status: 'critical' | 'ending' | 'enough' | 'no_action' | 'held';
   /** Bugun buyurtma berilsa ham tovar kelguncha qoldiqsiz o'tadigan kunlar */
   gapDays: number;
   /** O'sha kunlarda yo'qotiladigan tushum */
   lostRevenue: number;
   /** Oynada tugab turgan kunlarda sotilmay qolgan taxminiy tushum */
   lostPast: number;
+
+  // ── Aqlli reja (2026-11-15) ──
+  /** Prognoz tezligi: 30 kunlik tezlik oxirgi 14 kun yo'nalishi bilan to'g'rilangan (hisob shu bilan) */
+  forecastDaily: number;
+  /** Talab tebranishiga qarab ehtiyot zaxirasi, dona (miqdorga qo'shilgan) */
+  safetyUnits: number;
+  /**
+   * Sotib olingan, lekin hali Uzumga topshirilmagan dona (Partiyalar: Xitoy
+   * omborida, cargoda, keldi, rejadagi ta'minot). Sotib olish miqdoridan ayiriladi.
+   */
+  pipeline: number;
+  /** Shundan Toshkentga kelgani — FBO'ga jo'natsa bo'ladi (`shippable` ichida) */
+  pipelineArrived: number;
+  /**
+   * Tovar butun oyna davomida tugab turgan: tezlik undan oldingi 60 kundagi
+   * sotuvdan olingan (aks holda "sotuv yo'q" bo'lib, buyurtma tavsiya qilinmasdi)
+   */
+  historicRate: boolean;
+  /** Sotuvchi belgilagan rejim (shared sku-plan.ts) */
+  planMode: SkuPlanMode;
+  /** pause: qayta yoqiladigan kun (rejim oynasi uchun) */
+  pauseUntil: string | null;
+  /** seasonal: sotiladigan oylar (rejim oynasi uchun) */
+  seasonMonths: number[];
+  /** Nega sotib olish tavsiya qilinmaydi; null — odatdagidek */
+  hold: PlanHoldReason | null;
+  /** pause — qayta yoqiladigan kun; off_season — buyurtma kuni (mavsumga tayyorlanish) */
+  holdUntil: string | null;
+  /** Mavsumiy tovar: hozirgi yoki keyingi mavsum */
+  season: { start: string; end: string; inSeason: boolean } | null;
+  /**
+   * Mavsumdan tashqarida: keyingi mavsumga rejalashtirilgan miqdor, `holdUntil`
+   * kuni buyurtma qilinadi. Hozir sotib olinmaydi — `recommendedQty` 0.
+   */
+  seasonQty: number;
 }
 
 export interface PlannerResponse {
@@ -1585,12 +1629,23 @@ export interface PlannerResponse {
   windowDays: number;
   /** Buyurtma kuni hisobidagi ehtiyot zaxirasi, kun */
   safetyDays: number;
-  counts: { all: number; critical: number; ending: number; enough: number; noAction: number };
+  counts: { all: number; critical: number; ending: number; enough: number; noAction: number; held: number };
   /** Butun katalog bo'yicha — qaysi yorliq ochiq bo'lishidan qat'i nazar */
   totals: {
-    /** Miqdor tavsiya etilgan SKU'lar soni */
+    /**
+     * HOZIR sotib olinadigan SKU'lar: buyurtma kuni bir hafta ichida (kritik va
+     * tugayapti). Ilgari miqdori bor har qator (hafta keyin ham bo'ladigani)
+     * qo'shilardi — ro'yxat va summa shishib ketardi.
+     */
     needSkus: number;
     purchaseCost: number;
+    /** Keyinroq (buyurtma kuni bir haftadan keyin) — rejada, hozir pul ketmaydi */
+    laterSkus: number;
+    laterCost: number;
+    /** Partiyalarda sotib olingan, hali Uzumga topshirilmagan dona */
+    pipelineUnits: number;
+    /** Sotuvchi to'xtatgan yoki mavsum emas — tavsiya qilinmaydigan SKU'lar */
+    heldSkus: number;
     /** Tovar kelguncha yo'qotiladigan tushum (kritik pozitsiyalar) */
     lostRevenue: number;
     /** Oynada tovar tugab turgani uchun sotilmay qolgan taxminiy tushum */
@@ -1684,6 +1739,16 @@ export interface StockPlanSummary {
   skus: number;
   leadDays: number;
   coverDays: number;
+  /** Partiyalarda sotib olingan, hali Uzumga topshirilmagan dona */
+  pipeline: number;
+  /** To'xtatilgan (pauza, endi olinmaydi, mavsum emas) SKU'lar soni */
+  heldSkus: number;
+  /** Hammasi bir sabab bilan to'xtatilgan bo'lsa — o'sha sabab; aks holda null */
+  hold: PlanHoldReason | null;
+  /** Eng yaqin: pauza tugashi yoki mavsumga buyurtma kuni */
+  holdUntil: string | null;
+  /** Keyingi mavsumga rejalashtirilgan dona (hozir sotib olinmaydi) */
+  seasonQty: number;
 }
 
 // ─────────────────────────── Oylik hisobot ───────────────────────────

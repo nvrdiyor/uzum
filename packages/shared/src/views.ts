@@ -326,6 +326,8 @@ export const VIEW_API_RULES: readonly ApiRule[] = [
   ['POST', '/products/sku/bulk-cost', 'costPrice'],
   ['POST', '/products/:id/hide', 'productsWrite'],
   ['POST', '/products/:id/restore', 'productsWrite'],
+  // Tovarning buyurtma rejimi (pauza / endi olinmaydi / mavsumiy) — Rejalashtiruvchi qarori
+  ['PUT', '/products/plan-mode', 'planner'],
   ['GET', '/products', 'products'],
   ['GET', '/products/:id', 'products'],
   ['GET', '/export/products', 'products', true],
@@ -430,6 +432,8 @@ export const MONEY_KEYS: ReadonlySet<string> = new Set([
   'unitCost',
   'unitCostFull',
   'purchaseCost',
+  // Rejalashtiruvchi: keyinroq sotib olinadiganlar summasi
+  'laterCost',
   'stockCost',
   'goodsCost',
   'cargoCost',

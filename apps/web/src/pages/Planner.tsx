@@ -8,6 +8,7 @@ import {
   Download,
   History,
   PackagePlus,
+  Settings2,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui';
 import { FilterBar } from '@/components/filters';
 import { PlannerParams } from '@/components/planner/PlannerParams';
+import { PlanModeModal, type PlanModeTarget } from '@/components/planner/PlanModeModal';
 import { PLAN_STATUS_TONE, PlannerTeaser } from '@/components/planner/PlannerTeaser';
 import {
   useCanEditPlanner,
@@ -95,7 +97,31 @@ registerNamespace('planner', {
     'filter.critical': 'Kritik',
     'filter.ending': 'Buyurtma vaqti',
     'filter.enough': 'Yetarli',
-    'filter.no_action': 'Harakatsiz',
+    'filter.no_action': 'Sotuv yo‘q',
+    'filter.held': 'To‘xtatilgan',
+    'hero.later': 'Keyinroq (buyurtma kuni bir haftadan keyin): {n} SKU',
+    'hero.laterSum': '{n} SKU · {v}',
+    'hero.pipeline': 'Partiyalarda sotib olingan {n} dona hisobga olindi — qayta tavsiya qilinmaydi',
+    'hero.held': 'To‘xtatilgan: {n} SKU (pauza, endi olinmaydi, mavsum emas)',
+    'row.pipeline': '+{n} partiyada',
+    'row.pipelineHint': 'Partiyalarda sotib olingan, hali Uzumga topshirilmagan: {n} dona (shundan Toshkentga kelgani: {m})',
+    'row.forecast': 'prognoz {n}',
+    'row.forecastHint': 'Hisob shu tezlik bilan: 30 kunlik tezlik oxirgi 14 kun yo‘nalishi bilan to‘g‘rilangan',
+    'row.history': 'oy davomida yo‘q edi — oldingi sotuvdan',
+    'row.historyHint': 'Tovar butun oy tugab turgan, shuning uchun tezlik undan oldingi 60 kundagi sotuvdan. Endi olmasangiz — “Endi sotib olinmaydi” deb belgilang',
+    'row.safety': 'shundan {n} dona — ehtiyot zaxirasi (sotuv notekisligi uchun)',
+    'row.mode': 'Buyurtma rejimi',
+    'mode.pause': 'Pauza',
+    'mode.stop': 'Olinmaydi',
+    'mode.seasonal': 'Mavsumiy',
+    'hold.pause': 'Hozircha buyurtma berilmaydi',
+    'hold.pauseUntil': '{date} gacha pauza',
+    'hold.stop': 'Endi sotib olinmaydi',
+    'hold.off_season': 'Mavsum emas · {start} dan',
+    'hold.offSeasonOrder': 'Mavsumga buyurtma: {date}',
+    'hold.season_end': 'Mavsum {end} da tugaydi — yangi partiya ulgurmaydi',
+    'row.seasonQty': '{n} — mavsumga',
+    'note.modes': 'Mavsumiy, pauzadagi yoki endi olinmaydigan tovarni qatordagi ⚙ tugmasi yoki mahsulot sahifasidan belgilang — u “To‘xtatilgan” bo‘ladi va “tugayapti” deb bezovta qilmaydi.',
 
     'table.product': 'Mahsulot',
     'table.stock': 'Qoldiq',
@@ -120,7 +146,7 @@ registerNamespace('planner', {
     'row.buy': 'Sotib oling: {n} dona',
     'row.ship': 'FBO’ga {n}',
     'row.shipHint': 'Ombordan FBO’ga jo‘nating: {n} dona (o‘z ombori va FBS’da jo‘natsa bo‘ladigani: {m})',
-    'note.method': 'Kunlik sotuv oxirgi {window} kunda tovar sotuvda bo‘lgan kunlar bo‘yicha hisoblanadi — tugab turgan kunlar kirmaydi. Buyurtma kuni = tugash sanasi − yetkazish muddati − {safety} kun ehtiyot zaxirasi.',
+    'note.method': 'Kunlik sotuv oxirgi {window} kunda tovar sotuvda bo‘lgan kunlar bo‘yicha hisoblanadi (tugab turgan kunlarsiz) va oxirgi 14 kun yo‘nalishi bilan to‘g‘rilanadi; tovar butun oy tugab turgan bo‘lsa — undan oldingi sotuvdan. Ehtiyot zaxirasi sotuv qanchalik notekisligiga qarab qo‘shiladi (kamida {safety} kun). Partiyalarda sotib olingan, hali Uzumga yetmagan tovar ta’minotga kiradi. Buyurtma kuni = ta’minot tugaydigan kun − yetkazish muddati − ehtiyot zaxirasi.',
     'note.ship': 'FBO’ga kerakli miqdorning o‘z ombori va FBS’dagi (band qilinganidan tashqari) tovar qoplay oladigan qismi — jo‘natish, qolgani — sotib olish. Yetkazmaga faqat jo‘natiladigan miqdor tushadi.',
 
     'sel.count': '{n} ta tanlandi',
@@ -171,7 +197,31 @@ registerNamespace('planner', {
     'filter.critical': 'Критичные',
     'filter.ending': 'Пора заказывать',
     'filter.enough': 'Достаточно',
-    'filter.no_action': 'Без движения',
+    'filter.no_action': 'Нет продаж',
+    'filter.held': 'Приостановлено',
+    'hero.later': 'Позже (день заказа через неделю и более): {n} SKU',
+    'hero.laterSum': '{n} SKU · {v}',
+    'hero.pipeline': 'Учтено {n} шт., уже купленных в партиях, — повторно не рекомендуется',
+    'hero.held': 'Приостановлено: {n} SKU (пауза, больше не закупаем, не сезон)',
+    'row.pipeline': '+{n} в партиях',
+    'row.pipelineHint': 'Куплено в партиях, ещё не сдано на Uzum: {n} шт. (из них уже в Ташкенте: {m})',
+    'row.forecast': 'прогноз {n}',
+    'row.forecastHint': 'Расчёт идёт по этой скорости: 30-дневная скорость с поправкой на тренд последних 14 дней',
+    'row.history': 'не было весь месяц — по прошлым продажам',
+    'row.historyHint': 'Товара не было весь месяц, поэтому скорость взята из продаж за 60 дней до этого. Если больше не закупаете — отметьте «Больше не закупаем»',
+    'row.safety': 'из них {n} шт. — страховой запас (на неравномерность продаж)',
+    'row.mode': 'Режим заказа',
+    'mode.pause': 'Пауза',
+    'mode.stop': 'Не закупаем',
+    'mode.seasonal': 'Сезонный',
+    'hold.pause': 'Пока не заказываем',
+    'hold.pauseUntil': 'Пауза до {date}',
+    'hold.stop': 'Больше не закупаем',
+    'hold.off_season': 'Не сезон · с {start}',
+    'hold.offSeasonOrder': 'Заказ к сезону: {date}',
+    'hold.season_end': 'Сезон закончится {end} — новая партия не успеет',
+    'row.seasonQty': '{n} — к сезону',
+    'note.modes': 'Сезонный товар, паузу или «больше не закупаем» отметьте кнопкой ⚙ в строке или на странице товара — он станет «Приостановлено» и не будет тревожить предупреждениями.',
 
     'table.product': 'Товар',
     'table.stock': 'Остаток',
@@ -196,7 +246,7 @@ registerNamespace('planner', {
     'row.buy': 'Закупить: {n} шт.',
     'row.ship': 'На FBO {n}',
     'row.shipHint': 'Отгрузить со склада на FBO: {n} шт. (можно отгрузить со своего склада и FBS: {m})',
-    'note.method': 'Продажи в день считаются по дням, когда товар был в наличии за последние {window} дн. — дни без остатка не учитываются. День заказа = дата окончания − срок доставки − {safety} дн. страхового запаса.',
+    'note.method': 'Продажи в день считаются по дням, когда товар был в наличии за последние {window} дн. (без дней без остатка), с поправкой на тренд последних 14 дней; если товара не было весь месяц — по продажам до этого. Страховой запас добавляется по неравномерности продаж (не меньше {safety} дн.). Товар, купленный в партиях и ещё не сданный на Uzum, входит в запас. День заказа = день окончания запаса − срок доставки − страховой запас.',
     'note.ship': 'Часть потребности FBO, которую покрывает товар на своём складе и FBS (кроме зарезервированного), — отгрузка, остальное — закупка. В поставку попадает только количество к отгрузке.',
 
     'sel.count': 'Выбрано: {n}',
@@ -247,7 +297,31 @@ registerNamespace('planner', {
     'filter.critical': 'Critical',
     'filter.ending': 'Time to order',
     'filter.enough': 'Healthy',
-    'filter.no_action': 'No movement',
+    'filter.no_action': 'No sales',
+    'filter.held': 'On hold',
+    'hero.later': 'Later (order date a week or more away): {n} SKUs',
+    'hero.laterSum': '{n} SKUs · {v}',
+    'hero.pipeline': '{n} pcs already bought in batches are counted — not suggested again',
+    'hero.held': 'On hold: {n} SKUs (paused, discontinued, off season)',
+    'row.pipeline': '+{n} in batches',
+    'row.pipelineHint': 'Bought in batches, not yet handed to Uzum: {n} pcs (already in Tashkent: {m})',
+    'row.forecast': 'forecast {n}',
+    'row.forecastHint': 'The plan uses this pace: the 30-day pace adjusted by the last 14 days’ trend',
+    'row.history': 'out all month — from earlier sales',
+    'row.historyHint': 'The item was out of stock all month, so the pace comes from the 60 days before. If you no longer buy it, mark it “Discontinued”',
+    'row.safety': 'incl. {n} pcs safety stock (for uneven sales)',
+    'row.mode': 'Reorder mode',
+    'mode.pause': 'Paused',
+    'mode.stop': 'Discontinued',
+    'mode.seasonal': 'Seasonal',
+    'hold.pause': 'Not reordering for now',
+    'hold.pauseUntil': 'Paused until {date}',
+    'hold.stop': 'Discontinued',
+    'hold.off_season': 'Off season · from {start}',
+    'hold.offSeasonOrder': 'Order for the season: {date}',
+    'hold.season_end': 'Season ends {end} — a new batch would arrive too late',
+    'row.seasonQty': '{n} — for the season',
+    'note.modes': 'Mark seasonal, paused or discontinued products with the ⚙ button in the row or on the product page — they go “On hold” and stop raising warnings.',
 
     'table.product': 'Product',
     'table.stock': 'Stock',
@@ -272,7 +346,7 @@ registerNamespace('planner', {
     'row.buy': 'Buy: {n} pcs',
     'row.ship': 'To FBO {n}',
     'row.shipHint': 'Ship from your warehouse to FBO: {n} pcs (available in your warehouse and FBS: {m})',
-    'note.method': 'Daily sales are based on the days the item was in stock over the last {window} days — out-of-stock days are excluded. Order date = run-out date − lead time − {safety} days of safety stock.',
+    'note.method': 'Daily sales use the days the item was in stock over the last {window} days (out-of-stock days excluded), adjusted by the last 14 days’ trend; if it was out all month, earlier sales are used. Safety stock is added according to how uneven sales are (at least {safety} days). Goods bought in batches but not yet handed to Uzum count as supply. Order date = the day supply runs out − lead time − safety stock.',
     'note.ship': 'The part of the FBO need that your own warehouse and FBS stock (minus reserved units) can cover is shipped, the rest is bought. A shipment only carries the quantity to ship.',
 
     'sel.count': '{n} selected',
@@ -289,7 +363,7 @@ registerNamespace('planner', {
   },
 });
 
-type FilterKey = 'all' | 'critical' | 'ending' | 'enough' | 'no_action';
+type FilterKey = 'all' | 'critical' | 'ending' | 'enough' | 'no_action' | 'held';
 
 /** Yo'nalish shu foizdan kichik bo'lsa ko'rsatilmaydi — u tasodifiy tebranish */
 const TREND_MIN_PCT = 10;
@@ -343,6 +417,8 @@ function PlannerFull() {
   const debounced = useDebounced(search.trim(), 350);
   const [selected, setSelected] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
+  /** Qatordagi ⚙ — tovarning buyurtma rejimi (pauza, endi olinmaydi, mavsumiy) */
+  const [modeTarget, setModeTarget] = useState<PlanModeTarget | null>(null);
 
   /**
    * Filtr serverga ham yuboriladi: standart ko'rinishda server "harakat kerak
@@ -432,8 +508,28 @@ function PlannerFull() {
     { value: 'critical', label: t('filter.critical'), count: data?.counts.critical },
     { value: 'ending', label: t('filter.ending'), count: data?.counts.ending },
     { value: 'enough', label: t('filter.enough'), count: data?.counts.enough },
+    { value: 'held', label: t('filter.held'), count: data?.counts.held },
     { value: 'no_action', label: t('filter.no_action'), count: data?.counts.noAction },
   ];
+
+  const modeLabel = (r: PlannerRow): string | null =>
+    r.planMode === 'pause' ? t('mode.pause') : r.planMode === 'stop' ? t('mode.stop') : r.planMode === 'seasonal' ? t('mode.seasonal') : null;
+
+  /** To'xtatilgan qatorning sababi (Buyurtma kuni ustunida) */
+  const holdText = (r: PlannerRow): string | null => {
+    switch (r.hold) {
+      case 'pause':
+        return r.holdUntil ? t('hold.pauseUntil', { date: f.dateShort(r.holdUntil) }) : t('hold.pause');
+      case 'stop':
+        return t('hold.stop');
+      case 'off_season':
+        return r.season ? t('hold.off_season', { start: f.dateShort(r.season.start) }) : t('hold.pause');
+      case 'season_end':
+        return r.season ? t('hold.season_end', { end: f.dateShort(r.season.end) }) : t('hold.pause');
+      default:
+        return null;
+    }
+  };
 
   /** "Yetadi" chizig'i shu davrga nisbatan to'ladi: yetkazish muddati + zaxira davri */
   const horizon = Math.max(1, lead + cover);
@@ -465,16 +561,47 @@ function PlannerFull() {
     {
       key: 'title',
       header: t('table.product'),
-      render: (r) => (
-        // Kenglik cheklangan, nom esa ikki qatorgacha: ilgari 13rem'da bir qatorga
-        // kesilib "Paxta choyshab to'pl…" bo'lib qolardi (1366 px'da ham)
-        <SkuNameCell
-          className="min-w-[11rem] max-w-[15rem] 2xl:max-w-[24rem]"
-          title={r.title}
-          subtitle={r.variant ? `${r.variant} · ${r.sku}` : r.sku}
-          imageUrl={r.imageUrl}
-        />
-      ),
+      render: (r) => {
+        const mode = modeLabel(r);
+        return (
+          <div className="flex items-start gap-1.5">
+            {/* Kenglik cheklangan, nom esa ikki qatorgacha: ilgari 13rem'da bir qatorga
+                kesilib "Paxta choyshab to'pl…" bo'lib qolardi (1366 px'da ham) */}
+            <div className="min-w-0">
+              <SkuNameCell
+                className="min-w-[11rem] max-w-[15rem] 2xl:max-w-[24rem]"
+                title={r.title}
+                subtitle={r.variant ? `${r.variant} · ${r.sku}` : r.sku}
+                imageUrl={r.imageUrl}
+              />
+              {mode ? (
+                <Badge tone="muted" className="mt-1">
+                  {mode}
+                </Badge>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              title={t('row.mode')}
+              aria-label={`${t('row.mode')}: ${r.title}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModeTarget({
+                  skuIds: [r.skuId],
+                  name: r.variant ? `${r.title} · ${r.variant}` : r.title,
+                  current: { mode: r.planMode, pauseUntil: r.pauseUntil, seasonMonths: r.seasonMonths },
+                });
+              }}
+              className={cn(
+                'focusable mt-0.5 shrink-0 rounded-md p-1 transition-colors hover:text-ink',
+                r.planMode === 'auto' ? 'text-muted/60' : 'text-brand-ink',
+              )}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      },
     },
     {
       key: 'stock',
@@ -487,6 +614,14 @@ function PlannerFull() {
           <span className="font-semibold text-ink">{f.num(r.stock)}</span>
           {r.inbound > 0 ? (
             <p className="text-2xs font-medium text-info-ink">{t('row.inbound', { n: f.num(r.inbound) })}</p>
+          ) : null}
+          {r.pipeline > 0 ? (
+            <p
+              className="cursor-help text-2xs font-medium text-violet-ink"
+              title={t('row.pipelineHint', { n: f.num(r.pipeline), m: f.num(r.pipelineArrived) })}
+            >
+              {t('row.pipeline', { n: f.num(r.pipeline) })}
+            </p>
           ) : null}
         </div>
       ),
@@ -516,8 +651,20 @@ function PlannerFull() {
                 {trend}%
               </span>
             ) : null}
+            {/* Prognoz 30 kunlik tezlikdan sezilarli farq qilsa — hisob shu bilan */}
+            {r.forecastDaily > 0 && Math.abs(r.forecastDaily - r.avgDaily) >= Math.max(0.05, r.avgDaily * 0.1) ? (
+              <p className="cursor-help text-2xs font-medium text-ink-soft" title={t('row.forecastHint')}>
+                {t('row.forecast', { n: f.num(r.forecastDaily, r.forecastDaily < 1 ? 2 : 1) })}
+              </p>
+            ) : null}
             {/* Tezlik qayerdan chiqqani — sotuvchi o'zi tekshirib ko'ra oladi */}
-            <p className="text-2xs font-normal text-muted">{t('row.sold', { days: r.inStockDays, n: f.num(r.soldUnits) })}</p>
+            {r.historicRate ? (
+              <p className="cursor-help text-2xs font-medium text-warn-ink" title={t('row.historyHint')}>
+                {t('row.history')}
+              </p>
+            ) : (
+              <p className="text-2xs font-normal text-muted">{t('row.sold', { days: r.inStockDays, n: f.num(r.soldUnits) })}</p>
+            )}
             {r.stockoutDays > 0 ? (
               <p className="text-2xs font-medium text-warn-ink">{t('row.stockout', { n: r.stockoutDays })}</p>
             ) : null}
@@ -555,6 +702,19 @@ function PlannerFull() {
       sortable: true,
       sortValue: (r) => (r.orderInDays === null ? Number.MAX_SAFE_INTEGER : r.orderInDays),
       render: (r) => {
+        const hold = holdText(r);
+        if (hold) {
+          return (
+            <div className="min-w-[6.5rem] max-w-[12rem]">
+              <p className="text-xs font-semibold text-ink-soft">{hold}</p>
+              {r.hold === 'off_season' && r.holdUntil ? (
+                <p className="tnum mt-0.5 text-2xs font-medium text-info-ink">
+                  {t('hold.offSeasonOrder', { date: f.dateShort(r.holdUntil) })}
+                </p>
+              ) : null}
+            </div>
+          );
+        }
         if (r.orderInDays === null || !r.orderBy) return <span className="text-muted">—</span>;
         const due = r.orderInDays <= 0;
         return (
@@ -599,8 +759,14 @@ function PlannerFull() {
       sortable: true,
       sortValue: (r) => r.recommendedQty * 1_000_000 + r.shipQty,
       render: (r) =>
-        r.recommendedQty > 0 || r.shipQty > 0 ? (
+        r.recommendedQty > 0 || r.shipQty > 0 || r.seasonQty > 0 ? (
           <div className="flex flex-col items-end">
+            {/* Mavsumdan tashqarida: keyingi mavsumga rejalashtirilgan miqdor — hozir sotib olinmaydi */}
+            {r.seasonQty > 0 ? (
+              <span className="tnum whitespace-nowrap text-xs font-semibold text-info-ink">
+                {t('row.seasonQty', { n: f.num(r.seasonQty) })}
+              </span>
+            ) : null}
             {/*
               Katta raqam — SOTIB OLISH miqdori, shoshilinchlik rangida (holat
               nishoni bilan bir xil): kritik — qizil, buyurtma vaqti — sariq,
@@ -609,7 +775,7 @@ function PlannerFull() {
             */}
             {r.recommendedQty > 0 ? (
               <span
-                title={t('row.buy', { n: f.num(r.recommendedQty) })}
+                title={`${t('row.buy', { n: f.num(r.recommendedQty) })}${r.safetyUnits > 0 ? ` · ${t('row.safety', { n: f.num(r.safetyUnits) })}` : ''}`}
                 className={cn(
                   'tnum inline-flex items-center rounded-xl px-3 py-1 font-display text-base font-extrabold',
                   r.status === 'critical'
@@ -705,6 +871,31 @@ function PlannerFull() {
                   {t('hero.ship', { units: f.num(totals?.shipUnits ?? 0), n: f.num(shipSkus) })}
                 </p>
               ) : null}
+              {/*
+                Hozirgi xarid — faqat buyurtma kuni bir hafta ichida bo'lganlar.
+                Keyinroqlari, partiyada kelayotgani va to'xtatilganlari — alohida,
+                ular hozirgi summaga qo'shilmaydi.
+              */}
+              <div className="mt-1.5 space-y-0.5 text-xs text-muted">
+                {(totals?.laterSkus ?? 0) > 0 ? (
+                  <p className="tnum">
+                    {t('hero.later', { n: f.num(totals?.laterSkus ?? 0) })}
+                    {money && (totals?.laterCost ?? 0) > 0 ? ` · ${f.money(totals?.laterCost ?? 0)}` : ''}
+                  </p>
+                ) : null}
+                {(totals?.pipelineUnits ?? 0) > 0 ? (
+                  <p className="tnum text-violet-ink">{t('hero.pipeline', { n: f.num(totals?.pipelineUnits ?? 0) })}</p>
+                ) : null}
+                {(totals?.heldSkus ?? 0) > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setFilter('held')}
+                    className="focusable tnum rounded text-left underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    {t('hero.held', { n: f.num(totals?.heldSkus ?? 0) })}
+                  </button>
+                ) : null}
+              </div>
               {critical > 0 ? (
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
@@ -869,10 +1060,12 @@ function PlannerFull() {
         </div>
         {data ? (
           <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">
-            {t('note.method', { window: data.windowDays, safety: data.safetyDays })} {t('note.ship')}
+            {t('note.method', { window: data.windowDays, safety: data.safetyDays })} {t('note.ship')} {t('note.modes')}
           </p>
         ) : null}
       </Card>
+
+      <PlanModeModal target={modeTarget} canEdit={canEdit} onClose={() => setModeTarget(null)} />
     </div>
   );
 }

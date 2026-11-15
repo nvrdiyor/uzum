@@ -46,12 +46,16 @@ import { prisma } from '@savdoiq/db';
 import {
   STOCK_THRESHOLDS,
   addDays,
+  effectiveMode,
+  normSkuCode,
   parseISODate,
   parseSkuQuery,
-  recommendedQty,
+  previousSeason,
   round,
+  seasonWindow,
   toBusinessDate,
   toISODate,
+  type PlanHoldReason,
   type PlannerDraftScope,
   type PlannerResponse,
   type PlannerRow,
@@ -60,6 +64,7 @@ import {
 } from '@savdoiq/shared';
 import { getLatestStocks, getSkuCatalog, skuInfoMatches, skuMatches, type SkuInfo, type StockInfo } from './common.js';
 import { getDemand, type Demand } from './demand.js';
+import { getBatchProfit } from './batch-profit.js';
 
 // ─────────────────────────── Chegaralar ───────────────────────────
 
@@ -79,15 +84,27 @@ export const SAFETY_DAYS = 3;
 /** Buyurtma kuni shuncha kun ichida bo'lsa — "buyurtma vaqti" */
 export const ORDER_SOON_DAYS = 7;
 
+/**
+ * Ehtiyot zaxirasi uchun xizmat darajasi z (≈90%): zaxira = z × kunlik
+ * tebranish × √(yetkazish kunlari). Sotuv qancha notekis bo'lsa, zaxira shuncha
+ * ko'p; bir tekis sotiladigan tovarda deyarli qo'shilmaydi.
+ */
+export const SERVICE_Z = 1.28;
+/** Yo'nalish prognozga yarim og'irlik bilan kiradi va shu chegaradan oshmaydi */
+const TREND_WEIGHT = 0.5;
+const TREND_MIN = -0.6;
+const TREND_MAX = 1;
+
 export const EMPTY_STOCK: StockInfo = { fbo: 0, fbs: 0, own: 0, reserved: 0, inTransit: 0, total: 0, date: null };
-export const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0 };
+export const NO_DEMAND: Demand = { units: 0, inStockDays: 0, stockoutDays: 0, rate: 0, trendPct: null, avgPrice: 0, dailySd: 0 };
 
 /** Jadvalda avval eng shoshilinch qatorlar turadi */
 export const STATUS_RANK: Record<PlannerRow['status'], number> = {
   critical: 0,
   ending: 1,
   enough: 2,
-  no_action: 3,
+  held: 3,
+  no_action: 4,
 };
 
 // ─────────────────────────── Parametrlar ───────────────────────────
@@ -229,6 +246,16 @@ export function variantOf(skuTitle: string, productTitle: string): string | null
   return sku;
 }
 
+/** Sotib olingan, hali Uzumga topshirilmagan tovar (Partiyalar) */
+export interface PipelineInfo {
+  /** Jami: Xitoy omborida, cargoda, Toshkentga kelgan, rejadagi ta'minotda */
+  qty: number;
+  /** Shundan Toshkentga kelgani — FBO'ga jo'natsa bo'ladi */
+  arrived: number;
+}
+
+export const NO_PIPELINE: PipelineInfo = { qty: 0, arrived: 0 };
+
 export interface PlanInput {
   info: SkuInfo;
   stock: StockInfo;
@@ -238,59 +265,180 @@ export interface PlanInput {
   lead: number;
   /** Bugungi kun (UTC yarim tunga tenglashtirilgan) */
   today: Date;
+  /** Partiyalarda sotib olingan, hali Uzumga yetmagan tovar */
+  pipeline?: PipelineInfo;
+  /** Mavsumiy tovar: o'tgan mavsumdagi kunlik sotuv (mavsumdan tashqarida reja shundan) */
+  seasonRate?: number;
 }
 
-/** Bitta SKU uchun reja qatori — butun ilovadagi "buyurtma kerak" shundan */
+/**
+ * Prognoz tezligi: 30 kunlik tezlik, oxirgi 14 kunning yo'nalishi bilan
+ * to'g'rilangan (yarim og'irlik, -60%..+100% chegarada). O'sayotgan tovar
+ * kam, tushayotgani ko'p buyurtma qilinmasin; ma'lumot kam bo'lsa (yo'nalish
+ * yo'q) — 30 kunlik tezlikning o'zi.
+ */
+export function forecastRate(demand: Demand): number {
+  if (demand.rate <= 0) return 0;
+  if (demand.trendPct === null) return demand.rate;
+  const trend = Math.min(TREND_MAX, Math.max(TREND_MIN, demand.trendPct / 100));
+  return demand.rate * (1 + TREND_WEIGHT * trend);
+}
+
+/** Ehtiyot zaxirasi (dona): z × kunlik tebranish × √yetkazish kunlari, butunga yuqoriga */
+export function safetyStock(demand: Demand, lead: number): number {
+  if (demand.rate <= 0 || demand.dailySd <= 0) return 0;
+  return Math.ceil(SERVICE_Z * demand.dailySd * Math.sqrt(Math.max(1, lead)));
+}
+
+/**
+ * Bitta SKU uchun reja qatori — butun ilovadagi "buyurtma kerak" shundan.
+ *
+ * AQLLI REJA (2026-11-15, egasi: "rejalashtiruvchini mukammal, aqlli qil"):
+ *  1. Tezlik — prognoz: 30 kunlik tezlik oxirgi 14 kun yo'nalishi bilan.
+ *  2. Ehtiyot zaxirasi qat'iy 3 kun emas — sotuv tebranishidan (kamida 3 kun).
+ *  3. Partiyalarda sotib olingan tovar (Xitoyda, cargoda, keldi) ta'minotga
+ *     qo'shiladi: allaqachon olingan tovar qayta tavsiya qilinmaydi; Toshkentga
+ *     kelgani — "FBO'ga jo'nating".
+ *  4. Sotuvchi rejimi (shared sku-plan.ts): pauza / endi olinmaydi — sotib
+ *     olish yo'q; mavsumiy — mavsum tugashigacha sotiladigan miqdor, mavsum
+ *     tugashiga ulgurmasa yo'q, mavsumdan tashqarida keyingi mavsumga o'z
+ *     vaqtida (o'tgan mavsum tezligi bilan).
+ */
 export function buildRow(inp: PlanInput): PlannerRow {
   const { info, demand, lead } = inp;
-  const rate = demand.rate;
-  const supply = inp.stock.total + inp.inbound;
+  const pipeline = inp.pipeline ?? NO_PIPELINE;
+  let rate = forecastRate(demand);
+  const mode = effectiveMode(info.plan, inp.today);
+  const window = mode === 'seasonal' ? seasonWindow(info.plan.seasonMonths, inp.today) : null;
+  /*
+   * Mavsum endi boshlangan (30 kunlik oynaning bir qismi mavsumdan oldingi
+   * jim kunlar): hozirgi tezlik past chiqadi — o'tgan mavsum tezligi katta
+   * bo'lsa, o'shani olamiz. Aks holda mavsum boshida kam buyurtma qilinardi.
+   */
+  if (window?.inSeason && inp.seasonRate && window.length - window.daysToEnd < 30 && inp.seasonRate > rate) {
+    rate = inp.seasonRate;
+  }
+  /** Javonda va Uzumga yo'lda: "qoldiq necha kunga yetadi" shundan */
+  const shelf = inp.stock.total + inp.inbound;
+  /** Sotib olish qarori uchun: partiyalarda kelayotgani ham */
+  const supply = shelf + pipeline.qty;
+
+  const safety = safetyStock(demand, lead);
+  /** Buyurtma kuni hisobidagi zaxira: kamida SAFETY_DAYS, tebranish katta bo'lsa — ko'proq */
+  const safetyDays = rate > 0 ? Math.max(SAFETY_DAYS, Math.ceil(safety / rate)) : SAFETY_DAYS;
 
   /** Aniq (kasrli) qiymat hisob uchun, butun kun — ko'rsatish uchun; pastga yaxlitlanadi: ehtiyotkor tomon */
-  const daysExact = rate > 0 ? supply / rate : null;
-  const daysLeft = daysExact === null ? null : Math.floor(daysExact);
+  const shelfExact = rate > 0 ? shelf / rate : null;
+  const daysLeft = shelfExact === null ? null : Math.floor(shelfExact);
+  /** Partiyalar bilan birga necha kunga yetadi — sotib olish kuni shundan */
+  const supplyExact = rate > 0 ? supply / rate : null;
 
-  const qty = recommendedQty(rate, inp.cover, supply, lead);
+  /**
+   * Kerakli dona (talab + ehtiyot zaxirasi) — sotib olish ham, FBO'ga jo'natish
+   * ham SHU maqsaddan: ikkalasi bir xil bo'lmasa, sotib olish tavsiya qilinib,
+   * o'z omboridagi tovar to'liq jo'natilmay qolardi.
+   */
+  let target = rate > 0 ? rate * (inp.cover + lead) + safety : 0;
+  let qty = rate > 0 ? Math.max(0, Math.ceil(target - supply)) : 0;
+  let orderInDays = supplyExact === null ? null : Math.floor(supplyExact) - lead - safetyDays;
   const unitCost = info.purchasePrice + info.extraCost;
   // Katalog narxi eskirgan bo'lishi mumkin (aksiya, o'zgartirilgan narx) — haqiqiy sotuv narxi ishonchliroq
   const price = demand.avgPrice > 0 ? demand.avgPrice : info.price;
-
-  /*
-   * JO'NATISH VA SOTIB OLISH. FBO'ga kerak = xuddi shu talab − FBO − yo'ldagi
-   * (yo'ldagi tovar FBO'ga ketyapti). Uning o'z ombori + FBS qoplay oladigan
-   * qismi — "ombordan FBO'ga jo'nating", qolgani — sotib olish. Band qilingan
-   * dona (`reserved`) jo'natilmaydi: u allaqachon xaridorga va'da qilingan.
-   * Bir xil formula (shared `recommendedQty`) — band qilingan dona bo'lmasa
-   * jo'natish + sotib olish aynan FBO'ga kerakli miqdorga teng. Ilgari
-   * qoralamaga sotib olish miqdori tushardi va qabul qilinganda u o'z
-   * omboridan FBO'ga ko'chirilgandek yozilardi — omborda bo'lmagan tovar
-   * "jo'natilardi", omborda turgani esa rejada ko'rinmasdi (2026-10-24).
-   */
-  const fboNeed = recommendedQty(rate, inp.cover, inp.stock.fbo + inp.inbound, lead);
-  const shippable = Math.max(0, inp.stock.own + inp.stock.fbs - inp.stock.reserved);
-  const shipQty = Math.min(fboNeed, shippable);
-
-  /*
-   * Buyurtma kuni: shu kuni buyurtma berilsa, tovar qoldiq tugashidan
-   * SAFETY_DAYS kun oldin yetib keladi. Manfiy — kechikilgan.
-   */
-  const orderInDays = daysLeft === null ? null : daysLeft - lead - SAFETY_DAYS;
 
   /*
    * HOLAT.
    *  kritik     — bugun buyurtma berilsa ham tovar kelguncha tugaydi;
    *  tugayapti  — buyurtma kuni yetdi yoki bir hafta ichida;
    *  yetarli    — hozircha shoshilmasa bo'ladi;
-   *  harakatsiz — sotuv yo'q, prognoz qurib bo'lmaydi.
+   *  harakatsiz — sotuv yo'q, prognoz qurib bo'lmaydi;
+   *  to'xtatilgan (held) — quyida, sotuvchi rejimi va mavsum.
    */
   let status: PlannerRow['status'];
-  if (daysExact === null || orderInDays === null) status = 'no_action';
-  else if (daysExact <= lead) status = 'critical';
+  if (supplyExact === null || orderInDays === null) status = 'no_action';
+  else if (supplyExact <= lead) status = 'critical';
   else if (orderInDays <= ORDER_SOON_DAYS) status = 'ending';
   else status = 'enough';
 
   // Bugun buyurtma berilsa ham qoldiqsiz o'tadigan vaqt
-  const gapExact = daysExact === null ? 0 : Math.max(0, lead - daysExact);
+  let gapExact = supplyExact === null ? 0 : Math.max(0, lead - supplyExact);
+
+  // ── Sotuvchi rejimi va mavsum ──
+  let hold: PlanHoldReason | null = null;
+  let holdUntil: string | null = null;
+  let season: PlannerRow['season'] = null;
+  /** Mavsumdan tashqarida: keyingi mavsumga rejalashtirilgan miqdor (hozir sotib olinmaydi) */
+  let seasonQty = 0;
+  if (mode === 'pause' || mode === 'stop') {
+    hold = mode;
+    holdUntil = mode === 'pause' ? info.plan.pauseUntil : null;
+  } else if (mode === 'seasonal') {
+    const w = window;
+    if (w) {
+      season = { start: w.start, end: w.end, inSeason: w.inSeason };
+      if (w.inSeason) {
+        if (lead >= w.daysToEnd) {
+          // Yangi partiya mavsum tugagandan keyin keladi — qolgani sotib tugatiladi
+          hold = 'season_end';
+        } else if (rate > 0) {
+          // Faqat mavsum oxirigacha sotiladigan miqdor: undan keyin talab yo'q
+          const horizon = Math.min(inp.cover + lead, w.daysToEnd);
+          target = rate * horizon + safety;
+          qty = Math.max(0, Math.ceil(target - supply));
+          // Qoldiq mavsum oxirigacha yetsa — buyurtma kerak emas
+          if (supplyExact !== null && supplyExact >= w.daysToEnd) {
+            qty = 0;
+            status = 'enough';
+            orderInDays = null;
+            gapExact = 0;
+          }
+        }
+      } else {
+        // Mavsum emas: keyingi mavsumga o'z vaqtida tayyorlanish
+        const seasonal = inp.seasonRate && inp.seasonRate > 0 ? inp.seasonRate : rate;
+        const until = w.daysToStart - lead - SAFETY_DAYS;
+        gapExact = 0;
+        if (seasonal <= 0) {
+          hold = 'off_season';
+          holdUntil = null;
+          qty = 0;
+        } else {
+          target = seasonal * Math.min(inp.cover, w.length);
+          qty = Math.max(0, Math.ceil(target - supply));
+          orderInDays = until;
+          if (qty <= 0) {
+            hold = 'off_season';
+            orderInDays = null;
+          } else if (until > ORDER_SOON_DAYS) {
+            hold = 'off_season';
+            holdUntil = toISODate(addDays(inp.today, until));
+            seasonQty = qty;
+          } else {
+            // Mavsumga buyurtma vaqti keldi
+            status = w.daysToStart <= lead ? 'critical' : 'ending';
+          }
+        }
+      }
+    }
+  }
+  if (hold) {
+    // To'xtatilgan qator hech qayerda "sotib oling" bo'lib sanalmaydi
+    status = 'held';
+    qty = 0;
+    if (hold !== 'off_season' || seasonQty === 0) orderInDays = null;
+    gapExact = 0;
+  }
+
+  /*
+   * JO'NATISH. FBO'ga kerak = xuddi shu talab − FBO − yo'ldagi (yo'ldagi tovar
+   * FBO'ga ketyapti). Uning o'z ombori + FBS + Toshkentga kelgan partiya
+   * qoplay oladigan qismi — "ombordan FBO'ga jo'nating". Band qilingan dona
+   * (`reserved`) jo'natilmaydi: u allaqachon xaridorga va'da qilingan. Pauza
+   * va "endi olinmaydi" tovarda ham jo'natish qoladi — qoldiq sotib tugatiladi;
+   * mavsum emas bo'lsa — jo'natilmaydi (sotilmaydi).
+   */
+  const fboNeed = Math.max(0, Math.ceil(target - inp.stock.fbo - inp.inbound));
+  const shippable = Math.max(0, inp.stock.own + inp.stock.fbs - inp.stock.reserved) + pipeline.arrived;
+  const shipQty = hold === 'off_season' || hold === 'season_end' ? 0 : Math.min(fboNeed, shippable);
 
   const variant = variantOf(info.title, info.productTitle);
 
@@ -302,7 +450,7 @@ export function buildRow(inp: PlanInput): PlannerRow {
     imageUrl: info.imageUrl,
     stock: inp.stock.total,
     inbound: inp.inbound,
-    avgDaily: round(rate, 2),
+    avgDaily: round(demand.rate, 2),
     soldUnits: demand.units,
     inStockDays: demand.inStockDays,
     stockoutDays: demand.stockoutDays,
@@ -319,8 +467,156 @@ export function buildRow(inp: PlanInput): PlannerRow {
     status,
     gapDays: Math.ceil(gapExact),
     lostRevenue: round(gapExact * rate * price),
-    lostPast: round(demand.stockoutDays * rate * price),
+    lostPast: round(demand.stockoutDays * demand.rate * price),
+    forecastDaily: round(rate, 2),
+    safetyUnits: hold ? 0 : safety,
+    pipeline: pipeline.qty,
+    pipelineArrived: pipeline.arrived,
+    historicRate: Boolean(demand.fromHistory),
+    planMode: info.plan.mode,
+    pauseUntil: info.plan.pauseUntil,
+    seasonMonths: info.plan.seasonMonths,
+    hold,
+    holdUntil,
+    season,
+    seasonQty,
   };
+}
+
+/**
+ * Partiyalarda sotib olingan, hali Uzumga topshirilmagan tovar — SKU bo'yicha.
+ *
+ * Partiya qatori bosqichi (shared batch-profit.ts BatchStage): Xitoy omborida,
+ * cargoda, Toshkentga keldi, yoki Uzum ta'minlashi hali REJADA. Yo'ldagi va
+ * qabul qilinayotgan ta'minot `getInbound` da bor — ikki marta sanalmaydi.
+ * Qator bir nechta SKU'ga bog'langan bo'lsa (ranglar), dona ularning sotuv
+ * tezligiga qarab bo'linadi (sotuvi bo'lmasa — teng).
+ *
+ * Ilgari Rejalashtiruvchi buni bilmasdi: 200 dona Xitoyda sotib olinib cargoda
+ * kelayotgan bo'lsa ham, Uzumdagi qoldiq tugayotgani uchun yana 200 dona
+ * "sotib oling" derdi.
+ */
+export async function getPipeline(
+  companyId: string,
+  catalog: Map<string, SkuInfo>,
+  demand: Map<string, Demand>,
+): Promise<Map<string, PipelineInfo>> {
+  const out = new Map<string, PipelineInfo>();
+  if (catalog.size === 0) return out;
+  let book: Awaited<ReturnType<typeof getBatchProfit>>;
+  try {
+    book = await getBatchProfit(companyId);
+  } catch {
+    // Partiya hisobi yiqilsa reja baribir chiqsin — partiyasiz
+    return out;
+  }
+  const byCode = new Map<string, string[]>();
+  for (const info of catalog.values()) {
+    const key = normSkuCode(info.sku);
+    const list = byCode.get(key) ?? [];
+    list.push(info.id);
+    byCode.set(key, list);
+  }
+  const add = (skuId: string, qty: number, arrived: boolean) => {
+    const cur = out.get(skuId) ?? { qty: 0, arrived: 0 };
+    cur.qty += qty;
+    if (arrived) cur.arrived += qty;
+    out.set(skuId, cur);
+  };
+  for (const rows of book.rowsOf.values()) {
+    for (const r of rows) {
+      if (r.optedOut || r.qty <= 0 || r.codes.length === 0) continue;
+      const waiting =
+        r.stage === 'warehouse' ||
+        r.stage === 'shipped' ||
+        r.stage === 'arrived' ||
+        (r.stage === 'toUzum' && (!r.supply || r.supply.status === 'planned'));
+      if (!waiting) continue;
+      const skuIds = [...new Set(r.codes.flatMap((c) => byCode.get(normSkuCode(c)) ?? []))];
+      if (skuIds.length === 0) continue;
+      const arrived = r.stage === 'arrived';
+      // Tezlikka qarab bo'lish, qoldiq — eng katta kasrga (jami dona saqlanadi)
+      const weights = skuIds.map((id) => demand.get(id)?.rate ?? 0);
+      const total = weights.reduce((a, b) => a + b, 0);
+      const shares = skuIds.map((_, i) => (total > 0 ? (r.qty * (weights[i] as number)) / total : r.qty / skuIds.length));
+      const whole = shares.map(Math.floor);
+      let left = r.qty - whole.reduce((a, b) => a + b, 0);
+      const order = shares.map((v, i) => [v - Math.floor(v), i] as const).sort((a, b) => b[0] - a[0]);
+      for (const [, i] of order) {
+        if (left <= 0) break;
+        whole[i] = (whole[i] as number) + 1;
+        left -= 1;
+      }
+      skuIds.forEach((id, i) => {
+        if ((whole[i] as number) > 0) add(id, whole[i] as number, arrived);
+      });
+    }
+  }
+  return out;
+}
+
+/** Mavsumiy SKU'lar uchun minimal bo'luvchi (kun): bir-ikki sotuv "kuniga 1 ta" bo'lib ketmasin */
+const SEASON_MIN_DAYS = 14;
+
+/**
+ * Mavsumiy SKU'larning O'TGAN mavsumdagi kunlik sotuvi. Mavsumdan tashqarida
+ * hozirgi tezlik ~0 — keyingi mavsumga qancha olishni shu aytadi. Bo'luvchi —
+ * mavsumdagi birinchi sotuvdan mavsum oxirigacha (tovar mavsum o'rtasida
+ * chiqqan bo'lsa ham to'g'ri), kamida 14 kun.
+ */
+export async function getSeasonRates(
+  storeIds: string[],
+  catalog: Map<string, SkuInfo>,
+  today: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const windows = new Map<string, { start: Date; end: Date }>();
+  for (const info of catalog.values()) {
+    if (info.plan.mode !== 'seasonal') continue;
+    const prev = previousSeason(info.plan.seasonMonths, today);
+    if (!prev) continue;
+    windows.set(info.id, { start: parseISODate(prev.start), end: addDays(parseISODate(prev.end), 1) });
+  }
+  if (windows.size === 0 || storeIds.length === 0) return out;
+  const from = new Date(Math.min(...[...windows.values()].map((w) => w.start.getTime())));
+  const to = new Date(Math.max(...[...windows.values()].map((w) => w.end.getTime())));
+  const items = await prisma.orderItem.findMany({
+    where: {
+      skuId: { in: [...windows.keys()] },
+      order: { storeId: { in: storeIds } },
+      orderedAt: { gte: from, lt: to },
+      status: { notIn: ['canceled', 'returned'] },
+      returnedAt: null,
+    },
+    select: { skuId: true, qty: true, orderedAt: true },
+  });
+  const agg = new Map<string, { units: number; first: number }>();
+  for (const it of items) {
+    if (!it.skuId) continue;
+    const w = windows.get(it.skuId);
+    const t = it.orderedAt.getTime();
+    if (!w || t < w.start.getTime() || t >= w.end.getTime()) continue;
+    const cur = agg.get(it.skuId) ?? { units: 0, first: t };
+    cur.units += it.qty;
+    cur.first = Math.min(cur.first, t);
+    agg.set(it.skuId, cur);
+  }
+  for (const [skuId, a] of agg) {
+    const w = windows.get(skuId) as { start: Date; end: Date };
+    const days = Math.max(SEASON_MIN_DAYS, Math.ceil((w.end.getTime() - a.first) / 86_400_000));
+    out.set(skuId, a.units / days);
+  }
+  return out;
+}
+
+/**
+ * Hozir sotib olinadimi: miqdori bor va buyurtma kuni bir hafta ichida
+ * (kritik yoki tugayapti). Rejalashtiruvchi xulosasi, Excel ro'yxati va
+ * "Bugun" vazifalari shu bilan — "yetarli" qatorning kichik to'ldirishi
+ * hozirgi xaridni shishirmaydi.
+ */
+export function dueNow(row: PlannerRow): boolean {
+  return row.recommendedQty > 0 && (row.status === 'critical' || row.status === 'ending');
 }
 
 /** Shoshilinchlik bo'yicha: holat → buyurtma kuni → buyurtma summasi */
@@ -368,18 +664,25 @@ export async function loadPlanData(
 ): Promise<PlanData> {
   const cover = parseCover(opts.cover);
   const lead = parseLead(opts.lead);
+  const today = parseISODate(toBusinessDate(new Date()));
   const [settings, catalog, stocks, demand, inbound] = await Promise.all([
     cover !== null && lead !== null ? Promise.resolve(null) : getPlannerSettings(companyId),
     getSkuCatalog(storeIds, false),
     getLatestStocks(storeIds),
-    getDemand(storeIds),
+    // Uzoq tugab turgan tovar — oynadan oldingi sotuvdan (services/demand.ts withHistory)
+    getDemand(storeIds, undefined, undefined, { withHistory: true }),
     getInbound(companyId, storeIds),
+  ]);
+  // Partiyalar (sotib olingan, hali Uzumga yetmagan) va mavsumiy SKU'larning o'tgan mavsumi
+  const [pipeline, seasonRates] = await Promise.all([
+    getPipeline(companyId, catalog, demand),
+    getSeasonRates(storeIds, catalog, today),
   ]);
 
   const data: PlanData = {
     coverDays: cover ?? settings?.coverDays ?? DEFAULT_COVER,
     leadDays: lead ?? settings?.leadDays ?? DEFAULT_LEAD,
-    today: parseISODate(toBusinessDate(new Date())),
+    today,
     catalog,
     rows: new Map(),
     stocks,
@@ -395,6 +698,8 @@ export async function loadPlanData(
         cover: data.coverDays,
         lead: data.leadDays,
         today: data.today,
+        pipeline: pipeline.get(info.id),
+        seasonRate: seasonRates.get(info.id),
       }),
     );
   }
@@ -417,7 +722,17 @@ function summarize(rows: PlannerRow[], data: PlanData): StockPlanSummary | null 
   let soonest: PlannerRow | null = null;
   let orderFirst: PlannerRow | null = null;
   const sum = { reorderQty: 0, shipQty: 0, purchaseCost: 0, lostRevenue: 0, avgDaily: 0, inbound: 0, critical: 0 };
+  let pipeline = 0;
+  let heldSkus = 0;
+  let seasonQty = 0;
+  const holds = new Set<PlanHoldReason | null>();
+  let holdUntil: string | null = null;
   for (const r of rows) {
+    pipeline += r.pipeline;
+    seasonQty += r.seasonQty;
+    holds.add(r.hold);
+    if (r.status === 'held') heldSkus += 1;
+    if (r.holdUntil && (holdUntil === null || r.holdUntil < holdUntil)) holdUntil = r.holdUntil;
     sum.reorderQty += r.recommendedQty;
     sum.shipQty += r.shipQty;
     sum.purchaseCost += r.purchaseCost;
@@ -447,6 +762,11 @@ function summarize(rows: PlannerRow[], data: PlanData): StockPlanSummary | null 
     skus: rows.length,
     leadDays: data.leadDays,
     coverDays: data.coverDays,
+    pipeline,
+    heldSkus,
+    hold: holds.size === 1 ? ([...holds][0] ?? null) : null,
+    holdUntil,
+    seasonQty,
   };
 }
 
@@ -494,6 +814,15 @@ export function planStockStatus(
   legacy: { status: StockBadgeStatus; daysLeft: number | null },
 ): { status: StockBadgeStatus; daysLeft: number | null } {
   if (!row || row.status === 'no_action') return legacy;
+  /*
+   * To'xtatilgan (pauza, endi olinmaydi, mavsum emas): "kritik / tugayapti"
+   * deyilmaydi — sotuvchi qaror qilgan. Qoldig'i tugagani — harakatsiz.
+   */
+  if (row.status === 'held') {
+    if (row.stock <= 0) return { status: 'dead', daysLeft: row.daysLeft };
+    const excessHeld = row.daysLeft !== null && row.daysLeft >= STOCK_THRESHOLDS.excess;
+    return { status: excessHeld ? 'excess' : 'ok', daysLeft: row.daysLeft };
+  }
   if (row.status === 'critical') return { status: 'critical', daysLeft: row.daysLeft };
   if (row.status === 'ending') return { status: 'low', daysLeft: row.daysLeft };
   const excess = row.daysLeft !== null && row.daysLeft >= STOCK_THRESHOLDS.excess;
@@ -516,7 +845,7 @@ export function parseStockStatus(raw: unknown): StockBadgeStatus | null {
 // ─────────────────────────── Jadval (Rejalashtiruvchi, Excel, namuna) ───────────────────────────
 
 export type PlanStatusFilter = PlannerRow['status'] | 'all';
-const STATUS_FILTERS: PlanStatusFilter[] = ['all', 'critical', 'ending', 'enough', 'no_action'];
+const STATUS_FILTERS: PlanStatusFilter[] = ['all', 'critical', 'ending', 'enough', 'no_action', 'held'];
 
 /** ?status= qiymati; berilmasa yoki noma'lum bo'lsa null (standart ko'rinish) */
 export function parseStatusFilter(raw: unknown): PlanStatusFilter | null {
@@ -540,10 +869,14 @@ export interface PlanTable {
  */
 export function planTable(data: PlanData, opts: { filter?: PlanStatusFilter | null; search?: string } = {}): PlanTable {
   const filter = opts.filter ?? null;
-  const counts = { all: 0, critical: 0, ending: 0, enough: 0, noAction: 0 };
+  const counts = { all: 0, critical: 0, ending: 0, enough: 0, noAction: 0, held: 0 };
   const totals = {
     needSkus: 0,
     purchaseCost: 0,
+    laterSkus: 0,
+    laterCost: 0,
+    pipelineUnits: 0,
+    heldSkus: 0,
     lostRevenue: 0,
     lostPast: 0,
     orderNow: 0,
@@ -568,13 +901,26 @@ export function planTable(data: PlanData, opts: { filter?: PlanStatusFilter | nu
     if (row.status === 'critical') counts.critical += 1;
     else if (row.status === 'ending') counts.ending += 1;
     else if (row.status === 'enough') counts.enough += 1;
+    else if (row.status === 'held') counts.held += 1;
     else counts.noAction += 1;
 
+    /*
+     * "Hozir sotib oling" — faqat buyurtma kuni bir hafta ichida bo'lganlar
+     * (kritik va tugayapti). Hafta keyin ham bo'ladigan to'ldirish rejada
+     * ko'rinadi, lekin hozirgi xaridga qo'shilmaydi (`dueNow`).
+     */
     if (row.recommendedQty > 0) {
-      totals.needSkus += 1;
-      totals.purchaseCost += row.purchaseCost;
-      totals.buyUnits += row.recommendedQty;
+      if (dueNow(row)) {
+        totals.needSkus += 1;
+        totals.purchaseCost += row.purchaseCost;
+        totals.buyUnits += row.recommendedQty;
+      } else {
+        totals.laterSkus += 1;
+        totals.laterCost += row.purchaseCost;
+      }
     }
+    totals.pipelineUnits += row.pipeline;
+    if (row.status === 'held') totals.heldSkus += 1;
     if (inDraftScope(row, 'needed')) {
       totals.shipSkus += 1;
       totals.shipUnits += row.shipQty;
@@ -604,6 +950,7 @@ export function planTable(data: PlanData, opts: { filter?: PlanStatusFilter | nu
     totals: {
       ...totals,
       purchaseCost: round(totals.purchaseCost),
+      laterCost: round(totals.laterCost),
       lostRevenue: round(totals.lostRevenue),
       lostPast: round(totals.lostPast),
     },

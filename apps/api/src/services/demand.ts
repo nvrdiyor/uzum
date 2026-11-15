@@ -43,7 +43,24 @@ export interface Demand {
   trendPct: number | null;
   /** Haqiqiy o'rtacha sotuv narxi (tushum / dona); sotuv bo'lmasa 0 */
   avgPrice: number;
+  /**
+   * Kunlik sotuvning standart chetlanishi (tovar sotuvda bo'lgan kunlar bo'yicha),
+   * dona. Rejalashtiruvchi ehtiyot zaxirasini shundan hisoblaydi: bir tekis
+   * sotiladigan tovarga kam, "bir kunda 5 ta, keyin 3 kun hech narsa" tovarga ko'p.
+   */
+  dailySd: number;
+  /**
+   * Tezlik oynadan OLDINGI sotuvdan olingan: tovar butun oyna davomida tugab
+   * turgan (shuning uchun oynada sotuv yo'q), lekin undan oldin sotilgan.
+   * Faqat `withHistory` bilan (Rejalashtiruvchi).
+   */
+  fromHistory?: boolean;
 }
+
+/** Tovar deyarli butun oynada tugab turgan bo'lsa — oldingi shuncha kunlik sotuvga qaraladi */
+const HISTORY_DAYS = 60;
+/** Tarixiy tezlik uchun eng kichik bo'luvchi (kun) */
+const HISTORY_MIN_DAYS = 14;
 
 interface DayCell {
   units: number;
@@ -57,6 +74,7 @@ export async function getDemand(
   storeIds: string[],
   days = DEMAND_WINDOW_DAYS,
   now = new Date(),
+  opts: { withHistory?: boolean } = {},
 ): Promise<Map<string, Demand>> {
   const out = new Map<string, Demand>();
   if (storeIds.length === 0) return out;
@@ -149,6 +167,8 @@ export async function getDemand(
     let stockoutDays = 0;
     let recentUnits = 0;
     let recentDays = 0;
+    /** Sotuvda bo'lgan har kunning sotuvi — tebranish (dailySd) uchun */
+    const perDay: number[] = [];
 
     for (const key of dayKeys) {
       const cell = sold?.get(key);
@@ -160,6 +180,7 @@ export async function getDemand(
         launched = true;
         inStockDays += 1;
         if (key >= recentFrom) recentDays += 1;
+        perDay.push(cell?.units ?? 0);
       } else if (have === false && launched) {
         stockoutDays += 1;
       }
@@ -177,6 +198,13 @@ export async function getDemand(
       trendPct = Math.round(((recentUnits / recentDays - rate) / rate) * 100);
     }
 
+    let dailySd = 0;
+    if (perDay.length >= 2 && units > 0) {
+      const mean = perDay.reduce((a, b) => a + b, 0) / perDay.length;
+      const variance = perDay.reduce((a, b) => a + (b - mean) ** 2, 0) / (perDay.length - 1);
+      dailySd = Math.sqrt(variance);
+    }
+
     out.set(skuId, {
       units,
       inStockDays,
@@ -184,7 +212,52 @@ export async function getDemand(
       rate,
       trendPct,
       avgPrice: units > 0 ? revenue / units : 0,
+      dailySd,
     });
+  }
+
+  /*
+   * UZOQ TUGAB TURGAN TOVAR. Oyna davomida tovar umuman bo'lmasa, sotuv ham
+   * yo'q — tezlik 0, Rejalashtiruvchi uni "sotuv yo'q" deb tashlab qo'yardi:
+   * yaxshi sotilgan tovar bir oydan ko'p tugab tursa, unga buyurtma ham
+   * tavsiya qilinmasdi, "Qoldiqlar" esa uni "Kritik · 0 kun" derdi (2026-11-15
+   * tahlili). Endi bunday SKU'ga tezlik oynadan oldingi 60 kundagi sotuvdan
+   * olinadi; sotuvchi uni endi olmasa — "Endi sotib olinmaydi" deb belgilaydi.
+   */
+  if (opts.withHistory) {
+    const stale = [...out.entries()]
+      .filter(([, d]) => d.units === 0 && d.stockoutDays >= days - 3)
+      .map(([id]) => id);
+    if (stale.length > 0) {
+      const histFrom = addDays(from, -HISTORY_DAYS);
+      const hist = await prisma.orderItem.findMany({
+        where: {
+          skuId: { in: stale },
+          order: { storeId: { in: storeIds } },
+          orderedAt: { gte: histFrom, lt: from },
+          status: { notIn: ['canceled', 'returned'] },
+          returnedAt: null,
+        },
+        select: { skuId: true, qty: true, revenue: true, orderedAt: true },
+      });
+      const agg = new Map<string, { units: number; revenue: number; first: number }>();
+      for (const it of hist) {
+        if (!it.skuId) continue;
+        const cur = agg.get(it.skuId) ?? { units: 0, revenue: 0, first: it.orderedAt.getTime() };
+        cur.units += it.qty;
+        cur.revenue += it.revenue;
+        cur.first = Math.min(cur.first, it.orderedAt.getTime());
+        agg.set(it.skuId, cur);
+      }
+      for (const [skuId, a] of agg) {
+        const d = out.get(skuId);
+        if (!d || a.units <= 0) continue;
+        const span = Math.ceil((from.getTime() - a.first) / 86_400_000);
+        d.rate = a.units / Math.max(HISTORY_MIN_DAYS, span);
+        d.avgPrice = a.revenue / a.units;
+        d.fromHistory = true;
+      }
+    }
   }
 
   return out;

@@ -14,13 +14,13 @@ import { toBotLang, tr } from '../i18n.js';
 import { clampMessage, sleep, type BotContext } from '../handlers/context.js';
 import { pricingKeyboard, siteKeyboard } from '../handlers/keyboards.js';
 import {
-  buildCriticalStocks,
   buildPeriodReport,
   localDateKey,
   localHour,
   type PeriodReport,
   type StockAlert,
 } from '../handlers/data.js';
+import { buildCriticalStocks } from './stock-alert.js';
 import { dailyDigestText } from '../handlers/reports.js';
 import { resolveReportPeriod, type ReportRange } from '../lib/dashboard-kpi.js';
 

@@ -14,6 +14,8 @@
  * nisbatan to'lardi — sozlamada 45 kun turgan kompaniyada ham.
  */
 import { useState, type ReactNode } from 'react';
+import { PlanModeModal, type PlanModeTarget } from '@/components/planner/PlanModeModal';
+import { useCanEditPlanner } from '@/components/planner/usePlannerSettings';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -109,6 +111,18 @@ registerNamespace('productBento', {
     'need.lost': 'Bugun buyurtma berilsa ham tovar kelguncha ~{v} tushum yo‘qotiladi',
     'need.none': 'Hozircha buyurtma shart emas',
     'need.noneHint': 'Barcha variantlar zaxira davriga yetadi',
+    'need.mode': 'Buyurtma rejimi',
+    'need.modeChange': 'O‘zgartirish',
+    'need.modeMixed': 'variantlarda har xil',
+    'mode.auto': 'Avtomatik',
+    'mode.pause': 'Hozircha buyurtma berilmaydi',
+    'mode.pauseUntil': '{date} gacha buyurtma berilmaydi',
+    'mode.stop': 'Endi sotib olinmaydi',
+    'mode.seasonal': 'Mavsumiy: {months}',
+    'need.held': 'Buyurtma tavsiya qilinmaydi',
+    'need.heldHint': 'Qoldiq sotilaveradi; “tugayapti” ogohlantirishlari ham chiqmaydi',
+    'need.offSeason': 'Mavsum emas — mavsumga buyurtma {date}: {n} dona',
+    'need.pipeline': 'Partiyalarda kelayotgan: {n} dona (rejaga kiritilgan)',
     'need.noPlan': 'Arxivdagi mahsulot — rejaga kirmaydi',
     'need.urgent': 'Eng shoshilinch variantlar',
     'need.skuBuy': 'buyurtma {n}',
@@ -188,6 +202,18 @@ registerNamespace('productBento', {
     'need.lost': 'Даже при заказе сегодня до поставки будет потеряно ~{v} выручки',
     'need.none': 'Пока заказывать не нужно',
     'need.noneHint': 'Всех вариантов хватает на период запаса',
+    'need.mode': 'Режим заказа',
+    'need.modeChange': 'Изменить',
+    'need.modeMixed': 'у вариантов разный',
+    'mode.auto': 'Автоматически',
+    'mode.pause': 'Пока не заказываем',
+    'mode.pauseUntil': 'Не заказываем до {date}',
+    'mode.stop': 'Больше не закупаем',
+    'mode.seasonal': 'Сезонный: {months}',
+    'need.held': 'Заказ не рекомендуется',
+    'need.heldHint': 'Остаток продаётся; предупреждений «заканчивается» тоже не будет',
+    'need.offSeason': 'Не сезон — заказ к сезону {date}: {n} шт.',
+    'need.pipeline': 'В партиях в пути: {n} шт. (учтено в плане)',
     'need.noPlan': 'Товар в архиве — в план не входит',
     'need.urgent': 'Самые срочные варианты',
     'need.skuBuy': 'заказ {n}',
@@ -267,6 +293,18 @@ registerNamespace('productBento', {
     'need.lost': 'Even if ordered today, ~{v} of revenue is lost before the delivery arrives',
     'need.none': 'No reorder needed yet',
     'need.noneHint': 'Every variant covers the period',
+    'need.mode': 'Reorder mode',
+    'need.modeChange': 'Change',
+    'need.modeMixed': 'differs by variant',
+    'mode.auto': 'Automatic',
+    'mode.pause': 'Not reordering for now',
+    'mode.pauseUntil': 'Not reordering until {date}',
+    'mode.stop': 'Discontinued',
+    'mode.seasonal': 'Seasonal: {months}',
+    'need.held': 'No reorder suggested',
+    'need.heldHint': 'Stock keeps selling; no “running out” warnings either',
+    'need.offSeason': 'Off season — order for the season on {date}: {n} pcs',
+    'need.pipeline': 'Coming in batches: {n} pcs (counted in the plan)',
     'need.noPlan': 'Archived product — not in the plan',
     'need.urgent': 'Most urgent variants',
     'need.skuBuy': 'reorder {n}',
@@ -605,7 +643,43 @@ export function CoverCard({ product, skus }: { product: ProductCard; skus: Produ
 export function NeedCard({ product, skus }: { product: ProductCard; skus: ProductDetailSku[] }) {
   const t = useT('productBento');
   const f = useFormat();
+  const canEdit = useCanEditPlanner();
+  const [modeTarget, setModeTarget] = useState<PlanModeTarget | null>(null);
   const plan = product.plan;
+
+  /*
+   * Buyurtma rejimi — butun mahsulot uchun (barcha variantlar). Variantlarda
+   * har xil bo'lsa ("qora — mavsumiy, oq — avtomatik") shuni aytamiz;
+   * o'zgartirilsa hammasiga bir xil qo'yiladi.
+   */
+  const live = skus.filter((s) => !s.archived);
+  const modeSkus = live.length > 0 ? live : skus;
+  const first = modeSkus[0];
+  const sameMode =
+    first !== undefined &&
+    modeSkus.every(
+      (s) =>
+        s.planMode === first.planMode &&
+        s.pauseUntil === first.pauseUntil &&
+        s.seasonMonths.join(',') === first.seasonMonths.join(','),
+    );
+  const modeText = !first
+    ? null
+    : !sameMode
+      ? t('need.modeMixed')
+      : first.planMode === 'pause'
+        ? first.pauseUntil
+          ? t('mode.pauseUntil', { date: f.dateShort(first.pauseUntil) })
+          : t('mode.pause')
+        : first.planMode === 'stop'
+          ? t('mode.stop')
+          : first.planMode === 'seasonal'
+            ? t('mode.seasonal', {
+                months: first.seasonMonths.map((m) => f.monthShort(new Date(Date.UTC(2026, m - 1, 1)))).join(', '),
+              })
+            : t('mode.auto');
+  /** Barcha rejadagi variantlar to'xtatilgan — "buyurtma tavsiya qilinmaydi" */
+  const allHeld = Boolean(plan && plan.skus > 0 && plan.heldSkus === plan.skus);
   const buy = plan?.reorderQty ?? product.needOrder ?? 0;
   const ship = plan?.shipQty ?? 0;
   const order = plan?.orderInDays ?? null;
@@ -644,6 +718,17 @@ export function NeedCard({ product, skus }: { product: ProductCard; skus: Produc
       <CardBody>
         {!plan ? (
           <p className="text-sm text-muted">{t('need.noPlan')}</p>
+        ) : allHeld ? (
+          <div>
+            <p className="font-display text-base font-semibold text-ink-soft">{t('need.held')}</p>
+            {plan.hold === 'off_season' && plan.holdUntil && plan.seasonQty > 0 ? (
+              <p className="tnum mt-0.5 text-xs font-medium text-info-ink">
+                {t('need.offSeason', { date: f.dateShort(plan.holdUntil), n: f.num(plan.seasonQty) })}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted">{t('need.heldHint')}</p>
+            )}
+          </div>
         ) : buy > 0 ? (
           <div>
             <p className="eyebrow">{t('need.buy')}</p>
@@ -724,6 +809,35 @@ export function NeedCard({ product, skus }: { product: ProductCard; skus: Produc
           </div>
         ) : null}
 
+        {plan && plan.pipeline > 0 ? (
+          <p className="tnum mt-3 text-xs font-medium text-violet-ink">{t('need.pipeline', { n: f.num(plan.pipeline) })}</p>
+        ) : null}
+
+        {/* Buyurtma rejimi: pauza, endi olinmaydi, mavsumiy — Rejalashtiruvchi va bot shunga qaraydi */}
+        {modeText ? (
+          <div className="well mt-4 flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+            <span className="min-w-0 text-xs">
+              <span className="text-muted">{t('need.mode')}: </span>
+              <span className="font-semibold text-ink">{modeText}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setModeTarget({
+                  productId: product.id,
+                  name: product.title,
+                  current: sameMode && first
+                    ? { mode: first.planMode, pauseUntil: first.pauseUntil, seasonMonths: first.seasonMonths }
+                    : { mode: 'auto', pauseUntil: null, seasonMonths: [] },
+                })
+              }
+              className="focusable rounded-md text-xs font-semibold text-brand-ink hover:underline"
+            >
+              {t('need.modeChange')}
+            </button>
+          </div>
+        ) : null}
+
         <Link
           to={plannerHref}
           className="focusable mt-4 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-brand-ink hover:underline"
@@ -732,6 +846,7 @@ export function NeedCard({ product, skus }: { product: ProductCard; skus: Produc
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </CardBody>
+      <PlanModeModal target={modeTarget} canEdit={canEdit} onClose={() => setModeTarget(null)} />
     </Card>
   );
 }

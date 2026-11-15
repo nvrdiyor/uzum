@@ -22,7 +22,6 @@ export const PAGE_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   '/sales': ['sotuv', 'savdo', 'buyurtma', 'zakaz', 'tushum', 'продажи', 'заказы', 'выручка', 'sales', 'orders', 'revenue', 'prodaji'],
   '/payout': ['to‘lov', 'pul', 'pul yechish', 'выплаты', 'вывод', 'деньги', 'payout', 'payments', 'cash'],
   '/funnel': ['voronka', 'konversiya', 'ko‘rishlar', 'savatcha', 'воронка', 'конверсия', 'просмотры', 'корзина', 'funnel', 'conversion', 'views', 'cart'],
-  '/sales-stock': ['aylanma', 'oborot', 'оборачиваемость', 'оборот', 'turnover', 'sell through'],
   '/reports': ['hisobot', 'oylik', 'oy yakuni', 'отчёт', 'месячный', 'report', 'monthly', 'otchet'],
   '/planner': ['reja', 'rejalashtirish', 'buyurtma berish', 'xarid', 'prognoz', 'план', 'закупка', 'прогноз', 'дозаказ', 'forecast', 'reorder', 'purchase', 'zakupka'],
   '/products': ['tovar', 'mahsulot', 'assortiment', 'katalog', 'товары', 'ассортимент', 'каталог', 'products', 'catalog', 'items', 'tovary'],
@@ -35,7 +34,8 @@ export const PAGE_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   '/mxik': ['mxik', 'ikpu', 'soliq kodi', 'икпу', 'мхик', 'tax code'],
   '/illiquid': ['nolikvid', 'harakatsiz', 'sotilmayotgan', 'yotib qolgan', 'неликвид', 'залежалый', 'dead stock', 'slow moving', 'nelikvid'],
   '/promos': ['aksiya', 'chegirma', 'skidka', 'promo', 'акция', 'скидка', 'промо', 'discount', 'promotion', 'akciya'],
-  '/stocks': ['qoldiq', 'zaxira', 'fbo', 'fbs', 'остатки', 'запас', 'stock', 'inventory', 'ostatki'],
+  // "Sotuv va qoldiq" endi shu bo'limning "Sotuv bilan" ko'rinishi
+  '/stocks': ['qoldiq', 'zaxira', 'fbo', 'fbs', 'остатки', 'запас', 'stock', 'inventory', 'ostatki', 'sotuv va qoldiq', 'aylanma', 'oborot', 'оборачиваемость', 'оборот', 'turnover', 'sell through'],
   '/warehouse': ['ombor', 'sklad', 'o‘z ombori', 'склад', 'warehouse', 'own stock'],
   '/shipments': ['yetkazma', 'jo‘natma', 'postavka', 'поставки', 'отгрузка', 'shipment', 'supply'],
   '/losses': ['yo‘qotish', 'kamomad', 'brak', 'потери', 'недостача', 'брак', 'losses', 'lost', 'shrinkage'],

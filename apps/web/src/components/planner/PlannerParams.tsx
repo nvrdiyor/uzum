@@ -44,7 +44,8 @@ registerNamespace('planner', {
   },
 });
 
-const LEAD_OPTIONS = [1, 3, 5, 7, 10, 14, 21, 30];
+// Xitoydan cargo bilan 30 kundan ko'p ketadi — server 120 kungacha qabul qiladi
+const LEAD_OPTIONS = [1, 3, 5, 7, 10, 14, 21, 30, 45, 60, 90];
 
 /** Zaxira davri slayderi: chegaralari va ostidagi belgilar (server: services/plan.ts COVER_MIN/MAX) */
 const COVER_MIN = 7;

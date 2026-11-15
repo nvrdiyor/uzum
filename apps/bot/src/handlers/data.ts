@@ -13,7 +13,11 @@ import {
   STOCK_THRESHOLDS,
   SYNC_STEPS,
   TRIAL_DAYS,
+  canSuggestReorder,
   getPlan,
+  parseISODate,
+  skuPlanSettings,
+  toBusinessDate,
   type PlanId,
 } from '@savdoiq/shared';
 import { prisma } from '../lib/db.js';
@@ -190,80 +194,11 @@ export interface StockAlertRow {
 export interface StockAlert {
   rows: StockAlertRow[];
   total: number;
+  /** "Kritik" qaysi yetkazish muddati bilan hisoblangan (kompaniya sozlamasi) */
+  leadDays: number;
 }
 
-/**
- * Qoldig'i `STOCK_THRESHOLDS.critical` (7) kundan kam qolgan SKU'lar.
- * Faqat sotuvi bor tovarlar tekshiriladi — harakatsiz tovarlar bu ro'yxatga tushmaydi.
- */
-export async function buildCriticalStocks(companyId: string, limit = 10): Promise<StockAlert> {
-  const storeIds = await getStoreIds(companyId);
-  if (storeIds.length === 0) return { rows: [], total: 0 };
-
-  const now = Date.now();
-
-  const [sales, snapshots] = await Promise.all([
-    prisma.orderItem.findMany({
-      where: {
-        orderedAt: { gte: new Date(now - AVG_WINDOW_DAYS * DAY_MS) },
-        order: { storeId: { in: storeIds } },
-        status: { notIn: ['canceled', 'returned'] },
-      },
-      select: { skuId: true, qty: true },
-    }),
-    prisma.stockSnapshot.findMany({
-      where: { storeId: { in: storeIds }, date: { gte: new Date(now - STOCK_LOOKBACK_DAYS * DAY_MS) } },
-      orderBy: { date: 'desc' },
-      select: { skuId: true, fbo: true, fbs: true, own: true },
-    }),
-  ]);
-
-  const soldBySku = new Map<string, number>();
-  for (const s of sales) {
-    if (!s.skuId) continue;
-    soldBySku.set(s.skuId, (soldBySku.get(s.skuId) ?? 0) + s.qty);
-  }
-
-  const stockBySku = new Map<string, number>();
-  for (const snap of snapshots) {
-    if (stockBySku.has(snap.skuId)) continue; // eng yangi snapshot birinchi keladi
-    stockBySku.set(snap.skuId, snap.fbo + snap.fbs + snap.own);
-  }
-
-  interface Candidate {
-    skuId: string;
-    stock: number;
-    daysLeft: number;
-  }
-  const candidates: Candidate[] = [];
-
-  for (const [skuId, sold] of soldBySku) {
-    const avgDaily = sold / AVG_WINDOW_DAYS;
-    if (avgDaily <= 0) continue;
-    const stock = stockBySku.get(skuId);
-    if (stock === undefined) continue; // qoldiq ma'lumoti yo'q — ogohlantirmaymiz
-    const daysLeft = Math.floor(stock / avgDaily);
-    if (daysLeft <= STOCK_THRESHOLDS.critical) candidates.push({ skuId, stock, daysLeft });
-  }
-
-  candidates.sort((a, b) => a.daysLeft - b.daysLeft || a.stock - b.stock);
-  const visible = candidates.slice(0, limit);
-
-  const skus = await prisma.sku.findMany({
-    where: { id: { in: visible.map((c) => c.skuId) } },
-    select: { id: true, title: true, sku: true, product: { select: { title: true } } },
-  });
-  const titles = new Map(skus.map((s) => [s.id, s.title || s.product.title || s.sku]));
-
-  return {
-    total: candidates.length,
-    rows: visible.map((c) => ({
-      title: titles.get(c.skuId) ?? '—',
-      stock: c.stock,
-      daysLeft: c.daysLeft,
-    })),
-  };
-}
+// Kritik qoldiqlar ro'yxati — jobs/stock-alert.ts buildCriticalStocks (10:00 ogohlantirishi bilan bitta qoida)
 
 // ─────────────────────────── Saytga kirish kodi ───────────────────────────
 

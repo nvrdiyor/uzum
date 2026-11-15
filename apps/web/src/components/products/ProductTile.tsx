@@ -35,6 +35,10 @@ import { ProductVisibilityButton } from './VisibilityButton';
  */
 export function ProductTile({ product }: { product: ProductCard }) {
   const t = useT('products');
+  // Sotuvdagi variantlarning umumiy rejimi; avtomatik yoki har xil bo'lsa — belgi yo'q
+  const modes = new Set(product.skus.map((x) => x.planMode));
+  const planMode = modes.size === 1 ? [...modes][0] : null;
+  const showMode = planMode && planMode !== 'auto' ? planMode : null;
   const f = useFormat();
   const buyout = useBuyout();
 
@@ -138,6 +142,12 @@ export function ProductTile({ product }: { product: ProductCard }) {
           >
             <Star className="h-3 w-3 text-warn" />
             <span className="tnum">{f.num(product.rating, 1)}</span>
+          </span>
+        ) : null}
+        {/* Buyurtma rejimi (pauza / olinmaydi / mavsumiy) — Rejalashtiruvchi bu tovarga buyurtma tavsiya qilmaydi */}
+        {showMode ? (
+          <span className="chip bg-surface-3 px-2 py-0.5 text-ink-soft" title={t('card.mode.hint')}>
+            {t(`card.mode.${showMode}`)}
           </span>
         ) : null}
         <ProductTags product={product} max={state !== 'active' ? 1 : 2} />

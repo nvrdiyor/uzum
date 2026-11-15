@@ -70,9 +70,8 @@ import {
 } from '@savdoiq/shared';
 import { AppError, ah } from '../lib/errors.js';
 import { companyCtx, requireAuth, requireCompany, requireFeature, requireRole } from '../lib/auth.js';
-import { getLatestStocks, getSkuCatalog, getStoreIds } from '../services/common.js';
-import { getDemand } from '../services/demand.js';
-import { EMPTY_STOCK, NO_DEMAND, buildRow, getInbound, getPlannerSettings } from '../services/plan.js';
+import { getStoreIds } from '../services/common.js';
+import { loadPlanData } from '../services/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -460,32 +459,23 @@ async function stockEntities(c: RuleCtx): Promise<Entity[]> {
    * getPlannerSettings). Ilgari u faqat brauzerda saqlanardi va bu yerda
    * doim 7 kun olinardi: sotuvchi 14 kun tanlasa ham ro'yxat 7 kun bilan chiqardi.
    */
-  const [catalog, stocks, demand, inbound, settings] = await Promise.all([
-    getSkuCatalog(c.storeIds, false),
-    getLatestStocks(c.storeIds),
-    getDemand(c.storeIds),
-    getInbound(c.companyId, c.storeIds),
-    getPlannerSettings(c.companyId),
-  ]);
-  const today = parseISODate(c.today);
+  /*
+   * 2026-11-15: endi butunlay rejaning o'zidan (loadPlanData) — partiyadagi
+   * tovar, sotuvchi to'xtatgan va mavsumiy SKU'lar ham shu yerda hisobga
+   * olinadi; to'xtatilgan SKU (held) hech qachon "kritik" bo'lmaydi.
+   */
+  const data = await loadPlanData(c.companyId, c.storeIds);
   const out: Entity[] = [];
-  for (const info of catalog.values()) {
-    const row = buildRow({
-      info,
-      stock: stocks.get(info.id) ?? EMPTY_STOCK,
-      inbound: inbound.get(info.id) ?? 0,
-      demand: demand.get(info.id) ?? NO_DEMAND,
-      cover: settings.coverDays,
-      lead: settings.leadDays,
-      today,
-    });
+  for (const [skuId, row] of data.rows) {
+    const info = data.catalog.get(skuId);
+    if (!info) continue;
     // "critical" — tovar kelguncha tugaydi; yo'qotish 0 bo'lsa (aynan yetkazish kuni tugaydi) — hali vazifa emas
     if (row.status !== 'critical' || row.lostRevenue <= 0) continue;
     out.push({
       key: `stock:${info.id}`,
       amount: row.lostRevenue,
       level: row.stock <= 0 ? 'danger' : 'warn',
-      params: { sku: row.sku, name: info.title, days: row.daysLeft ?? 0, stock: row.stock, lead: settings.leadDays },
+      params: { sku: row.sku, name: info.title, days: row.daysLeft ?? 0, stock: row.stock, lead: data.leadDays },
     });
   }
   return out;

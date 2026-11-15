@@ -344,7 +344,7 @@ const uz: Messages = {
   btn_rep_month: 'Shu oy',
   btn_rep_year: 'Shu yil',
 
-  stocks_title: '📦 <b>Kritik qoldiqlar</b> (7 kundan kam)',
+  stocks_title: '📦 <b>Kritik qoldiqlar</b> — yetkazish muddati ({lead} kun) ichida tugaydi',
   stocks_empty: '✅ Kritik qoldiq yo‘q — hammasi joyida.',
   stocks_row: '• <b>{title}</b>\n  qoldiq: {stock} dona · ~{days} kunga yetadi',
   stocks_row_zero: '• <b>{title}</b>\n  qoldiq tugagan ❗️',
@@ -652,7 +652,7 @@ const ru: Messages = {
   btn_rep_month: 'Этот месяц',
   btn_rep_year: 'Этот год',
 
-  stocks_title: '📦 <b>Критические остатки</b> (меньше 7 дней)',
+  stocks_title: '📦 <b>Критические остатки</b> — закончатся за срок поставки ({lead} дн.)',
   stocks_empty: '✅ Критических остатков нет — всё в порядке.',
   stocks_row: '• <b>{title}</b>\n  остаток: {stock} шт · хватит на ~{days} дн.',
   stocks_row_zero: '• <b>{title}</b>\n  остаток закончился ❗️',
@@ -962,7 +962,7 @@ const en: Messages = {
   btn_rep_month: 'This month',
   btn_rep_year: 'This year',
 
-  stocks_title: '📦 <b>Critical stock</b> (under 7 days)',
+  stocks_title: '📦 <b>Critical stock</b> — runs out within the lead time ({lead} days)',
   stocks_empty: '✅ No critical stock — all good.',
   stocks_row: '• <b>{title}</b>\n  stock: {stock} pcs · lasts ~{days} days',
   stocks_row_zero: '• <b>{title}</b>\n  out of stock ❗️',

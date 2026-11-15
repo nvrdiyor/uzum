@@ -42,7 +42,8 @@ registerNamespace('planner', {
     'status.critical': 'Kritik',
     'status.ending': 'Buyurtma vaqti',
     'status.enough': 'Yetarli',
-    'status.no_action': 'Harakatsiz',
+    'status.no_action': 'Sotuv yo‘q',
+    'status.held': 'To‘xtatilgan',
   },
   ru: {
     'teaser.eyebrow': 'По вашим данным',
@@ -65,7 +66,8 @@ registerNamespace('planner', {
     'status.critical': 'Критично',
     'status.ending': 'Пора заказывать',
     'status.enough': 'Достаточно',
-    'status.no_action': 'Без движения',
+    'status.no_action': 'Нет продаж',
+    'status.held': 'Приостановлено',
   },
   en: {
     'teaser.eyebrow': 'Based on your data',
@@ -88,7 +90,8 @@ registerNamespace('planner', {
     'status.critical': 'Critical',
     'status.ending': 'Time to order',
     'status.enough': 'Healthy',
-    'status.no_action': 'No movement',
+    'status.no_action': 'No sales',
+    'status.held': 'On hold',
   },
 });
 
@@ -97,6 +100,7 @@ export const PLAN_STATUS_TONE: Record<PlannerRow['status'], Tone> = {
   ending: 'warn',
   enough: 'brand',
   no_action: 'muted',
+  held: 'muted',
 };
 
 /**

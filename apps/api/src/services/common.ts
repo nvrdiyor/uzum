@@ -10,8 +10,10 @@ import {
   businessDayStart,
   matchesSkuQuery,
   parseSkuQuery,
+  skuPlanSettings,
   toBusinessDate,
   type ExpenseCategory,
+  type SkuPlanSettings,
   type Period,
   type ProductSearchFields,
   type SkuQuery,
@@ -48,6 +50,8 @@ export interface SkuInfo {
   barcode: string | null;
   uzumSkuId: string | null;
   uzumProductId: string | null;
+  /** Sotuvchi belgilagan reja rejimi (shared sku-plan.ts): pauza, endi olinmaydi, mavsumiy */
+  plan: SkuPlanSettings;
 }
 
 export interface StockInfo {
@@ -161,6 +165,7 @@ function toSkuInfo(s: Prisma.SkuGetPayload<{ include: typeof SKU_INFO_INCLUDE }>
     barcode: s.barcode,
     uzumSkuId: s.uzumSkuId,
     uzumProductId: s.product.uzumProductId,
+    plan: skuPlanSettings(s),
   };
 }
 
@@ -611,7 +616,13 @@ export function stockState(
     if (longEnough) return { status: 'dead', daysLeft };
     return { status: 'ok', daysLeft };
   }
-  if (total <= 0) return { status: 'critical', daysLeft: 0 };
+  /*
+   * Qoldiq yo'q: sotilayotgan bo'lsa — kritik; sotuvi ham yo'q bo'lsa —
+   * harakatsiz. Ilgari ikkalasi "Kritik · 0 kun" edi: arxivdagi, endi
+   * sotilmaydigan SKU'lar ham Qoldiqlarda kritik bo'lib, "Kritik" soni
+   * Rejalashtiruvchidagidan ko'p chiqardi (2026-11-15).
+   */
+  if (total <= 0) return avgDaily > 0 ? { status: 'critical', daysLeft: 0 } : { status: 'dead', daysLeft: null };
   if (daysLeft === null) return { status: longEnough ? 'dead' : 'ok', daysLeft: null };
   if (daysLeft <= STOCK_THRESHOLDS.critical) return { status: 'critical', daysLeft };
   if (daysLeft <= STOCK_THRESHOLDS.low) return { status: 'low', daysLeft };

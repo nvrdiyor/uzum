@@ -22,6 +22,17 @@ import AdminLogin from '@/pages/AdminLogin';
 import Invite from '@/pages/Invite';
 
 // Ichki sahifalar — kodni bo'lib yuklash
+/**
+ * "Sotuv va qoldiq" endi Qoldiqlar bo'limining "Sotuv bilan" ko'rinishi.
+ * Eski havolalar (xatcho'p, bot xabari) davr va do'kon filtri bilan o'sha yerga.
+ */
+function SalesStockRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set('view', 'sales');
+  return <Navigate to={`/stocks?${params.toString()}`} replace />;
+}
+
 const Onboarding = lazyPage(() => import('@/pages/Onboarding'), '/onboarding');
 const Dashboard = lazyPage(() => import('@/pages/Dashboard'), '/dashboard');
 const Sales = lazyPage(() => import('@/pages/Sales'), '/sales');
@@ -31,7 +42,6 @@ const Payout = lazyPage(() => import('@/pages/Payout'), '/payout');
 const SkuHealth = lazyPage(() => import('@/pages/SkuHealth'), '/sku-health');
 const Cards = lazyPage(() => import('@/pages/Cards'), '/cards');
 const CardDetail = lazyPage(() => import('@/pages/CardDetail'));
-const SalesStock = lazyPage(() => import('@/pages/SalesStock'), '/sales-stock');
 const Reports = lazyPage(() => import('@/pages/Reports'), '/reports');
 const Planner = lazyPage(() => import('@/pages/Planner'), '/planner');
 const Products = lazyPage(() => import('@/pages/Products'), '/products');
@@ -43,7 +53,8 @@ const BatchDetail = lazyPage(() => import('@/pages/BatchDetail'));
 const BatchProfit = lazyPage(() => import('@/pages/BatchProfit'), '/batch-profit');
 const Mxik = lazyPage(() => import('@/pages/Mxik'), '/mxik');
 const Illiquid = lazyPage(() => import('@/pages/Illiquid'), '/illiquid');
-const Stocks = lazyPage(() => import('@/pages/Stocks'), '/stocks');
+// Qoldiqlar: "Qoldiq | Sotuv bilan" — ikki ko'rinish bitta bo'limda (pages/StocksHub.tsx)
+const Stocks = lazyPage(() => import('@/pages/StocksHub'), '/stocks');
 const WarehousePage = lazyPage(() => import('@/pages/Warehouse'), '/warehouse');
 const Shipments = lazyPage(() => import('@/pages/Shipments'), '/shipments');
 const Losses = lazyPage(() => import('@/pages/Losses'), '/losses');
@@ -182,7 +193,7 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/sales" element={<Sales />} />
               <Route path="/funnel" element={<Funnel />} />
-              <Route path="/sales-stock" element={<SalesStock />} />
+              <Route path="/sales-stock" element={<SalesStockRedirect />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/products" element={<Products />} />

@@ -45,6 +45,7 @@ import {
   addDays,
   billableLiters,
   businessDayStart,
+  canSuggestReorder,
   daysBetween,
   formatMoney,
   formatNumber,
@@ -53,6 +54,7 @@ import {
   parseISODate,
   resolvePlan,
   round,
+  skuPlanSettings,
   skuSaleAge,
   storageFeePerDay,
   storageTariffKind,
@@ -63,7 +65,7 @@ import {
 import { prisma } from '../lib/db.js';
 import { toBotLang, tr, type BotLang } from '../i18n.js';
 import { clampMessage, cut, escapeHtml, sleep, webLink, type BotContext } from '../handlers/context.js';
-import { displayDate, getStoreIds, localDateKey, localHour } from '../handlers/data.js';
+import { displayDate, getStoreIds, localDateKey, localHour, type StockAlert } from '../handlers/data.js';
 
 /** Har daqiqada tekshiramiz — kerakli soat kelganida bir marta ishlaydi */
 const CHECK_INTERVAL_MS = 60_000;
@@ -245,6 +247,8 @@ export async function buildStockAlert(
   companyId: string,
   now = new Date(),
   sections: { storage: boolean; stock: boolean } = { storage: true, stock: true },
+  /** «📦 Qoldiqlar» va kunlik xabar uchun: ro'yxat uzunligi va tugaganlarni ham qatorga qo'shish */
+  opts: { limit?: number; includeOut?: boolean } = {},
 ): Promise<StockAlertData> {
   const todayKey = toBusinessDate(now);
   const today = parseISODate(todayKey);
@@ -280,6 +284,9 @@ export async function buildStockAlert(
         volumeL: true,
         createdAt: true,
         archived: true,
+        planMode: true,
+        planPauseUntil: true,
+        seasonMonths: true,
         product: { select: { title: true, category: true } },
       },
     }),
@@ -504,6 +511,12 @@ export async function buildStockAlert(
     for (const s of skus) {
       // Rejalashtiruvchi arxivdagi SKU'ni ko'rsatmaydi — bu yerda ham
       if (s.archived) continue;
+      /*
+       * Sotuvchi "hozircha buyurtma berilmaydi" / "endi olinmaydi" degan, yoki
+       * mavsum emas / mavsum tugashiga ulgurmaydi — "tugayapti" deb bezovta
+       * qilinmaydi (Rejalashtiruvchida ham bu SKU "To'xtatilgan").
+       */
+      if (!canSuggestReorder(skuPlanSettings(s), today, leadDays)) continue;
       const sales = soldByDay.get(s.id);
       let units = 0;
       if (sales) for (const k of demandKeys) units += sales.get(k) ?? 0;
@@ -538,18 +551,34 @@ export async function buildStockAlert(
        */
       if (latest <= 0) {
         out.outOfStock += 1;
-        continue;
+        if (!opts.includeOut) continue;
       }
       ending.push({ title: titleOf(s), stock: latest, daysLeft: Math.floor(exact), exact });
     }
     ending.sort((a, b) => a.exact - b.exact || a.stock - b.stock);
     out.runningOut = {
-      rows: ending.slice(0, LIST_LIMIT).map(({ exact: _exact, ...r }) => r),
+      rows: ending.slice(0, opts.limit ?? LIST_LIMIT).map(({ exact: _exact, ...r }) => r),
       total: ending.length,
     };
   }
 
   return out;
+}
+
+/**
+ * «📦 Qoldiqlar» menyusi va 09:00 kunlik xabardagi "Kritik qoldiqlar" — 10:00
+ * ogohlantirishi bilan BITTA qoida: tezlik tovar sotuvda bo'lgan kunlar
+ * bo'yicha, yo'ldagi tovar bilan, kompaniyaning yetkazish muddati ichida
+ * tugaydiganlar; arxivdagi va sotuvchi to'xtatgan SKU'lar kirmaydi.
+ *
+ * Ilgari bu ro'yxat alohida, eski formulada edi (qat'iy 7 kun, 30 kunga
+ * bo'lingan o'rtacha, yo'ldagi tovarsiz, arxivdagilar bilan): bot bir kunda
+ * ikki xil "kritik" ro'yxat yuborardi, sayt esa uchinchisini ko'rsatardi
+ * (2026-11-15 tahlili).
+ */
+export async function buildCriticalStocks(companyId: string, limit = 10): Promise<StockAlert> {
+  const data = await buildStockAlert(companyId, new Date(), { storage: false, stock: true }, { limit, includeOut: true });
+  return { rows: data.runningOut.rows, total: data.runningOut.total, leadDays: data.leadDays };
 }
 
 /** Ro'yxat oxiridagi "… va yana N ta" */

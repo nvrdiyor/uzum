@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Boxes, Coins, Download, Inbox, PackageCheck, ShoppingCart, Table2, TrendingUp, Wallet } from '@/components/icons';
 import type { SalesStockResponse, SalesStockRow } from '@savdoiq/shared';
@@ -248,7 +248,8 @@ function StatusStrip({
   );
 }
 
-export default function SalesStock() {
+/** "Sotuv bilan" ko'rinishi — Qoldiqlar bo'limi ichida (pages/StocksHub.tsx) */
+export default function SalesStock({ viewSwitch }: { viewSwitch?: ReactNode } = {}) {
   const t = useT('salesStock');
   const tc = useT('common');
   const f = useFormat();
@@ -521,6 +522,7 @@ export default function SalesStock() {
       />
 
       <FilterBar>
+        {viewSwitch}
         {/* Nom, SKU kodi, shtrix-kod, Uzum ID yoki havola — server umumiy qoida bilan qidiradi (shared search.ts) */}
         <SkuSearchInput value={searchInput} onChange={setSearchInput} className="w-full sm:w-72" />
       </FilterBar>

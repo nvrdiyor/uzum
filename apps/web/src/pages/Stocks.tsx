@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Boxes, Download, Gauge, HandCoins, Layers, PackageSearch, Tag, TrendingUp, Wallet } from '@/components/icons';
 import type { StockRow, StocksResponse } from '@savdoiq/shared';
@@ -227,7 +227,11 @@ function splitVariant(title: string, sku: string): { name: string; sub: string }
   return i > 0 ? { name: title.slice(0, i), sub: title.slice(i + 3) } : { name: title, sub: sku };
 }
 
-export default function Stocks() {
+/**
+ * Qoldiqlar. `viewSwitch` — "Qoldiq | Sotuv bilan" almashtirgich (pages/StocksHub.tsx):
+ * "Sotuv va qoldiq" endi alohida sahifa emas, shu bo'limning ikkinchi ko'rinishi.
+ */
+export default function Stocks({ viewSwitch }: { viewSwitch?: ReactNode } = {}) {
   const t = useT('stocks');
   const tc = useT('common');
   const f = useFormat();
@@ -492,7 +496,7 @@ export default function Stocks() {
         }
       />
 
-      <FilterBar />
+      <FilterBar>{viewSwitch}</FilterBar>
 
       <PlanGate feature="stocks_fbo_fbs">
         <div className="space-y-5">

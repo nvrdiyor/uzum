@@ -102,7 +102,8 @@ export async function loadStockList(companyId: string, taxRate: number, storeIds
         fbs: st.fbs,
         own: st.own,
         reserved: st.reserved,
-        inTransit: st.inTransit,
+        // "Yetadi" hisobidagi yo'ldagi tovar (Uzum omboriga jo'natilgan, hali qabul qilinmagan) — ekranda ham shu
+        inTransit: planned ? planned.inbound : st.inTransit,
         total: st.total,
         // Tannarx bo'yicha qiymat — omborda "muzlab turgan" pul
         costValue: round(st.total * (info.purchasePrice + info.extraCost)),

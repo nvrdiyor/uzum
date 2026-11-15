@@ -95,7 +95,7 @@ export function periodReportText(lang: BotLang, range: ReportRange, report: Peri
 
 /** «📦 Qoldiqlar» matni — 7 kundan kam qolgan SKU'lar */
 export function stocksText(lang: BotLang, alert: StockAlert): string {
-  const head = tr(lang, 'stocks_title');
+  const head = tr(lang, 'stocks_title', { lead: alert.leadDays });
   if (alert.rows.length === 0) return `${head}\n\n${tr(lang, 'stocks_empty')}`;
 
   const rows = alert.rows.map((r) =>
