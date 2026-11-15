@@ -823,8 +823,20 @@ export async function upsertOrders(
             ? round(num(it.logistics))
             : (shareOf(order.logistics, revenue, orderRevenue) ?? round(DEFAULTS.logisticsPerUnit * qty));
 
-        /** Uzum bergan "yechib olish uchun" summasi (bo'lmasa — null) */
-        const uzumPayout = it.payout !== undefined && num(it.payout) > 0 ? round(num(it.payout)) : null;
+        /**
+         * Uzum bergan "yechib olish uchun" summasi (bo'lmasa — null).
+         *
+         * Sotilgan pozitsiyada u MANFIY ham bo'ladi: arzon tovarda yetkazish
+         * narxdan qimmat (5 000 so'mlik tovar, 5 250 yetkazish → −800).
+         * Ilgari faqat musbati olinardi va manfiy qatorda Uzum yuborgan
+         * buzuq komissiya (5 550 = 550 + narxning o'zi) qolardi: 2026-11-15
+         * jonli do'konda №139405574 tushumi 15 000 kam, balans esa
+         * kabinetdagidan aynan shuncha past chiqdi. 0 — "noma'lum" bo'lib qoladi.
+         */
+        const uzumPayout =
+          it.payout !== undefined && it.payout !== null && qty > 0 && num(it.payout) !== 0
+            ? round(num(it.payout))
+            : null;
 
         const reportedCommission =
           it.commission !== undefined

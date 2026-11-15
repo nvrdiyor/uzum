@@ -1052,12 +1052,26 @@ export class LiveUzumClient implements UzumClient {
       const date = asIso(firstOf(r, KEYS.expenseDate), fallbackIso);
       if (!inRange(date, from, to)) continue;
 
+      /*
+       * Summa `getExpenses` dagi kabi: `paymentPrice` — bir dona narxi,
+       * `amount` — soni. Ilgari bu yerda `amount` summa deb olinardi va
+       * "Ombor" to'lovlari (ombordan qaytarish 12 000, qabulda yuk xati
+       * 2 500) bazaga 1 so'mdan yozildi — 2026-11-15 jonli do'konda balans
+       * va "Ochilgan" Uzumdagidan aynan 14 498 so'm ko'p chiqdi.
+       */
+      const unitPrice = r.paymentPrice !== undefined && r.paymentPrice !== null ? asMoney(r.paymentPrice) : null;
+      const sum =
+        unitPrice !== null
+          ? Math.abs(unitPrice) * Math.max(1, Math.round(asNumber(r.amount)))
+          : Math.abs(asMoney(firstOf(r, KEYS.expenseAmount)));
+
       out.push({
         skuId: asString(firstOf(r, KEYS.skuId)),
         date: date.slice(0, 10),
         qty: Math.round(asNumber(firstOf(r, KEYS.qty))),
         volumeL: asNumber(firstOf(r, KEYS.volume)),
-        amount: Math.abs(asMoney(firstOf(r, KEYS.expenseAmount))),
+        // Qaytarilgan to'lov (INCOME) — kamaytiradi
+        amount: asString(r.type).toUpperCase() === 'INCOME' ? -sum : sum,
       });
     }
 
