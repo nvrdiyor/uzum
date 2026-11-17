@@ -28,9 +28,7 @@ import {
 } from '@savdoiq/shared';
 import type { TFunc } from '@/i18n';
 import {
-  addDays,
   isIsoDay,
-  isMonthEnd,
   leftInline,
   nextMonthDay,
   parseCount,
@@ -86,9 +84,7 @@ export interface FormState {
   more: boolean;
   /** Kredit karta: tayyor karta yoki 'other' (umumiy hisob); null — hali tanlanmagan (faqat yangi kartada) */
   cardProduct: DebtCardProduct | 'other' | null;
-  /** TBC: ilovadagi oxirgi ko'chirmaning to'lov sanasi (o'tgan yoki kelgusi) — ko'chirma kuni shundan */
-  lastDue: string;
-  /** TBC: ko'chirma kuni (28–31) — to'lov sanasidan 24 kun oldin oy oxiriga tushsa; '' — o'sha kun */
+  /** TBC: bank ilovasidagi har oylik ko'chirma kuni (1–31). To'lov muddati shu kundan hisoblanadi */
   stmtDay: string;
   /**
    * Ochiq ko'chirma: to'lov kunigacha to'lash kerak (null — hozirgi qarz). Infin'da — ilovadagi «Foizsiz davr to‘lovi»:
@@ -128,7 +124,6 @@ export type FieldKey =
   | 'runRemaining'
   | 'runMonthly'
   | 'cashRate'
-  | 'lastDue'
   | 'stmtDay'
   | 'billed'
   | 'minLeft'
@@ -140,9 +135,6 @@ export type Errors = Partial<Record<FieldKey, string>>;
 export const MORE_FIELDS: FieldKey[] = ['grace', 'monthly', 'dueOn', 'rate'];
 /** Tayyor kartada "Qo'shimcha" ichida — faqat muddati o'tgan summa (foiz asosiy maydonlarda) */
 export const PRODUCT_MORE_FIELDS: FieldKey[] = ['overdueNow'];
-
-/** TBC: oxirgi ko'chirmaning to'lov sanasi bugundan shuncha kungacha (o'tgan yoki kelgusi) */
-export const LAST_DUE_WINDOW = 40;
 
 /**
  * plain — oddiy yangi qarz; reveal — birinchi to'lov o'tib ketgan (avvaldan bor qarz,
@@ -179,10 +171,6 @@ export interface Built {
   pending: boolean;
   /** Tayyor karta: izoh — keyingi to'lov sanasi va ko'chirma kuni */
   cardDueText: string | null;
-  /** TBC: to'lov sanasidan 24 kun oldin oy oxiri (28–30) — ko'chirma kuni so'raladi */
-  stmtAmbiguous: boolean;
-  /** TBC: ko'chirma kuni variantlari (o'sha oy oxiridan 31 gacha) */
-  stmtDays: number[];
   /** Ochiq ko'chirma maydonlarida ko'rinadigan qiymatlar (taxmin yoki qo'lda) va to'lov kuni */
   stmt: { billed: number | null; min: number | null; due: string } | null;
   /** Tayyor karta: kuzatuv boshidagi ko'chirmaning to'lov kuni (ochiq bo'lmasa ham) — Infin savolidagi sana */
@@ -197,10 +185,6 @@ export interface Built {
 /** Shakldagi tayyor karta (yoki null — umumiy karta, boshqa tur) */
 export const productOf = (s: Pick<FormState, 'kind' | 'cardProduct'>): DebtCardProduct | null =>
   s.kind === 'card' && isCardProduct(s.cardProduct) ? s.cardProduct : null;
-
-/** TBC tahrirda: ochiq ko'chirmaning (bo'lmasa keyingisining) to'lov kuni */
-const productLastDue = (d: DebtDetail): string =>
-  d.calc.card?.grace?.due ?? d.calc.card?.nextStatement.due ?? d.terms.firstDueOn ?? '';
 
 export interface Ctx {
   today: string;
@@ -254,7 +238,6 @@ export function blank(kind: DebtKind | null, today: string, isOwner: boolean): F
     opening: null,
     more: false,
     cardProduct: null,
-    lastDue: '',
     stmtDay: '',
     billed: null,
     minLeft: null,
@@ -298,7 +281,6 @@ export function fromDebt(d: DebtDetail): FormState {
     more: false,
     // Tahrirda tur tanlanmaydi: saqlangan tayyor karta yoki boshqa karta
     cardProduct: d.kind === 'card' ? (product ?? 'other') : null,
-    lastDue: product === 'tbc-osmon' ? productLastDue(d) : '',
     // Saqlangan kun (31 — 30.11 ga tushgan ko'chirmada ham 31)
     stmtDay: tm.statementDay != null ? String(tm.statementDay) : '',
     // Boshlang'ich raqamlar tahrirda ham tuzatiladi (kuzatuv boshidagi qiymatlar). Ilgari faqat ko'rsatilardi — egasi
@@ -622,8 +604,6 @@ export function build(s: FormState, ctx: Ctx): Built {
     cardNextDue,
     pending: false,
     cardDueText: null,
-    stmtAmbiguous: false,
-    stmtDays: [],
     stmt: null,
     openingDue: null,
     revolvingAsk: null,
@@ -672,28 +652,15 @@ function buildProduct(s: FormState, ctx: Ctx, p: DebtCardProduct): Built {
     else minPct = v;
   }
 
-  // ── Ko'chirma kuni: TBC — ilovadagi to'lov sanasidan 24 kun oldin; Infin — har oy 1-sana ──
+  // TBC'da ko'chirma kuni mijozniki. 24 — ko'chirmadan keyingi to'lov oralig'i.
+  // Tahrirda ham saqlangan kun olinadi: qisqa oyda 31-kun oy oxiriga tushadi.
   let statementDay = edit?.terms.statementDay ?? rules.statementDay ?? 1;
-  const stmtDays: number[] = [];
   if (isTbc) {
-    // Tahrirda o'zgartirilmagan sana tekshirilmaydi: keyingi ko'chirmaning to'lov kuni bugundan 55 kungacha uzoq bo'ladi
-    const untouched = edit !== null && s.lastDue === productLastDue(edit);
-    if (!isIsoDay(s.lastDue)) e.lastDue = t('err.lastDue');
-    else if (!untouched && Math.abs(dayDiff(ctx.today, s.lastDue)) > LAST_DUE_WINDOW)
-      e.lastDue = t('err.lastDueRange', { n: LAST_DUE_WINDOW });
-    else {
-      const S0 = addDays(s.lastDue, -rules.dueDays);
-      statementDay = Number(S0.slice(8, 10));
-      // 30.11 — bankning kuni 30 ham, 31 ham bo'lishi mumkin (oy oxiri qoidasi e'lon qilinmagan): so'raladi.
-      // 30 deb olinsa, 31-kunli kartada keyingi to'lov 23.01 chiqadi (bankda 24.01) — 24.01 dagi to'lov "kechikkan" bo'lardi
-      if (isMonthEnd(S0) && statementDay < 31) {
-        for (let d = statementDay; d <= 31; d += 1) stmtDays.push(d);
-        const picked = parseCount(s.stmtDay);
-        if (picked !== null && !Number.isNaN(picked) && picked >= statementDay && picked <= 31) statementDay = picked;
-      }
-    }
+    const picked = parseCount(s.stmtDay);
+    if (picked == null || !Number.isInteger(picked) || picked < 1 || picked > 31) e.stmtDay = t('err.stmtDay');
+    else statementDay = picked;
   }
-  const dayOk = !e.lastDue;
+  const dayOk = !e.stmtDay;
 
   // ── Kuzatuv boshidagi ko'chirma — dvigatel kabi: shu kungi yoki undan oldingi oxirgisi, to'lov kuni kelmagan bo'lsa ochiq ──
   const T0 = ctx.anchor;
@@ -853,7 +820,7 @@ function buildProduct(s: FormState, ctx: Ctx, p: DebtCardProduct): Built {
   const cardDueText = !dayOk
     ? null
     : isTbc
-      ? t('f.lastDueHint', { due: ctx.dateText(nextDue), left, day: statementDay })
+      ? t('f.stmtDueHint', { due: ctx.dateText(nextDue), left, day: statementDay })
       : t('f.infinDueHint', { due: ctx.dateText(nextDue), left });
 
   return {
@@ -868,8 +835,6 @@ function buildProduct(s: FormState, ctx: Ctx, p: DebtCardProduct): Built {
     cardNextDue: nextDue,
     pending,
     cardDueText,
-    stmtAmbiguous: stmtDays.length > 0,
-    stmtDays,
     stmt,
     openingDue: dayOk ? D0 : null,
     revolvingAsk,

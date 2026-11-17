@@ -52,7 +52,6 @@ import { MoneyField } from './MoneyField';
 import { Choice, CountField, DateField, FieldNote, PctField, TextField } from './fields';
 import { addDays, compactMoney, isIsoDay, leftInline, minRuleText, parseDecimal, pctNum, toLedger } from './format';
 import {
-  LAST_DUE_WINDOW,
   MORE_FIELDS,
   PRODUCT_MORE_FIELDS,
   blank,
@@ -670,10 +669,7 @@ function FormDialog({
         ) : null}
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <MoneyField
-            // TBC: sana yuqorida kiritilgan; dvigatel boshqa (yangiroq) ko'chirmani ochiq ko'rsa — uning sanasi
-            label={
-              !isTbc ? t('f.graceInfin') : stmt.due === s.lastDue ? t('f.billedTbc') : t('f.billedBy', { date: f.date(stmt.due) })
-            }
+            label={isTbc ? t('f.billedBy', { date: f.date(stmt.due) }) : t('f.graceInfin')}
             value={stmt.billed}
             onChange={(v) => set('billed', v)}
             currency="UZS"
@@ -774,14 +770,13 @@ function FormDialog({
               }
               error={err('minPct')}
             />
-            <DateField
-              label={t('f.lastDue')}
-              value={s.lastDue}
-              onChange={(v) => set('lastDue', v)}
-              min={debt ? undefined : addDays(today, -LAST_DUE_WINDOW)}
-              max={debt ? undefined : addDays(today, LAST_DUE_WINDOW)}
-              hint={built.cardDueText ?? t('f.lastDueHint0')}
-              error={err('lastDue')}
+            <CountField
+              label={t('f.stmtDay')}
+              value={s.stmtDay}
+              onChange={(v) => set('stmtDay', v)}
+              placeholder="1–31"
+              hint={built.cardDueText ?? t('f.stmtDayHint')}
+              error={err('stmtDay')}
             />
           </div>
         ) : (
@@ -790,17 +785,6 @@ function FormDialog({
             {built.cardDueText ? ` · ${built.cardDueText}` : ''}
           </p>
         )}
-        {built.stmtAmbiguous ? (
-          <div>
-            <Choice<string>
-              label={t('f.stmtDay')}
-              value={String(built.terms.statementDay)}
-              onChange={(v) => set('stmtDay', v)}
-              options={built.stmtDays.map((d) => ({ value: String(d), label: String(d) }))}
-            />
-            <FieldNote hint={t('f.stmtDayHint')} />
-          </div>
-        ) : null}
         {/* Yangi kartada ham, tahrirda ham bir xil maydonlar (tahrirda — kuzatuv boshidagi raqamlar) */}
         {stmtBlock}
         {revolvingBlock}

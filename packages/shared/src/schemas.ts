@@ -380,7 +380,7 @@ export const debtCreateSchema = z.object(debtFields).superRefine((v, ctx) => {
   if (v.cardProduct != null) {
     if (v.kind !== 'card') issue('cardProduct', 'Tayyor karta faqat kredit karta uchun');
     if (v.currency !== 'UZS') issue('currency', 'Bu karta faqat so‘mda');
-    if (v.cardProduct === 'tbc-osmon' && v.statementDay == null) issue('statementDay', 'Keyingi to‘lov sanasini kiriting');
+    if (v.cardProduct === 'tbc-osmon' && v.statementDay == null) issue('statementDay', 'Har oylik ko‘chirma kunini kiriting');
     if (v.openingBilled != null && v.openingBilled > (v.openingBalance ?? 0))
       issue('openingBilled', 'To‘lash kerak summa hozirgi qarzdan katta bo‘lmaydi');
     if (v.openingMin != null && v.openingMin > (v.openingBilled ?? v.openingBalance ?? 0))
